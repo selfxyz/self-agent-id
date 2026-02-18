@@ -19,13 +19,10 @@ let SelfAppBuilder: typeof import("@selfxyz/qrcode").SelfAppBuilder;
 export default function RegisterPage() {
   const router = useRouter();
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [agentPubKey, setAgentPubKey] = useState("");
   const [selfApp, setSelfApp] = useState<ReturnType<
     InstanceType<typeof import("@selfxyz/qrcode").SelfAppBuilder>["build"]
   > | null>(null);
-  const [step, setStep] = useState<"connect" | "input" | "scan" | "success">(
-    "connect"
-  );
+  const [step, setStep] = useState<"connect" | "scan" | "success">("connect");
 
   // Load SelfAppBuilder on client
   useEffect(() => {
@@ -36,51 +33,35 @@ export default function RegisterPage() {
 
   const handleConnect = async () => {
     const address = await connectWallet();
-    if (address) {
+    if (address && SelfAppBuilder) {
       setWalletAddress(address);
-      setStep("input");
+
+      // userDefinedData is just "R" — the contract derives agentPubKey from the wallet address
+      const app = new SelfAppBuilder({
+        version: 2,
+        appName: process.env.NEXT_PUBLIC_SELF_APP_NAME || "Self Agent ID",
+        scope: process.env.NEXT_PUBLIC_SELF_SCOPE_SEED || "self-agent-id",
+        endpoint: REGISTRY_ADDRESS,
+        logoBase64: "https://i.postimg.cc/mrmVf9hm/self.png",
+        userId: address,
+        endpointType: "staging_celo",
+        userIdType: "hex",
+        userDefinedData: "R",
+        disclosures: {},
+      }).build();
+
+      setSelfApp(app);
+      setStep("scan");
     }
-  };
-
-  const handleStartRegistration = () => {
-    if (!walletAddress || !agentPubKey || !SelfAppBuilder) return;
-
-    // Pad or hash the agent public key to 32 bytes
-    let keyBytes: string;
-    if (agentPubKey.startsWith("0x") && agentPubKey.length === 66) {
-      // Already a 32-byte hex string
-      keyBytes = agentPubKey;
-    } else {
-      // Hash arbitrary input to get a 32-byte key
-      keyBytes = ethers.keccak256(ethers.toUtf8Bytes(agentPubKey));
-    }
-
-    // userDefinedData = "R" + 64-char hex pubkey (no 0x prefix)
-    // Self SDK passes this as a UTF-8 string, so we use string encoding
-    const userDefinedData = "R" + keyBytes.slice(2);
-
-    const app = new SelfAppBuilder({
-      version: 2,
-      appName: process.env.NEXT_PUBLIC_SELF_APP_NAME || "Self Agent ID",
-      scope: process.env.NEXT_PUBLIC_SELF_SCOPE_SEED || "self-agent-id",
-      endpoint: REGISTRY_ADDRESS,
-      logoBase64: "https://i.postimg.cc/mrmVf9hm/self.png",
-      userId: walletAddress,
-      endpointType: "staging_celo",
-      userIdType: "hex",
-      userDefinedData,
-      disclosures: {},
-    }).build();
-
-    setSelfApp(app);
-    setStep("scan");
   };
 
   const handleSuccess = () => {
     setStep("success");
+    // Agent key = zero-padded wallet address
+    const agentKey = ethers.zeroPadValue(walletAddress!, 32);
     setTimeout(() => {
-      router.push("/verify?key=" + encodeURIComponent(agentPubKey));
-    }, 2000);
+      router.push("/verify?key=" + encodeURIComponent(agentKey));
+    }, 3000);
   };
 
   return (
@@ -91,7 +72,8 @@ export default function RegisterPage() {
         <div className="flex flex-col items-center gap-4">
           <p className="text-gray-700 text-center max-w-md">
             Connect your wallet to register an AI agent with proof-of-human
-            verification.
+            verification. Your wallet address becomes your agent&apos;s on-chain
+            identity.
           </p>
           <button
             onClick={handleConnect}
@@ -102,43 +84,12 @@ export default function RegisterPage() {
         </div>
       )}
 
-      {step === "input" && (
-        <div className="flex flex-col items-center gap-4 w-full max-w-md">
-          <p className="text-sm text-gray-600">
-            Connected: {walletAddress?.slice(0, 6)}...{walletAddress?.slice(-4)}
-          </p>
-          <div className="w-full">
-            <label
-              htmlFor="agentKey"
-              className="block text-sm font-medium mb-2"
-            >
-              Agent Public Key
-            </label>
-            <input
-              id="agentKey"
-              type="text"
-              value={agentPubKey}
-              onChange={(e) => setAgentPubKey(e.target.value)}
-              placeholder="0x... (32-byte hex) or any string (will be hashed)"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-black"
-            />
-            <p className="text-xs text-gray-600 mt-1">
-              Paste the agent&apos;s secp256k1 public key, or any unique
-              identifier (it will be keccak256-hashed to 32 bytes).
-            </p>
-          </div>
-          <button
-            onClick={handleStartRegistration}
-            disabled={!agentPubKey}
-            className="px-6 py-3 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
-          >
-            Generate QR Code
-          </button>
-        </div>
-      )}
-
       {step === "scan" && (
         <div className="flex flex-col items-center gap-4">
+          <p className="text-sm text-gray-600">
+            Connected: {walletAddress?.slice(0, 6)}...
+            {walletAddress?.slice(-4)}
+          </p>
           <p className="text-gray-700 text-center max-w-md">
             Scan this QR code with the Self App to verify your identity and
             register the agent.
@@ -155,7 +106,7 @@ export default function RegisterPage() {
             </div>
           )}
           <button
-            onClick={() => setStep("input")}
+            onClick={() => setStep("connect")}
             className="text-sm text-gray-600 hover:text-gray-800 underline"
           >
             Back
@@ -169,6 +120,12 @@ export default function RegisterPage() {
           <p className="text-lg font-medium text-green-600">
             Agent registered successfully!
           </p>
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm text-center">
+            <p className="font-medium text-black mb-1">Your Agent Address</p>
+            <p className="font-mono text-gray-700 break-all">
+              {walletAddress}
+            </p>
+          </div>
           <p className="text-sm text-gray-600">
             Redirecting to verification page...
           </p>

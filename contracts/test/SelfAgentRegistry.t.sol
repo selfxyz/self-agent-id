@@ -18,12 +18,14 @@ contract SelfAgentRegistryTest is Test {
     address hubMock = makeAddr("hub");
     address human1 = makeAddr("human1");
     address human2 = makeAddr("human2");
+    address human1alt = makeAddr("human1alt"); // second wallet, same passport as human1
 
     bytes32 fakeConfigId = bytes32(uint256(0xc0de));
 
-    bytes32 agentKey1 = keccak256("agent-key-1");
-    bytes32 agentKey2 = keccak256("agent-key-2");
-    bytes32 agentKey3 = keccak256("agent-key-3");
+    // Agent keys are now derived from human addresses
+    bytes32 agentKey1 = bytes32(uint256(uint160(human1)));
+    bytes32 agentKey2 = bytes32(uint256(uint160(human2)));
+    bytes32 agentKey1alt = bytes32(uint256(uint160(human1alt)));
 
     uint256 nullifier1 = 111111;
     uint256 nullifier2 = 222222;
@@ -88,22 +90,26 @@ contract SelfAgentRegistryTest is Test {
         return abi.encode(output);
     }
 
-    function _buildUserData(uint8 action, bytes32 agentPubKey) internal pure returns (bytes memory) {
-        return abi.encodePacked(action, agentPubKey);
+    function _buildUserData(uint8 action) internal pure returns (bytes memory) {
+        return abi.encodePacked(action);
     }
 
-    function _registerViaHub(address humanAddr, uint256 nullifier, bytes32 agentPubKey) internal {
+    function _registerViaHub(address humanAddr, uint256 nullifier) internal {
         bytes memory encodedOutput = _buildEncodedOutput(humanAddr, nullifier);
-        bytes memory userData = _buildUserData(0x01, agentPubKey);
+        bytes memory userData = _buildUserData(0x01);
         vm.prank(hubMock);
         registry.onVerificationSuccess(encodedOutput, userData);
     }
 
-    function _deregisterViaHub(address humanAddr, uint256 nullifier, bytes32 agentPubKey) internal {
+    function _deregisterViaHub(address humanAddr, uint256 nullifier) internal {
         bytes memory encodedOutput = _buildEncodedOutput(humanAddr, nullifier);
-        bytes memory userData = _buildUserData(0x02, agentPubKey);
+        bytes memory userData = _buildUserData(0x02);
         vm.prank(hubMock);
         registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    function _agentKeyFor(address humanAddr) internal pure returns (bytes32) {
+        return bytes32(uint256(uint160(humanAddr)));
     }
 
     // ====================================================
@@ -127,7 +133,7 @@ contract SelfAgentRegistryTest is Test {
     // ====================================================
 
     function test_RegisterAgent_ViaHub() public {
-        _registerViaHub(human1, nullifier1, agentKey1);
+        _registerViaHub(human1, nullifier1);
 
         uint256 agentId = registry.getAgentId(agentKey1);
         assertEq(agentId, 1, "First agent should have ID 1");
@@ -140,7 +146,7 @@ contract SelfAgentRegistryTest is Test {
     }
 
     function test_RegisterAgent_MintToHumanAddress() public {
-        _registerViaHub(human1, nullifier1, agentKey1);
+        _registerViaHub(human1, nullifier1);
 
         uint256 agentId = registry.getAgentId(agentKey1);
         assertEq(registry.ownerOf(agentId), human1, "NFT should be minted to the human's address");
@@ -148,7 +154,7 @@ contract SelfAgentRegistryTest is Test {
 
     function test_RegisterAgent_EmitsEvent() public {
         bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
-        bytes memory userData = _buildUserData(0x01, agentKey1);
+        bytes memory userData = _buildUserData(0x01);
 
         vm.expectEmit(true, true, false, true);
         emit IERC8004ProofOfHuman.AgentRegisteredWithHumanProof(
@@ -163,19 +169,20 @@ contract SelfAgentRegistryTest is Test {
     }
 
     function test_RegisterMultipleAgents_SameHuman() public {
-        _registerViaHub(human1, nullifier1, agentKey1);
-        _registerViaHub(human1, nullifier1, agentKey2);
+        // Same nullifier (same passport), different wallet addresses
+        _registerViaHub(human1, nullifier1);
+        _registerViaHub(human1alt, nullifier1);
 
         assertEq(registry.getAgentCountForHuman(nullifier1), 2);
         assertTrue(registry.sameHuman(
             registry.getAgentId(agentKey1),
-            registry.getAgentId(agentKey2)
+            registry.getAgentId(agentKey1alt)
         ));
     }
 
     function test_RegisterAgents_DifferentHumans() public {
-        _registerViaHub(human1, nullifier1, agentKey1);
-        _registerViaHub(human2, nullifier2, agentKey2);
+        _registerViaHub(human1, nullifier1);
+        _registerViaHub(human2, nullifier2);
 
         assertEq(registry.getAgentCountForHuman(nullifier1), 1);
         assertEq(registry.getAgentCountForHuman(nullifier2), 1);
@@ -186,36 +193,36 @@ contract SelfAgentRegistryTest is Test {
     }
 
     function test_RegisterAgent_IncrementalIds() public {
-        _registerViaHub(human1, nullifier1, agentKey1);
-        _registerViaHub(human2, nullifier2, agentKey2);
+        _registerViaHub(human1, nullifier1);
+        _registerViaHub(human2, nullifier2);
 
         assertEq(registry.getAgentId(agentKey1), 1);
         assertEq(registry.getAgentId(agentKey2), 2);
     }
 
     function test_RevertWhen_DuplicateAgentKey() public {
-        _registerViaHub(human1, nullifier1, agentKey1);
+        _registerViaHub(human1, nullifier1);
 
         bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
-        bytes memory userData = _buildUserData(0x01, agentKey1);
+        bytes memory userData = _buildUserData(0x01);
 
         vm.prank(hubMock);
         vm.expectRevert(abi.encodeWithSelector(SelfAgentRegistry.AgentAlreadyRegistered.selector, agentKey1));
         registry.onVerificationSuccess(encodedOutput, userData);
     }
 
-    function test_RevertWhen_InvalidUserDataTooShort() public {
+    function test_RevertWhen_EmptyUserData() public {
         bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
-        bytes memory shortData = abi.encodePacked(uint8(0x01)); // only 1 byte, need 33
+        bytes memory emptyData = "";
 
         vm.prank(hubMock);
         vm.expectRevert(SelfAgentRegistry.InvalidUserData.selector);
-        registry.onVerificationSuccess(encodedOutput, shortData);
+        registry.onVerificationSuccess(encodedOutput, emptyData);
     }
 
     function test_RevertWhen_InvalidAction() public {
         bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
-        bytes memory userData = _buildUserData(0xFF, agentKey1);
+        bytes memory userData = _buildUserData(0xFF);
 
         vm.prank(hubMock);
         vm.expectRevert(abi.encodeWithSelector(SelfAgentRegistry.InvalidAction.selector, uint8(0xFF)));
@@ -224,7 +231,7 @@ contract SelfAgentRegistryTest is Test {
 
     function test_RevertWhen_CallerNotHub() public {
         bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
-        bytes memory userData = _buildUserData(0x01, agentKey1);
+        bytes memory userData = _buildUserData(0x01);
 
         vm.prank(human1); // not the hub
         vm.expectRevert(); // UnauthorizedCaller from SelfVerificationRoot
@@ -236,12 +243,12 @@ contract SelfAgentRegistryTest is Test {
     // ====================================================
 
     function test_DeregisterAgent_ViaHub() public {
-        _registerViaHub(human1, nullifier1, agentKey1);
+        _registerViaHub(human1, nullifier1);
 
         uint256 agentId = registry.getAgentId(agentKey1);
         assertEq(registry.ownerOf(agentId), human1);
 
-        _deregisterViaHub(human1, nullifier1, agentKey1);
+        _deregisterViaHub(human1, nullifier1);
 
         assertFalse(registry.hasHumanProof(agentId));
         assertEq(registry.getAgentCountForHuman(nullifier1), 0);
@@ -253,10 +260,10 @@ contract SelfAgentRegistryTest is Test {
     }
 
     function test_DeregisterAgent_EmitsEvent() public {
-        _registerViaHub(human1, nullifier1, agentKey1);
+        _registerViaHub(human1, nullifier1);
 
         bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
-        bytes memory userData = _buildUserData(0x02, agentKey1);
+        bytes memory userData = _buildUserData(0x02);
 
         vm.expectEmit(true, false, false, true);
         emit IERC8004ProofOfHuman.HumanProofRevoked(1, nullifier1);
@@ -266,20 +273,20 @@ contract SelfAgentRegistryTest is Test {
     }
 
     function test_DeregisterAgent_DecrementsCount() public {
-        _registerViaHub(human1, nullifier1, agentKey1);
-        _registerViaHub(human1, nullifier1, agentKey2);
+        _registerViaHub(human1, nullifier1);
+        _registerViaHub(human1alt, nullifier1);
         assertEq(registry.getAgentCountForHuman(nullifier1), 2);
 
-        _deregisterViaHub(human1, nullifier1, agentKey1);
+        _deregisterViaHub(human1, nullifier1);
         assertEq(registry.getAgentCountForHuman(nullifier1), 1);
 
-        // agentKey2 still active
-        assertTrue(registry.isVerifiedAgent(agentKey2));
+        // human1alt's agent still active
+        assertTrue(registry.isVerifiedAgent(agentKey1alt));
     }
 
     function test_RevertWhen_DeregisterUnregisteredAgent() public {
         bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
-        bytes memory userData = _buildUserData(0x02, agentKey1);
+        bytes memory userData = _buildUserData(0x02);
 
         vm.prank(hubMock);
         vm.expectRevert(abi.encodeWithSelector(SelfAgentRegistry.AgentNotRegistered.selector, agentKey1));
@@ -287,11 +294,29 @@ contract SelfAgentRegistryTest is Test {
     }
 
     function test_RevertWhen_DeregisterByWrongHuman() public {
-        _registerViaHub(human1, nullifier1, agentKey1);
+        _registerViaHub(human1, nullifier1);
 
-        // human2 (different nullifier) tries to deregister human1's agent
+        // human2 (different nullifier) tries to deregister — but since agent key
+        // is derived from address, human2's deregister targets their OWN key
+        // (which doesn't exist). This should revert as AgentNotRegistered.
         bytes memory encodedOutput = _buildEncodedOutput(human2, nullifier2);
-        bytes memory userData = _buildUserData(0x02, agentKey1);
+        bytes memory userData = _buildUserData(0x02);
+
+        vm.prank(hubMock);
+        vm.expectRevert(
+            abi.encodeWithSelector(SelfAgentRegistry.AgentNotRegistered.selector, agentKey2)
+        );
+        registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    function test_RevertWhen_DeregisterByWrongNullifier() public {
+        // Register human1 with nullifier1
+        _registerViaHub(human1, nullifier1);
+
+        // Same address (human1) but different nullifier tries to deregister
+        // This simulates a different passport owner using the same wallet
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier2);
+        bytes memory userData = _buildUserData(0x02);
 
         vm.prank(hubMock);
         vm.expectRevert(
@@ -302,35 +327,25 @@ contract SelfAgentRegistryTest is Test {
 
     // ====================================================
     // String-Encoded userDefinedData (Self SDK sends UTF-8 strings)
-    // Format: "R" + 64 hex chars (register) or "D" + 64 hex chars (deregister)
+    // Format: "R" (register) or "D" (deregister) — just action char
     // ====================================================
 
-    function _bytes32ToHexString(bytes32 value) internal pure returns (string memory) {
-        bytes memory hexChars = "0123456789abcdef";
-        bytes memory str = new bytes(64);
-        for (uint256 i = 0; i < 32; i++) {
-            str[i * 2] = hexChars[uint8(value[i]) >> 4];
-            str[i * 2 + 1] = hexChars[uint8(value[i]) & 0x0f];
-        }
-        return string(str);
-    }
-
-    function _registerViaHubString(address humanAddr, uint256 nullifier, bytes32 agentPubKey) internal {
+    function _registerViaHubString(address humanAddr, uint256 nullifier) internal {
         bytes memory encodedOutput = _buildEncodedOutput(humanAddr, nullifier);
-        bytes memory userData = abi.encodePacked("R", _bytes32ToHexString(agentPubKey));
+        bytes memory userData = abi.encodePacked("R");
         vm.prank(hubMock);
         registry.onVerificationSuccess(encodedOutput, userData);
     }
 
-    function _deregisterViaHubString(address humanAddr, uint256 nullifier, bytes32 agentPubKey) internal {
+    function _deregisterViaHubString(address humanAddr, uint256 nullifier) internal {
         bytes memory encodedOutput = _buildEncodedOutput(humanAddr, nullifier);
-        bytes memory userData = abi.encodePacked("D", _bytes32ToHexString(agentPubKey));
+        bytes memory userData = abi.encodePacked("D");
         vm.prank(hubMock);
         registry.onVerificationSuccess(encodedOutput, userData);
     }
 
     function test_RegisterAgent_StringEncoding() public {
-        _registerViaHubString(human1, nullifier1, agentKey1);
+        _registerViaHubString(human1, nullifier1);
 
         uint256 agentId = registry.getAgentId(agentKey1);
         assertEq(agentId, 1);
@@ -339,20 +354,20 @@ contract SelfAgentRegistryTest is Test {
     }
 
     function test_DeregisterAgent_StringEncoding() public {
-        _registerViaHubString(human1, nullifier1, agentKey1);
+        _registerViaHubString(human1, nullifier1);
         assertTrue(registry.isVerifiedAgent(agentKey1));
 
-        _deregisterViaHubString(human1, nullifier1, agentKey1);
+        _deregisterViaHubString(human1, nullifier1);
         assertFalse(registry.isVerifiedAgent(agentKey1));
     }
 
     function test_StringAndBinaryEncoding_SameResult() public {
         // Register with string encoding
-        _registerViaHubString(human1, nullifier1, agentKey1);
+        _registerViaHubString(human1, nullifier1);
         uint256 agentId1 = registry.getAgentId(agentKey1);
 
         // Register with binary encoding
-        _registerViaHub(human2, nullifier2, agentKey2);
+        _registerViaHub(human2, nullifier2);
         uint256 agentId2 = registry.getAgentId(agentKey2);
 
         // Both should work and produce valid registrations
@@ -540,33 +555,56 @@ contract SelfAgentRegistryTest is Test {
     }
 
     function test_BalanceAfterRegister() public {
-        _registerViaHub(human1, nullifier1, agentKey1);
+        _registerViaHub(human1, nullifier1);
         assertEq(registry.balanceOf(human1), 1);
 
-        _registerViaHub(human1, nullifier1, agentKey2);
-        assertEq(registry.balanceOf(human1), 2);
+        // Same human, second wallet
+        _registerViaHub(human1alt, nullifier1);
+        assertEq(registry.balanceOf(human1alt), 1);
     }
 
     function test_BalanceAfterDeregister() public {
-        _registerViaHub(human1, nullifier1, agentKey1);
-        _registerViaHub(human1, nullifier1, agentKey2);
-        assertEq(registry.balanceOf(human1), 2);
+        _registerViaHub(human1, nullifier1);
+        _registerViaHub(human1alt, nullifier1);
 
-        _deregisterViaHub(human1, nullifier1, agentKey1);
-        assertEq(registry.balanceOf(human1), 1);
+        _deregisterViaHub(human1, nullifier1);
+        assertEq(registry.balanceOf(human1), 0);
+        assertEq(registry.balanceOf(human1alt), 1);
+    }
+
+    // ====================================================
+    // Agent Key Derivation — Verify key = padded address
+    // ====================================================
+
+    function test_AgentKey_IsDerivedFromAddress() public {
+        _registerViaHub(human1, nullifier1);
+
+        // The agent key should be the zero-padded address
+        bytes32 expectedKey = bytes32(uint256(uint160(human1)));
+        uint256 agentId = registry.getAgentId(expectedKey);
+        assertEq(agentId, 1);
+        assertEq(registry.ownerOf(agentId), human1);
+    }
+
+    function test_LookupByAddress_Works() public {
+        _registerViaHub(human1, nullifier1);
+
+        // Simulate what the frontend does: zeroPadValue(address, 32)
+        bytes32 keyFromAddress = bytes32(uint256(uint160(human1)));
+        assertTrue(registry.isVerifiedAgent(keyFromAddress));
     }
 
     // ====================================================
     // Fuzz Tests
     // ====================================================
 
-    function testFuzz_RegisterAgent(bytes32 agentPubKey, uint256 nullifier, address humanAddr) public {
+    function testFuzz_RegisterAgent(uint256 nullifier, address humanAddr) public {
         vm.assume(humanAddr != address(0)); // ERC721 won't mint to zero address
         vm.assume(nullifier != 0); // Non-zero nullifier
-        vm.assume(agentPubKey != bytes32(0));
 
-        _registerViaHub(humanAddr, nullifier, agentPubKey);
+        _registerViaHub(humanAddr, nullifier);
 
+        bytes32 agentPubKey = _agentKeyFor(humanAddr);
         uint256 agentId = registry.getAgentId(agentPubKey);
         assertTrue(agentId != 0);
         assertTrue(registry.isVerifiedAgent(agentPubKey));
@@ -574,16 +612,16 @@ contract SelfAgentRegistryTest is Test {
         assertEq(registry.getHumanNullifier(agentId), nullifier);
     }
 
-    function testFuzz_RegisterAndDeregister(bytes32 agentPubKey, uint256 nullifier, address humanAddr) public {
+    function testFuzz_RegisterAndDeregister(uint256 nullifier, address humanAddr) public {
         vm.assume(humanAddr != address(0));
         vm.assume(nullifier != 0);
-        vm.assume(agentPubKey != bytes32(0));
 
-        _registerViaHub(humanAddr, nullifier, agentPubKey);
+        _registerViaHub(humanAddr, nullifier);
+        bytes32 agentPubKey = _agentKeyFor(humanAddr);
         uint256 agentId = registry.getAgentId(agentPubKey);
         assertTrue(registry.isVerifiedAgent(agentPubKey));
 
-        _deregisterViaHub(humanAddr, nullifier, agentPubKey);
+        _deregisterViaHub(humanAddr, nullifier);
         assertFalse(registry.isVerifiedAgent(agentPubKey));
         assertFalse(registry.hasHumanProof(agentId));
     }

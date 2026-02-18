@@ -16,16 +16,18 @@ import { IHumanProofProvider } from "./interfaces/IHumanProofProvider.sol";
 /// @dev Extends ERC-721 (agent NFTs) + SelfVerificationRoot (Hub V2 ZK verification)
 ///      + IERC8004ProofOfHuman (proof-of-human extension for ERC-8004).
 ///
-///      Registration flow:
+///      Registration flow (MVP — agent key = human wallet address):
 ///        1. dApp calls verifySelfProof(proofPayload, userContextData)
-///           where userContextData = | 32B destChainId | 32B userIdentifier | 1B action | 32B agentPubKey |
+///           where userContextData = | 32B destChainId | 32B userIdentifier | 1B action |
 ///        2. Hub V2 verifies the ZK proof, strips configId + destChainId + userIdentifier
 ///        3. Hub V2 calls back onVerificationSuccess -> customVerificationHook
-///        4. customVerificationHook parses action + agentPubKey, mints NFT + stores proof data
+///        4. customVerificationHook derives agentPubKey from humanAddress, mints/burns NFT
+///
+///      Agent identity: agentPubKey = bytes32(uint256(uint160(humanAddress)))
 ///
 ///      Action bytes:
-///        0x01 = register (mint NFT)
-///        0x02 = deregister (revoke proof, burn NFT)
+///        0x01 / "R" = register (mint NFT)
+///        0x02 / "D" = deregister (revoke proof, burn NFT)
 contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004ProofOfHuman {
 
     // ====================================================
@@ -164,11 +166,12 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
 
     /// @notice Processes the verified proof: mints NFT or burns NFT based on action byte
     /// @dev Called by SelfVerificationRoot after Hub V2 verification succeeds.
-    ///      Self SDK passes userDefinedData as a UTF-8 string, so we support two encodings:
-    ///        Binary:  | 1B action (0x01/0x02) | 32B agentPubKey |  (33 bytes)
-    ///        String:  "R" + 64-char hex pubkey  or  "D" + 64-char hex pubkey  (65 bytes)
+    ///      MVP: agentPubKey is derived from the human's wallet address (userIdentifier).
+    ///      userData only needs a single action byte:
+    ///        Binary:  0x01 (register) or 0x02 (deregister)
+    ///        String:  "R" (register) or "D" (deregister)
     /// @param output The verified disclosure output containing the nullifier
-    /// @param userData The user-defined data containing action + agent public key
+    /// @param userData The user-defined data containing the action byte/char
     function customVerificationHook(
         ISelfVerificationRoot.GenericDiscloseOutputV2 memory output,
         bytes memory userData
@@ -177,54 +180,24 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
 
         uint8 actionByte = uint8(userData[0]);
         uint8 action;
-        bytes32 agentPubKey;
 
         if (actionByte == ACTION_REGISTER || actionByte == ACTION_DEREGISTER) {
-            // Binary encoding: | 1B action | 32B agentPubKey |
-            if (userData.length < 33) revert InvalidUserData();
             action = actionByte;
-            assembly {
-                agentPubKey := mload(add(userData, 33))
-            }
         } else if (actionByte == ASCII_R || actionByte == ASCII_D) {
-            // String encoding: "R" or "D" + 64 hex chars (no 0x prefix)
-            if (userData.length < 65) revert InvalidUserData();
             action = actionByte == ASCII_R ? ACTION_REGISTER : ACTION_DEREGISTER;
-            agentPubKey = _hexStringToBytes32(userData, 1);
         } else {
             revert InvalidAction(actionByte);
         }
 
         uint256 nullifier = output.nullifier;
         address humanAddress = address(uint160(output.userIdentifier));
+        bytes32 agentPubKey = bytes32(uint256(uint160(humanAddress)));
 
         if (action == ACTION_REGISTER) {
             _registerAgent(nullifier, agentPubKey, humanAddress);
-        } else if (action == ACTION_DEREGISTER) {
-            _deregisterAgent(nullifier, agentPubKey);
         } else {
-            revert InvalidAction(actionByte);
+            _deregisterAgent(nullifier, agentPubKey);
         }
-    }
-
-    /// @notice Decode 64 hex ASCII characters from userData into bytes32
-    /// @param data The bytes containing hex characters
-    /// @param offset Starting position of the 64 hex chars
-    function _hexStringToBytes32(bytes memory data, uint256 offset) internal pure returns (bytes32 result) {
-        require(data.length >= offset + 64, "hex string too short");
-        for (uint256 i = 0; i < 32; i++) {
-            uint8 hi = _hexCharToNibble(uint8(data[offset + i * 2]));
-            uint8 lo = _hexCharToNibble(uint8(data[offset + i * 2 + 1]));
-            result |= bytes32(bytes1(uint8(hi * 16 + lo))) >> (i * 8);
-        }
-    }
-
-    /// @notice Convert a single hex ASCII character to its 4-bit value
-    function _hexCharToNibble(uint8 c) internal pure returns (uint8) {
-        if (c >= 0x30 && c <= 0x39) return c - 0x30;       // '0'-'9'
-        if (c >= 0x61 && c <= 0x66) return c - 0x61 + 10;  // 'a'-'f'
-        if (c >= 0x41 && c <= 0x46) return c - 0x41 + 10;  // 'A'-'F'
-        revert InvalidUserData();
     }
 
     // ====================================================
