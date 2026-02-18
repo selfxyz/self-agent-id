@@ -1,0 +1,22 @@
+{
+  "name": "@selfxyz/agent-sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for Self Agent ID — agent signing + service verification",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test dist/**/*.test.js"
+  },
+  "keywords": ["self", "agent", "identity", "proof-of-human", "erc-8004"],
+  "author": "Self Protocol",
+  "license": "MIT",
+  "dependencies": {
+    "ethers": "^6.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "typescript": "^5.9.3"
+  }
+}
