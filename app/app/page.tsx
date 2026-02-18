@@ -26,6 +26,12 @@ export default function Home() {
         >
           Verify Agent
         </Link>
+        <Link
+          href="/explainer"
+          className="px-8 py-4 border-2 border-gray-400 text-gray-600 rounded-lg text-lg font-medium hover:bg-gray-100 transition-colors text-center"
+        >
+          EIP-8004 Proposal
+        </Link>
       </div>
     </main>
   );
