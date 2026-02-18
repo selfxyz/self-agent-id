@@ -76,12 +76,19 @@ function VerifyContent() {
           registeredAt: 0n,
         });
       } else {
-        const owner = await contract.ownerOf(agentId);
-        const registeredAt = await contract.agentRegisteredAt(agentId);
+        // ownerOf reverts for burned (deregistered) tokens — handle gracefully
+        let owner = ethers.ZeroAddress;
+        let registeredAt = 0n;
+        try {
+          owner = await contract.ownerOf(agentId);
+          registeredAt = await contract.agentRegisteredAt(agentId);
+        } catch {
+          // Token was burned (deregistered) — show as not registered
+        }
 
         setAgentInfo({
           isVerified,
-          agentId,
+          agentId: owner === ethers.ZeroAddress ? 0n : agentId,
           owner,
           registeredAt,
         });

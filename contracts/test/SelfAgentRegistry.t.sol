@@ -361,6 +361,48 @@ contract SelfAgentRegistryTest is Test {
         assertFalse(registry.isVerifiedAgent(agentKey1));
     }
 
+    function test_ReRegisterAfterDeregister() public {
+        // Register, then deregister
+        _registerViaHub(human1, nullifier1);
+        uint256 firstAgentId = registry.getAgentId(agentKey1);
+        assertTrue(registry.isVerifiedAgent(agentKey1));
+
+        _deregisterViaHub(human1, nullifier1);
+        assertFalse(registry.isVerifiedAgent(agentKey1));
+        assertEq(registry.getAgentId(agentKey1), 0); // mapping cleared
+
+        // Re-register with the same key — should succeed with a new agent ID
+        _registerViaHub(human1, nullifier1);
+        uint256 secondAgentId = registry.getAgentId(agentKey1);
+        assertTrue(registry.isVerifiedAgent(agentKey1));
+        assertGt(secondAgentId, firstAgentId); // new ID is higher
+        assertEq(registry.ownerOf(secondAgentId), human1);
+        assertEq(registry.getAgentCountForHuman(nullifier1), 1);
+    }
+
+    function test_ReRegisterAfterRevokeHumanProof() public {
+        // Register via sync path, then revoke
+        bytes32 syncKey = bytes32(uint256(0xbeef));
+        bytes memory providerData = abi.encodePacked(syncKey);
+
+        mockProvider.setShouldVerify(true);
+        mockProvider.setNextNullifier(nullifier1);
+        vm.prank(human1);
+        uint256 firstId = registry.registerWithHumanProof("", address(mockProvider), "", providerData);
+        assertTrue(registry.isVerifiedAgent(syncKey));
+
+        vm.prank(human1);
+        registry.revokeHumanProof(firstId, address(mockProvider), "", "");
+        assertFalse(registry.isVerifiedAgent(syncKey));
+        assertEq(registry.getAgentId(syncKey), 0); // mapping cleared
+
+        // Re-register — should succeed
+        vm.prank(human1);
+        uint256 secondId = registry.registerWithHumanProof("", address(mockProvider), "", providerData);
+        assertTrue(registry.isVerifiedAgent(syncKey));
+        assertGt(secondId, firstId);
+    }
+
     function test_StringAndBinaryEncoding_SameResult() public {
         // Register with string encoding
         _registerViaHubString(human1, nullifier1);

@@ -66,6 +66,9 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     /// @notice Maps agent public key hash to agentId (0 = not registered)
     mapping(bytes32 => uint256) public pubkeyToAgentId;
 
+    /// @notice Reverse mapping: agentId to agent public key (for cleanup on revoke)
+    mapping(uint256 => bytes32) public agentIdToPubkey;
+
     /// @notice Whitelisted proof providers
     mapping(address => bool) public approvedProviders;
 
@@ -337,6 +340,7 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
         agentRegisteredAt[agentId] = block.number;
         activeAgentCount[nullifier]++;
         pubkeyToAgentId[agentPubKey] = agentId;
+        agentIdToPubkey[agentId] = agentPubKey;
 
         emit AgentRegisteredWithHumanProof(
             agentId,
@@ -375,6 +379,13 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     /// @param agentId The agent ID to revoke
     function _revokeAgent(uint256 agentId) internal {
         uint256 nullifier = agentNullifier[agentId];
+
+        // Clear pubkey mappings so the same key can re-register
+        bytes32 pubkey = agentIdToPubkey[agentId];
+        if (pubkey != bytes32(0)) {
+            delete pubkeyToAgentId[pubkey];
+            delete agentIdToPubkey[agentId];
+        }
 
         agentHasHumanProof[agentId] = false;
         activeAgentCount[nullifier]--;
