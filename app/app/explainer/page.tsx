@@ -50,13 +50,13 @@ export default function ExplainerPage() {
     <main className="min-h-screen font-[family-name:var(--font-inter)]">
       {/* ───────────────────────── 1. Hero ───────────────────────── */}
       <section className="flex flex-col items-center justify-center text-center px-6 py-24 md:py-32">
-        <p className="text-sm font-semibold tracking-widest uppercase text-gray-500 mb-3">
+        <p className="text-sm font-semibold tracking-widest uppercase text-gray-600 mb-3">
           Proposed Extension to ERC-8004
         </p>
         <h1 className="text-5xl md:text-6xl font-bold max-w-3xl leading-tight mb-6">
           Proof-of-Human for AI&nbsp;Agents
         </h1>
-        <p className="text-lg text-gray-600 max-w-2xl mb-10">
+        <p className="text-lg text-gray-700 max-w-2xl mb-10">
           A composable, privacy-preserving standard that lets any smart contract
           or service verify an AI agent is operated by a real, unique human
           &mdash; without revealing who that human is.
@@ -81,7 +81,7 @@ export default function ExplainerPage() {
       <section className="bg-gray-100 px-6 py-20">
         <div className="max-w-3xl mx-auto text-center">
           <h2 className="text-3xl font-bold mb-6">The Problem</h2>
-          <p className="text-lg text-gray-700 leading-relaxed">
+          <p className="text-lg text-gray-800 leading-relaxed">
             AI agents are proliferating across DeFi, governance, and social
             platforms, yet there is no standard way to verify that an agent is
             backed by a real human. Without proof-of-human, autonomous agents
@@ -123,7 +123,7 @@ export default function ExplainerPage() {
                 >
                   <span className="text-2xl">{step.icon}</span>
                   <span className="font-semibold text-sm">{step.label}</span>
-                  <span className="text-xs text-gray-500">{step.sub}</span>
+                  <span className="text-xs text-gray-600">{step.sub}</span>
                 </div>
               )
             )}
@@ -154,7 +154,7 @@ export default function ExplainerPage() {
                 className="border border-gray-200 rounded-lg p-5"
               >
                 <h3 className="font-bold mb-2">{prop.title}</h3>
-                <p className="text-sm text-gray-600 leading-relaxed">
+                <p className="text-sm text-gray-700 leading-relaxed">
                   {prop.desc}
                 </p>
               </div>
@@ -190,10 +190,10 @@ export default function ExplainerPage() {
             <h3 className="text-xl font-bold mb-2">
               {useCases[activeUseCase].title}
             </h3>
-            <p className="text-gray-600 mb-3">
+            <p className="text-gray-700 mb-3">
               {useCases[activeUseCase].description}
             </p>
-            <p className="text-sm text-gray-500 italic mb-6">
+            <p className="text-sm text-gray-600 italic mb-6">
               {useCases[activeUseCase].flow}
             </p>
             <CodeBlock tabs={useCases[activeUseCase].snippets} />
@@ -205,7 +205,7 @@ export default function ExplainerPage() {
       <section id="demo" className="px-6 py-20">
         <div className="max-w-2xl mx-auto">
           <h2 className="text-3xl font-bold text-center mb-4">Live Demo</h2>
-          <p className="text-center text-gray-600 mb-10">
+          <p className="text-center text-gray-700 mb-10">
             Register a new agent or verify an existing one on Celo Sepolia.
           </p>
 
@@ -221,7 +221,7 @@ export default function ExplainerPage() {
           {/* Inline verify widget */}
           <div className="border border-gray-200 rounded-xl p-6">
             <h3 className="font-bold text-lg mb-4">Verify an Agent</h3>
-            <p className="text-sm text-gray-500 mb-4">
+            <p className="text-sm text-gray-600 mb-4">
               Paste an agent public key (bytes32) to check its on-chain status.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -233,7 +233,7 @@ export default function ExplainerPage() {
                   setPubKeyInput(e.target.value);
                   setVerifyStatus("idle");
                 }}
-                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:border-black"
+                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg text-sm font-mono text-black focus:outline-none focus:border-black"
               />
               <button
                 onClick={handleVerify}
@@ -269,7 +269,7 @@ export default function ExplainerPage() {
           <h2 className="text-3xl font-bold text-center mb-4">
             Interface Specification
           </h2>
-          <p className="text-center text-gray-600 mb-10">
+          <p className="text-center text-gray-700 mb-10">
             Two interfaces define the standard. Any implementation must conform
             to these function signatures.
           </p>
@@ -342,7 +342,7 @@ interface IHumanProofProvider {
             </div>
           </div>
 
-          <p className="text-center text-sm text-gray-500 mt-8">
+          <p className="text-center text-sm text-gray-600 mt-8">
             View the deployed contract on{" "}
             <a
               href="https://celo-sepolia.blockscout.com/address/0x60651482a3033A72128f874623Fc790061cc46D4"
@@ -359,7 +359,7 @@ interface IHumanProofProvider {
 
       {/* ───────────────────────── 7. Footer ───────────────────────── */}
       <footer className="border-t border-gray-200 px-6 py-10">
-        <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 text-sm text-gray-500">
+        <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 text-sm text-gray-600">
           <p>
             Built on{" "}
             <a

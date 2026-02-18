@@ -32,7 +32,7 @@ export default function CodeBlock({ tabs }: CodeBlockProps) {
             className={`px-4 py-2 text-sm font-medium transition-colors ${
               i === activeTab
                 ? "bg-white text-black border-b-2 border-black"
-                : "text-gray-500 hover:text-gray-700"
+                : "text-gray-600 hover:text-gray-800"
             }`}
           >
             {tab.label}
@@ -41,7 +41,7 @@ export default function CodeBlock({ tabs }: CodeBlockProps) {
         <div className="ml-auto pr-2 flex items-center">
           <button
             onClick={handleCopy}
-            className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1"
+            className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1"
           >
             {copied ? "Copied!" : "Copy"}
           </button>

@@ -89,7 +89,7 @@ export default function RegisterPage() {
 
       {step === "connect" && (
         <div className="flex flex-col items-center gap-4">
-          <p className="text-gray-600 text-center max-w-md">
+          <p className="text-gray-700 text-center max-w-md">
             Connect your wallet to register an AI agent with proof-of-human
             verification.
           </p>
@@ -104,7 +104,7 @@ export default function RegisterPage() {
 
       {step === "input" && (
         <div className="flex flex-col items-center gap-4 w-full max-w-md">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600">
             Connected: {walletAddress?.slice(0, 6)}...{walletAddress?.slice(-4)}
           </p>
           <div className="w-full">
@@ -120,9 +120,9 @@ export default function RegisterPage() {
               value={agentPubKey}
               onChange={(e) => setAgentPubKey(e.target.value)}
               placeholder="0x... (32-byte hex) or any string (will be hashed)"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-black"
             />
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-gray-600 mt-1">
               Paste the agent&apos;s secp256k1 public key, or any unique
               identifier (it will be keccak256-hashed to 32 bytes).
             </p>
@@ -139,7 +139,7 @@ export default function RegisterPage() {
 
       {step === "scan" && (
         <div className="flex flex-col items-center gap-4">
-          <p className="text-gray-600 text-center max-w-md">
+          <p className="text-gray-700 text-center max-w-md">
             Scan this QR code with the Self App to verify your identity and
             register the agent.
           </p>
@@ -151,12 +151,12 @@ export default function RegisterPage() {
             />
           ) : (
             <div className="w-64 h-64 bg-gray-200 animate-pulse flex items-center justify-center rounded-lg">
-              <p className="text-gray-500 text-sm">Loading QR Code...</p>
+              <p className="text-gray-600 text-sm">Loading QR Code...</p>
             </div>
           )}
           <button
             onClick={() => setStep("input")}
-            className="text-sm text-gray-500 hover:text-gray-800 underline"
+            className="text-sm text-gray-600 hover:text-gray-800 underline"
           >
             Back
           </button>
@@ -169,7 +169,7 @@ export default function RegisterPage() {
           <p className="text-lg font-medium text-green-600">
             Agent registered successfully!
           </p>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600">
             Redirecting to verification page...
           </p>
         </div>

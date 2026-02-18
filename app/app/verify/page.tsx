@@ -149,7 +149,7 @@ function VerifyContent() {
           value={agentKey}
           onChange={(e) => setAgentKey(e.target.value)}
           placeholder="Agent public key or identifier"
-          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-black"
         />
         <button
           type="submit"
@@ -179,7 +179,7 @@ function VerifyContent() {
             </div>
 
             {agentInfo.agentId > 0n && (
-              <div className="text-sm space-y-1 text-gray-600">
+              <div className="text-sm space-y-1 text-gray-700">
                 <p>
                   <span className="font-medium text-black">Agent ID:</span>{" "}
                   {agentInfo.agentId.toString()}
@@ -217,7 +217,7 @@ function VerifyContent() {
                   </button>
                 ) : (
                   <div className="flex flex-col items-center gap-3 p-4 border border-red-200 rounded-lg">
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-gray-700">
                       Scan with Self App to confirm deregistration
                     </p>
                     {selfApp && (
@@ -229,14 +229,14 @@ function VerifyContent() {
                     )}
                     <button
                       onClick={() => { setShowDeregister(false); setSelfApp(null); }}
-                      className="text-xs text-gray-500 underline"
+                      className="text-xs text-gray-600 underline"
                     >
                       Cancel
                     </button>
                   </div>
                 )
               ) : (
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-gray-600">
                   Connected: {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)} (not the owner)
                 </p>
               )}
@@ -249,7 +249,7 @@ function VerifyContent() {
       {agentInfo && agentInfo.isVerified && (
         <div className="w-full max-w-2xl mt-8 space-y-4">
           <h2 className="text-xl font-bold">Integrate This Agent</h2>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600">
             Code snippets pre-filled with this agent&apos;s pubkey and the
             deployed contract address. Copy and paste into your project.
           </p>
@@ -270,10 +270,10 @@ function VerifyContent() {
             ))}
           </div>
 
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-gray-700">
             {snippets[activeUseCase].description}
           </p>
-          <p className="text-xs text-gray-400 font-mono">
+          <p className="text-xs text-gray-600 font-mono">
             {snippets[activeUseCase].flow}
           </p>
           <CodeBlock tabs={snippets[activeUseCase].snippets} />
@@ -287,7 +287,7 @@ export default function VerifyPage() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-8 gap-6 font-[family-name:var(--font-inter)]">
       <h1 className="text-3xl font-bold">Verify Agent</h1>
-      <p className="text-gray-600 text-center max-w-md">
+      <p className="text-gray-700 text-center max-w-md">
         Check if an AI agent is registered and backed by a verified human.
       </p>
 
@@ -301,7 +301,7 @@ export default function VerifyPage() {
 
       <Link
         href="/"
-        className="text-sm text-gray-500 hover:text-gray-800 underline"
+        className="text-sm text-gray-600 hover:text-gray-800 underline"
       >
         Back to home
       </Link>
