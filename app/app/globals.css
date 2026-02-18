@@ -3,18 +3,104 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Background */
+  --background: #0a0a0f;
+  --foreground: #f0f0f5;
+
+  /* Surfaces */
+  --surface-1: #111118;
+  --surface-2: #1a1a26;
+
+  /* Borders */
+  --border: #2a2a3a;
+  --border-strong: #3a3a52;
+
+  /* Accent */
+  --accent: #7c6af5;
+  --accent-2: #38b2f7;
+
+  /* Status */
+  --accent-success: #22c55e;
+  --accent-warn: #f59e0b;
+  --accent-error: #ef4444;
+
+  /* Text */
+  --text-muted: #6b6b8a;
+  --text-subtle: #4a4a66;
+
+  /* Gradients */
+  --gradient-hero: linear-gradient(135deg, var(--accent), var(--accent-2));
+  --glow-accent: 0 0 20px rgba(124, 106, 245, 0.15);
+  --glow-success: 0 0 20px rgba(34, 197, 94, 0.15);
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist), system-ui, -apple-system, sans-serif;
+}
+
+code, pre, .font-mono {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/* Dark input defaults */
+input, select, textarea {
+  background-color: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  border-radius: 0.5rem;
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--text-subtle);
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(124, 106, 245, 0.2);
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
+
+  .text-gradient {
+    background: var(--gradient-hero);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .card-glow:hover {
+    box-shadow: var(--glow-accent);
+    border-color: var(--border-strong);
+  }
+
+  .bg-grid {
+    background-image:
+      linear-gradient(rgba(124, 106, 245, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124, 106, 245, 0.03) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+
+  .hero-glow::before {
+    content: "";
+    position: absolute;
+    top: -20%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(124, 106, 245, 0.12) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+}
+
+@keyframes gradient {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
 }

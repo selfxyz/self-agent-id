@@ -3,8 +3,13 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { ethers } from "ethers";
+import { Wallet, RefreshCw, Cpu } from "lucide-react";
 import { connectWallet } from "@/lib/wallet";
 import { REGISTRY_ADDRESS, REGISTRY_ABI, RPC_URL } from "@/lib/constants";
+import { Card } from "@/components/Card";
+import { Badge } from "@/components/Badge";
+import { Button } from "@/components/Button";
+import { StatusDot } from "@/components/StatusDot";
 
 interface AgentEntry {
   agentId: bigint;
@@ -90,116 +95,103 @@ export default function MyAgentsPage() {
   };
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-8 gap-6 font-[family-name:var(--font-inter)]">
-      <h1 className="text-3xl font-bold">My Agents</h1>
-      <p className="text-gray-700 text-center max-w-md">
+    <main className="min-h-screen max-w-lg mx-auto px-6 pt-24 pb-12">
+      <h1 className="text-3xl font-bold text-center mb-2">
+        My <span className="text-gradient">Agents</span>
+      </h1>
+      <p className="text-muted text-center mb-8">
         Connect your wallet to see all agents registered to your address.
       </p>
 
       {!walletAddress ? (
-        <button
-          onClick={handleConnect}
-          className="px-6 py-3 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
-        >
-          Connect Wallet
-        </button>
+        <div className="flex flex-col items-center gap-4">
+          <Wallet size={32} className="text-muted" />
+          <Button onClick={handleConnect} variant="primary" size="lg">
+            <Wallet size={18} />
+            Connect Wallet
+          </Button>
+        </div>
       ) : (
-        <div className="w-full max-w-lg space-y-4">
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted">
               Connected:{" "}
-              <span className="font-mono text-black">
+              <span className="font-mono text-foreground">
                 {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
               </span>
             </p>
             <button
               onClick={() => loadAgents(walletAddress)}
               disabled={loading}
-              className="text-sm text-black underline hover:text-gray-600 disabled:text-gray-400"
+              className="p-2 text-muted hover:text-foreground hover:bg-surface-2 rounded-lg transition-colors disabled:opacity-50"
+              title="Refresh"
             >
-              {loading ? "Loading..." : "Refresh"}
+              <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
             </button>
           </div>
 
           {error && (
-            <p className="text-sm text-red-600">{error}</p>
+            <p className="text-sm text-accent-error">{error}</p>
           )}
 
           {loading && (
             <div className="flex flex-col items-center py-8 gap-3">
-              <div className="w-8 h-8 border-2 border-gray-200 border-t-black rounded-full animate-spin" />
-              <p className="text-gray-500 text-sm">Scanning for agents...</p>
+              <div className="w-8 h-8 border-2 border-border border-t-accent rounded-full animate-spin" />
+              <p className="text-muted text-sm">Scanning for agents...</p>
             </div>
           )}
 
           {!loading && agents.length === 0 && walletAddress && (
-            <div className="text-center py-8 border border-gray-200 rounded-lg">
-              <p className="text-gray-500 mb-4">No agents found for this wallet.</p>
-              <Link
-                href="/register"
-                className="px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors"
-              >
-                Register an Agent
+            <Card className="text-center py-8">
+              <Cpu size={32} className="text-muted mx-auto mb-3" />
+              <p className="text-muted mb-4">No agents found for this wallet.</p>
+              <Link href="/register">
+                <Button variant="primary">Register an Agent</Button>
               </Link>
-            </div>
+            </Card>
           )}
 
           {agents.map((agent) => (
             <Link
               key={agent.agentId.toString()}
               href={`/verify?key=${encodeURIComponent(agent.agentKey)}`}
-              className="block border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
+              className="block"
             >
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-block w-2.5 h-2.5 rounded-full ${
-                      agent.isVerified ? "bg-green-500" : "bg-red-500"
-                    }`}
-                  />
-                  <span className="font-medium text-black">
-                    Agent #{agent.agentId.toString()}
-                  </span>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      agent.isSimpleMode
-                        ? "bg-gray-100 text-gray-600"
-                        : "bg-green-100 text-green-700"
-                    }`}
-                  >
-                    {agent.isSimpleMode ? "Verified Wallet" : "Agent Identity"}
-                  </span>
+              <Card glow>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <StatusDot status={agent.isVerified ? "verified" : "revoked"} />
+                    <span className="font-medium">
+                      Agent #{agent.agentId.toString()}
+                    </span>
+                    <Badge variant={agent.isSimpleMode ? "muted" : "success"}>
+                      {agent.isSimpleMode ? "Verified Wallet" : "Agent Identity"}
+                    </Badge>
+                  </div>
+                  <Badge variant={agent.isVerified ? "success" : "error"}>
+                    {agent.isVerified ? "Verified" : "Revoked"}
+                  </Badge>
                 </div>
-                <span className="text-xs text-gray-400">
-                  {agent.isVerified ? "Verified" : "Revoked"}
-                </span>
-              </div>
 
-              <div className="space-y-1">
-                <p className="text-xs text-gray-500">
-                  {agent.isSimpleMode ? "Wallet" : "Agent"} Address
-                </p>
-                <p className="font-mono text-sm text-black break-all">
-                  {agent.agentAddress}
-                </p>
-              </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted">
+                    {agent.isSimpleMode ? "Wallet" : "Agent"} Address
+                  </p>
+                  <p className="font-mono text-sm break-all">
+                    {agent.agentAddress}
+                  </p>
+                </div>
 
-              {agent.registeredAt > 0n && (
-                <p className="text-xs text-gray-400 mt-2">
-                  Registered at block {agent.registeredAt.toString()}
-                </p>
-              )}
+                {agent.registeredAt > 0n && (
+                  <p className="text-xs text-subtle mt-2">
+                    Registered at block {agent.registeredAt.toString()}
+                  </p>
+                )}
+              </Card>
             </Link>
           ))}
         </div>
       )}
-
-      <Link
-        href="/"
-        className="text-sm text-gray-600 hover:text-gray-800 underline"
-      >
-        Back to home
-      </Link>
     </main>
   );
 }

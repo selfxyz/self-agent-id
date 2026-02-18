@@ -3,12 +3,21 @@
 import React, { Suspense, useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { ethers } from "ethers";
-import Link from "next/link";
 import dynamic from "next/dynamic";
+import {
+  Search,
+  ShieldCheck,
+  XCircle,
+  Code2,
+  Cpu,
+  ChevronLeft,
+} from "lucide-react";
 import CodeBlock from "@/components/CodeBlock";
 import { getServiceSnippets, getAgentSnippets } from "@/lib/snippets";
 import { connectWallet } from "@/lib/wallet";
 import { REGISTRY_ADDRESS, REGISTRY_ABI, RPC_URL } from "@/lib/constants";
+import { Card } from "@/components/Card";
+import { Button } from "@/components/Button";
 
 const SelfQRcodeWrapper = dynamic(
   () => import("@selfxyz/qrcode").then((mod) => mod.SelfQRcodeWrapper),
@@ -48,13 +57,10 @@ function VerifyContent() {
     try {
       let keyHash: string;
       if (key.startsWith("0x") && key.length === 66) {
-        // Already a bytes32 key
         keyHash = key;
       } else if (key.startsWith("0x") && key.length === 42) {
-        // Ethereum address — zero-pad to bytes32
         keyHash = ethers.zeroPadValue(key, 32);
       } else {
-        // Arbitrary string — hash to bytes32
         keyHash = ethers.keccak256(ethers.toUtf8Bytes(key));
       }
       setResolvedKey(keyHash);
@@ -77,14 +83,13 @@ function VerifyContent() {
           registeredAt: 0n,
         });
       } else {
-        // ownerOf reverts for burned (deregistered) tokens — handle gracefully
         let owner = ethers.ZeroAddress;
         let registeredAt = 0n;
         try {
           owner = await contract.ownerOf(agentId);
           registeredAt = await contract.agentRegisteredAt(agentId);
         } catch {
-          // Token was burned (deregistered) — show as not registered
+          // Token was burned (deregistered)
         }
 
         setAgentInfo({
@@ -125,14 +130,10 @@ function VerifyContent() {
   const handleDeregister = () => {
     if (!walletAddress || !resolvedKey || !SelfAppBuilder || !agentInfo) return;
 
-    // Detect mode: if the agent address (last 20 bytes of key) matches the
-    // owner wallet, it's simple mode. Otherwise it's advanced mode.
     const agentAddress = "0x" + resolvedKey.slice(26);
     const isSimpleMode =
       agentAddress.toLowerCase() === agentInfo.owner.toLowerCase();
 
-    // Simple: "D" — contract derives key from human wallet
-    // Advanced: "X" + agent address (40 hex chars, no 0x prefix)
     const userDefinedData = isSimpleMode
       ? "D"
       : "X" + resolvedKey.slice(26);
@@ -168,33 +169,41 @@ function VerifyContent() {
 
   return (
     <>
-      <form onSubmit={handleSubmit} className="w-full max-w-md flex gap-2">
+      <form onSubmit={handleSubmit} className="w-full flex gap-2">
         <input
           type="text"
           value={agentKey}
           onChange={(e) => setAgentKey(e.target.value)}
           placeholder="Agent address (0x...) or bytes32 key"
-          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-black"
+          className="flex-1 px-4 py-3 bg-surface-2 border border-border rounded-lg focus:border-accent focus:ring-0"
         />
-        <button
-          type="submit"
-          disabled={loading || !agentKey}
-          className="px-6 py-3 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition-colors disabled:bg-gray-300"
-        >
+        <Button type="submit" disabled={loading || !agentKey} variant="primary">
+          <Search size={16} />
           {loading ? "..." : "Check"}
-        </button>
+        </Button>
       </form>
 
-      {error && <p className="text-red-500 text-sm">{error}</p>}
+      {error && <p className="text-accent-error text-sm">{error}</p>}
 
       {agentInfo && (
         <>
-          <div className="w-full max-w-md border rounded-lg p-6 space-y-3">
-            <div className="flex items-center gap-2">
-              <span
-                className={`inline-block w-3 h-3 rounded-full ${agentInfo.isVerified ? "bg-green-500" : "bg-red-500"}`}
-              />
-              <span className="font-medium text-lg">
+          <Card
+            variant={
+              agentInfo.agentId === 0n
+                ? "error"
+                : agentInfo.isVerified
+                  ? "success"
+                  : "error"
+            }
+            className="w-full"
+          >
+            <div className="flex items-center gap-3 mb-3">
+              {agentInfo.isVerified ? (
+                <ShieldCheck size={28} className="text-accent-success" />
+              ) : (
+                <XCircle size={28} className="text-accent-error" />
+              )}
+              <span className="font-semibold text-lg">
                 {agentInfo.agentId === 0n
                   ? "Not Registered"
                   : agentInfo.isVerified
@@ -204,64 +213,64 @@ function VerifyContent() {
             </div>
 
             {agentInfo.agentId > 0n && (
-              <div className="text-sm space-y-1 text-gray-700">
-                <p>
-                  <span className="font-medium text-black">Agent ID:</span>{" "}
-                  {agentInfo.agentId.toString()}
-                </p>
-                <p>
-                  <span className="font-medium text-black">Owner:</span>{" "}
-                  {agentInfo.owner.slice(0, 6)}...{agentInfo.owner.slice(-4)}
-                </p>
-                <p>
-                  <span className="font-medium text-black">
-                    Registered at block:
-                  </span>{" "}
-                  {agentInfo.registeredAt.toString()}
-                </p>
+              <div className="text-sm space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-muted">Agent ID</span>
+                  <span className="font-mono">{agentInfo.agentId.toString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Owner</span>
+                  <span className="font-mono">
+                    {agentInfo.owner.slice(0, 6)}...{agentInfo.owner.slice(-4)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Registered at block</span>
+                  <span className="font-mono">{agentInfo.registeredAt.toString()}</span>
+                </div>
               </div>
             )}
-          </div>
+          </Card>
 
           {agentInfo.isVerified && (
-            <div className="w-full max-w-md mt-4">
+            <div className="w-full mt-2">
               {!walletAddress ? (
-                <button
-                  onClick={handleConnectForDeregister}
-                  className="text-sm text-red-500 hover:text-red-700 underline"
-                >
+                <Button onClick={handleConnectForDeregister} variant="danger" size="sm">
                   Connect wallet to deregister
-                </button>
+                </Button>
               ) : walletAddress.toLowerCase() === agentInfo.owner.toLowerCase() ? (
                 !showDeregister ? (
-                  <button
-                    onClick={handleDeregister}
-                    className="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm hover:bg-red-50 transition-colors"
-                  >
+                  <Button onClick={handleDeregister} variant="danger" size="sm">
                     Deregister Agent
-                  </button>
+                  </Button>
                 ) : (
-                  <div className="flex flex-col items-center gap-3 p-4 border border-red-200 rounded-lg">
-                    <p className="text-sm text-gray-700">
+                  <Card variant="error" className="w-full">
+                    <p className="text-sm text-muted mb-3">
                       Scan with Self App to confirm deregistration
                     </p>
                     {selfApp && (
-                      <SelfQRcodeWrapper
-                        selfApp={selfApp}
-                        onSuccess={handleDeregisterSuccess}
-                        onError={() => alert("Deregistration failed.")}
-                      />
+                      <div className="rounded-xl p-4 bg-white inline-block">
+                        <SelfQRcodeWrapper
+                          selfApp={selfApp}
+                          onSuccess={handleDeregisterSuccess}
+                          onError={() => alert("Deregistration failed.")}
+                        />
+                      </div>
                     )}
-                    <button
-                      onClick={() => { setShowDeregister(false); setSelfApp(null); }}
-                      className="text-xs text-gray-600 underline"
-                    >
-                      Cancel
-                    </button>
-                  </div>
+                    <div className="mt-3">
+                      <Button
+                        onClick={() => { setShowDeregister(false); setSelfApp(null); }}
+                        variant="ghost"
+                        size="sm"
+                      >
+                        <ChevronLeft size={14} />
+                        Cancel
+                      </Button>
+                    </div>
+                  </Card>
                 )
               ) : (
-                <p className="text-xs text-gray-600">
+                <p className="text-xs text-muted">
                   Connected: {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)} (not the owner)
                 </p>
               )}
@@ -270,14 +279,16 @@ function VerifyContent() {
         </>
       )}
 
-      {/* Integration Guide — only shown for verified agents */}
+      {/* Integration Guide */}
       {agentInfo && agentInfo.isVerified && (
-        <div className="w-full max-w-2xl mt-8 space-y-4">
-          <h2 className="text-xl font-bold">Integration Guide for Developers</h2>
-          <p className="text-sm text-gray-600">
-            These code snippets are for <strong>service developers</strong> who want to verify
+        <div className="w-full mt-8 space-y-4">
+          <div className="flex items-center gap-2">
+            <Code2 size={20} className="text-accent" />
+            <h2 className="text-xl font-bold">Integration Guide for Developers</h2>
+          </div>
+          <p className="text-sm text-muted">
+            These code snippets are for <strong className="text-foreground">service developers</strong> who want to verify
             agents in their applications. Pre-filled with the deployed contract address.
-            Copy and paste into your backend or smart contract.
           </p>
 
           <div className="flex gap-2 flex-wrap">
@@ -285,10 +296,10 @@ function VerifyContent() {
               <button
                 key={uc.title}
                 onClick={() => setActiveUseCase(i)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                   i === activeUseCase
-                    ? "bg-black text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    ? "bg-gradient-to-r from-accent to-accent-2 text-white"
+                    : "bg-surface-2 text-muted hover:text-foreground"
                 }`}
               >
                 {uc.title}
@@ -296,24 +307,27 @@ function VerifyContent() {
             ))}
           </div>
 
-          <p className="text-sm text-gray-700">
+          <p className="text-sm text-muted">
             {snippets[activeUseCase].description}
           </p>
-          <p className="text-xs text-gray-600 font-mono">
+          <p className="text-xs text-subtle font-mono">
             {snippets[activeUseCase].flow}
           </p>
           <CodeBlock tabs={snippets[activeUseCase].snippets} />
         </div>
       )}
 
-      {/* Agent usage guide — shown for verified agents */}
+      {/* Agent usage guide */}
       {agentInfo && agentInfo.isVerified && (
-        <div className="w-full max-w-2xl mt-8 space-y-4">
-          <h2 className="text-xl font-bold">How to Use Your Agent</h2>
-          <p className="text-sm text-gray-600">
-            If you are the <strong>agent operator</strong>, use these snippets to
+        <div className="w-full mt-8 space-y-4">
+          <div className="flex items-center gap-2">
+            <Cpu size={20} className="text-accent" />
+            <h2 className="text-xl font-bold">How to Use Your Agent</h2>
+          </div>
+          <p className="text-sm text-muted">
+            If you are the <strong className="text-foreground">agent operator</strong>, use these snippets to
             authenticate your agent with services or submit on-chain transactions.
-            Set <code className="bg-gray-100 px-1 rounded text-xs">AGENT_PRIVATE_KEY</code> in
+            Set <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">AGENT_PRIVATE_KEY</code> in
             your agent&apos;s environment first.
           </p>
 
@@ -326,10 +340,10 @@ function VerifyContent() {
                     <button
                       key={snippet.title}
                       onClick={() => setActiveAgentSnippet(i)}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                         i === activeAgentSnippet
-                          ? "bg-black text-white"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                          ? "bg-gradient-to-r from-accent to-accent-2 text-white"
+                          : "bg-surface-2 text-muted hover:text-foreground"
                       }`}
                     >
                       {snippet.title}
@@ -337,7 +351,7 @@ function VerifyContent() {
                   ))}
                 </div>
 
-                <p className="text-sm text-gray-700">
+                <p className="text-sm text-muted">
                   {agentSnippets[activeAgentSnippet].description}
                 </p>
                 <CodeBlock tabs={agentSnippets[activeAgentSnippet].snippets} />
@@ -352,26 +366,23 @@ function VerifyContent() {
 
 export default function VerifyPage() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-8 gap-6 font-[family-name:var(--font-inter)]">
-      <h1 className="text-3xl font-bold">Verify Agent</h1>
-      <p className="text-gray-700 text-center max-w-md">
-        Check if an AI agent is registered and backed by a verified human.
-      </p>
+    <main className="min-h-screen max-w-2xl mx-auto px-6 pt-24 pb-12 space-y-6">
+      <div className="text-center">
+        <h1 className="text-3xl font-bold mb-2">
+          <span className="text-gradient">Verify</span> Agent
+        </h1>
+        <p className="text-muted max-w-md mx-auto">
+          Check if an AI agent is registered and backed by a verified human.
+        </p>
+      </div>
 
       <Suspense
         fallback={
-          <div className="w-full max-w-md h-12 bg-gray-200 animate-pulse rounded-lg" />
+          <div className="w-full h-12 bg-surface-2 animate-pulse rounded-lg" />
         }
       >
         <VerifyContent />
       </Suspense>
-
-      <Link
-        href="/"
-        className="text-sm text-gray-600 hover:text-gray-800 underline"
-      >
-        Back to home
-      </Link>
     </main>
   );
 }
