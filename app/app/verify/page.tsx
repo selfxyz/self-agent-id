@@ -122,8 +122,20 @@ function VerifyContent() {
   };
 
   const handleDeregister = () => {
-    if (!walletAddress || !resolvedKey || !SelfAppBuilder) return;
-    const userDefinedData = "D" + resolvedKey.slice(2);
+    if (!walletAddress || !resolvedKey || !SelfAppBuilder || !agentInfo) return;
+
+    // Detect mode: if the agent address (last 20 bytes of key) matches the
+    // owner wallet, it's simple mode. Otherwise it's advanced mode.
+    const agentAddress = "0x" + resolvedKey.slice(26);
+    const isSimpleMode =
+      agentAddress.toLowerCase() === agentInfo.owner.toLowerCase();
+
+    // Simple: "D" — contract derives key from human wallet
+    // Advanced: "X" + agent address (40 hex chars, no 0x prefix)
+    const userDefinedData = isSimpleMode
+      ? "D"
+      : "X" + resolvedKey.slice(26);
+
     const app = new SelfAppBuilder({
       version: 2,
       appName: process.env.NEXT_PUBLIC_SELF_APP_NAME || "Self Agent ID",
@@ -260,10 +272,11 @@ function VerifyContent() {
       {/* Integration Guide — only shown for verified agents */}
       {agentInfo && agentInfo.isVerified && (
         <div className="w-full max-w-2xl mt-8 space-y-4">
-          <h2 className="text-xl font-bold">Integrate This Agent</h2>
+          <h2 className="text-xl font-bold">Integration Guide for Developers</h2>
           <p className="text-sm text-gray-600">
-            Code snippets pre-filled with this agent&apos;s pubkey and the
-            deployed contract address. Copy and paste into your project.
+            These code snippets are for <strong>service developers</strong> who want to verify
+            agents in their applications. Pre-filled with the deployed contract address.
+            Copy and paste into your backend or smart contract.
           </p>
 
           <div className="flex gap-2 flex-wrap">

@@ -8,6 +8,8 @@ import { ISelfVerificationRoot } from "@selfxyz/contracts/contracts/interfaces/I
 import { IIdentityVerificationHubV2 } from "@selfxyz/contracts/contracts/interfaces/IIdentityVerificationHubV2.sol";
 import { SelfUtils } from "@selfxyz/contracts/contracts/libraries/SelfUtils.sol";
 import { SelfStructs } from "@selfxyz/contracts/contracts/libraries/SelfStructs.sol";
+import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import { IERC8004ProofOfHuman } from "./interfaces/IERC8004ProofOfHuman.sol";
 import { IHumanProofProvider } from "./interfaces/IHumanProofProvider.sol";
 
@@ -26,8 +28,10 @@ import { IHumanProofProvider } from "./interfaces/IHumanProofProvider.sol";
 ///      Agent identity: agentPubKey = bytes32(uint256(uint160(humanAddress)))
 ///
 ///      Action bytes:
-///        0x01 / "R" = register (mint NFT)
-///        0x02 / "D" = deregister (revoke proof, burn NFT)
+///        0x01 / "R" = register simple (mint NFT, agent key = wallet address)
+///        0x02 / "D" = deregister simple (revoke proof, burn NFT)
+///        0x03 / "K" = register advanced (agent signs challenge, ECDSA verified)
+///        0x04 / "X" = deregister advanced (by agent address)
 contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004ProofOfHuman {
 
     // ====================================================
@@ -37,9 +41,14 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     uint8 constant ACTION_REGISTER = 0x01;
     uint8 constant ACTION_DEREGISTER = 0x02;
 
+    uint8 constant ACTION_REGISTER_ADVANCED = 0x03;
+    uint8 constant ACTION_DEREGISTER_ADVANCED = 0x04;
+
     // ASCII action prefixes used in userDefinedData (string-based encoding)
     uint8 constant ASCII_R = 0x52; // 'R' = register
     uint8 constant ASCII_D = 0x44; // 'D' = deregister
+    uint8 constant ASCII_K = 0x4B; // 'K' = advanced register
+    uint8 constant ASCII_X = 0x58; // 'X' = advanced deregister
 
     // ====================================================
     // Storage
@@ -90,6 +99,7 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     error ProviderNotApproved(address provider);
     error ProviderAlreadyApproved(address provider);
     error AgentHasNoHumanProof(uint256 agentId);
+    error InvalidAgentSignature();
 
     // ====================================================
     // Constructor
@@ -181,25 +191,59 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     ) internal override {
         if (userData.length == 0) revert InvalidUserData();
 
-        uint8 actionByte = uint8(userData[0]);
-        uint8 action;
-
-        if (actionByte == ACTION_REGISTER || actionByte == ACTION_DEREGISTER) {
-            action = actionByte;
-        } else if (actionByte == ASCII_R || actionByte == ASCII_D) {
-            action = actionByte == ASCII_R ? ACTION_REGISTER : ACTION_DEREGISTER;
-        } else {
-            revert InvalidAction(actionByte);
-        }
-
         uint256 nullifier = output.nullifier;
         address humanAddress = address(uint160(output.userIdentifier));
-        bytes32 agentPubKey = bytes32(uint256(uint160(humanAddress)));
+        uint8 actionByte = uint8(userData[0]);
 
-        if (action == ACTION_REGISTER) {
+        if (actionByte == ACTION_REGISTER || actionByte == ASCII_R) {
+            // Simple mode: agent key = human wallet address
+            bytes32 agentPubKey = bytes32(uint256(uint160(humanAddress)));
             _registerAgent(nullifier, agentPubKey, humanAddress);
-        } else {
+        } else if (actionByte == ACTION_DEREGISTER || actionByte == ASCII_D) {
+            // Simple deregister
+            bytes32 agentPubKey = bytes32(uint256(uint160(humanAddress)));
             _deregisterAgent(nullifier, agentPubKey);
+        } else if (actionByte == ACTION_REGISTER_ADVANCED) {
+            // Binary advanced register: 1B action + 20B address + 32B r + 32B s + 1B v = 86 bytes
+            if (userData.length < 86) revert InvalidUserData();
+            address agentAddr;
+            bytes32 r;
+            bytes32 s;
+            uint8 v;
+            assembly {
+                agentAddr := shr(96, mload(add(userData, 33))) // offset 1, 20 bytes
+                r := mload(add(userData, 53)) // offset 21
+                s := mload(add(userData, 85)) // offset 53
+                v := byte(0, mload(add(userData, 117))) // offset 85
+            }
+            bytes32 agentPubKey = _verifyAgentSignature(agentAddr, humanAddress, v, r, s);
+            _registerAgent(nullifier, agentPubKey, humanAddress);
+        } else if (actionByte == ACTION_DEREGISTER_ADVANCED) {
+            // Binary advanced deregister: 1B action + 20B address = 21 bytes
+            if (userData.length < 21) revert InvalidUserData();
+            address agentAddr;
+            assembly {
+                agentAddr := shr(96, mload(add(userData, 33)))
+            }
+            bytes32 agentPubKey = bytes32(uint256(uint160(agentAddr)));
+            _deregisterAgent(nullifier, agentPubKey);
+        } else if (actionByte == ASCII_K) {
+            // String advanced register: "K" + address(40) + r(64) + s(64) + v(2) = 171 chars
+            if (userData.length < 171) revert InvalidUserData();
+            address agentAddr = _hexStringToAddress(userData, 1);
+            bytes32 r = _hexStringToBytes32(userData, 41);
+            bytes32 s = _hexStringToBytes32(userData, 105);
+            uint8 v = _hexStringToUint8(userData, 169);
+            bytes32 agentPubKey = _verifyAgentSignature(agentAddr, humanAddress, v, r, s);
+            _registerAgent(nullifier, agentPubKey, humanAddress);
+        } else if (actionByte == ASCII_X) {
+            // String advanced deregister: "X" + address(40) = 41 chars
+            if (userData.length < 41) revert InvalidUserData();
+            address agentAddr = _hexStringToAddress(userData, 1);
+            bytes32 agentPubKey = bytes32(uint256(uint160(agentAddr)));
+            _deregisterAgent(nullifier, agentPubKey);
+        } else {
+            revert InvalidAction(actionByte);
         }
     }
 
@@ -394,5 +438,61 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
         _burn(agentId);
 
         emit HumanProofRevoked(agentId, nullifier);
+    }
+
+    // ====================================================
+    // Advanced Mode — Signature Verification
+    // ====================================================
+
+    /// @notice Verify an agent's ECDSA signature over a registration challenge
+    /// @param agentAddress The agent's Ethereum address (recovered signer must match)
+    /// @param humanAddress The human's address (included in signed message)
+    /// @param v ECDSA recovery parameter
+    /// @param r ECDSA signature component
+    /// @param s ECDSA signature component
+    /// @return agentPubKey The agent's public key (address-derived bytes32)
+    function _verifyAgentSignature(
+        address agentAddress,
+        address humanAddress,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) internal pure returns (bytes32 agentPubKey) {
+        bytes32 messageHash = keccak256(abi.encodePacked("self-agent-id:register:", humanAddress));
+        bytes32 ethSignedHash = MessageHashUtils.toEthSignedMessageHash(messageHash);
+        address recovered = ECDSA.recover(ethSignedHash, v, r, s);
+        if (recovered != agentAddress) revert InvalidAgentSignature();
+        return bytes32(uint256(uint160(agentAddress)));
+    }
+
+    // ====================================================
+    // Advanced Mode — Hex String Parsing
+    // ====================================================
+
+    function _hexCharToNibble(uint8 c) internal pure returns (uint8) {
+        if (c >= 0x30 && c <= 0x39) return c - 0x30; // '0'-'9'
+        if (c >= 0x61 && c <= 0x66) return c - 0x61 + 10; // 'a'-'f'
+        if (c >= 0x41 && c <= 0x46) return c - 0x41 + 10; // 'A'-'F'
+        revert InvalidUserData();
+    }
+
+    function _hexStringToAddress(bytes memory data, uint256 offset) internal pure returns (address) {
+        uint160 result;
+        for (uint256 i = 0; i < 40; i++) {
+            result = result * 16 + uint160(_hexCharToNibble(uint8(data[offset + i])));
+        }
+        return address(result);
+    }
+
+    function _hexStringToBytes32(bytes memory data, uint256 offset) internal pure returns (bytes32) {
+        uint256 result;
+        for (uint256 i = 0; i < 64; i++) {
+            result = result * 16 + uint256(_hexCharToNibble(uint8(data[offset + i])));
+        }
+        return bytes32(result);
+    }
+
+    function _hexStringToUint8(bytes memory data, uint256 offset) internal pure returns (uint8) {
+        return _hexCharToNibble(uint8(data[offset])) * 16 + _hexCharToNibble(uint8(data[offset + 1]));
     }
 }

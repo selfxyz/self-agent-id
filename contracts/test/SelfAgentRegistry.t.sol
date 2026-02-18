@@ -8,6 +8,7 @@ import { MockHumanProofProvider } from "./mocks/MockHumanProofProvider.sol";
 import { ISelfVerificationRoot } from "@selfxyz/contracts/contracts/interfaces/ISelfVerificationRoot.sol";
 import { IIdentityVerificationHubV2 } from "@selfxyz/contracts/contracts/interfaces/IIdentityVerificationHubV2.sol";
 import { IERC8004ProofOfHuman } from "../src/interfaces/IERC8004ProofOfHuman.sol";
+import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 contract SelfAgentRegistryTest is Test {
     SelfAgentRegistry registry;
@@ -29,6 +30,15 @@ contract SelfAgentRegistryTest is Test {
 
     uint256 nullifier1 = 111111;
     uint256 nullifier2 = 222222;
+
+    // Advanced mode: agents with real keypairs
+    uint256 advAgentPrivKey1 = 0xA11CE1;
+    address advAgentAddr1 = vm.addr(advAgentPrivKey1);
+    bytes32 advAgentKey1 = bytes32(uint256(uint160(advAgentAddr1)));
+
+    uint256 advAgentPrivKey2 = 0xB0B1;
+    address advAgentAddr2 = vm.addr(advAgentPrivKey2);
+    bytes32 advAgentKey2 = bytes32(uint256(uint160(advAgentAddr2)));
 
     // ====================================================
     // Setup — adapted from boilerplate/self-lottery pattern:
@@ -666,5 +676,198 @@ contract SelfAgentRegistryTest is Test {
         _deregisterViaHub(humanAddr, nullifier);
         assertFalse(registry.isVerifiedAgent(agentPubKey));
         assertFalse(registry.hasHumanProof(agentId));
+    }
+
+    // ====================================================
+    // Advanced Mode — Helpers
+    // ====================================================
+
+    function _signRegistration(
+        uint256 privKey,
+        address humanAddr
+    ) internal pure returns (uint8 v, bytes32 r, bytes32 s) {
+        bytes32 messageHash = keccak256(abi.encodePacked("self-agent-id:register:", humanAddr));
+        bytes32 ethSignedHash = MessageHashUtils.toEthSignedMessageHash(messageHash);
+        (v, r, s) = vm.sign(privKey, ethSignedHash);
+    }
+
+    function _buildAdvancedUserData(
+        uint8 action,
+        address agentAddr,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) internal pure returns (bytes memory) {
+        return abi.encodePacked(action, agentAddr, r, s, v);
+    }
+
+    function _registerViaHubAdvanced(address humanAddr, uint256 nullifier, uint256 agentPrivKey) internal {
+        address agentAddr = vm.addr(agentPrivKey);
+        (uint8 v, bytes32 r, bytes32 s) = _signRegistration(agentPrivKey, humanAddr);
+        bytes memory encodedOutput = _buildEncodedOutput(humanAddr, nullifier);
+        bytes memory userData = _buildAdvancedUserData(0x03, agentAddr, v, r, s);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    function _deregisterViaHubAdvanced(address humanAddr, uint256 nullifier, address agentAddr) internal {
+        bytes memory encodedOutput = _buildEncodedOutput(humanAddr, nullifier);
+        bytes memory userData = abi.encodePacked(uint8(0x04), agentAddr);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    // ====================================================
+    // Advanced Mode — Tests
+    // ====================================================
+
+    function test_AdvancedRegister_ValidSignature() public {
+        _registerViaHubAdvanced(human1, nullifier1, advAgentPrivKey1);
+
+        uint256 agentId = registry.getAgentId(advAgentKey1);
+        assertEq(agentId, 1, "First advanced agent should have ID 1");
+        assertTrue(registry.isVerifiedAgent(advAgentKey1));
+        assertTrue(registry.hasHumanProof(agentId));
+        assertEq(registry.getHumanNullifier(agentId), nullifier1);
+        assertEq(registry.ownerOf(agentId), human1);
+    }
+
+    function test_AdvancedRegister_StringEncoding() public {
+        // Build "K" + address(40 hex) + r(64 hex) + s(64 hex) + v(2 hex)
+        (uint8 v, bytes32 r, bytes32 s) = _signRegistration(advAgentPrivKey1, human1);
+
+        // Build hex string without 0x prefixes
+        bytes memory addrHex = bytes(_toHexString(advAgentAddr1));
+        bytes memory rHex = bytes(_toHexString32(r));
+        bytes memory sHex = bytes(_toHexString32(s));
+        bytes memory vHex = bytes(_toHexString8(v));
+
+        bytes memory userData = abi.encodePacked("K", addrHex, rHex, sHex, vHex);
+        assertEq(userData.length, 171, "String-encoded advanced userData should be 171 bytes");
+
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+
+        assertTrue(registry.isVerifiedAgent(advAgentKey1));
+    }
+
+    function test_AdvancedDeregister() public {
+        _registerViaHubAdvanced(human1, nullifier1, advAgentPrivKey1);
+        assertTrue(registry.isVerifiedAgent(advAgentKey1));
+
+        _deregisterViaHubAdvanced(human1, nullifier1, advAgentAddr1);
+        assertFalse(registry.isVerifiedAgent(advAgentKey1));
+        assertEq(registry.getAgentId(advAgentKey1), 0);
+    }
+
+    function test_AdvancedReRegisterAfterDeregister() public {
+        _registerViaHubAdvanced(human1, nullifier1, advAgentPrivKey1);
+        uint256 firstId = registry.getAgentId(advAgentKey1);
+        assertTrue(registry.isVerifiedAgent(advAgentKey1));
+
+        _deregisterViaHubAdvanced(human1, nullifier1, advAgentAddr1);
+        assertFalse(registry.isVerifiedAgent(advAgentKey1));
+
+        _registerViaHubAdvanced(human1, nullifier1, advAgentPrivKey1);
+        uint256 secondId = registry.getAgentId(advAgentKey1);
+        assertTrue(registry.isVerifiedAgent(advAgentKey1));
+        assertGt(secondId, firstId);
+    }
+
+    function test_RevertWhen_AdvancedWrongSignature() public {
+        // Agent 2 signs, but we claim it's agent 1
+        (uint8 v, bytes32 r, bytes32 s) = _signRegistration(advAgentPrivKey2, human1);
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        bytes memory userData = _buildAdvancedUserData(0x03, advAgentAddr1, v, r, s);
+
+        vm.prank(hubMock);
+        vm.expectRevert(SelfAgentRegistry.InvalidAgentSignature.selector);
+        registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    function test_RevertWhen_AdvancedSignatureForWrongHuman() public {
+        // Agent signs for human1, but proof is for human2
+        (uint8 v, bytes32 r, bytes32 s) = _signRegistration(advAgentPrivKey1, human1);
+        bytes memory encodedOutput = _buildEncodedOutput(human2, nullifier2);
+        bytes memory userData = _buildAdvancedUserData(0x03, advAgentAddr1, v, r, s);
+
+        vm.prank(hubMock);
+        vm.expectRevert(SelfAgentRegistry.InvalidAgentSignature.selector);
+        registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    function test_RevertWhen_AdvancedUserDataTooShort() public {
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        // Only 10 bytes — too short for binary advanced (needs 86)
+        bytes memory userData = abi.encodePacked(uint8(0x03), bytes9(0));
+
+        vm.prank(hubMock);
+        vm.expectRevert(SelfAgentRegistry.InvalidUserData.selector);
+        registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    function test_SimpleModeStillWorks() public {
+        // Ensure simple mode is completely unaffected by advanced mode additions
+        _registerViaHub(human1, nullifier1);
+        assertTrue(registry.isVerifiedAgent(agentKey1));
+        assertEq(registry.ownerOf(registry.getAgentId(agentKey1)), human1);
+
+        _deregisterViaHub(human1, nullifier1);
+        assertFalse(registry.isVerifiedAgent(agentKey1));
+    }
+
+    function test_MixedModes() public {
+        // Register one agent simple, one advanced
+        _registerViaHub(human1, nullifier1);
+        _registerViaHubAdvanced(human2, nullifier2, advAgentPrivKey1);
+
+        // Both should be verifiable
+        assertTrue(registry.isVerifiedAgent(agentKey1));
+        assertTrue(registry.isVerifiedAgent(advAgentKey1));
+
+        // Different agent IDs
+        uint256 simpleId = registry.getAgentId(agentKey1);
+        uint256 advancedId = registry.getAgentId(advAgentKey1);
+        assertEq(simpleId, 1);
+        assertEq(advancedId, 2);
+
+        // Different owners
+        assertEq(registry.ownerOf(simpleId), human1);
+        assertEq(registry.ownerOf(advancedId), human2);
+    }
+
+    // ====================================================
+    // Hex formatting helpers for string-encoded tests
+    // ====================================================
+
+    function _toHexString(address addr) internal pure returns (string memory) {
+        bytes memory result = new bytes(40);
+        bytes memory hexChars = "0123456789abcdef";
+        uint160 value = uint160(addr);
+        for (uint256 i = 40; i > 0; i--) {
+            result[i - 1] = hexChars[value & 0xf];
+            value >>= 4;
+        }
+        return string(result);
+    }
+
+    function _toHexString32(bytes32 val) internal pure returns (string memory) {
+        bytes memory result = new bytes(64);
+        bytes memory hexChars = "0123456789abcdef";
+        uint256 value = uint256(val);
+        for (uint256 i = 64; i > 0; i--) {
+            result[i - 1] = hexChars[value & 0xf];
+            value >>= 4;
+        }
+        return string(result);
+    }
+
+    function _toHexString8(uint8 val) internal pure returns (string memory) {
+        bytes memory result = new bytes(2);
+        bytes memory hexChars = "0123456789abcdef";
+        result[1] = hexChars[val & 0xf];
+        result[0] = hexChars[(val >> 4) & 0xf];
+        return string(result);
     }
 }

@@ -21,7 +21,7 @@ type Step = "mode" | "connect" | "scan" | "success";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("simple");
+  const [mode, setMode] = useState<Mode>("advanced");
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [selfApp, setSelfApp] = useState<ReturnType<
     InstanceType<typeof import("@selfxyz/qrcode").SelfAppBuilder>["build"]
@@ -29,6 +29,10 @@ export default function RegisterPage() {
   const [step, setStep] = useState<Step>("mode");
   const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  // Advanced mode state
+  const [agentWallet, setAgentWallet] = useState<ethers.HDNodeWallet | null>(null);
+  const [showPrivateKey, setShowPrivateKey] = useState(false);
 
   // Load SelfAppBuilder on client
   useEffect(() => {
@@ -56,12 +60,14 @@ export default function RegisterPage() {
 
     setWalletAddress(address);
 
-    // Check if this wallet is already registered
-    const registered = await checkIfRegistered(address);
-    if (registered) {
-      setAlreadyRegistered(true);
-      setStep("connect");
-      return;
+    if (mode === "simple") {
+      // Simple mode: check if already registered
+      const registered = await checkIfRegistered(address);
+      if (registered) {
+        setAlreadyRegistered(true);
+        setStep("connect");
+        return;
+      }
     }
 
     if (!SelfAppBuilder) {
@@ -72,22 +78,61 @@ export default function RegisterPage() {
 
     setAlreadyRegistered(false);
 
-    // userDefinedData is just "R" — the contract derives agentPubKey from the wallet address
-    const app = new SelfAppBuilder({
-      version: 2,
-      appName: process.env.NEXT_PUBLIC_SELF_APP_NAME || "Self Agent ID",
-      scope: process.env.NEXT_PUBLIC_SELF_SCOPE_SEED || "self-agent-id",
-      endpoint: REGISTRY_ADDRESS,
-      logoBase64: "https://i.postimg.cc/mrmVf9hm/self.png",
-      userId: address,
-      endpointType: "staging_celo",
-      userIdType: "hex",
-      userDefinedData: "R",
-      disclosures: {},
-    }).build();
+    if (mode === "simple") {
+      // Simple mode: userDefinedData is just "R"
+      const app = new SelfAppBuilder({
+        version: 2,
+        appName: process.env.NEXT_PUBLIC_SELF_APP_NAME || "Self Agent ID",
+        scope: process.env.NEXT_PUBLIC_SELF_SCOPE_SEED || "self-agent-id",
+        endpoint: REGISTRY_ADDRESS,
+        logoBase64: "https://i.postimg.cc/mrmVf9hm/self.png",
+        userId: address,
+        endpointType: "staging_celo",
+        userIdType: "hex",
+        userDefinedData: "R",
+        disclosures: {},
+      }).build();
 
-    setSelfApp(app);
-    setStep("scan");
+      setSelfApp(app);
+      setStep("scan");
+    } else {
+      // Advanced mode: generate keypair, sign challenge, build userDefinedData
+      const newWallet = ethers.Wallet.createRandom();
+      setAgentWallet(newWallet as ethers.HDNodeWallet);
+
+      // Sign challenge: keccak256("self-agent-id:register:" + humanAddress)
+      const messageHash = ethers.keccak256(
+        ethers.solidityPacked(
+          ["string", "address"],
+          ["self-agent-id:register:", address]
+        )
+      );
+      const signature = await newWallet.signMessage(ethers.getBytes(messageHash));
+      const sig = ethers.Signature.from(signature);
+
+      // Build "K" + address(40 hex, no 0x) + r(64 hex, no 0x) + s(64 hex, no 0x) + v(2 hex)
+      const agentAddrHex = newWallet.address.slice(2).toLowerCase();
+      const rHex = sig.r.slice(2);
+      const sHex = sig.s.slice(2);
+      const vHex = sig.v.toString(16).padStart(2, "0");
+      const userDefinedData = "K" + agentAddrHex + rHex + sHex + vHex;
+
+      const app = new SelfAppBuilder({
+        version: 2,
+        appName: process.env.NEXT_PUBLIC_SELF_APP_NAME || "Self Agent ID",
+        scope: process.env.NEXT_PUBLIC_SELF_SCOPE_SEED || "self-agent-id",
+        endpoint: REGISTRY_ADDRESS,
+        logoBase64: "https://i.postimg.cc/mrmVf9hm/self.png",
+        userId: address,
+        endpointType: "staging_celo",
+        userIdType: "hex",
+        userDefinedData,
+        disclosures: {},
+      }).build();
+
+      setSelfApp(app);
+      setStep("scan");
+    }
   };
 
   const handleSuccess = () => {
@@ -97,10 +142,14 @@ export default function RegisterPage() {
   const handleError = (error: unknown) => {
     const msg = error instanceof Error ? error.message : String(error);
     if (msg.includes("AlreadyRegistered") || msg.includes("already")) {
-      setErrorMessage("This wallet address is already registered as an agent.");
+      setErrorMessage("This agent is already registered.");
     } else {
       setErrorMessage(`Verification failed: ${msg}`);
     }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
   };
 
   return (
@@ -115,6 +164,30 @@ export default function RegisterPage() {
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+            {/* Advanced mode card — recommended, shown first */}
+            <button
+              onClick={() => setMode("advanced")}
+              className={`text-left p-5 rounded-xl border-2 transition-colors ${
+                mode === "advanced"
+                  ? "border-black bg-gray-50"
+                  : "border-gray-200 hover:border-gray-400"
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg">&#128273;</span>
+                <span className="font-bold text-black">Agent Identity</span>
+                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                  recommended
+                </span>
+              </div>
+              <p className="text-sm text-black mb-2">
+                Agent gets its own independent keypair.
+              </p>
+              <p className="text-xs text-black">
+                Your agent signs requests autonomously. Your wallet key stays safe.
+              </p>
+            </button>
+
             {/* Simple mode card */}
             <button
               onClick={() => setMode("simple")}
@@ -125,70 +198,77 @@ export default function RegisterPage() {
               }`}
             >
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">👤</span>
-                <span className="font-bold text-black">Simple</span>
-                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-                  live
-                </span>
+                <span className="text-lg">&#128100;</span>
+                <span className="font-bold text-black">Verified Wallet</span>
               </div>
               <p className="text-sm text-black mb-2">
-                Your wallet address = your agent identity.
+                Your wallet address = agent identity.
               </p>
               <p className="text-xs text-black">
-                No extra keys to manage. Connect wallet, scan passport, done.
-              </p>
-            </button>
-
-            {/* Advanced mode card */}
-            <button
-              onClick={() => setMode("advanced")}
-              disabled
-              className="text-left p-5 rounded-xl border-2 border-gray-200 opacity-60 cursor-not-allowed"
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">🔑</span>
-                <span className="font-bold text-black">Advanced</span>
-                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                  coming soon
-                </span>
-              </div>
-              <p className="text-sm text-black mb-2">
-                Agent gets its own independent keypair.
-              </p>
-              <p className="text-xs text-black">
-                Key rotation, delegation, multiple agents per human.
+                For on-chain access gating where you transact directly. No separate agent key.
               </p>
             </button>
           </div>
 
           {/* Security explainer for selected mode */}
           <div className="w-full bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <p className="font-bold text-sm text-black mb-2">
-              How Simple Mode is secured
-            </p>
-            <ul className="text-sm text-black space-y-1 list-disc list-inside">
-              <li>
-                Your <strong>wallet address</strong> is converted to a bytes32 agent
-                key <em>inside</em> the smart contract &mdash; no one else can register
-                your address.
-              </li>
-              <li>
-                A <strong>ZK proof</strong> from your passport scan binds your wallet
-                to a unique human nullifier, preventing sybil attacks.
-              </li>
-              <li>
-                For off-chain verification, the <strong>SDK signs requests</strong>{" "}
-                with your wallet key. Services recover the signer from the ECDSA
-                signature &mdash; it can&apos;t be spoofed.
-              </li>
-            </ul>
+            {mode === "simple" ? (
+              <>
+                <p className="font-bold text-sm text-black mb-2">
+                  How Verified Wallet works
+                </p>
+                <ul className="text-sm text-black space-y-1 list-disc list-inside">
+                  <li>
+                    Connect your <strong>browser wallet</strong> (MetaMask, etc.) &mdash;
+                    that address becomes your on-chain identity.
+                  </li>
+                  <li>
+                    Scan your passport with the <strong>Self app</strong> &mdash;
+                    a ZK proof binds your wallet to a unique human nullifier.
+                  </li>
+                  <li>
+                    Smart contracts can then check{" "}
+                    <code className="bg-gray-100 px-1 rounded text-xs">isVerifiedAgent(your_address)</code>{" "}
+                    to gate access to verified humans.
+                  </li>
+                  <li>
+                    Best for <strong>on-chain gating</strong> where you transact directly
+                    (DAOs, token access). Not for autonomous agents.
+                  </li>
+                </ul>
+              </>
+            ) : (
+              <>
+                <p className="font-bold text-sm text-black mb-2">
+                  How Agent Identity works
+                </p>
+                <ul className="text-sm text-black space-y-1 list-disc list-inside">
+                  <li>
+                    Connect your <strong>browser wallet</strong> (MetaMask, etc.) &mdash;
+                    used only during registration to prove your identity.
+                  </li>
+                  <li>
+                    A fresh <strong>agent keypair</strong> is generated in your browser.
+                    The agent signs a challenge to prove key ownership.
+                  </li>
+                  <li>
+                    Scan your passport with the <strong>Self app</strong> &mdash;
+                    the contract verifies both the ZK proof and the agent&apos;s signature in one step.
+                  </li>
+                  <li>
+                    Your agent operates with <strong>its own key</strong> &mdash;
+                    your wallet key is never exposed to agent software.
+                  </li>
+                </ul>
+              </>
+            )}
           </div>
 
           <button
             onClick={() => setStep("connect")}
             className="px-6 py-3 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
           >
-            Continue with Simple Mode
+            {mode === "simple" ? "Continue with Simple Mode" : "Continue with Advanced Mode"}
           </button>
         </div>
       )}
@@ -199,8 +279,9 @@ export default function RegisterPage() {
           {!walletAddress ? (
             <>
               <p className="text-black text-center max-w-md">
-                Connect your wallet. Your wallet address will become your
-                agent&apos;s on-chain identity.
+                {mode === "simple"
+                  ? "Connect your browser wallet (MetaMask, etc.). Your wallet address will become your agent\u2019s on-chain identity."
+                  : "Connect your browser wallet (MetaMask, etc.). A new agent keypair will be generated and linked to your wallet."}
               </p>
               <button
                 onClick={handleConnect}
@@ -253,6 +334,7 @@ export default function RegisterPage() {
               setWalletAddress(null);
               setAlreadyRegistered(false);
               setErrorMessage("");
+              setAgentWallet(null);
             }}
             className="text-sm text-black underline hover:text-gray-600"
           >
@@ -265,8 +347,23 @@ export default function RegisterPage() {
       {step === "scan" && (
         <div className="flex flex-col items-center gap-4">
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
-            <p className="text-xs text-black mb-1">Registering agent for wallet</p>
-            <p className="font-mono text-sm text-black">{walletAddress}</p>
+            {mode === "simple" ? (
+              <>
+                <p className="text-xs text-black mb-1">Registering wallet as agent</p>
+                <p className="font-mono text-sm text-black">{walletAddress}</p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-black mb-1">
+                  Registering agent{" "}
+                  <span className="font-mono">
+                    {agentWallet?.address.slice(0, 6)}...{agentWallet?.address.slice(-4)}
+                  </span>{" "}
+                  under wallet
+                </p>
+                <p className="font-mono text-sm text-black">{walletAddress}</p>
+              </>
+            )}
           </div>
           <p className="text-black text-center max-w-md">
             Scan this QR code with the Self App to verify your identity and
@@ -308,33 +405,165 @@ export default function RegisterPage() {
           <p className="text-lg font-medium text-green-600">
             Agent registered successfully!
           </p>
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 w-full">
-            <p className="font-bold text-sm text-black mb-2">Your Agent Identity</p>
-            <div className="space-y-2 text-sm">
-              <div>
-                <p className="text-xs text-black mb-1">Wallet Address (your agent)</p>
-                <p className="font-mono text-black break-all bg-white border border-gray-100 rounded px-2 py-1">
-                  {walletAddress}
-                </p>
+
+          {mode === "simple" ? (
+            <>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 w-full">
+                <p className="font-bold text-sm text-black mb-2">Verified Wallet</p>
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <p className="text-xs text-black mb-1">Your Wallet Address</p>
+                    <p className="font-mono text-black break-all bg-white border border-gray-100 rounded px-2 py-1">
+                      {walletAddress}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-black mb-1">On-chain Agent Key (bytes32)</p>
+                    <p className="font-mono text-black break-all bg-white border border-gray-100 rounded px-2 py-1 text-xs">
+                      {walletAddress && ethers.zeroPadValue(walletAddress, 32)}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-black mb-1">On-chain Agent Key (bytes32)</p>
-                <p className="font-mono text-black break-all bg-white border border-gray-100 rounded px-2 py-1 text-xs">
-                  {walletAddress && ethers.zeroPadValue(walletAddress, 32)}
-                </p>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 w-full">
+                <p className="font-bold text-sm text-black mb-2">How this works</p>
+                <ul className="text-xs text-black space-y-1.5 list-disc list-inside">
+                  <li>
+                    Your wallet address is now registered as a <strong>verified human</strong> on-chain.
+                  </li>
+                  <li>
+                    Smart contracts can check{" "}
+                    <code className="bg-gray-100 px-1 rounded">isVerifiedAgent(bytes32(your_address))</code>{" "}
+                    to gate access to verified humans only.
+                  </li>
+                  <li>
+                    <strong>You transact directly</strong> &mdash; there is no separate agent.
+                    This is best for on-chain gating (DAOs, token access, DeFi).
+                  </li>
+                  <li>
+                    For autonomous agents that sign requests to services,
+                    use <strong>Agent Identity</strong> mode instead.
+                  </li>
+                </ul>
               </div>
-            </div>
-          </div>
-          <p className="text-xs text-black text-center">
-            In Simple Mode, your wallet address IS your agent. Any service can
-            verify this agent by calling{" "}
-            <code className="bg-gray-100 px-1 rounded">isVerifiedAgent()</code>{" "}
-            with your address.
-          </p>
+            </>
+          ) : (
+            <>
+              {/* Agent credentials */}
+              <div className="bg-amber-50 border-2 border-amber-400 rounded-lg p-4 w-full">
+                <p className="font-bold text-sm text-amber-900 mb-1">
+                  &#9888; Agent Credentials
+                </p>
+                <p className="text-sm text-amber-800 mb-3">
+                  A fresh Ethereum keypair was generated in your browser for your agent.
+                  Copy these credentials now &mdash; the private key cannot be recovered
+                  after you leave this page.
+                </p>
+
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs font-medium text-amber-800 mb-1">
+                      Agent Address
+                      <span className="font-normal text-amber-700"> &mdash; your agent&apos;s public identity, derived from the keypair</span>
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-mono text-black break-all bg-white border border-gray-200 rounded px-2 py-1 text-sm flex-1">
+                        {agentWallet?.address}
+                      </p>
+                      <button
+                        onClick={() => copyToClipboard(agentWallet?.address || "")}
+                        className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded border border-gray-200 shrink-0"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium text-amber-800 mb-1">
+                      Agent Private Key
+                      <span className="font-normal text-amber-700"> &mdash; used by your agent to sign requests and prove its identity</span>
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-mono text-black break-all bg-white border border-gray-200 rounded px-2 py-1 text-xs flex-1">
+                        {showPrivateKey
+                          ? agentWallet?.privateKey
+                          : "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"}
+                      </p>
+                      <button
+                        onClick={() => setShowPrivateKey(!showPrivateKey)}
+                        className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded border border-gray-200 shrink-0"
+                      >
+                        {showPrivateKey ? "Hide" : "Show"}
+                      </button>
+                      <button
+                        onClick={() => copyToClipboard(agentWallet?.privateKey || "")}
+                        className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded border border-gray-200 shrink-0"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* What to do with this key */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 w-full">
+                <p className="font-bold text-sm text-black mb-2">Next steps</p>
+                <ul className="text-xs text-black space-y-1.5 list-disc list-inside">
+                  <li>
+                    Set <code className="bg-gray-100 px-1 rounded">AGENT_PRIVATE_KEY</code>{" "}
+                    in your agent&apos;s environment or secrets manager.
+                  </li>
+                  <li>
+                    Your agent uses this key to <strong>sign requests</strong>.
+                    Services recover the signer address from the signature and
+                    check the registry to confirm it&apos;s human-backed.
+                  </li>
+                  <li>
+                    <strong>If lost:</strong> your agent can no longer authenticate.
+                    Deregister and create a new one.
+                  </li>
+                  <li>
+                    <strong>If leaked:</strong> someone could impersonate your agent.
+                    Deregister it immediately.
+                  </li>
+                </ul>
+              </div>
+
+              {/* Registration details */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 w-full">
+                <p className="font-bold text-sm text-black mb-2">Registration Details</p>
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <p className="text-xs text-black mb-1">
+                      Registered by
+                      <span className="text-gray-500"> &mdash; your wallet, the NFT owner who can deregister this agent</span>
+                    </p>
+                    <p className="font-mono text-black break-all bg-white border border-gray-100 rounded px-2 py-1">
+                      {walletAddress}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-black mb-1">
+                      Agent Key (bytes32)
+                      <span className="text-gray-500"> &mdash; the on-chain identifier services use to verify this agent</span>
+                    </p>
+                    <p className="font-mono text-black break-all bg-white border border-gray-100 rounded px-2 py-1 text-xs">
+                      {agentWallet && ethers.zeroPadValue(agentWallet.address, 32)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
           <button
             onClick={() => {
-              const agentKey = ethers.zeroPadValue(walletAddress!, 32);
-              router.push("/verify?key=" + encodeURIComponent(agentKey));
+              const key = mode === "simple"
+                ? ethers.zeroPadValue(walletAddress!, 32)
+                : ethers.zeroPadValue(agentWallet!.address, 32);
+              router.push("/verify?key=" + encodeURIComponent(key));
             }}
             className="px-6 py-3 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
           >
