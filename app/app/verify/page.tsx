@@ -6,7 +6,7 @@ import { ethers } from "ethers";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import CodeBlock from "@/components/CodeBlock";
-import { getSnippets } from "@/lib/snippets";
+import { getServiceSnippets, getAgentSnippets } from "@/lib/snippets";
 import { connectWallet } from "@/lib/wallet";
 import { REGISTRY_ADDRESS, REGISTRY_ABI, RPC_URL } from "@/lib/constants";
 
@@ -32,6 +32,7 @@ function VerifyContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activeUseCase, setActiveUseCase] = useState(0);
+  const [activeAgentSnippet, setActiveAgentSnippet] = useState(0);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [showDeregister, setShowDeregister] = useState(false);
   const [selfApp, setSelfApp] = useState<ReturnType<
@@ -163,7 +164,7 @@ function VerifyContent() {
     lookupAgent(agentKey);
   };
 
-  const snippets = getSnippets(REGISTRY_ADDRESS);
+  const snippets = getServiceSnippets(REGISTRY_ADDRESS);
 
   return (
     <>
@@ -302,6 +303,47 @@ function VerifyContent() {
             {snippets[activeUseCase].flow}
           </p>
           <CodeBlock tabs={snippets[activeUseCase].snippets} />
+        </div>
+      )}
+
+      {/* Agent usage guide — shown for verified agents */}
+      {agentInfo && agentInfo.isVerified && (
+        <div className="w-full max-w-2xl mt-8 space-y-4">
+          <h2 className="text-xl font-bold">How to Use Your Agent</h2>
+          <p className="text-sm text-gray-600">
+            If you are the <strong>agent operator</strong>, use these snippets to
+            authenticate your agent with services or submit on-chain transactions.
+            Set <code className="bg-gray-100 px-1 rounded text-xs">AGENT_PRIVATE_KEY</code> in
+            your agent&apos;s environment first.
+          </p>
+
+          {(() => {
+            const agentSnippets = getAgentSnippets();
+            return (
+              <>
+                <div className="flex gap-2 flex-wrap">
+                  {agentSnippets.map((snippet, i) => (
+                    <button
+                      key={snippet.title}
+                      onClick={() => setActiveAgentSnippet(i)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        i === activeAgentSnippet
+                          ? "bg-black text-white"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      {snippet.title}
+                    </button>
+                  ))}
+                </div>
+
+                <p className="text-sm text-gray-700">
+                  {agentSnippets[activeAgentSnippet].description}
+                </p>
+                <CodeBlock tabs={agentSnippets[activeAgentSnippet].snippets} />
+              </>
+            );
+          })()}
         </div>
       )}
     </>

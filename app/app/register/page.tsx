@@ -3,9 +3,12 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ethers } from "ethers";
+import Link from "next/link";
 import dynamic from "next/dynamic";
 import { connectWallet } from "@/lib/wallet";
 import { REGISTRY_ADDRESS, REGISTRY_ABI, RPC_URL } from "@/lib/constants";
+import { getAgentSnippets } from "@/lib/snippets";
+import CodeBlock from "@/components/CodeBlock";
 
 // Dynamic import to avoid SSR issues with Self QR SDK
 const SelfQRcodeWrapper = dynamic(
@@ -33,6 +36,7 @@ export default function RegisterPage() {
   // Advanced mode state
   const [agentWallet, setAgentWallet] = useState<ethers.HDNodeWallet | null>(null);
   const [showPrivateKey, setShowPrivateKey] = useState(false);
+  const [activeAgentSnippet, setActiveAgentSnippet] = useState(0);
 
   // Load SelfAppBuilder on client
   useEffect(() => {
@@ -507,28 +511,42 @@ export default function RegisterPage() {
                 </div>
               </div>
 
-              {/* What to do with this key */}
+              {/* How to use your agent */}
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 w-full">
-                <p className="font-bold text-sm text-black mb-2">Next steps</p>
-                <ul className="text-xs text-black space-y-1.5 list-disc list-inside">
-                  <li>
-                    Set <code className="bg-gray-100 px-1 rounded">AGENT_PRIVATE_KEY</code>{" "}
-                    in your agent&apos;s environment or secrets manager.
-                  </li>
-                  <li>
-                    Your agent uses this key to <strong>sign requests</strong>.
-                    Services recover the signer address from the signature and
-                    check the registry to confirm it&apos;s human-backed.
-                  </li>
-                  <li>
-                    <strong>If lost:</strong> your agent can no longer authenticate.
-                    Deregister and create a new one.
-                  </li>
-                  <li>
-                    <strong>If leaked:</strong> someone could impersonate your agent.
-                    Deregister it immediately.
-                  </li>
-                </ul>
+                <p className="font-bold text-sm text-black mb-1">How to use your agent</p>
+                <p className="text-xs text-black mb-3">
+                  Set <code className="bg-gray-100 px-1 rounded">AGENT_PRIVATE_KEY</code> in
+                  your agent&apos;s environment, then use one of these patterns.
+                  If the key is <strong>lost</strong>, deregister and create a new agent.
+                  If <strong>leaked</strong>, deregister immediately.
+                </p>
+
+                <div className="flex gap-2 mb-3">
+                  {getAgentSnippets(REGISTRY_ADDRESS).map((snippet, i) => (
+                    <button
+                      key={snippet.title}
+                      onClick={() => setActiveAgentSnippet(i)}
+                      className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                        i === activeAgentSnippet
+                          ? "bg-black text-white"
+                          : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                      }`}
+                    >
+                      {snippet.title}
+                    </button>
+                  ))}
+                </div>
+
+                {(() => {
+                  const snippets = getAgentSnippets(REGISTRY_ADDRESS);
+                  const active = snippets[activeAgentSnippet];
+                  return (
+                    <>
+                      <p className="text-xs text-gray-600 mb-2">{active.description}</p>
+                      <CodeBlock tabs={active.snippets} />
+                    </>
+                  );
+                })()}
               </div>
 
               {/* Registration details */}
@@ -571,6 +589,13 @@ export default function RegisterPage() {
           </button>
         </div>
       )}
+
+      <Link
+        href="/"
+        className="text-sm text-gray-600 hover:text-gray-800 underline"
+      >
+        Back to home
+      </Link>
     </main>
   );
 }

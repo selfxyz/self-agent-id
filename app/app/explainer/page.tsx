@@ -4,10 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { ethers } from "ethers";
 import CodeBlock from "@/components/CodeBlock";
-import { getSnippets } from "@/lib/snippets";
+import { getServiceSnippets } from "@/lib/snippets";
 import { REGISTRY_ADDRESS, REGISTRY_ABI, RPC_URL } from "@/lib/constants";
 
-const useCases = getSnippets();
+const useCases = getServiceSnippets();
 
 type VerifyStatus = "idle" | "loading" | "verified" | "not-registered" | "error";
 
