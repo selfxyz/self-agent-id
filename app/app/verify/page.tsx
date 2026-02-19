@@ -57,18 +57,28 @@ interface AgentInfo {
   credentials?: AgentCredentials;
 }
 
+function cleanStr(s: string): string {
+  // Strip null bytes and other non-printable chars from on-chain strings
+  return s.replace(/[\x00-\x1f]/g, "").trim();
+}
+
 function buildCredentialBadges(creds: AgentCredentials): string[] {
   const badges: string[] = [];
-  if (creds.nationality) badges.push(creds.nationality);
+  const nat = cleanStr(creds.nationality ?? "");
+  if (nat) badges.push(nat);
   if (creds.olderThan > 0n) badges.push(`${creds.olderThan.toString()}+`);
   if (creds.ofac?.some(Boolean)) badges.push("Not on OFAC List");
-  if (creds.gender) badges.push(creds.gender === "M" ? "Male" : creds.gender === "F" ? "Female" : creds.gender);
-  if (creds.dateOfBirth) badges.push(`DOB: ${creds.dateOfBirth}`);
-  if (creds.issuingState) badges.push(`Issued: ${creds.issuingState}`);
-  if (creds.name?.some((n: string) => n.length > 0)) {
-    badges.push(creds.name.filter((n: string) => n.length > 0).join(" "));
+  const gender = cleanStr(creds.gender ?? "");
+  if (gender) {
+    badges.push(gender === "M" ? "Male" : gender === "F" ? "Female" : gender);
   }
-  return badges;
+  const dob = cleanStr(creds.dateOfBirth ?? "");
+  if (dob && dob !== "--" && dob !== "-") badges.push(`DOB: ${dob}`);
+  const issuing = cleanStr(creds.issuingState ?? "");
+  if (issuing) badges.push(`Issued: ${issuing}`);
+  const names = (creds.name ?? []).map(cleanStr).filter(Boolean);
+  if (names.length > 0) badges.push(names.join(" "));
+  return badges.filter(b => b.length > 0);
 }
 
 function VerifyContent() {
@@ -398,7 +408,7 @@ function VerifyContent() {
                       <Shield size={12} /> ZK-Attested Credentials
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                      {buildCredentialBadges(agentInfo.credentials).map((badge, i) => (
+                      {buildCredentialBadges(agentInfo.credentials).filter(b => b.trim()).map((badge, i) => (
                         <span
                           key={i}
                           className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-accent/10 text-accent border border-accent/20"

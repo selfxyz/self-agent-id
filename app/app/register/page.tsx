@@ -1138,7 +1138,15 @@ export default function RegisterPage() {
               Verify Agent
             </Button>
             <Button
-              onClick={() => router.push("/demo")}
+              onClick={() => {
+                // Pass the agent private key to demo page via sessionStorage
+                // so it auto-fills — key is cleared after demo page reads it
+                const pk = mode === "simple"
+                  ? undefined  // simple mode uses wallet, no separate agent key
+                  : agentWallet?.privateKey;
+                if (pk) sessionStorage.setItem("demo-agent-key", pk);
+                router.push("/demo");
+              }}
               variant="secondary"
               size="lg"
             >

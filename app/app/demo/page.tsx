@@ -26,7 +26,7 @@ import {
   AGENT_DEMO_VERIFIER_ADDRESS,
   AGENT_DEMO_VERIFIER_ABI,
 } from "@/lib/constants";
-import { TESTS } from "@/lib/demo-constants";
+import { TESTS, DEMO_SERVICE_URL, DEMO_AGENT_URL } from "@/lib/demo-constants";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -131,7 +131,6 @@ function reducer(state: DemoState, action: Action): DemoState {
           peer: { ...makeEmptyTest(), status: "running" },
           gate: { ...makeEmptyTest(), status: "running" },
         },
-        logs: [],
       };
     case "UPDATE_TEST":
       return {
@@ -160,15 +159,20 @@ function reducer(state: DemoState, action: Action): DemoState {
 // Helpers
 // ---------------------------------------------------------------------------
 
+function cleanStr(s: string): string {
+  // Strip null bytes and other non-printable chars from on-chain strings
+  return s.replace(/[\x00-\x1f]/g, "").trim();
+}
+
 function buildCredentialBadges(creds: AgentCredentials): string[] {
   const badges: string[] = [];
-  if (creds.nationality) badges.push(creds.nationality);
+  const nat = cleanStr(creds.nationality ?? "");
+  if (nat) badges.push(nat);
   if (creds.olderThan > 0n) badges.push(`${creds.olderThan.toString()}+`);
   if (creds.ofac?.some(Boolean)) badges.push("Not on OFAC List");
-  if (creds.name?.some((n: string) => n.length > 0)) {
-    badges.push(creds.name.filter((n: string) => n.length > 0).join(" "));
-  }
-  return badges;
+  const names = (creds.name ?? []).map(cleanStr).filter(Boolean);
+  if (names.length > 0) badges.push(names.join(" "));
+  return badges.filter(b => b.length > 0);
 }
 
 function makeSteps(
@@ -204,12 +208,14 @@ function shortAddr(addr: string): string {
 }
 
 const TEST_LABELS: Record<string, string> = {
+  agent: "Agent SDK",
   service: "Agent-to-Service",
   peer: "Agent-to-Agent",
   gate: "Agent-to-Chain",
 };
 
 const LOG_COLORS: Record<string, string> = {
+  agent: "text-yellow-400",
   service: "text-blue-400",
   peer: "text-purple-400",
   gate: "text-green-400",
@@ -272,6 +278,8 @@ function ConsoleLog({ logs }: { logs: LogEntry[] }) {
 
 const SERVICE_CODE = `import { SelfAgent } from "@selfxyz/agent-sdk";
 
+const CENSUS_SERVICE = "${DEMO_SERVICE_URL || "https://agent-id-demo-service-<hash>-uc.a.run.app"}";
+
 const agent = new SelfAgent({
   privateKey: process.env.AGENT_PRIVATE_KEY,
   registryAddress: "${REGISTRY_ADDRESS}",
@@ -279,24 +287,28 @@ const agent = new SelfAgent({
 });
 
 // 1. Verify agent + get credentials
-const verifyRes = await agent.fetch("/api/demo/verify-agent", {
+const verifyRes = await agent.fetch(CENSUS_SERVICE + "/verify", {
   method: "POST",
   body: JSON.stringify({ action: "demo" }),
 });
 
 // 2. Contribute credentials to census
-const censusRes = await agent.fetch("/api/demo/census", {
+const censusRes = await agent.fetch(CENSUS_SERVICE + "/census", {
   method: "POST",
   body: JSON.stringify({ action: "contribute" }),
 });
 
 // 3. Read aggregate stats (gated)
-const statsRes = await agent.fetch("/api/demo/census");
+const statsRes = await agent.fetch(CENSUS_SERVICE + "/census");
 const stats = await statsRes.json();
 // stats.topCountries, stats.verifiedOver18, stats.ofacClear`;
 
-const PEER_CODE = `// Client: your agent signs a request to the demo agent
-const res = await myAgent.fetch("/api/demo/agent-to-agent", {
+const PEER_CODE = `import { SelfAgent } from "@selfxyz/agent-sdk";
+
+const DEMO_AGENT = "${DEMO_AGENT_URL || "https://agent-id-demo-agent-<hash>-uc.a.run.app"}";
+
+// Client: your agent signs a request to the demo agent
+const res = await myAgent.fetch(DEMO_AGENT, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ action: "peer-verify" }),
@@ -374,10 +386,11 @@ async function runServiceTest(
   log: LogFn,
 ) {
   const id = "service";
+  const serviceUrl = DEMO_SERVICE_URL || window.location.origin + "/api/demo";
   const steps = [
-    "ECDSA sign + POST /api/demo/verify-agent...",
-    "POST /api/demo/census — contributing credentials...",
-    "GET /api/demo/census — reading aggregate stats...",
+    "ECDSA sign + POST /verify...",
+    "POST /census — contributing credentials...",
+    "GET /census — reading aggregate stats...",
   ];
   const t: (number | undefined)[] = [];
   const totalStart = performance.now();
@@ -386,14 +399,14 @@ async function runServiceTest(
     log(id, `Starting Agent-to-Service test...`);
     log(id, `Agent: ${agentLabel}`);
 
-    // Step 0: verify-agent
-    log(id, "Constructing POST /api/demo/verify-agent");
+    // Step 0: verify
+    log(id, "Constructing POST /verify");
     log(id, "Signing request body with secp256k1...");
     dispatch({ type: "UPDATE_TEST", testId: id, state: { steps: makeSteps(steps, 0, t) } });
     await new Promise((r) => setTimeout(r, 0));
     const t0 = performance.now();
 
-    const verifyRes = await agent.fetch(window.location.origin + "/api/demo/verify-agent", {
+    const verifyRes = await agent.fetch(serviceUrl + "/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "demo-verification", timestamp: Date.now() }),
@@ -402,7 +415,7 @@ async function runServiceTest(
     const verifyElapsed = Math.round(performance.now() - t0);
     t.push(verifyElapsed);
     const verifyData = await verifyRes.json();
-    log(id, `POST /api/demo/verify-agent — HTTP ${verifyRes.status} (${verifyElapsed}ms)`);
+    log(id, `POST /verify — HTTP ${verifyRes.status} (${verifyElapsed}ms)`);
 
     if (!verifyData.valid) {
       log(id, `Verification failed: ${verifyData.error || "unknown"}`);
@@ -425,7 +438,7 @@ async function runServiceTest(
     log(id, "Contributing credentials to census...");
     const t1 = performance.now();
 
-    const censusRes = await agent.fetch(window.location.origin + "/api/demo/census", {
+    const censusRes = await agent.fetch(serviceUrl + "/census", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "contribute" }),
@@ -449,20 +462,20 @@ async function runServiceTest(
       return;
     }
 
-    log(id, `POST /api/demo/census — HTTP ${censusRes.status} — credentials recorded (${censusElapsed}ms)`);
+    log(id, `POST /census — HTTP ${censusRes.status} — credentials recorded (${censusElapsed}ms)`);
 
     // Step 2: GET census stats
     dispatch({ type: "UPDATE_TEST", testId: id, state: { steps: makeSteps(steps, 2, t) } });
-    log(id, "Fetching aggregate stats...");
+    log(id, "Signing GET /census request...");
     const t2 = performance.now();
 
-    const statsRes = await agent.fetch(window.location.origin + "/api/demo/census");
+    const statsRes = await agent.fetch(serviceUrl + "/census");
     const statsElapsed = Math.round(performance.now() - t2);
     t.push(statsElapsed);
     const stats = await statsRes.json();
 
     if (!statsRes.ok) {
-      log(id, `Census GET failed: ${stats.error || "unknown"} (${statsElapsed}ms)`);
+      log(id, `GET /census failed: ${stats.error || "unknown"} (${statsElapsed}ms)`);
       dispatch({
         type: "UPDATE_TEST",
         testId: id,
@@ -476,7 +489,7 @@ async function runServiceTest(
     }
 
     const topStr = stats.topCountries?.map((c: { country: string; count: number }) => `${c.country}(${c.count})`).join(" ") || "none";
-    log(id, `GET /api/demo/census — HTTP ${statsRes.status} — Top: ${topStr} | 18+: ${stats.verifiedOver18} | OFAC clear: ${stats.ofacClear} (${statsElapsed}ms)`);
+    log(id, `GET /census — HTTP ${statsRes.status} — Top: ${topStr} | 18+: ${stats.verifiedOver18} | OFAC clear: ${stats.ofacClear} (${statsElapsed}ms)`);
 
     const totalElapsed = Math.round(performance.now() - totalStart);
     log(id, `Test complete (${totalElapsed}ms total)`);
@@ -540,8 +553,9 @@ async function runPeerTest(
   log: LogFn,
 ) {
   const id = "peer";
+  const agentUrl = DEMO_AGENT_URL || window.location.origin + "/api/demo/agent-to-agent";
   const steps = [
-    "ECDSA sign + POST /api/demo/agent-to-agent...",
+    "ECDSA sign + POST to demo agent...",
     "Demo agent: ecrecover \u2192 on-chain verify + sameHuman()...",
     "Verifying demo agent\u2019s ECDSA response signature...",
   ];
@@ -551,13 +565,13 @@ async function runPeerTest(
   try {
     log(id, `Starting Agent-to-Agent test...`);
     log(id, `Agent: ${agentLabel}`);
-    log(id, "Constructing POST /api/demo/agent-to-agent");
+    log(id, "Constructing POST to demo agent GCF");
     log(id, "Signing request body with secp256k1...");
     dispatch({ type: "UPDATE_TEST", testId: id, state: { steps: makeSteps(steps, 0, t) } });
     await new Promise((r) => setTimeout(r, 0));
     let t0 = performance.now();
 
-    const res = await agent.fetch(window.location.origin + "/api/demo/agent-to-agent", {
+    const res = await agent.fetch(agentUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "peer-verify" }),
@@ -565,7 +579,7 @@ async function runPeerTest(
 
     const elapsed = Math.round(performance.now() - t0);
     t.push(elapsed);
-    log(id, `POST /api/demo/agent-to-agent — HTTP ${res.status} (${elapsed}ms)`);
+    log(id, `POST demo-agent — HTTP ${res.status} (${elapsed}ms)`);
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({ error: "Request rejected" }));
@@ -582,15 +596,16 @@ async function runPeerTest(
       return;
     }
 
+    log(id, "Demo agent is verifying caller on-chain...");
     dispatch({ type: "UPDATE_TEST", testId: id, state: { steps: makeSteps(steps, 1, t) } });
 
     t0 = performance.now();
     const data = await res.json();
     const parseElapsed = Math.round(performance.now() - t0);
     t.push(parseElapsed);
-    log(id, `Parsing demo agent response...`);
     log(id, `Demo agent: ID #${data.demoAgent?.agentId}, verified=${data.demoAgent?.verified}`);
-    log(id, `Caller agent: ID #${data.callerAgent?.agentId}, verified=${data.callerAgent?.verified}, sameHuman=${data.sameHuman}`);
+    log(id, `Caller agent: ID #${data.callerAgent?.agentId}, verified=${data.callerAgent?.verified}`);
+    log(id, `sameHuman(#${data.demoAgent?.agentId}, #${data.callerAgent?.agentId}) = ${data.sameHuman}`);
 
     // Verify response came from demo agent
     const demoSig = res.headers.get("x-self-agent-signature");
@@ -694,10 +709,9 @@ async function runGateTest(
     const nonce = await verifierContract.nonces(agentKey);
     log(id, `nonce=${nonce.toString()}`);
 
-    log(id, "Constructing EIP-712 typed data (MetaVerify)");
-    log(id, `domain: AgentDemoVerifier v1, chainId=11142220`);
-
     const deadline = Math.floor(Date.now() / 1000) + 300;
+    log(id, "Constructing EIP-712 typed data (MetaVerify)");
+    log(id, `domain: AgentDemoVerifier v1, chainId=11142220, deadline=${deadline}`);
     const wallet = new ethers.Wallet(privateKey);
 
     log(id, "Signing EIP-712 with agent key (secp256k1)...");
@@ -760,7 +774,6 @@ async function runGateTest(
     if (data.credentials) {
       log(id, `AgentChainVerified(agent=#${data.agentId}, age=${data.credentials.olderThan}+, ${data.credentials.nationality})`);
     }
-    log(id, `GasSponsored(relayer=...)`);
     log(id, `Verification #${data.verificationCount} for agent, #${data.totalVerifications} total`);
     if (data.rateLimitRemaining != null) {
       log(id, `${data.rateLimitRemaining} verification${data.rateLimitRemaining === 1 ? "" : "s"} remaining this hour`);
@@ -846,6 +859,7 @@ export default function DemoPage() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const agentRef = useRef<SelfAgent | null>(null);
   const privateKeyRef = useRef<string>("");
+  const autoLoadedRef = useRef(false);
 
   const log = useCallback(
     (testId: string, message: string) => {
@@ -858,10 +872,15 @@ export default function DemoPage() {
 
   const handleLoadAgent = useCallback(async () => {
     dispatch({ type: "LOADING" });
+    const bootLog = (msg: string) => dispatch({ type: "ADD_LOG", testId: "agent", message: msg });
+    const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     try {
       let key = state.privateKey.trim();
       if (!key.startsWith("0x")) key = "0x" + key;
+
+      bootLog("Initializing Self Agent SDK...");
+      await delay(150);
 
       const agent = new SelfAgent({
         privateKey: key,
@@ -872,8 +891,17 @@ export default function DemoPage() {
       agentRef.current = agent;
       privateKeyRef.current = key;
 
+      bootLog(`Agent address: ${shortAddr(agent.address)}`);
+      await delay(100);
+
+      const rpcHost = RPC_URL.replace(/^https?:\/\//, "").split("/")[0];
+      bootLog(`Connecting to Celo Sepolia (RPC: ${rpcHost})...`);
+      await delay(100);
+
+      bootLog(`Checking on-chain registry (${shortAddr(REGISTRY_ADDRESS)})...`);
       const registered = await agent.isRegistered();
       if (!registered) {
+        bootLog("ERROR: Agent not found in registry. Register at /register first.");
         dispatch({
           type: "SETUP_ERROR",
           error: "Agent not registered. Register at /register first.",
@@ -882,10 +910,22 @@ export default function DemoPage() {
       }
 
       const info = await agent.getInfo();
+      bootLog(`Agent ID: #${info.agentId} — ${info.isVerified ? "Verified" : "Not verified"}`);
+      await delay(100);
 
-      // Fetch credentials
+      // Check proof provider
       const provider = new ethers.JsonRpcProvider(RPC_URL);
       const contract = new ethers.Contract(REGISTRY_ADDRESS, REGISTRY_ABI, provider);
+
+      try {
+        const providerAddr = await contract.agentProofProvider(info.agentId);
+        bootLog(`Proof provider: ${shortAddr(providerAddr)}`);
+      } catch {
+        // Provider not available
+      }
+      await delay(100);
+
+      // Fetch credentials
       let credentials: AgentCredentials | undefined;
       try {
         const raw = await contract.getAgentCredentials(info.agentId);
@@ -901,10 +941,41 @@ export default function DemoPage() {
         };
         if (creds.nationality || creds.olderThan > 0n) {
           credentials = creds;
+          const parts: string[] = [];
+          if (creds.nationality) parts.push(`nationality=${creds.nationality}`);
+          if (creds.olderThan > 0n) parts.push(`olderThan=${creds.olderThan.toString()}`);
+          if (creds.ofac?.some(Boolean)) parts.push("ofac=[clear]");
+          bootLog(`Credentials loaded: ${parts.join(", ")}`);
+        } else {
+          bootLog("No ZK-attested credentials found");
         }
       } catch {
-        // No credentials yet
+        bootLog("No ZK-attested credentials found");
       }
+      await delay(100);
+
+      // Log verification config from credentials
+      if (credentials) {
+        const configParts: string[] = [];
+        if (credentials.olderThan > 0n) configParts.push(`age >= ${credentials.olderThan.toString()}`);
+        if (credentials.ofac?.some(Boolean)) configParts.push("OFAC screening enabled");
+        if (configParts.length > 0) {
+          bootLog(`Verification config: ${configParts.join(", ")}`);
+        }
+      }
+      await delay(80);
+
+      bootLog("Signing protocol: ECDSA + x-self-agent-* headers");
+      await delay(80);
+
+      // Log target endpoints
+      const serviceHost = DEMO_SERVICE_URL ? new URL(DEMO_SERVICE_URL).host : "localhost";
+      const agentHost = DEMO_AGENT_URL ? new URL(DEMO_AGENT_URL).host : "localhost";
+      bootLog(`Demo service endpoint: ${serviceHost}`);
+      bootLog(`Demo agent endpoint: ${agentHost}`);
+      await delay(80);
+
+      bootLog("Agent ready.");
 
       dispatch({
         type: "SETUP_DONE",
@@ -917,12 +988,35 @@ export default function DemoPage() {
         },
       });
     } catch (err) {
+      bootLog(`ERROR: ${err instanceof Error ? err.message : "Failed to load agent"}`);
       dispatch({
         type: "SETUP_ERROR",
         error: err instanceof Error ? err.message : "Failed to load agent",
       });
     }
   }, [state.privateKey]);
+
+  // Auto-fill from sessionStorage (set by register page "Try Demo" button)
+  const pendingAutoLoad = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (autoLoadedRef.current) return;
+    const stored = sessionStorage.getItem("demo-agent-key");
+    if (stored) {
+      autoLoadedRef.current = true;
+      sessionStorage.removeItem("demo-agent-key");
+      pendingAutoLoad.current = stored;
+      dispatch({ type: "SET_KEY", key: stored });
+    }
+  }, []);
+
+  // Trigger auto-load once key is in state
+  useEffect(() => {
+    if (pendingAutoLoad.current && state.privateKey === pendingAutoLoad.current && !state.loading && !state.agent) {
+      pendingAutoLoad.current = null;
+      handleLoadAgent();
+    }
+  }, [state.privateKey, state.loading, state.agent, handleLoadAgent]);
 
   // ---- Tests ----
 
@@ -946,6 +1040,7 @@ export default function DemoPage() {
     }
 
     dispatch({ type: "START_TESTS" });
+    log("agent", "--- Running all tests ---");
 
     const agentLabel = `${shortAddr(agent.address)} (ID #${state.agent.agentId}${state.agent.credentials ? `, ${state.agent.credentials.olderThan.toString()}+ ${state.agent.credentials.nationality}` : ""})`;
 
@@ -965,6 +1060,7 @@ export default function DemoPage() {
     });
 
     dispatch({ type: "START_TESTS" });
+    log("agent", "--- Running all tests (FAKE agent) ---");
 
     const fakeLabel = `${shortAddr(fakeWallet.address)} (unregistered)`;
     log("service", `Starting test with FAKE agent...`);
@@ -1098,7 +1194,7 @@ export default function DemoPage() {
       <div className="flex items-center justify-center gap-3">
         <Button
           onClick={runAllTests}
-          disabled={Object.values(state.tests).some((t) => t.status === "running")}
+          disabled={state.loading || Object.values(state.tests).some((t) => t.status === "running")}
           size="lg"
         >
           {Object.values(state.tests).some((t) => t.status === "running") ? (
@@ -1115,7 +1211,7 @@ export default function DemoPage() {
         </Button>
         <Button
           onClick={runFakeAgent}
-          disabled={Object.values(state.tests).some((t) => t.status === "running")}
+          disabled={state.loading || Object.values(state.tests).some((t) => t.status === "running")}
           size="lg"
           variant="secondary"
         >

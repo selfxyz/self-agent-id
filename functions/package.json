@@ -1,0 +1,21 @@
+{
+  "name": "self-agent-id-functions",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "gcp-build": "",
+    "build": "tsc",
+    "pack-sdk": "cd ../sdk && npm pack --pack-destination ../functions",
+    "start:service": "npx functions-framework --target=demoService --port=8081",
+    "start:agent": "npx functions-framework --target=demoAgent --port=8082"
+  },
+  "dependencies": {
+    "@google-cloud/functions-framework": "^3.4.0",
+    "@selfxyz/agent-sdk": "file:selfxyz-agent-sdk-0.1.0.tgz",
+    "ethers": "^6.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.9.0"
+  }
+}
