@@ -20,11 +20,13 @@ import {
 import CodeBlock from "@/components/CodeBlock";
 import { getServiceSnippets, getAgentSnippets, SERVICE_FEATURES, AGENT_FEATURES } from "@/lib/snippets";
 import { connectWallet } from "@/lib/wallet";
-import { REGISTRY_ADDRESS, REGISTRY_ABI, RPC_URL } from "@/lib/constants";
+import { REGISTRY_ABI } from "@/lib/constants";
+import { useNetwork } from "@/lib/NetworkContext";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { sendUserOperation, encodeGuardianRevoke, isPasskeySupported, isGaslessSupported } from "@/lib/aa";
+
 import { getPasskey } from "@/lib/passkey-storage";
 
 const SelfQRcodeWrapper = dynamic(
@@ -84,6 +86,7 @@ function buildCredentialBadges(creds: AgentCredentials): string[] {
 
 function VerifyContent() {
   const searchParams = useSearchParams();
+  const { network } = useNetwork();
   const [agentKey, setAgentKey] = useState(searchParams.get("key") || "");
   const [resolvedKey, setResolvedKey] = useState("");
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(null);
@@ -94,6 +97,11 @@ function VerifyContent() {
   const [activeServiceFeatures, setActiveServiceFeatures] = useState<Set<string>>(new Set());
   const [activeAgentFeatures, setActiveAgentFeatures] = useState<Set<string>>(new Set());
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [passkeyAvailable, setPasskeyAvailable] = useState(false);
+
+  useEffect(() => {
+    setPasskeyAvailable(isPasskeySupported());
+  }, []);
 
   const toggleServiceFeature = (id: string) => {
     setActiveServiceFeatures((prev) => {
@@ -135,9 +143,9 @@ function VerifyContent() {
       }
       setResolvedKey(keyHash);
 
-      const provider = new ethers.JsonRpcProvider(RPC_URL);
+      const provider = new ethers.JsonRpcProvider(network.rpcUrl);
       const contract = new ethers.Contract(
-        REGISTRY_ADDRESS,
+        network.registryAddress,
         REGISTRY_ABI,
         provider
       );
@@ -230,7 +238,7 @@ function VerifyContent() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [network]);
 
   useEffect(() => {
     const key = searchParams.get("key");
@@ -247,7 +255,7 @@ function VerifyContent() {
   }, []);
 
   const handleConnectForDeregister = async () => {
-    const addr = await connectWallet();
+    const addr = await connectWallet(network);
     if (addr) setWalletAddress(addr);
   };
 
@@ -277,10 +285,10 @@ function VerifyContent() {
       version: 2,
       appName: process.env.NEXT_PUBLIC_SELF_APP_NAME || "Self Agent ID",
       scope: process.env.NEXT_PUBLIC_SELF_SCOPE_SEED || "self-agent-id",
-      endpoint: REGISTRY_ADDRESS,
+      endpoint: network.registryAddress,
       logoBase64: "https://i.postimg.cc/mrmVf9hm/self.png",
       userId,
-      endpointType: "staging_celo",
+      endpointType: network.selfEndpointType,
       userIdType: "hex",
       userDefinedData,
       disclosures: {},
@@ -300,7 +308,7 @@ function VerifyContent() {
     lookupAgent(agentKey);
   };
 
-  const snippets = getServiceSnippets(REGISTRY_ADDRESS, activeServiceFeatures);
+  const snippets = getServiceSnippets(network.registryAddress, network.rpcUrl, activeServiceFeatures);
 
   return (
     <>
@@ -424,13 +432,13 @@ function VerifyContent() {
             )}
           </Card>
 
-          {agentInfo.isVerified && agentInfo.isSmartWallet && isPasskeySupported() && (() => {
+          {agentInfo.isVerified && agentInfo.isSmartWallet && passkeyAvailable && (() => {
             const storedPasskey = getPasskey();
             const passkeyMatchesGuardian = storedPasskey &&
               storedPasskey.walletAddress.toLowerCase() === agentInfo.guardian.toLowerCase();
             if (!passkeyMatchesGuardian) return null;
 
-            if (!isGaslessSupported()) {
+            if (!isGaslessSupported(network)) {
               return (
                 <div className="w-full mt-2">
                   <p className="text-xs text-subtle">
@@ -447,7 +455,7 @@ function VerifyContent() {
                     setPasskeyRevoking(true);
                     try {
                       const callData = encodeGuardianRevoke(agentInfo.agentId);
-                      await sendUserOperation(REGISTRY_ADDRESS as `0x${string}`, callData);
+                      await sendUserOperation(network.registryAddress as `0x${string}`, callData, network);
                       lookupAgent(agentKey);
                     } catch (err) {
                       alert(err instanceof Error ? err.message : "Revocation failed");
@@ -578,10 +586,10 @@ function VerifyContent() {
               <button
                 key={uc.title}
                 onClick={() => setActiveUseCase(i)}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors border ${
                   i === activeUseCase
-                    ? "bg-gradient-to-r from-accent to-accent-2 text-white"
-                    : "bg-surface-2 text-muted hover:text-foreground"
+                    ? "bg-gradient-to-r from-accent to-accent-2 text-white border-transparent"
+                    : "bg-surface-1 text-foreground border-border hover:bg-surface-2"
                 }`}
               >
                 {uc.title}
@@ -634,7 +642,7 @@ function VerifyContent() {
           </p>
 
           {(() => {
-            const agentSnippets = getAgentSnippets(activeAgentFeatures);
+            const agentSnippets = getAgentSnippets(network.registryAddress, network.rpcUrl, activeAgentFeatures);
             return (
               <>
                 <div className="flex gap-2 flex-wrap">
@@ -642,10 +650,10 @@ function VerifyContent() {
                     <button
                       key={snippet.title}
                       onClick={() => setActiveAgentSnippet(i)}
-                      className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                      className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors border ${
                         i === activeAgentSnippet
-                          ? "bg-gradient-to-r from-accent to-accent-2 text-white"
-                          : "bg-surface-2 text-muted hover:text-foreground"
+                          ? "bg-gradient-to-r from-accent to-accent-2 text-white border-transparent"
+                          : "bg-surface-1 text-foreground border-border hover:bg-surface-2"
                       }`}
                     >
                       {snippet.title}

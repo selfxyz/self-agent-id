@@ -1,4 +1,4 @@
-import { CELO_SEPOLIA_CHAIN_ID, CELO_SEPOLIA_CONFIG } from "./constants";
+import type { NetworkConfig } from "./network";
 
 declare global {
   interface Window {
@@ -10,7 +10,7 @@ declare global {
   }
 }
 
-export async function connectWallet(): Promise<string | null> {
+export async function connectWallet(network: NetworkConfig): Promise<string | null> {
   if (typeof window === "undefined" || !window.ethereum) {
     alert("Please install MetaMask or another wallet");
     return null;
@@ -20,17 +20,25 @@ export async function connectWallet(): Promise<string | null> {
     method: "eth_requestAccounts",
   })) as string[];
 
-  // Switch to Celo Sepolia
+  // Switch to the selected network
   try {
     await window.ethereum.request({
       method: "wallet_switchEthereumChain",
-      params: [{ chainId: CELO_SEPOLIA_CHAIN_ID }],
+      params: [{ chainId: network.chainIdHex }],
     });
   } catch (switchError: unknown) {
     if ((switchError as { code: number }).code === 4902) {
       await window.ethereum.request({
         method: "wallet_addEthereumChain",
-        params: [CELO_SEPOLIA_CONFIG],
+        params: [
+          {
+            chainId: network.chainIdHex,
+            chainName: network.isTestnet ? "Celo Sepolia Testnet" : "Celo",
+            nativeCurrency: network.nativeCurrency,
+            rpcUrls: [network.rpcUrl],
+            blockExplorerUrls: [network.blockExplorer],
+          },
+        ],
       });
     }
   }

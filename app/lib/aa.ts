@@ -10,8 +10,23 @@ import { entryPoint07Address } from "viem/account-abstraction";
 import { createKernelAccount, createKernelAccountClient, createZeroDevPaymasterClient } from "@zerodev/sdk";
 import { toPasskeyValidator, PasskeyValidatorContractVersion, toWebAuthnKey, WebAuthnMode } from "@zerodev/passkey-validator";
 import { KERNEL_V3_1 } from "@zerodev/sdk/constants";
+import type { NetworkConfig } from "./network";
 
-// ── Chain definition ──────────────────────────────────────────────────
+// ── Chain definitions ─────────────────────────────────────────────────
+
+export const celoMainnet: Chain = {
+  id: 42220,
+  name: "Celo",
+  nativeCurrency: { name: "CELO", symbol: "CELO", decimals: 18 },
+  rpcUrls: {
+    default: { http: ["https://forno.celo.org"] },
+  },
+  blockExplorers: {
+    default: { name: "CeloScan", url: "https://celoscan.io" },
+  },
+  testnet: false,
+};
+
 export const celoSepolia: Chain = {
   id: 11142220,
   name: "Celo Sepolia Testnet",
@@ -25,8 +40,10 @@ export const celoSepolia: Chain = {
   testnet: true,
 };
 
-// Chain used by the dApp — Celo Sepolia for testnet, Celo mainnet for production
-const CHAIN = celoSepolia;
+/** Get the viem Chain object for a given network config */
+export function getChain(network: NetworkConfig): Chain {
+  return network.isTestnet ? celoSepolia : celoMainnet;
+}
 
 // ── Config ────────────────────────────────────────────────────────────
 function getPimlicoApiKey(): string | null {
@@ -37,16 +54,16 @@ function getZeroDevProjectId(): string | null {
   return process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID || null;
 }
 
-function getBundlerUrl(): string {
+function getBundlerUrl(chain: Chain): string {
   const key = getPimlicoApiKey();
   if (!key) throw new Error("NEXT_PUBLIC_PIMLICO_API_KEY not set — gasless operations unavailable on this network");
-  return `https://api.pimlico.io/v2/${CHAIN.id}/rpc?apikey=${key}`;
+  return `https://api.pimlico.io/v2/${chain.id}/rpc?apikey=${key}`;
 }
 
-function getPaymasterUrl(): string {
+function getPaymasterUrl(chain: Chain): string {
   const key = getPimlicoApiKey();
   if (!key) throw new Error("NEXT_PUBLIC_PIMLICO_API_KEY not set — gasless operations unavailable on this network");
-  return `https://api.pimlico.io/v2/${CHAIN.id}/rpc?apikey=${key}`;
+  return `https://api.pimlico.io/v2/${chain.id}/rpc?apikey=${key}`;
 }
 
 function getPasskeyServerUrl(): string {
@@ -70,14 +87,15 @@ export function isPasskeySupported(): boolean {
  * works (counterfactual address), but gasless revocation is unavailable.
  * On mainnet (Celo), Pimlico supports gasless operations.
  */
-export function isGaslessSupported(): boolean {
-  return !!getPimlicoApiKey() && !CHAIN.testnet;
+export function isGaslessSupported(network?: NetworkConfig): boolean {
+  const isTestnet = network ? network.isTestnet : true;
+  return !!getPimlicoApiKey() && !isTestnet;
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────
-function getPublicClient() {
+function getPublicClient(chain: Chain) {
   return createPublicClient({
-    chain: CHAIN,
+    chain,
     transport: http(),
   });
 }
@@ -88,20 +106,19 @@ const ENTRYPOINT = {
 };
 
 // ── Create passkey wallet (Register) ──────────────────────────────────
-export async function createPasskeyWallet(passkeyName: string): Promise<{
+export async function createPasskeyWallet(passkeyName: string, network?: NetworkConfig): Promise<{
   credentialId: string;
   walletAddress: Address;
 }> {
-  const publicClient = getPublicClient();
+  const chain = network ? getChain(network) : celoSepolia;
+  const publicClient = getPublicClient(chain);
 
-  // 1. Create WebAuthn credential (browser biometric prompt)
   const webAuthnKey = await toWebAuthnKey({
     passkeyName,
     passkeyServerUrl: getPasskeyServerUrl(),
     mode: WebAuthnMode.Register,
   });
 
-  // 2. Build passkey validator
   const passkeyValidator = await toPasskeyValidator(publicClient, {
     webAuthnKey,
     entryPoint: ENTRYPOINT,
@@ -109,7 +126,6 @@ export async function createPasskeyWallet(passkeyName: string): Promise<{
     validatorContractVersion: PasskeyValidatorContractVersion.V0_0_3_PATCHED,
   });
 
-  // 3. Create Kernel account (counterfactual — not deployed yet)
   const account = await createKernelAccount(publicClient, {
     plugins: { sudo: passkeyValidator },
     entryPoint: ENTRYPOINT,
@@ -123,13 +139,13 @@ export async function createPasskeyWallet(passkeyName: string): Promise<{
 }
 
 // ── Sign in with existing passkey (Login) ─────────────────────────────
-export async function signInWithPasskey(): Promise<{
+export async function signInWithPasskey(network?: NetworkConfig): Promise<{
   credentialId: string;
   walletAddress: Address;
 }> {
-  const publicClient = getPublicClient();
+  const chain = network ? getChain(network) : celoSepolia;
+  const publicClient = getPublicClient(chain);
 
-  // Login mode — browser prompts for existing credential
   const webAuthnKey = await toWebAuthnKey({
     passkeyName: "Self Agent ID",
     passkeyServerUrl: getPasskeyServerUrl(),
@@ -156,22 +172,26 @@ export async function signInWithPasskey(): Promise<{
 }
 
 // ── Send a UserOperation (gasless) ────────────────────────────────────
-// Only available when Pimlico supports the current chain (mainnet).
-// On testnet, callers should use passport-scan fallback for revocation.
 export async function sendUserOperation(
   target: Address,
-  callData: Hex
+  callData: Hex,
+  network?: NetworkConfig,
 ): Promise<Hex> {
-  if (!isGaslessSupported()) {
+  const chain = network ? getChain(network) : celoMainnet;
+
+  if (chain.testnet) {
     throw new Error(
       "Gasless operations are not available on this network. " +
       "On testnet, use passport scan to deregister your agent instead."
     );
   }
 
-  const publicClient = getPublicClient();
+  if (!getPimlicoApiKey()) {
+    throw new Error("Pimlico API key not configured — gasless operations unavailable.");
+  }
 
-  // Re-authenticate with passkey (Login mode)
+  const publicClient = getPublicClient(chain);
+
   const webAuthnKey = await toWebAuthnKey({
     passkeyName: "Self Agent ID",
     passkeyServerUrl: getPasskeyServerUrl(),
@@ -191,21 +211,18 @@ export async function sendUserOperation(
     kernelVersion: KERNEL_V3_1,
   });
 
-  // Paymaster client
   const paymasterClient = createZeroDevPaymasterClient({
-    chain: CHAIN,
-    transport: http(getPaymasterUrl()),
+    chain,
+    transport: http(getPaymasterUrl(chain)),
   });
 
-  // Kernel account client — bundles + sponsors UserOps
   const kernelClient = createKernelAccountClient({
     account,
-    chain: CHAIN,
-    bundlerTransport: http(getBundlerUrl()),
+    chain,
+    bundlerTransport: http(getBundlerUrl(chain)),
     paymaster: paymasterClient,
   });
 
-  // Send the UserOp
   const txHash = await kernelClient.sendTransaction({
     to: target,
     data: callData,

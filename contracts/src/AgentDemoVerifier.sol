@@ -30,19 +30,16 @@ contract AgentDemoVerifier is EIP712 {
     // ---- Errors ----
 
     error NotVerifiedAgent();
-    error AgeRequirementNotMet(uint256 actual, uint256 required);
     error MetaTxExpired();
     error MetaTxInvalidNonce();
     error MetaTxInvalidSignature();
 
     // ---- Events ----
 
-    /// @notice Emitted when an agent is verified on-chain with credential details
+    /// @notice Emitted when an agent is verified on-chain
     event AgentChainVerified(
         bytes32 indexed agentKey,
-        uint256 indexed agentId,
-        uint256 olderThan,
-        string nationality
+        uint256 indexed agentId
     );
 
     /// @notice Emitted with per-agent and global counters
@@ -69,8 +66,6 @@ contract AgentDemoVerifier is EIP712 {
     /// @param deadline Unix timestamp after which the signature expires
     /// @param signature The EIP-712 signature from the agent
     /// @return agentId The agent's token ID
-    /// @return olderThan The agent's verified minimum age
-    /// @return nationality The agent's verified nationality
     function metaVerifyAgent(
         bytes32 agentKey,
         uint256 nonce,
@@ -78,7 +73,7 @@ contract AgentDemoVerifier is EIP712 {
         bytes calldata signature
     )
         external
-        returns (uint256 agentId, uint256 olderThan, string memory nationality)
+        returns (uint256 agentId)
     {
         // 1. Meta-tx validation
         if (block.timestamp > deadline) revert MetaTxExpired();
@@ -94,24 +89,17 @@ contract AgentDemoVerifier is EIP712 {
             revert MetaTxInvalidSignature();
         }
 
-        // 3. Registry checks
+        // 3. Registry checks — basic verification only, no disclosure requirements
         if (!registry.isVerifiedAgent(agentKey)) revert NotVerifiedAgent();
         agentId = registry.getAgentId(agentKey);
-        SelfAgentRegistry.AgentCredentials memory creds =
-            registry.getAgentCredentials(agentId);
-        if (creds.olderThan < 18) {
-            revert AgeRequirementNotMet(creds.olderThan, 18);
-        }
 
         // 4. Effects
         hasVerified[agentKey] = true;
         verificationCount[agentKey]++;
         totalVerifications++;
-        olderThan = creds.olderThan;
-        nationality = creds.nationality;
 
         // 5. Events
-        emit AgentChainVerified(agentKey, agentId, olderThan, nationality);
+        emit AgentChainVerified(agentKey, agentId);
         emit VerificationCompleted(
             agentKey,
             verificationCount[agentKey],
@@ -125,25 +113,13 @@ contract AgentDemoVerifier is EIP712 {
     /// @notice Read-only access check (no gas, no state change)
     /// @param agentKey The agent's public key (bytes32)
     /// @return agentId The agent's token ID
-    /// @return olderThan The agent's verified minimum age
-    /// @return nationality The agent's verified nationality
     function checkAccess(bytes32 agentKey)
         external
         view
-        returns (uint256 agentId, uint256 olderThan, string memory nationality)
+        returns (uint256 agentId)
     {
         if (!registry.isVerifiedAgent(agentKey)) revert NotVerifiedAgent();
-
         agentId = registry.getAgentId(agentKey);
-        SelfAgentRegistry.AgentCredentials memory creds =
-            registry.getAgentCredentials(agentId);
-
-        if (creds.olderThan < 18) {
-            revert AgeRequirementNotMet(creds.olderThan, 18);
-        }
-
-        olderThan = creds.olderThan;
-        nationality = creds.nationality;
     }
 
     /// @notice Expose the EIP-712 domain separator for client-side signing

@@ -1,23 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { SelfAgentVerifier, SelfAgent, HEADERS } from "@selfxyz/agent-sdk";
+import { getNetwork, NETWORKS, type NetworkId } from "@/lib/network";
 
-const REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_SELF_ENDPOINT!;
-const RPC_URL =
-  process.env.NEXT_PUBLIC_RPC_URL ||
-  "https://forno.celo-sepolia.celo-testnet.org";
 const DEMO_AGENT_PK = process.env.DEMO_AGENT_PRIVATE_KEY;
 
 // In-memory counters (resets on server restart — fine for demo)
 let verificationCount = 0;
 const uniqueHumans = new Set<string>();
 
-const verifier = new SelfAgentVerifier({
-  registryAddress: REGISTRY_ADDRESS,
-  rpcUrl: RPC_URL,
-  maxAgentsPerHuman: 0,
-  includeCredentials: false,
-});
+function resolveNetwork(req: NextRequest): NetworkId {
+  const param = req.nextUrl.searchParams.get("network");
+  if (param && param in NETWORKS) return param as NetworkId;
+  return "celo-sepolia";
+}
 
 export async function POST(req: NextRequest) {
   if (!DEMO_AGENT_PK) {
@@ -26,6 +22,8 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+
+  const network = getNetwork(resolveNetwork(req));
 
   // 1. Extract caller's signature headers
   const signature = req.headers.get(HEADERS.SIGNATURE);
@@ -41,6 +39,13 @@ export async function POST(req: NextRequest) {
   const body = await req.text();
 
   // 2. Demo agent verifies the caller's identity on-chain
+  const verifier = new SelfAgentVerifier({
+    registryAddress: network.registryAddress,
+    rpcUrl: network.rpcUrl,
+    maxAgentsPerHuman: 0,
+    includeCredentials: false,
+  });
+
   const verifyResult = await verifier.verify({
     signature,
     timestamp,
@@ -62,13 +67,13 @@ export async function POST(req: NextRequest) {
   // 3. Demo agent does on-chain sameHuman check
   const demoAgent = new SelfAgent({
     privateKey: DEMO_AGENT_PK,
-    registryAddress: REGISTRY_ADDRESS,
-    rpcUrl: RPC_URL,
+    registryAddress: network.registryAddress,
+    rpcUrl: network.rpcUrl,
   });
 
-  const provider = new ethers.JsonRpcProvider(RPC_URL);
+  const provider = new ethers.JsonRpcProvider(network.rpcUrl);
   const registry = new ethers.Contract(
-    REGISTRY_ADDRESS,
+    network.registryAddress,
     [
       "function getAgentId(bytes32) view returns (uint256)",
       "function sameHuman(uint256, uint256) view returns (bool)",

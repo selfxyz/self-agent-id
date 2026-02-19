@@ -1,17 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SelfAgentVerifier, HEADERS } from "@selfxyz/agent-sdk";
-
-const REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_SELF_ENDPOINT!;
-const RPC_URL =
-  process.env.NEXT_PUBLIC_RPC_URL ||
-  "https://forno.celo-sepolia.celo-testnet.org";
-
-const verifier = new SelfAgentVerifier({
-  registryAddress: REGISTRY_ADDRESS,
-  rpcUrl: RPC_URL,
-  maxAgentsPerHuman: 0,
-  includeCredentials: true,
-});
+import { getNetwork, NETWORKS, type NetworkId } from "@/lib/network";
 
 // ---------------------------------------------------------------------------
 // In-memory census store (portable to Firestore later)
@@ -32,6 +21,22 @@ const census = new Map<string, CensusEntry>();
 // Helpers
 // ---------------------------------------------------------------------------
 
+function resolveNetwork(req: NextRequest): NetworkId {
+  const param = req.nextUrl.searchParams.get("network");
+  if (param && param in NETWORKS) return param as NetworkId;
+  return "celo-sepolia";
+}
+
+function createVerifier(req: NextRequest) {
+  const network = getNetwork(resolveNetwork(req));
+  return new SelfAgentVerifier({
+    registryAddress: network.registryAddress,
+    rpcUrl: network.rpcUrl,
+    maxAgentsPerHuman: 0,
+    includeCredentials: true,
+  });
+}
+
 async function verifyAgent(req: NextRequest, body: string) {
   const signature = req.headers.get(HEADERS.SIGNATURE);
   const timestamp = req.headers.get(HEADERS.TIMESTAMP);
@@ -40,6 +45,7 @@ async function verifyAgent(req: NextRequest, body: string) {
     return { valid: false as const, error: "Missing agent authentication headers" };
   }
 
+  const verifier = createVerifier(req);
   return verifier.verify({
     signature,
     timestamp,
@@ -56,11 +62,9 @@ function computeStats() {
   let ofacClear = 0;
 
   for (const entry of census.values()) {
-    if (entry.nationality) {
-      countryCounts.set(
-        entry.nationality,
-        (countryCounts.get(entry.nationality) || 0) + 1,
-      );
+    if (entry.nationality && entry.nationality.trim()) {
+      const nat = entry.nationality.trim();
+      countryCounts.set(nat, (countryCounts.get(nat) || 0) + 1);
     }
     if (entry.olderThan >= 18) verifiedOver18++;
     if (entry.olderThan >= 21) verifiedOver21++;

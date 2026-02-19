@@ -23,7 +23,8 @@ import {
 } from "lucide-react";
 import CodeBlock from "@/components/CodeBlock";
 import { getServiceSnippets, getAgentSnippets, SERVICE_FEATURES, AGENT_FEATURES } from "@/lib/snippets";
-import { REGISTRY_ADDRESS, REGISTRY_ABI, RPC_URL } from "@/lib/constants";
+import { REGISTRY_ABI } from "@/lib/constants";
+import { useNetwork } from "@/lib/NetworkContext";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
@@ -32,6 +33,7 @@ import { Button } from "@/components/Button";
 type VerifyStatus = "idle" | "loading" | "verified" | "not-registered" | "error";
 
 export default function ExplainerPage() {
+  const { network } = useNetwork();
   const [pubKeyInput, setPubKeyInput] = useState("");
   const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>("idle");
   const [verifyError, setVerifyError] = useState("");
@@ -58,8 +60,8 @@ export default function ExplainerPage() {
     });
   };
 
-  const snippets = getServiceSnippets(REGISTRY_ADDRESS, activeServiceFeatures);
-  const agentSnippets = getAgentSnippets(activeAgentFeatures);
+  const snippets = getServiceSnippets(network.registryAddress, network.rpcUrl, activeServiceFeatures);
+  const agentSnippets = getAgentSnippets(network.registryAddress, network.rpcUrl, activeAgentFeatures);
 
   const handleVerify = async () => {
     const trimmed = pubKeyInput.trim();
@@ -69,8 +71,8 @@ export default function ExplainerPage() {
     setVerifyError("");
 
     try {
-      const provider = new ethers.JsonRpcProvider(RPC_URL);
-      const registry = new ethers.Contract(REGISTRY_ADDRESS, REGISTRY_ABI, provider);
+      const provider = new ethers.JsonRpcProvider(network.rpcUrl);
+      const registry = new ethers.Contract(network.registryAddress, REGISTRY_ABI, provider);
 
       let key = trimmed;
       if (!key.startsWith("0x")) {
@@ -242,10 +244,10 @@ export default function ExplainerPage() {
                 <button
                   key={uc.title}
                   onClick={() => setActiveUseCase(i)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors border ${
                     i === activeUseCase
-                      ? "bg-gradient-to-r from-accent to-accent-2 text-white"
-                      : "bg-surface-2 text-muted hover:text-foreground"
+                      ? "bg-gradient-to-r from-accent to-accent-2 text-white border-transparent"
+                      : "bg-surface-1 text-foreground border-border hover:bg-surface-2"
                   }`}
                 >
                   {uc.title}
@@ -300,10 +302,10 @@ export default function ExplainerPage() {
                 <button
                   key={snippet.title}
                   onClick={() => setActiveAgentSnippet(i)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors border ${
                     i === activeAgentSnippet
-                      ? "bg-gradient-to-r from-accent to-accent-2 text-white"
-                      : "bg-surface-2 text-muted hover:text-foreground"
+                      ? "bg-gradient-to-r from-accent to-accent-2 text-white border-transparent"
+                      : "bg-surface-1 text-foreground border-border hover:bg-surface-2"
                   }`}
                 >
                   {snippet.title}
@@ -768,12 +770,12 @@ interface IHumanProofProvider {
               </a>{" "}
               or the deployed contract on{" "}
               <a
-                href="https://celo-sepolia.blockscout.com/address/0xaC3DF9ABf80d0F5c020C06B04Cced27763355944"
+                href={`${network.blockExplorer}/address/${network.registryAddress}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-accent hover:text-accent-2 underline"
               >
-                Blockscout
+                {network.isTestnet ? "Blockscout" : "Celoscan"}
               </a>
               .
             </p>

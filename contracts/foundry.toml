@@ -18,6 +18,7 @@
   verbosity = 4
 
 [etherscan]
+  celo-mainnet = { key = "${CELOSCAN_API_KEY}", url = "https://api.celoscan.io/api", chain = 42220 }
   celo-sepolia = { key = "${CELOSCAN_API_KEY}", url = "https://celo-sepolia.blockscout.com/api", chain = 11142220 }
 
 [fmt]
@@ -31,5 +32,6 @@
   wrap_comments = true
 
 [rpc_endpoints]
+  celo-mainnet = "https://forno.celo.org"
   celo-sepolia = "https://forno.celo-sepolia.celo-testnet.org"
   localhost = "http://localhost:8545"

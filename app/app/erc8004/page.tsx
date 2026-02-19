@@ -6,8 +6,10 @@ import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import CodeBlock from "@/components/CodeBlock";
+import { useNetwork } from "@/lib/NetworkContext";
 
 export default function ERC8004Page() {
+  const { network } = useNetwork();
   return (
     <main className="min-h-screen max-w-3xl mx-auto px-6 pt-24 pb-12 space-y-12">
       {/* Header */}
@@ -259,19 +261,19 @@ interface IHumanProofProvider {
           <p className="text-muted leading-relaxed">
             We&apos;ve built a complete reference implementation using{" "}
             <a href="https://self.xyz" target="_blank" rel="noopener noreferrer" className="text-foreground hover:text-accent transition-colors font-bold">Self Protocol</a> as the proof provider,
-            deployed on Celo Sepolia. It supports three registration modes (verified wallet,
+            deployed on {network.isTestnet ? "Celo Sepolia" : "Celo"}. It supports three registration modes (verified wallet,
             agent identity, and wallet-free) with full sybil resistance and ZK privacy.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
           <a
-            href="https://celo-sepolia.blockscout.com/address/0xaC3DF9ABf80d0F5c020C06B04Cced27763355944"
+            href={`${network.blockExplorer}/address/${network.registryAddress}`}
             target="_blank"
             rel="noopener noreferrer"
           >
             <Button variant="secondary" size="sm">
               <ExternalLink size={14} />
-              Registry on Blockscout
+              Registry on {network.isTestnet ? "Blockscout" : "Celoscan"}
             </Button>
           </a>
           <a

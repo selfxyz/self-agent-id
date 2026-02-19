@@ -114,7 +114,7 @@ export default function Home() {
       {/* How It Works */}
       <section className="max-w-4xl mx-auto px-6 py-8">
         <div className="flex justify-center mb-8">
-          <MatrixText text="How It Works" fontSize={32} />
+          <h2 className="text-3xl font-bold text-foreground">How It Works</h2>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

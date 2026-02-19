@@ -1,9 +1,13 @@
-import { ExternalLink } from "lucide-react";
+"use client";
 
-const REGISTRY_ADDRESS = "0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b";
-const BLOCKSCOUT_URL = `https://celo-sepolia.blockscout.com/address/${REGISTRY_ADDRESS}`;
+import { ExternalLink } from "lucide-react";
+import { useNetwork } from "@/lib/NetworkContext";
 
 export function Footer() {
+  const { network } = useNetwork();
+
+  const blockscoutUrl = `${network.blockExplorer}/address/${network.registryAddress}`;
+
   return (
     <footer className="border-t border-border bg-surface-1 py-8 px-6">
       <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-muted">
@@ -32,14 +36,19 @@ export function Footer() {
           </a>
         </div>
         <a
-          href={BLOCKSCOUT_URL}
+          href={blockscoutUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-1.5 hover:text-foreground transition-colors"
         >
           <span className="font-mono text-xs">
-            {REGISTRY_ADDRESS.slice(0, 6)}...{REGISTRY_ADDRESS.slice(-4)}
+            {network.registryAddress
+              ? `${network.registryAddress.slice(0, 6)}...${network.registryAddress.slice(-4)}`
+              : "Not deployed"}
           </span>
+          {network.isTestnet && (
+            <span className="text-xs text-amber-400">(testnet)</span>
+          )}
           <ExternalLink size={12} />
         </a>
       </div>

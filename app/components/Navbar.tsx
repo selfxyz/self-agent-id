@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
+import { useNetwork } from "@/lib/NetworkContext";
+import { getNetwork, isNetworkReady } from "@/lib/network";
 
 const links = [
   { href: "/register", label: "Register" },
@@ -17,6 +19,10 @@ const links = [
 export function Navbar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const { networkId, setNetworkId } = useNetwork();
+
+  const mainnetReady = isNetworkReady(getNetwork("celo-mainnet"));
+  const sepoliaReady = isNetworkReady(getNetwork("celo-sepolia"));
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 h-[60px] backdrop-blur-md bg-background/80 border-b border-border">
@@ -53,14 +59,54 @@ export function Navbar() {
           ))}
         </div>
 
-        {/* Mobile hamburger */}
-        <button
-          onClick={() => setOpen(!open)}
-          className="md:hidden text-muted hover:text-foreground p-1"
-          aria-label="Toggle menu"
-        >
-          {open ? <X size={20} /> : <Menu size={20} />}
-        </button>
+        {/* Network toggle + Mobile hamburger */}
+        <div className="flex items-center gap-2">
+          {/* Segmented network toggle */}
+          <div className="flex rounded-full border border-border bg-surface-1 overflow-hidden text-xs font-medium">
+            <button
+              onClick={() => mainnetReady && setNetworkId("celo-mainnet")}
+              disabled={!mainnetReady}
+              className={`flex items-center gap-1 px-2.5 py-1 transition-colors ${
+                networkId === "celo-mainnet"
+                  ? "bg-surface-2 text-foreground"
+                  : mainnetReady
+                    ? "text-muted hover:text-foreground hover:bg-surface-2/50"
+                    : "text-muted/40 cursor-not-allowed"
+              }`}
+              title={mainnetReady ? "Switch to Celo mainnet" : "Celo mainnet coming soon"}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                networkId === "celo-mainnet" ? "bg-emerald-400" : "bg-emerald-400/30"
+              }`} />
+              Celo
+            </button>
+            <button
+              onClick={() => sepoliaReady && setNetworkId("celo-sepolia")}
+              disabled={!sepoliaReady}
+              className={`flex items-center gap-1 px-2.5 py-1 transition-colors ${
+                networkId === "celo-sepolia"
+                  ? "bg-surface-2 text-foreground"
+                  : sepoliaReady
+                    ? "text-muted hover:text-foreground hover:bg-surface-2/50"
+                    : "text-muted/40 cursor-not-allowed"
+              }`}
+              title="Switch to Celo Sepolia testnet"
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                networkId === "celo-sepolia" ? "bg-amber-400" : "bg-amber-400/30"
+              }`} />
+              Sepolia
+            </button>
+          </div>
+
+          <button
+            onClick={() => setOpen(!open)}
+            className="md:hidden text-muted hover:text-foreground p-1"
+            aria-label="Toggle menu"
+          >
+            {open ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile dropdown */}

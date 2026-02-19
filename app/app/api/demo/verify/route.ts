@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SelfAgentVerifier, HEADERS } from "@selfxyz/agent-sdk";
-
-const REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_SELF_ENDPOINT!;
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://forno.celo-sepolia.celo-testnet.org";
-
-const verifier = new SelfAgentVerifier({
-  registryAddress: REGISTRY_ADDRESS,
-  rpcUrl: RPC_URL,
-  maxAgentsPerHuman: 0, // disable sybil check for demo
-  includeCredentials: true,
-});
+import { getNetwork, NETWORKS, type NetworkId } from "@/lib/network";
 
 // In-memory verification counter (resets on server restart — fine for demo)
 let verificationCount = 0;
+
+function resolveNetwork(req: NextRequest): NetworkId {
+  const param = req.nextUrl.searchParams.get("network");
+  if (param && param in NETWORKS) return param as NetworkId;
+  return "celo-sepolia";
+}
 
 export async function POST(req: NextRequest) {
   const signature = req.headers.get(HEADERS.SIGNATURE);
@@ -24,6 +21,14 @@ export async function POST(req: NextRequest) {
       { status: 401 }
     );
   }
+
+  const network = getNetwork(resolveNetwork(req));
+  const verifier = new SelfAgentVerifier({
+    registryAddress: network.registryAddress,
+    rpcUrl: network.rpcUrl,
+    maxAgentsPerHuman: 0, // disable sybil check for demo
+    includeCredentials: true,
+  });
 
   const body = await req.text();
 

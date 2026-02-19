@@ -128,7 +128,7 @@ ${body}
 });`;
 }
 
-function buildServicePython(f: Set<string>): string {
+function buildServicePython(f: Set<string>, registryAddress: string = "0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b", rpcUrl: string = "https://forno.celo-sepolia.celo-testnet.org"): string {
   const creds = needsCreds(f);
   const sybil = f.has("sybil");
   const regAge = f.has("regAge");
@@ -256,9 +256,9 @@ from web3 import Web3
 from eth_account.messages import encode_defunct
 
 w3 = Web3(Web3.HTTPProvider(
-    "https://forno.celo-sepolia.celo-testnet.org"
+    "${rpcUrl}"
 ))
-REGISTRY = "0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b"
+REGISTRY = "${registryAddress}"
 REGISTRY_ABI = [
 ${abiEntries}
 ]
@@ -278,7 +278,7 @@ def verify_agent(address: str, signature: str, ts: str,
 ${body}`;
 }
 
-function buildServiceRust(f: Set<string>): string {
+function buildServiceRust(f: Set<string>, registryAddress: string = "0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b", rpcUrl: string = "https://forno.celo-sepolia.celo-testnet.org"): string {
   const creds = needsCreds(f);
   const sybil = f.has("sybil");
   const regAge = f.has("regAge");
@@ -361,9 +361,9 @@ async fn verify_agent(
 
     // 3. Check on-chain
     let provider = ProviderBuilder::new()
-        .on_http("https://forno.celo-sepolia.celo-testnet.org".parse().unwrap());
+        .on_http("${rpcUrl}".parse().unwrap());
     let registry = ISelfAgentRegistry::new(
-        "0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b".parse().unwrap(),
+        "${registryAddress}".parse().unwrap(),
         &provider,
     );
     let key = FixedBytes::left_padding_from(&agent_address.0 .0);
@@ -375,7 +375,7 @@ ${checks}
 
 // ── Agent → Agent builders ──
 
-function buildAgentAgentTS(f: Set<string>): string {
+function buildAgentAgentTS(f: Set<string>, registryAddress: string = "0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b", rpcUrl: string = "https://forno.celo-sepolia.celo-testnet.org"): string {
   const mutual = f.has("mutual");
   const sameHuman = f.has("sameHuman");
   const diffHuman = f.has("diffHuman");
@@ -407,10 +407,10 @@ function buildAgentAgentTS(f: Set<string>): string {
     verifyBody += `
 
   const provider = new ethers.JsonRpcProvider(
-    "https://forno.celo-sepolia.celo-testnet.org"
+    "${rpcUrl}"
   );
   const registry = new ethers.Contract(
-    "0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b",
+    "${registryAddress}",
     ["function sameHuman(uint256,uint256) view returns (bool)"],
     provider,
   );`;
@@ -450,7 +450,7 @@ ${verifyBody}
 }`;
 }
 
-function buildAgentAgentSolidity(f: Set<string>): string {
+function buildAgentAgentSolidity(f: Set<string>, registryAddress: string = "0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b"): string {
   const diffHuman = f.has("diffHuman");
   const sameHuman = f.has("sameHuman");
   const mutual = f.has("mutual");
@@ -499,7 +499,7 @@ ${iface}
 
 contract AgentCollaboration {
     ISelfAgentRegistry immutable registry =
-        ISelfAgentRegistry(0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b);
+        ISelfAgentRegistry(${registryAddress});
 
 ${modifier}
 
@@ -515,7 +515,7 @@ ${modifier}
 
 // ── Agent → Chain builder ──
 
-function buildAgentChainSolidity(f: Set<string>): string {
+function buildAgentChainSolidity(f: Set<string>, registryAddress: string = "0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b"): string {
   const sybil = f.has("sybil");
   const creds = needsCreds(f);
   const regAge = f.has("regAge");
@@ -583,7 +583,7 @@ ${iface}
 
 contract MyProtocol {
     ISelfAgentRegistry immutable registry =
-        ISelfAgentRegistry(0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b);
+        ISelfAgentRegistry(${registryAddress});
 ${rateLimitStorage}
     modifier onlyVerifiedAgent() {
 ${modifierBody}
@@ -949,13 +949,13 @@ const agent = new SelfAgent({
 "`;
 }
 
-function buildSubmitTxTS(): string {
+function buildSubmitTxTS(rpcUrl: string): string {
   return `import { ethers } from "ethers";
 
 // Your agent wallet — fund this address with gas
 const wallet = new ethers.Wallet(
   process.env.AGENT_PRIVATE_KEY,
-  new ethers.JsonRpcProvider("https://forno.celo-sepolia.celo-testnet.org")
+  new ethers.JsonRpcProvider("${rpcUrl}")
 );
 
 console.log("Agent address:", wallet.address);
@@ -970,12 +970,12 @@ await tx.wait();
 // Contract checks msg.sender against the registry automatically`;
 }
 
-function buildSubmitTxPython(): string {
+function buildSubmitTxPython(rpcUrl: string): string {
   return `from web3 import Web3
 import os
 
 w3 = Web3(Web3.HTTPProvider(
-    "https://forno.celo-sepolia.celo-testnet.org"
+    "${rpcUrl}"
 ))
 account = w3.eth.account.from_key(os.environ["AGENT_PRIVATE_KEY"])
 print("Agent address:", account.address)
@@ -1000,7 +1000,7 @@ print("Confirmed in block:", receipt["blockNumber"])
 # Contract checks msg.sender against the registry automatically`;
 }
 
-function buildSubmitTxRust(): string {
+function buildSubmitTxRust(rpcUrl: string): string {
   return `use alloy::providers::ProviderBuilder;
 use alloy::signers::local::PrivateKeySigner;
 use alloy::sol;
@@ -1021,7 +1021,7 @@ async fn main() -> eyre::Result<()> {
 
     let provider = ProviderBuilder::new()
         .wallet(signer)
-        .on_http("https://forno.celo-sepolia.celo-testnet.org".parse()?);
+        .on_http("${rpcUrl}".parse()?);
 
     let contract = IMyProtocol::new(
         CONTRACT_ADDRESS.parse()?,
@@ -1037,7 +1037,7 @@ async fn main() -> eyre::Result<()> {
 }`;
 }
 
-function buildSubmitTxSolidity(): string {
+function buildSubmitTxSolidity(registryAddress: string): string {
   return `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
@@ -1049,7 +1049,7 @@ interface ISelfAgentRegistry {
 
 contract MyProtocol {
     ISelfAgentRegistry immutable registry =
-        ISelfAgentRegistry(0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b);
+        ISelfAgentRegistry(${registryAddress});
 
     event AgentActed(address indexed agent, bytes data);
 
@@ -1075,8 +1075,8 @@ contract MyProtocol {
 // ============================================================
 
 export function getServiceSnippets(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _contractAddress?: string,
+  registryAddress: string = "0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b",
+  rpcUrl: string = "https://forno.celo-sepolia.celo-testnet.org",
   features?: Set<string>,
 ): UseCaseSnippets[] {
   const f = features || new Set<string>();
@@ -1089,8 +1089,8 @@ export function getServiceSnippets(
       flow: "npm install @selfxyz/agent-sdk \u2192 Create verifier \u2192 Add middleware \u2192 Done",
       snippets: [
         { label: "TypeScript (SDK)", language: "typescript", code: buildServiceTS(f) },
-        { label: "Python", language: "python", code: buildServicePython(f) },
-        { label: "Rust", language: "rust", code: buildServiceRust(f) },
+        { label: "Python", language: "python", code: buildServicePython(f, registryAddress, rpcUrl) },
+        { label: "Rust", language: "rust", code: buildServiceRust(f, registryAddress, rpcUrl) },
       ],
     },
     {
@@ -1099,8 +1099,8 @@ export function getServiceSnippets(
         "Verify a peer agent is human-backed before collaborating. Prevents sybil attacks in multi-agent systems.",
       flow: "Receive signed message \u2192 Verify via SDK \u2192 Check identity \u2192 Collaborate",
       snippets: [
-        { label: "TypeScript (SDK)", language: "typescript", code: buildAgentAgentTS(f) },
-        { label: "Solidity", language: "solidity", code: buildAgentAgentSolidity(f) },
+        { label: "TypeScript (SDK)", language: "typescript", code: buildAgentAgentTS(f, registryAddress, rpcUrl) },
+        { label: "Solidity", language: "solidity", code: buildAgentAgentSolidity(f, registryAddress) },
       ],
     },
     {
@@ -1109,13 +1109,17 @@ export function getServiceSnippets(
         "Gate your smart contract so only human-backed agents can call it. The contract derives the agent key from msg.sender and checks the registry.",
       flow: "Agent calls your contract \u2192 Modifier derives key from msg.sender \u2192 Checks registry \u2192 Executes",
       snippets: [
-        { label: "Solidity", language: "solidity", code: buildAgentChainSolidity(f) },
+        { label: "Solidity", language: "solidity", code: buildAgentChainSolidity(f, registryAddress) },
       ],
     },
   ];
 }
 
-export function getAgentSnippets(features?: Set<string>): UseCaseSnippets[] {
+export function getAgentSnippets(
+  registryAddress: string = "0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b",
+  rpcUrl: string = "https://forno.celo-sepolia.celo-testnet.org",
+  features?: Set<string>,
+): UseCaseSnippets[] {
   const f = features || new Set<string>();
 
   return [
@@ -1196,10 +1200,10 @@ res = signed_request("POST", "https://api.example.com/data",
         "Your agent address is a real Ethereum wallet. Fund it with gas and it can call smart contracts directly. Contracts verify your agent on-chain via msg.sender.",
       flow: "Fund agent wallet with gas \u2192 Agent calls contract \u2192 Contract checks registry \u2192 Action proceeds",
       snippets: [
-        { label: "TypeScript", language: "typescript", code: buildSubmitTxTS() },
-        { label: "Python", language: "python", code: buildSubmitTxPython() },
-        { label: "Rust", language: "rust", code: buildSubmitTxRust() },
-        { label: "Solidity (Contract)", language: "solidity", code: buildSubmitTxSolidity() },
+        { label: "TypeScript", language: "typescript", code: buildSubmitTxTS(rpcUrl) },
+        { label: "Python", language: "python", code: buildSubmitTxPython(rpcUrl) },
+        { label: "Rust", language: "rust", code: buildSubmitTxRust(rpcUrl) },
+        { label: "Solidity (Contract)", language: "solidity", code: buildSubmitTxSolidity(registryAddress) },
       ],
     },
     {

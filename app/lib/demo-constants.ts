@@ -1,10 +1,10 @@
 import { ethers } from "ethers";
 
-// Pre-registered demo agent on Celo Sepolia
-export const DEMO_AGENT_ADDRESS = "0x83fa4380903fecb801F4e123835664973001ff00";
+// Pre-registered demo agent (registered on both Celo mainnet and Sepolia)
+export const DEMO_AGENT_ADDRESS = "0xcfCACe4011fF8567cf2ED355116b2A7Dc2dEAbbA";
 export const DEMO_AGENT_KEY = ethers.zeroPadValue(DEMO_AGENT_ADDRESS, 32);
 
-// Google Cloud Function URLs (set via env vars after deploy)
+// Google Cloud Function URLs — legacy env vars (testnet)
 export const DEMO_SERVICE_URL = process.env.NEXT_PUBLIC_DEMO_SERVICE_URL || "";
 export const DEMO_AGENT_URL = process.env.NEXT_PUBLIC_DEMO_AGENT_URL || "";
 
@@ -22,7 +22,7 @@ export const TESTS = [
   {
     id: "gate" as const,
     title: "Agent-to-Chain",
-    description: "Agent signs an EIP-712 meta-transaction. A relayer submits it to the AgentDemoVerifier contract on Celo Sepolia, which verifies the agent\u2019s signature on-chain, checks credentials, and writes state \u2014 with a Blockscout link to prove it. Rate-limited to 3 per hour per human.",
+    description: "Agent signs an EIP-712 meta-transaction. A relayer submits it to the AgentDemoVerifier contract, which verifies the agent\u2019s signature on-chain, checks credentials, and writes state \u2014 with an explorer link to prove it. Rate-limited to 3 per hour per human.",
   },
 ] as const;
 

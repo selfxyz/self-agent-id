@@ -21,13 +21,12 @@ import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import {
-  REGISTRY_ADDRESS,
   REGISTRY_ABI,
-  RPC_URL,
-  AGENT_DEMO_VERIFIER_ADDRESS,
   AGENT_DEMO_VERIFIER_ABI,
 } from "@/lib/constants";
-import { TESTS, DEMO_SERVICE_URL, DEMO_AGENT_URL } from "@/lib/demo-constants";
+import { useNetwork } from "@/lib/NetworkContext";
+import type { NetworkConfig } from "@/lib/network";
+import { TESTS } from "@/lib/demo-constants";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -274,17 +273,18 @@ function ConsoleLog({ logs }: { logs: LogEntry[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Code snippets for "View Code"
+// Code snippets for "View Code" (generated dynamically per network)
 // ---------------------------------------------------------------------------
 
-const SERVICE_CODE = `import { SelfAgent } from "@selfxyz/agent-sdk";
+function getServiceCode(net: NetworkConfig): string {
+  return `import { SelfAgent } from "@selfxyz/agent-sdk";
 
-const CENSUS_SERVICE = "${DEMO_SERVICE_URL || "https://agent-id-demo-service-<hash>-uc.a.run.app"}";
+const CENSUS_SERVICE = "${net.demoServiceUrl || "https://agent-id-demo-service-<hash>-uc.a.run.app"}";
 
 const agent = new SelfAgent({
   privateKey: process.env.AGENT_PRIVATE_KEY,
-  registryAddress: "${REGISTRY_ADDRESS}",
-  rpcUrl: "${RPC_URL}",
+  registryAddress: "${net.registryAddress}",
+  rpcUrl: "${net.rpcUrl}",
 });
 
 // 1. Verify agent + get credentials
@@ -303,10 +303,12 @@ const censusRes = await agent.fetch(CENSUS_SERVICE + "/census", {
 const statsRes = await agent.fetch(CENSUS_SERVICE + "/census");
 const stats = await statsRes.json();
 // stats.topCountries, stats.verifiedOver18, stats.ofacClear`;
+}
 
-const PEER_CODE = `import { SelfAgent } from "@selfxyz/agent-sdk";
+function getPeerCode(net: NetworkConfig): string {
+  return `import { SelfAgent } from "@selfxyz/agent-sdk";
 
-const DEMO_AGENT = "${DEMO_AGENT_URL || "https://agent-id-demo-agent-<hash>-uc.a.run.app"}";
+const DEMO_AGENT = "${net.demoAgentUrl || "https://agent-id-demo-agent-<hash>-uc.a.run.app"}";
 
 // Client: your agent signs a request to the demo agent
 const res = await myAgent.fetch(DEMO_AGENT, {
@@ -324,8 +326,10 @@ const sameHuman = await registry.sameHuman(demoAgentId, callerAgentId);
 
 // Demo agent signs its response back
 const responseHeaders = await demoAgent.signRequest("POST", url, responseBody);`;
+}
 
-const GATE_CODE = `import { ethers } from "ethers";
+function getGateCode(net: NetworkConfig): string {
+  return `import { ethers } from "ethers";
 
 // 1. Read nonce from contract
 const nonce = await verifier.nonces(agentKey);
@@ -333,8 +337,8 @@ const nonce = await verifier.nonces(agentKey);
 // 2. Sign EIP-712 typed data
 const domain = {
   name: "AgentDemoVerifier", version: "1",
-  chainId: 11142220,
-  verifyingContract: AGENT_DEMO_VERIFIER_ADDRESS,
+  chainId: ${net.chainId},
+  verifyingContract: "${net.agentDemoVerifierAddress}",
 };
 const types = {
   MetaVerify: [
@@ -353,17 +357,11 @@ const res = await agent.fetch("/api/demo/chain-verify", {
   body: JSON.stringify({ agentKey, nonce, deadline, eip712Signature: sig }),
 });
 // res: { txHash, blockNumber, explorerUrl, rateLimitRemaining }`;
+}
 
 // ---------------------------------------------------------------------------
-// EIP-712 domain + types for AgentDemoVerifier
+// EIP-712 types for AgentDemoVerifier (domain is built per-network)
 // ---------------------------------------------------------------------------
-
-const EIP712_DOMAIN = {
-  name: "AgentDemoVerifier",
-  version: "1",
-  chainId: 11142220n,
-  verifyingContract: AGENT_DEMO_VERIFIER_ADDRESS as `0x${string}`,
-};
 
 const EIP712_TYPES = {
   MetaVerify: [
@@ -385,9 +383,12 @@ async function runServiceTest(
   agentLabel: string,
   dispatch: Dispatch,
   log: LogFn,
+  net: NetworkConfig,
 ) {
   const id = "service";
-  const serviceUrl = DEMO_SERVICE_URL || window.location.origin + "/api/demo";
+  const baseUrl = net.demoServiceUrl || window.location.origin + "/api/demo";
+  const networkSuffix = net.demoServiceUrl ? "" : `?network=${net.id}`;
+  const serviceUrl = (path: string) => baseUrl + path + networkSuffix;
   const steps = [
     "ECDSA sign + POST /verify...",
     "POST /census — contributing credentials...",
@@ -407,7 +408,7 @@ async function runServiceTest(
     await new Promise((r) => setTimeout(r, 0));
     const t0 = performance.now();
 
-    const verifyRes = await agent.fetch(serviceUrl + "/verify", {
+    const verifyRes = await agent.fetch(serviceUrl("/verify"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "demo-verification", timestamp: Date.now() }),
@@ -439,7 +440,7 @@ async function runServiceTest(
     log(id, "Contributing credentials to census...");
     const t1 = performance.now();
 
-    const censusRes = await agent.fetch(serviceUrl + "/census", {
+    const censusRes = await agent.fetch(serviceUrl("/census"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "contribute" }),
@@ -470,7 +471,7 @@ async function runServiceTest(
     log(id, "Signing GET /census request...");
     const t2 = performance.now();
 
-    const statsRes = await agent.fetch(serviceUrl + "/census");
+    const statsRes = await agent.fetch(serviceUrl("/census"));
     const statsElapsed = Math.round(performance.now() - t2);
     t.push(statsElapsed);
     const stats = await statsRes.json();
@@ -516,11 +517,11 @@ async function runServiceTest(
             <p className="text-muted">
               Census: <span className="text-foreground">{stats.totalAgents} agents</span>
             </p>
-            {stats.topCountries?.length > 0 && (
+            {stats.topCountries?.filter((c: { country: string }) => c.country?.trim()).length > 0 && (
               <p className="text-muted">
                 Top countries:{" "}
                 <span className="text-foreground">
-                  {stats.topCountries.map((c: { country: string; count: number }) => `${c.country} (${c.count})`).join(", ")}
+                  {stats.topCountries.filter((c: { country: string }) => c.country?.trim()).map((c: { country: string; count: number }) => `${c.country} (${c.count})`).join(", ")}
                 </span>
               </p>
             )}
@@ -552,9 +553,10 @@ async function runPeerTest(
   agentLabel: string,
   dispatch: Dispatch,
   log: LogFn,
+  net: NetworkConfig,
 ) {
   const id = "peer";
-  const agentUrl = DEMO_AGENT_URL || window.location.origin + "/api/demo/agent-to-agent";
+  const agentUrl = net.demoAgentUrl || window.location.origin + `/api/demo/agent-to-agent?network=${net.id}`;
   const steps = [
     "ECDSA sign + POST to demo agent...",
     "Demo agent: ecrecover \u2192 on-chain verify + sameHuman()...",
@@ -680,6 +682,7 @@ async function runGateTest(
   agentLabel: string,
   dispatch: Dispatch,
   log: LogFn,
+  net: NetworkConfig,
 ) {
   const id = "gate";
   const steps = [
@@ -699,9 +702,9 @@ async function runGateTest(
     await new Promise((r) => setTimeout(r, 0));
 
     const agentKey = ethers.zeroPadValue(agent.address, 32);
-    const provider = new ethers.JsonRpcProvider(RPC_URL);
+    const provider = new ethers.JsonRpcProvider(net.rpcUrl);
     const verifierContract = new ethers.Contract(
-      AGENT_DEMO_VERIFIER_ADDRESS,
+      net.agentDemoVerifierAddress,
       AGENT_DEMO_VERIFIER_ABI,
       provider,
     );
@@ -712,16 +715,16 @@ async function runGateTest(
 
     const deadline = Math.floor(Date.now() / 1000) + 300;
     log(id, "Constructing EIP-712 typed data (MetaVerify)");
-    log(id, `domain: AgentDemoVerifier v1, chainId=11142220, deadline=${deadline}`);
+    log(id, `domain: AgentDemoVerifier v1, chainId=${net.chainId}, deadline=${deadline}`);
     const wallet = new ethers.Wallet(privateKey);
 
     log(id, "Signing EIP-712 with agent key (secp256k1)...");
     const eip712Signature = await wallet.signTypedData(
       {
-        name: EIP712_DOMAIN.name,
-        version: EIP712_DOMAIN.version,
-        chainId: EIP712_DOMAIN.chainId,
-        verifyingContract: EIP712_DOMAIN.verifyingContract,
+        name: "AgentDemoVerifier",
+        version: "1",
+        chainId: BigInt(net.chainId),
+        verifyingContract: net.agentDemoVerifierAddress as `0x${string}`,
       },
       EIP712_TYPES,
       { agentKey, nonce, deadline },
@@ -744,6 +747,7 @@ async function runGateTest(
         nonce: nonce.toString(),
         deadline,
         eip712Signature,
+        networkId: net.id,
       }),
     });
 
@@ -793,7 +797,7 @@ async function runGateTest(
         steps: allDone(steps, t),
         result: (
           <div className="space-y-1 text-xs">
-            <p className="text-accent-success font-bold text-sm">Verified On-Chain (Celo Sepolia)</p>
+            <p className="text-accent-success font-bold text-sm">Verified On-Chain ({net.isTestnet ? "Celo Sepolia" : "Celo Mainnet"})</p>
             <p className="text-muted">
               Tx:{" "}
               <a
@@ -858,6 +862,7 @@ async function runGateTest(
 
 export default function DemoPage() {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const { network } = useNetwork();
   const agentRef = useRef<SelfAgent | null>(null);
   const privateKeyRef = useRef<string>("");
   const autoLoadedRef = useRef(false);
@@ -885,8 +890,8 @@ export default function DemoPage() {
 
       const agent = new SelfAgent({
         privateKey: key,
-        registryAddress: REGISTRY_ADDRESS,
-        rpcUrl: RPC_URL,
+        registryAddress: network.registryAddress,
+        rpcUrl: network.rpcUrl,
       });
 
       agentRef.current = agent;
@@ -895,11 +900,11 @@ export default function DemoPage() {
       bootLog(`Agent address: ${shortAddr(agent.address)}`);
       await delay(100);
 
-      const rpcHost = RPC_URL.replace(/^https?:\/\//, "").split("/")[0];
-      bootLog(`Connecting to Celo Sepolia (RPC: ${rpcHost})...`);
+      const rpcHost = network.rpcUrl.replace(/^https?:\/\//, "").split("/")[0];
+      bootLog(`Connecting to ${network.isTestnet ? "Celo Sepolia" : "Celo"} (RPC: ${rpcHost})...`);
       await delay(100);
 
-      bootLog(`Checking on-chain registry (${shortAddr(REGISTRY_ADDRESS)})...`);
+      bootLog(`Checking on-chain registry (${shortAddr(network.registryAddress)})...`);
       const registered = await agent.isRegistered();
       if (!registered) {
         bootLog("ERROR: Agent not found in registry. Register at /register first.");
@@ -915,8 +920,8 @@ export default function DemoPage() {
       await delay(100);
 
       // Check proof provider
-      const provider = new ethers.JsonRpcProvider(RPC_URL);
-      const contract = new ethers.Contract(REGISTRY_ADDRESS, REGISTRY_ABI, provider);
+      const provider = new ethers.JsonRpcProvider(network.rpcUrl);
+      const contract = new ethers.Contract(network.registryAddress, REGISTRY_ABI, provider);
 
       try {
         const providerAddr = await contract.agentProofProvider(info.agentId);
@@ -970,8 +975,8 @@ export default function DemoPage() {
       await delay(80);
 
       // Log target endpoints
-      const serviceHost = DEMO_SERVICE_URL ? new URL(DEMO_SERVICE_URL).host : "localhost";
-      const agentHost = DEMO_AGENT_URL ? new URL(DEMO_AGENT_URL).host : "localhost";
+      const serviceHost = network.demoServiceUrl ? new URL(network.demoServiceUrl).host : "localhost";
+      const agentHost = network.demoAgentUrl ? new URL(network.demoAgentUrl).host : "localhost";
       bootLog(`Demo service endpoint: ${serviceHost}`);
       bootLog(`Demo agent endpoint: ${agentHost}`);
       await delay(80);
@@ -995,17 +1000,22 @@ export default function DemoPage() {
         error: err instanceof Error ? err.message : "Failed to load agent",
       });
     }
-  }, [state.privateKey]);
+  }, [state.privateKey, network]);
 
-  // Auto-fill from sessionStorage (set by register page "Try Demo" button)
+  // Auto-fill from sessionStorage ONLY when coming from the register page's "Try Demo" button.
+  // The register page sets both "demo-agent-key" and "demo-agent-from-register".
+  // We only read the key if the flag is present, then clear both immediately.
   const pendingAutoLoad = useRef<string | null>(null);
 
   useEffect(() => {
     if (autoLoadedRef.current) return;
+    const fromRegister = sessionStorage.getItem("demo-agent-from-register");
     const stored = sessionStorage.getItem("demo-agent-key");
-    if (stored) {
+    // Always clean up both keys regardless
+    sessionStorage.removeItem("demo-agent-key");
+    sessionStorage.removeItem("demo-agent-from-register");
+    if (fromRegister && stored) {
       autoLoadedRef.current = true;
-      sessionStorage.removeItem("demo-agent-key");
       pendingAutoLoad.current = stored;
       dispatch({ type: "SET_KEY", key: stored });
     }
@@ -1046,18 +1056,18 @@ export default function DemoPage() {
     const agentLabel = `${shortAddr(agent.address)} (ID #${state.agent.agentId}${state.agent.credentials ? `, ${state.agent.credentials.olderThan.toString()}+ ${state.agent.credentials.nationality}` : ""})`;
 
     await Promise.all([
-      runServiceTest(agent, agentLabel, dispatch, log),
-      runPeerTest(agent, agentLabel, dispatch, log),
-      runGateTest(agent, pk, agentLabel, dispatch, log),
+      runServiceTest(agent, agentLabel, dispatch, log, network),
+      runPeerTest(agent, agentLabel, dispatch, log, network),
+      runGateTest(agent, pk, agentLabel, dispatch, log, network),
     ]);
-  }, [state.agent, log]);
+  }, [state.agent, log, network]);
 
   const runFakeAgent = useCallback(async () => {
     const fakeWallet = ethers.Wallet.createRandom();
     const fakeAgent = new SelfAgent({
       privateKey: fakeWallet.privateKey,
-      registryAddress: REGISTRY_ADDRESS,
-      rpcUrl: RPC_URL,
+      registryAddress: network.registryAddress,
+      rpcUrl: network.rpcUrl,
     });
 
     dispatch({ type: "START_TESTS" });
@@ -1072,11 +1082,11 @@ export default function DemoPage() {
     log("gate", `Generated random key: ${shortAddr(fakeWallet.address)} (unregistered)`);
 
     await Promise.all([
-      runServiceTest(fakeAgent, fakeLabel, dispatch, log),
-      runPeerTest(fakeAgent, fakeLabel, dispatch, log),
-      runGateTest(fakeAgent, fakeWallet.privateKey, fakeLabel, dispatch, log),
+      runServiceTest(fakeAgent, fakeLabel, dispatch, log, network),
+      runPeerTest(fakeAgent, fakeLabel, dispatch, log, network),
+      runGateTest(fakeAgent, fakeWallet.privateKey, fakeLabel, dispatch, log, network),
     ]);
-  }, [log]);
+  }, [log, network]);
 
   // ---- Render ----
 
@@ -1234,10 +1244,10 @@ export default function DemoPage() {
             error={state.tests[test.id].error}
             codeSnippet={
               test.id === "service"
-                ? SERVICE_CODE
+                ? getServiceCode(network)
                 : test.id === "peer"
-                  ? PEER_CODE
-                  : GATE_CODE
+                  ? getPeerCode(network)
+                  : getGateCode(network)
             }
             codeLanguage="typescript"
           />

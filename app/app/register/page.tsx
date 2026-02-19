@@ -27,7 +27,8 @@ import {
 } from "lucide-react";
 import MatrixRain from "@/components/MatrixRain";
 import { connectWallet } from "@/lib/wallet";
-import { REGISTRY_ADDRESS, RPC_URL, REGISTRY_ABI } from "@/lib/constants";
+import { REGISTRY_ABI } from "@/lib/constants";
+import { useNetwork } from "@/lib/NetworkContext";
 import { getAgentSnippets, AGENT_FEATURES } from "@/lib/snippets";
 import CodeBlock from "@/components/CodeBlock";
 import { Card } from "@/components/Card";
@@ -60,6 +61,7 @@ function getConfigIndex(disc: { minimumAge: number; ofac: boolean }): string {
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { network } = useNetwork();
   const [mode, setMode] = useState<Mode>("advanced");
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [selfApp, setSelfApp] = useState<ReturnType<
@@ -116,8 +118,8 @@ export default function RegisterPage() {
 
   const checkIfRegistered = async (address: string): Promise<boolean> => {
     try {
-      const provider = new ethers.JsonRpcProvider(RPC_URL);
-      const registry = new ethers.Contract(REGISTRY_ADDRESS, REGISTRY_ABI, provider);
+      const provider = new ethers.JsonRpcProvider(network.rpcUrl);
+      const registry = new ethers.Contract(network.registryAddress, REGISTRY_ABI, provider);
       const agentKey = ethers.zeroPadValue(address, 32);
       const isVerified = await registry.isVerifiedAgent(agentKey);
       return isVerified;
@@ -141,10 +143,10 @@ export default function RegisterPage() {
       version: 2,
       appName: process.env.NEXT_PUBLIC_SELF_APP_NAME || "Self Agent ID",
       scope: process.env.NEXT_PUBLIC_SELF_SCOPE_SEED || "self-agent-id",
-      endpoint: REGISTRY_ADDRESS,
+      endpoint: network.registryAddress,
       logoBase64: "https://i.postimg.cc/mrmVf9hm/self.png",
       userId,
-      endpointType: "staging_celo",
+      endpointType: network.selfEndpointType,
       userIdType: "hex",
       userDefinedData,
       disclosures: disc,
@@ -167,7 +169,7 @@ export default function RegisterPage() {
 
   const handleConnect = async () => {
     setErrorMessage("");
-    const address = await connectWallet();
+    const address = await connectWallet(network);
     if (!address) return;
 
     setWalletAddress(address);
@@ -256,7 +258,7 @@ export default function RegisterPage() {
     try {
       // 1. Create passkey → Kernel smart wallet (counterfactual)
       const { credentialId, walletAddress: swAddress } =
-        await createPasskeyWallet("Self Agent ID");
+        await createPasskeyWallet("Self Agent ID", network);
       setSmartWalletAddress(swAddress);
 
       // 2. Generate agent keypair
@@ -299,7 +301,15 @@ export default function RegisterPage() {
   };
 
   const handleError = (error: unknown) => {
-    const msg = error instanceof Error ? error.message : String(error);
+    let msg: string;
+    if (error instanceof Error) {
+      msg = error.message;
+    } else if (typeof error === "object" && error !== null) {
+      msg = JSON.stringify(error);
+    } else {
+      msg = String(error);
+    }
+    console.error("Self verification error:", error);
     if (msg.includes("AlreadyRegistered") || msg.includes("already")) {
       setErrorMessage("This agent is already registered.");
     } else {
@@ -811,9 +821,9 @@ export default function RegisterPage() {
               </a>
             </div>
           </Card>
-          {mode === "smartwallet" && smartWalletAddress && (
+          {mode === "smartwallet" && smartWalletAddress && network.isTestnet && (
             <div className="bg-accent/5 border border-accent/20 rounded-lg px-4 py-3 text-xs text-muted w-full max-w-md">
-              <strong className="text-foreground">Testnet:</strong> On Celo Sepolia, the smart wallet is computed
+              <strong className="text-foreground">Testnet:</strong> On {network.label}, the smart wallet is computed
               but not deployed. Gasless passkey operations are available on Celo Mainnet.
             </div>
           )}
@@ -983,7 +993,7 @@ export default function RegisterPage() {
                 </p>
 
                 {(() => {
-                  const agentSnippets = getAgentSnippets(activeAgentFeatures);
+                  const agentSnippets = getAgentSnippets(network.registryAddress, network.rpcUrl, activeAgentFeatures);
                   return (
                     <>
                       <div className="flex gap-2 flex-wrap">
@@ -991,10 +1001,10 @@ export default function RegisterPage() {
                           <button
                             key={snippet.title}
                             onClick={() => setActiveAgentSnippet(i)}
-                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
                               i === activeAgentSnippet
-                                ? "bg-gradient-to-r from-accent to-accent-2 text-white"
-                                : "bg-surface-2 text-muted hover:text-foreground"
+                                ? "bg-gradient-to-r from-accent to-accent-2 text-white border-transparent"
+                                : "bg-surface-1 text-foreground border-border hover:bg-surface-2"
                             }`}
                           >
                             {snippet.title}
@@ -1141,11 +1151,14 @@ export default function RegisterPage() {
             <Button
               onClick={() => {
                 // Pass the agent private key to demo page via sessionStorage
-                // so it auto-fills — key is cleared after demo page reads it
+                // Demo page only reads if "demo-agent-from-register" flag is also set
                 const pk = mode === "simple"
                   ? undefined  // simple mode uses wallet, no separate agent key
                   : agentWallet?.privateKey;
-                if (pk) sessionStorage.setItem("demo-agent-key", pk);
+                if (pk) {
+                  sessionStorage.setItem("demo-agent-key", pk);
+                  sessionStorage.setItem("demo-agent-from-register", "1");
+                }
                 router.push("/demo");
               }}
               variant="secondary"

@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import MatrixText from "@/components/MatrixText";
 import { ethers } from "ethers";
 import { Wallet, RefreshCw, Cpu, Shield, FileText, Search, Key, Fingerprint, Loader2 } from "lucide-react";
 import { connectWallet } from "@/lib/wallet";
-import { REGISTRY_ADDRESS, REGISTRY_ABI, RPC_URL } from "@/lib/constants";
+import { REGISTRY_ABI } from "@/lib/constants";
+import { useNetwork } from "@/lib/NetworkContext";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
@@ -63,6 +64,7 @@ function buildDisclosureBadges(creds: AgentCredentials): string[] {
 }
 
 export default function MyAgentsPage() {
+  const { network } = useNetwork();
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -71,10 +73,15 @@ export default function MyAgentsPage() {
   const [agentKeyInput, setAgentKeyInput] = useState("");
   const [passkeyAddress, setPasskeyAddress] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
+  const [passkeyAvailable, setPasskeyAvailable] = useState(false);
+
+  useEffect(() => {
+    setPasskeyAvailable(isPasskeySupported());
+  }, []);
 
   const handleConnect = async () => {
     setError("");
-    const address = await connectWallet();
+    const address = await connectWallet(network);
     if (!address) return;
     setWalletAddress(address);
     await loadAgentsByOwner(address);
@@ -101,8 +108,8 @@ export default function MyAgentsPage() {
     setAgents([]);
 
     try {
-      const provider = new ethers.JsonRpcProvider(RPC_URL);
-      const registry = new ethers.Contract(REGISTRY_ADDRESS, REGISTRY_ABI, provider);
+      const provider = new ethers.JsonRpcProvider(network.rpcUrl);
+      const registry = new ethers.Contract(network.registryAddress, REGISTRY_ABI, provider);
 
       const agentId: bigint = await registry.getAgentId(agentKey);
       if (agentId === 0n) {
@@ -158,7 +165,7 @@ export default function MyAgentsPage() {
     setAgents([]);
 
     try {
-      const { walletAddress: swAddress } = await signInWithPasskey();
+      const { walletAddress: swAddress } = await signInWithPasskey(network);
       setPasskeyAddress(swAddress);
       await loadAgentsByGuardian(swAddress);
     } catch (err) {
@@ -173,8 +180,8 @@ export default function MyAgentsPage() {
     setAgents([]);
 
     try {
-      const provider = new ethers.JsonRpcProvider(RPC_URL);
-      const registry = new ethers.Contract(REGISTRY_ADDRESS, REGISTRY_ABI, provider);
+      const provider = new ethers.JsonRpcProvider(network.rpcUrl);
+      const registry = new ethers.Contract(network.registryAddress, REGISTRY_ABI, provider);
 
       // Scan Transfer events to find all minted agents, then check if guardian matches
       const mintFilter = registry.filters.Transfer(ethers.ZeroAddress, null);
@@ -239,7 +246,7 @@ export default function MyAgentsPage() {
 
     try {
       const callData = encodeGuardianRevoke(agentId);
-      await sendUserOperation(REGISTRY_ADDRESS as `0x${string}`, callData);
+      await sendUserOperation(network.registryAddress as `0x${string}`, callData, network);
 
       // Refresh list after successful revocation
       if (passkeyAddress) {
@@ -258,9 +265,9 @@ export default function MyAgentsPage() {
     setAgents([]);
 
     try {
-      const provider = new ethers.JsonRpcProvider(RPC_URL);
+      const provider = new ethers.JsonRpcProvider(network.rpcUrl);
       const registry = new ethers.Contract(
-        REGISTRY_ADDRESS,
+        network.registryAddress,
         REGISTRY_ABI,
         provider
       );
@@ -365,7 +372,7 @@ export default function MyAgentsPage() {
           <Key size={16} />
           Look Up by Key
         </button>
-        {isPasskeySupported() && (
+        {passkeyAvailable && (
           <button
             onClick={() => { setLookupMode("passkey"); setAgents([]); setError(""); setPasskeyAddress(null); }}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -440,7 +447,7 @@ export default function MyAgentsPage() {
               </Card>
             )}
 
-            {renderAgentCards(agents, handlePasskeyRevoke, revoking)}
+            {renderAgentCards(agents, handlePasskeyRevoke, revoking, network)}
           </div>
         )
       ) : lookupMode === "wallet" ? (
@@ -494,7 +501,7 @@ export default function MyAgentsPage() {
               </Card>
             )}
 
-            {renderAgentCards(agents, null, null)}
+            {renderAgentCards(agents, null, null, network)}
           </div>
         )
       ) : (
@@ -537,7 +544,7 @@ export default function MyAgentsPage() {
             </Card>
           )}
 
-          {renderAgentCards(agents, null, null)}
+          {renderAgentCards(agents, null, null, network)}
         </div>
       )}
     </main>
@@ -547,7 +554,8 @@ export default function MyAgentsPage() {
 function renderAgentCards(
   agents: AgentEntry[],
   onRevoke: ((agentId: bigint) => void) | null,
-  revokingId: string | null
+  revokingId: string | null,
+  network?: import("@/lib/network").NetworkConfig,
 ) {
   return agents.map((agent) => (
     <div key={agent.agentId.toString()} className="space-y-2">
@@ -626,7 +634,7 @@ function renderAgentCards(
       </Link>
 
       {onRevoke && agent.isVerified && agent.guardian !== ethers.ZeroAddress && (
-        isGaslessSupported() ? (
+        isGaslessSupported(network) ? (
           <button
             onClick={() => onRevoke(agent.agentId)}
             disabled={revokingId === agent.agentId.toString()}
