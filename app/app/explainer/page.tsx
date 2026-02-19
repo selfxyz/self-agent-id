@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import MatrixText from "@/components/MatrixText";
 import { ethers } from "ethers";
 import {
   Users,
@@ -105,9 +106,9 @@ export default function ExplainerPage() {
           </Badge>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/self-icon.png" alt="Self" width={64} height={64} className="rounded-xl mb-4" />
-          <h1 className="text-5xl md:text-6xl font-bold max-w-3xl leading-tight mb-6">
-            Proof-of-Human for <span className="text-gradient">AI&nbsp;Agents</span>
-          </h1>
+          <div className="flex justify-center mb-6">
+            <MatrixText text="Proof-of-Human for AI Agents" fontSize={52} />
+          </div>
           <p className="text-lg text-muted max-w-2xl mb-10">
             A composable, privacy-preserving standard that lets any smart contract
             or service verify an AI agent is operated by a real, unique human

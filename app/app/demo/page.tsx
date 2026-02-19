@@ -2,6 +2,7 @@
 
 import { useReducer, useCallback, useRef, useEffect } from "react";
 import { ethers } from "ethers";
+import MatrixText from "@/components/MatrixText";
 import {
   ShieldCheck,
   Users,
@@ -1085,9 +1086,9 @@ export default function DemoPage() {
     <main className="min-h-screen max-w-5xl mx-auto px-6 pt-24 pb-12 space-y-8">
       {/* Header */}
       <div className="text-center">
-        <h1 className="text-3xl font-bold mb-2">
-          <span className="text-gradient">Live</span> Demo
-        </h1>
+        <div className="flex justify-center mb-2">
+          <MatrixText text="Live Demo" fontSize={42} />
+        </div>
         <p className="text-muted max-w-lg mx-auto">
           Test Self Agent ID integration end-to-end. Load your registered agent,
           then run real verification tests against on-chain contracts and service endpoints.

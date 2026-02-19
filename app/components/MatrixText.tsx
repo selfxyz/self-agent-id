@@ -32,9 +32,9 @@ export default function MatrixText({ text, className = "", fontSize = 90 }: Matr
       // Measure text
       ctx.font = font;
       const metrics = ctx.measureText(text);
-      const glowPad = 80;
-      const w = Math.ceil(metrics.width) + 40;
-      const h = Math.ceil(fontSize * 1.5);
+      const glowPad = Math.round(fontSize * 0.5);
+      const w = Math.ceil(metrics.width) + Math.round(fontSize * 0.3);
+      const h = Math.ceil(fontSize * 1.25);
       const totalW = w + glowPad * 2;
       const totalH = h + glowPad * 2;
 

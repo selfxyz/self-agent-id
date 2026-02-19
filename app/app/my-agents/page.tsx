@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import MatrixText from "@/components/MatrixText";
 import { ethers } from "ethers";
 import { Wallet, RefreshCw, Cpu, Shield, FileText, Search, Key, Fingerprint, Loader2 } from "lucide-react";
 import { connectWallet } from "@/lib/wallet";
@@ -333,9 +334,9 @@ export default function MyAgentsPage() {
 
   return (
     <main className="min-h-screen max-w-lg mx-auto px-6 pt-24 pb-12">
-      <h1 className="text-3xl font-bold text-center mb-2">
-        My <span className="text-gradient">Agents</span>
-      </h1>
+      <div className="flex justify-center mb-2">
+        <MatrixText text="My Agents" fontSize={42} />
+      </div>
       <p className="text-muted text-center mb-8">
         View agents registered to your wallet, or look up an agent by its key.
       </p>

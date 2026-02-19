@@ -1,6 +1,7 @@
 "use client";
 
 import { ExternalLink, GitPullRequest } from "lucide-react";
+import MatrixText from "@/components/MatrixText";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
@@ -14,9 +15,9 @@ export default function ERC8004Page() {
         <Badge variant="info" className="mb-4">
           Proposed Optional Extension
         </Badge>
-        <h1 className="text-4xl font-bold mb-4">
-          <span className="text-gradient">ERC-8004</span> Proof-of-Human Extension
-        </h1>
+        <div className="flex justify-center mb-4">
+          <MatrixText text="ERC-8004 Proof-of-Human" fontSize={40} />
+        </div>
         <p className="text-lg text-muted max-w-2xl mx-auto">
           A proposed optional extension to ERC-8004 that adds on-chain,
           privacy-preserving proof-of-human verification for AI agents.

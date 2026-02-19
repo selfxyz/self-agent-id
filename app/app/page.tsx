@@ -113,7 +113,9 @@ export default function Home() {
 
       {/* How It Works */}
       <section className="max-w-4xl mx-auto px-6 py-8">
-        <h2 className="text-2xl font-bold text-center mb-8">How It Works</h2>
+        <div className="flex justify-center mb-8">
+          <MatrixText text="How It Works" fontSize={32} />
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Agent Operators */}

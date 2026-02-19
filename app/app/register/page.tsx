@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import MatrixText from "@/components/MatrixText";
 import { ethers } from "ethers";
 import dynamic from "next/dynamic";
 import {
@@ -314,9 +315,9 @@ export default function RegisterPage() {
 
   return (
     <main className="min-h-screen max-w-xl mx-auto px-6 pt-24 pb-12">
-      <h1 className="text-3xl font-bold text-center mb-8">
-        <span className="text-gradient">Register Agent</span>
-      </h1>
+      <div className="flex justify-center mb-8">
+        <MatrixText text="Register Agent" fontSize={42} />
+      </div>
 
       {/* Step 1: Choose mode */}
       {step === "mode" && (
