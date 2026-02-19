@@ -17,8 +17,11 @@ import {
   Key,
   Search,
   ExternalLink,
+  Code2,
+  Cpu,
 } from "lucide-react";
 import CodeBlock from "@/components/CodeBlock";
+import { getServiceSnippets, getAgentSnippets, type UseCaseSnippets, type Snippet } from "@/lib/snippets";
 import { REGISTRY_ADDRESS, REGISTRY_ABI, RPC_URL } from "@/lib/constants";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
@@ -27,10 +30,161 @@ import { Button } from "@/components/Button";
 
 type VerifyStatus = "idle" | "loading" | "verified" | "not-registered" | "error";
 
+// ── Disclosure toggle helpers ──────────────────────────────
+
+type DisclosureToggles = { age: boolean; ofac: boolean; sybil: boolean };
+
+function appendSybilCode(snippet: Snippet): Snippet {
+  const lang = snippet.language;
+  let extra = "";
+
+  if (lang === "typescript") {
+    extra = [
+      "",
+      "// ── Change sybil resistance (optional) ──",
+      "// Default: 1 agent per human. Override:",
+      "// const verifier = new SelfAgentVerifier({ maxAgentsPerHuman: 5 });",
+      "// Set to 0 to disable sybil check entirely.",
+    ].join("\n");
+  } else if (lang === "python") {
+    extra = [
+      "",
+      "# ── Change sybil resistance (optional) ──",
+      "# Default: 1 agent per human. Change the count check:",
+      "# return count <= 5  # allow 5 agents per human",
+    ].join("\n");
+  } else if (lang === "solidity") {
+    extra = [
+      "",
+      "// ── Change sybil resistance (optional) ──",
+      "// Default: 1 agent per human. Change the limit:",
+      '// require(registry.getAgentCountForHuman(nullifier) <= 5, "Too many agents");',
+      "// Or remove the count check to allow unlimited agents.",
+    ].join("\n");
+  } else if (lang === "rust") {
+    extra = [
+      "",
+      "// ── Change sybil resistance (optional) ──",
+      "// Default: 1 agent per human. Change the limit:",
+      "// count <= alloy::primitives::U256::from(5)",
+    ].join("\n");
+  }
+
+  if (!extra) return snippet;
+  return { ...snippet, code: snippet.code + extra };
+}
+
+function appendCredentialCode(snippet: Snippet, toggles: DisclosureToggles): Snippet {
+  if (!toggles.age && !toggles.ofac) return snippet;
+
+  const lang = snippet.language;
+  let extra = "";
+
+  if (lang === "typescript") {
+    const lines: string[] = [];
+    if (toggles.age || toggles.ofac) {
+      lines.push("", "// ── Credential checks (optional) ──");
+      lines.push("// Add includeCredentials to your verifier config:");
+      lines.push("// const verifier = new SelfAgentVerifier({ includeCredentials: true });");
+    }
+    if (toggles.age) {
+      lines.push("", "// Require agent's human to be over 18");
+      lines.push("if (!result.credentials?.olderThan || result.credentials.olderThan < 18) {");
+      lines.push('  throw new Error("Must be over 18");');
+      lines.push("}");
+    }
+    if (toggles.ofac) {
+      lines.push("", "// Require agent's human is not on OFAC list");
+      lines.push("if (!result.credentials?.ofac?.every(Boolean)) {");
+      lines.push('  throw new Error("OFAC sanctions check failed");');
+      lines.push("}");
+    }
+    extra = lines.join("\n");
+  } else if (lang === "python") {
+    const lines: string[] = [];
+    if (toggles.age || toggles.ofac) {
+      lines.push("", "# ── Credential checks (optional) ──");
+      lines.push("# Call getAgentCredentials on-chain to check disclosed fields");
+    }
+    if (toggles.age) {
+      lines.push("# creds = registry.functions.getAgentCredentials(agent_id).call()");
+      lines.push("# assert creds[7] >= 18, 'Must be over 18'");
+    }
+    if (toggles.ofac) {
+      lines.push("# ofac = creds[8]  # bool[3]");
+      lines.push("# assert all(ofac), 'OFAC sanctions check failed'");
+    }
+    extra = lines.join("\n");
+  } else if (lang === "solidity") {
+    const lines: string[] = [];
+    if (toggles.age || toggles.ofac) {
+      lines.push("", "// ── Credential checks (optional) ──");
+      lines.push("// Add to your modifier after isVerifiedAgent check:");
+      lines.push("// uint256 agentId = registry.getAgentId(key);");
+    }
+    if (toggles.age && toggles.ofac) {
+      lines.push("// (,,,,,,,uint256 age, bool[3] memory ofac) = registry.getAgentCredentials(agentId);");
+      lines.push('// require(age >= 18, "Must be over 18");');
+      lines.push('// require(ofac[0] && ofac[1] && ofac[2], "OFAC check failed");');
+    } else if (toggles.age) {
+      lines.push("// (,,,,,,,uint256 age,) = registry.getAgentCredentials(agentId);");
+      lines.push('// require(age >= 18, "Must be over 18");');
+    } else if (toggles.ofac) {
+      lines.push("// (,,,,,,,,bool[3] memory ofac) = registry.getAgentCredentials(agentId);");
+      lines.push('// require(ofac[0] && ofac[1] && ofac[2], "OFAC check failed");');
+    }
+    extra = lines.join("\n");
+  } else if (lang === "rust") {
+    const lines: string[] = [];
+    if (toggles.age || toggles.ofac) {
+      lines.push("", "// ── Credential checks (optional) ──");
+      lines.push("// Call getAgentCredentials on-chain after verifying the agent");
+    }
+    if (toggles.age) {
+      lines.push("// let creds = registry.getAgentCredentials(id).call().await.unwrap();");
+      lines.push("// assert!(creds.olderThan >= 18, \"Must be over 18\");");
+    }
+    if (toggles.ofac) {
+      lines.push("// assert!(creds.ofac.iter().all(|&x| x), \"OFAC check failed\");");
+    }
+    extra = lines.join("\n");
+  }
+
+  if (!extra) return snippet;
+  return { ...snippet, code: snippet.code + extra };
+}
+
+function applyDisclosures(useCases: UseCaseSnippets[], toggles: DisclosureToggles): UseCaseSnippets[] {
+  // Filter out "Custom Limits" tab — replaced by sybil toggle pill
+  let filtered = useCases.filter((uc) => uc.title !== "Custom Limits");
+
+  if (toggles.sybil) {
+    filtered = filtered.map((uc) => ({
+      ...uc,
+      snippets: uc.snippets.map((s) => appendSybilCode(s)),
+    }));
+  }
+
+  if (toggles.age || toggles.ofac) {
+    filtered = filtered.map((uc) => ({
+      ...uc,
+      snippets: uc.snippets.map((s) => appendCredentialCode(s, toggles)),
+    }));
+  }
+
+  return filtered;
+}
+
 export default function ExplainerPage() {
   const [pubKeyInput, setPubKeyInput] = useState("");
   const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>("idle");
   const [verifyError, setVerifyError] = useState("");
+
+  // Integration guide state
+  const [activeUseCase, setActiveUseCase] = useState(0);
+  const [activeAgentSnippet, setActiveAgentSnippet] = useState(0);
+  const [devDisclosures, setDevDisclosures] = useState<DisclosureToggles>({ age: false, ofac: false, sybil: false });
+  const [agentDisclosures, setAgentDisclosures] = useState<DisclosureToggles>({ age: false, ofac: false, sybil: false });
 
   const handleVerify = async () => {
     const trimmed = pubKeyInput.trim();
@@ -194,6 +348,139 @@ export default function ExplainerPage() {
         </div>
       </section>
 
+      {/* ───────────────────────── 3b. Integration Guide for Developers ───────────────────────── */}
+      <section className="bg-surface-1 px-6 py-20">
+        <div className="max-w-3xl mx-auto space-y-4">
+          <div className="flex items-center justify-center gap-2">
+            <Code2 size={20} className="text-accent" />
+            <h2 className="text-3xl font-bold">Integration Guide for Developers</h2>
+          </div>
+          <p className="text-center text-sm text-muted max-w-2xl mx-auto">
+            These code snippets are for <strong className="text-foreground">service developers</strong> who want to verify
+            agents in their applications. Sybil resistant by default (1 agent per human).
+          </p>
+
+          {(() => {
+            const snippets = applyDisclosures(getServiceSnippets(REGISTRY_ADDRESS), devDisclosures);
+            return (
+              <>
+                <div className="flex justify-center gap-2 flex-wrap">
+                  {snippets.map((uc, i) => (
+                    <button
+                      key={uc.title}
+                      onClick={() => setActiveUseCase(i)}
+                      className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                        i === activeUseCase
+                          ? "bg-gradient-to-r from-accent to-accent-2 text-white"
+                          : "bg-surface-2 text-muted hover:text-foreground"
+                      }`}
+                    >
+                      {uc.title}
+                    </button>
+                  ))}
+                </div>
+
+                <p className="text-center text-sm text-muted">
+                  {snippets[activeUseCase].description}
+                </p>
+                <p className="text-center text-xs text-subtle font-mono">
+                  {snippets[activeUseCase].flow}
+                </p>
+
+                {/* Feature toggles */}
+                <div className="flex flex-wrap justify-center gap-2">
+                  {([
+                    { key: "sybil" as const, label: "Change Sybil Resistance" },
+                    { key: "age" as const, label: "Over 18" },
+                    { key: "ofac" as const, label: "Not on OFAC List" },
+                  ]).map(({ key, label }) => (
+                    <button
+                      key={key}
+                      onClick={() => setDevDisclosures((t) => ({ ...t, [key]: !t[key] }))}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                        devDisclosures[key]
+                          ? "border-accent bg-accent/10 text-accent"
+                          : "border-border bg-surface-2 text-muted hover:text-foreground hover:border-border-strong"
+                      }`}
+                    >
+                      {devDisclosures[key] ? "\u2713 " : "+ "}{label}
+                    </button>
+                  ))}
+                </div>
+
+                <CodeBlock tabs={snippets[activeUseCase].snippets} />
+              </>
+            );
+          })()}
+        </div>
+      </section>
+
+      {/* ───────────────────────── 3c. Integration Guide for Agents ───────────────────────── */}
+      <section className="px-6 py-20">
+        <div className="max-w-3xl mx-auto space-y-4">
+          <div className="flex items-center justify-center gap-2">
+            <Cpu size={20} className="text-accent" />
+            <h2 className="text-3xl font-bold">Integration Guide for Agents</h2>
+          </div>
+          <p className="text-center text-sm text-muted max-w-2xl mx-auto">
+            If you are an <strong className="text-foreground">agent operator</strong>, use these snippets to
+            authenticate your agent with services or submit on-chain transactions.
+            Set <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">AGENT_PRIVATE_KEY</code> in
+            your agent&apos;s environment first.
+          </p>
+
+          {(() => {
+            const agentSnippets = applyDisclosures(getAgentSnippets(), agentDisclosures);
+            return (
+              <>
+                <div className="flex justify-center gap-2 flex-wrap">
+                  {agentSnippets.map((snippet, i) => (
+                    <button
+                      key={snippet.title}
+                      onClick={() => setActiveAgentSnippet(i)}
+                      className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                        i === activeAgentSnippet
+                          ? "bg-gradient-to-r from-accent to-accent-2 text-white"
+                          : "bg-surface-2 text-muted hover:text-foreground"
+                      }`}
+                    >
+                      {snippet.title}
+                    </button>
+                  ))}
+                </div>
+
+                <p className="text-center text-sm text-muted">
+                  {agentSnippets[activeAgentSnippet].description}
+                </p>
+
+                {/* Feature toggles */}
+                <div className="flex flex-wrap justify-center gap-2">
+                  {([
+                    { key: "sybil" as const, label: "Change Sybil Resistance" },
+                    { key: "age" as const, label: "Over 18" },
+                    { key: "ofac" as const, label: "Not on OFAC List" },
+                  ]).map(({ key, label }) => (
+                    <button
+                      key={key}
+                      onClick={() => setAgentDisclosures((t) => ({ ...t, [key]: !t[key] }))}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                        agentDisclosures[key]
+                          ? "border-accent bg-accent/10 text-accent"
+                          : "border-border bg-surface-2 text-muted hover:text-foreground hover:border-border-strong"
+                      }`}
+                    >
+                      {agentDisclosures[key] ? "\u2713 " : "+ "}{label}
+                    </button>
+                  ))}
+                </div>
+
+                <CodeBlock tabs={agentSnippets[activeAgentSnippet].snippets} />
+              </>
+            );
+          })()}
+        </div>
+      </section>
+
       {/* ───────────────────────── 4. Security Model ───────────────────────── */}
       <section className="bg-surface-1 px-6 py-20">
         <div className="max-w-4xl mx-auto">
@@ -214,7 +501,6 @@ export default function ExplainerPage() {
                   <Wallet size={16} className="text-accent" />
                 </span>
                 <h3 className="font-bold text-lg">Verified Wallet</h3>
-                <Badge variant="success">live</Badge>
               </div>
               <p className="text-sm font-medium mb-2">
                 Wallet = Agent Identity
@@ -248,7 +534,6 @@ export default function ExplainerPage() {
                   <Key size={16} className="text-accent-2" />
                 </span>
                 <h3 className="font-bold text-lg">Agent Identity</h3>
-                <Badge variant="info">v2</Badge>
               </div>
               <p className="text-sm font-medium mb-2">
                 Independent Agent Key
@@ -282,7 +567,6 @@ export default function ExplainerPage() {
                   <Lock size={16} className="text-accent" />
                 </span>
                 <h3 className="font-bold text-lg">No Wallet</h3>
-                <Badge variant="info">v2</Badge>
               </div>
               <p className="text-sm font-medium mb-2">
                 Agent EOA Owns Its NFT
@@ -315,7 +599,6 @@ export default function ExplainerPage() {
                   <Fingerprint size={16} className="text-accent-success" />
                 </span>
                 <h3 className="font-bold text-lg">Smart Wallet</h3>
-                <Badge variant="success">new</Badge>
               </div>
               <p className="text-sm font-medium mb-2">
                 Passkey + Kernel Smart Account
@@ -345,6 +628,22 @@ export default function ExplainerPage() {
 
           {/* Shared security layers */}
           <div className="space-y-10">
+            <div>
+              <h3 className="font-bold text-lg mb-3">ZK-Attested Credentials</h3>
+              <p className="text-muted mb-4">
+                Agents can optionally carry ZK-attested claims from their human backer &mdash;
+                such as age verification (over 18), OFAC sanctions clearance, nationality, or name.
+                During registration, the user chooses which fields to disclose. The Self app generates
+                a zero-knowledge proof on the user&apos;s phone &mdash; only the attested result
+                is stored on-chain, never raw passport data.
+              </p>
+              <p className="text-muted">
+                Any service can query an agent&apos;s credentials on-chain or via the SDK &mdash;
+                no additional identity check needed. Unselected fields are simply not included.
+                All disclosures are fully optional and chosen by the user at registration time.
+              </p>
+            </div>
+
             <div>
               <h3 className="font-bold text-lg mb-3">Off-Chain: Request Signing</h3>
               <p className="text-muted mb-4">
@@ -519,7 +818,6 @@ interface IERC8004 {
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <h3 className="font-bold text-lg">Proof-of-Human Extension</h3>
-                <Badge variant="success">new</Badge>
               </div>
               <p className="text-sm text-muted mb-3">
                 These functions are added on top of ERC-8004 to provide
@@ -567,7 +865,6 @@ interface IERC8004ProofOfHuman is IERC8004 {
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <h3 className="font-bold text-lg">IHumanProofProvider</h3>
-                <Badge variant="success">new</Badge>
               </div>
               <p className="text-sm text-muted mb-3">
                 Pluggable interface for identity verification backends. Self

@@ -33,6 +33,18 @@ const SelfQRcodeWrapper = dynamic(
 
 let SelfAppBuilder: typeof import("@selfxyz/qrcode").SelfAppBuilder;
 
+interface AgentCredentials {
+  issuingState: string;
+  name: string[];
+  idNumber: string;
+  nationality: string;
+  dateOfBirth: string;
+  gender: string;
+  expiryDate: string;
+  olderThan: bigint;
+  ofac: boolean[];
+}
+
 interface AgentInfo {
   isVerified: boolean;
   agentId: bigint;
@@ -42,6 +54,21 @@ interface AgentInfo {
   metadata: string;
   mode: "simple" | "advanced" | "walletfree";
   isSmartWallet: boolean;
+  credentials?: AgentCredentials;
+}
+
+function buildCredentialBadges(creds: AgentCredentials): string[] {
+  const badges: string[] = [];
+  if (creds.nationality) badges.push(creds.nationality);
+  if (creds.olderThan > 0n) badges.push(`${creds.olderThan.toString()}+`);
+  if (creds.ofac?.some(Boolean)) badges.push("Not on OFAC List");
+  if (creds.gender) badges.push(creds.gender === "M" ? "Male" : creds.gender === "F" ? "Female" : creds.gender);
+  if (creds.dateOfBirth) badges.push(`DOB: ${creds.dateOfBirth}`);
+  if (creds.issuingState) badges.push(`Issued: ${creds.issuingState}`);
+  if (creds.name?.some((n: string) => n.length > 0)) {
+    badges.push(creds.name.filter((n: string) => n.length > 0).join(" "));
+  }
+  return badges;
 }
 
 function VerifyContent() {
@@ -121,6 +148,29 @@ function VerifyContent() {
           }
         }
 
+        // Fetch ZK-attested credentials
+        let credentials: AgentCredentials | undefined;
+        try {
+          const raw = await contract.getAgentCredentials(agentId);
+          const creds: AgentCredentials = {
+            issuingState: raw.issuingState || raw[0] || "",
+            name: raw.name || raw[1] || [],
+            idNumber: raw.idNumber || raw[2] || "",
+            nationality: raw.nationality || raw[3] || "",
+            dateOfBirth: raw.dateOfBirth || raw[4] || "",
+            gender: raw.gender || raw[5] || "",
+            expiryDate: raw.expiryDate || raw[6] || "",
+            olderThan: raw.olderThan ?? raw[7] ?? 0n,
+            ofac: raw.ofac || raw[8] || [false, false, false],
+          };
+          // Only set if at least one field is non-empty
+          if (creds.nationality || creds.issuingState || creds.name?.some((n: string) => n.length > 0) || creds.olderThan > 0n) {
+            credentials = creds;
+          }
+        } catch {
+          // V4 contract without getAgentCredentials — ignore
+        }
+
         // Detect smart wallet: guardian is a contract (has code)
         let isSmartWallet = false;
         if (guardian !== ethers.ZeroAddress) {
@@ -139,6 +189,7 @@ function VerifyContent() {
           metadata,
           mode,
           isSmartWallet,
+          credentials,
         });
       }
     } catch (err) {
@@ -319,6 +370,23 @@ function VerifyContent() {
                     <pre className="text-xs bg-surface-2 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all">
                       {agentInfo.metadata}
                     </pre>
+                  </div>
+                )}
+                {agentInfo.credentials && (
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <div className="flex items-center gap-1 text-muted mb-2">
+                      <Shield size={12} /> ZK-Attested Credentials
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {buildCredentialBadges(agentInfo.credentials).map((badge, i) => (
+                        <span
+                          key={i}
+                          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-accent/10 text-accent border border-accent/20"
+                        >
+                          {badge}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

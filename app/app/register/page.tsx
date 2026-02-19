@@ -20,6 +20,7 @@ import {
   Smartphone,
   Fingerprint,
   Loader2,
+  Shield,
 } from "lucide-react";
 import { connectWallet } from "@/lib/wallet";
 import { REGISTRY_ADDRESS, RPC_URL, REGISTRY_ABI } from "@/lib/constants";
@@ -63,6 +64,17 @@ export default function RegisterPage() {
     setPasskeySupported(isPasskeySupported());
   }, []);
 
+  // Disclosure selection state
+  const [disclosures, setDisclosures] = useState({
+    nationality: false,
+    name: false,
+    date_of_birth: false,
+    gender: false,
+    issuing_state: false,
+    ofac: false,
+    minimumAge: 0,
+  });
+
   // Advanced + wallet-free + smart-wallet mode state (all generate a keypair)
   const [agentWallet, setAgentWallet] = useState<ethers.HDNodeWallet | null>(null);
   const [showPrivateKey, setShowPrivateKey] = useState(false);
@@ -89,6 +101,16 @@ export default function RegisterPage() {
   };
 
   const buildSelfApp = (userId: string, userDefinedData: string) => {
+    // Build disclosures from state — only include truthy fields
+    const disc: Record<string, boolean | number> = {};
+    if (disclosures.nationality) disc.nationality = true;
+    if (disclosures.name) disc.name = true;
+    if (disclosures.date_of_birth) disc.date_of_birth = true;
+    if (disclosures.gender) disc.gender = true;
+    if (disclosures.issuing_state) disc.issuing_state = true;
+    if (disclosures.ofac) disc.ofac = true;
+    if (disclosures.minimumAge > 0) disc.minimumAge = disclosures.minimumAge;
+
     return new SelfAppBuilder({
       version: 2,
       appName: process.env.NEXT_PUBLIC_SELF_APP_NAME || "Self Agent ID",
@@ -99,7 +121,7 @@ export default function RegisterPage() {
       endpointType: "staging_celo",
       userIdType: "hex",
       userDefinedData,
-      disclosures: {},
+      disclosures: disc,
     }).build();
   };
 
@@ -349,7 +371,6 @@ export default function RegisterPage() {
                   <Fingerprint size={16} className="text-accent-success" />
                 </span>
                 <span className="font-bold text-sm">Smart Wallet</span>
-                <Badge variant="success">new</Badge>
               </div>
               <p className="text-xs text-muted mt-2">
                 {passkeySupported
@@ -491,6 +512,74 @@ export default function RegisterPage() {
                 )}
               </>
             )}
+          </Card>
+
+          {/* Disclosure toggles */}
+          <Card className="w-full">
+            <div className="flex items-center gap-2 mb-3">
+              <Shield size={16} className="text-accent" />
+              <p className="font-bold text-sm">Credential Disclosures</p>
+              <span className="text-xs text-subtle">(optional)</span>
+            </div>
+            <p className="text-xs text-muted mb-2">
+              Choose what your agent can carry as verified claims. Your raw passport data
+              is <strong className="text-foreground">never stored or shared</strong> &mdash;
+              the Self app generates a <strong className="text-foreground">zero-knowledge proof</strong> on
+              your phone, and only the attested result (e.g. &ldquo;nationality: GBR&rdquo; or
+              &ldquo;over 18&rdquo;) is stored on-chain. No personal documents ever leave your device.
+            </p>
+            <p className="text-xs text-muted mb-4">
+              All disclosures are optional. Unselected fields are not included.
+            </p>
+
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              {([
+                ["nationality", "Nationality", false],
+                ["name", "Full Name", false],
+                ["date_of_birth", "Date of Birth", false],
+                ["gender", "Gender", false],
+                ["issuing_state", "Issuing State", false],
+                ["ofac", "Not on OFAC List", true],
+              ] as const).map(([key, label, disabled]) => (
+                <label
+                  key={key}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-2 border border-border transition-colors text-sm ${
+                    disabled
+                      ? "opacity-40 cursor-not-allowed"
+                      : "hover:border-border-strong cursor-pointer"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={disclosures[key] as boolean}
+                    disabled={disabled}
+                    onChange={(e) =>
+                      setDisclosures((d) => ({ ...d, [key]: e.target.checked }))
+                    }
+                    className="rounded border-border text-accent focus:ring-accent"
+                  />
+                  {label}
+                  {disabled && <span className="text-xs text-subtle ml-auto">coming soon</span>}
+                </label>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-3 opacity-40">
+              <label className="text-sm text-muted">Age Verification</label>
+              <span className="text-xs text-subtle">coming soon</span>
+              <select
+                value={disclosures.minimumAge}
+                disabled
+                onChange={(e) =>
+                  setDisclosures((d) => ({ ...d, minimumAge: Number(e.target.value) }))
+                }
+                className="bg-surface-2 border border-border rounded-lg px-3 py-1.5 text-sm focus:border-accent focus:outline-none"
+              >
+                <option value={0}>None</option>
+                <option value={18}>Over 18</option>
+                <option value={21}>Over 21</option>
+              </select>
+            </div>
           </Card>
 
           {mode === "walletfree" ? (

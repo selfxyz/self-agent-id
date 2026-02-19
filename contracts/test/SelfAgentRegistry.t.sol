@@ -1194,4 +1194,105 @@ contract SelfAgentRegistryTest is Test {
         assertEq(registry.ownerOf(agentId), agentAddr);
         assertEq(registry.agentGuardian(agentId), humanAddr);
     }
+
+    // ====================================================
+    // V5: ZK-Attested Credentials — Tests
+    // ====================================================
+
+    function _assertCredentialsMatch(uint256 agentId) internal view {
+        SelfAgentRegistry.AgentCredentials memory creds = registry.getAgentCredentials(agentId);
+        assertEq(creds.issuingState, "GBR");
+        assertEq(creds.nationality, "GBR");
+        assertEq(creds.dateOfBirth, "950101");
+        assertEq(creds.gender, "F");
+        assertEq(creds.expiryDate, "300101");
+        assertEq(creds.idNumber, "123456789");
+        assertEq(creds.olderThan, 0);
+        assertEq(creds.name.length, 3);
+        assertEq(creds.name[0], "ALICE");
+        assertEq(creds.name[1], "");
+        assertEq(creds.name[2], "SMITH");
+        assertFalse(creds.ofac[0]);
+        assertFalse(creds.ofac[1]);
+        assertFalse(creds.ofac[2]);
+    }
+
+    function _assertCredentialsEmpty(uint256 agentId) internal view {
+        SelfAgentRegistry.AgentCredentials memory creds = registry.getAgentCredentials(agentId);
+        assertEq(bytes(creds.issuingState).length, 0);
+        assertEq(bytes(creds.nationality).length, 0);
+        assertEq(bytes(creds.dateOfBirth).length, 0);
+        assertEq(bytes(creds.gender).length, 0);
+        assertEq(bytes(creds.expiryDate).length, 0);
+        assertEq(bytes(creds.idNumber).length, 0);
+        assertEq(creds.olderThan, 0);
+        assertEq(creds.name.length, 0);
+    }
+
+    function test_Credentials_StoredOnSimpleRegister() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+        _assertCredentialsMatch(agentId);
+    }
+
+    function test_Credentials_StoredOnAdvancedRegister() public {
+        _registerViaHubAdvanced(human1, nullifier1, advAgentPrivKey1);
+        uint256 agentId = registry.getAgentId(advAgentKey1);
+        _assertCredentialsMatch(agentId);
+    }
+
+    function test_Credentials_StoredOnWalletFreeRegister() public {
+        _registerWalletFree(human1, nullifier1, advAgentPrivKey1, human1);
+        uint256 agentId = registry.getAgentId(advAgentKey1);
+        _assertCredentialsMatch(agentId);
+    }
+
+    function test_Credentials_ClearedOnRevoke() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+        _assertCredentialsMatch(agentId);
+
+        _deregisterViaHub(human1, nullifier1);
+        _assertCredentialsEmpty(agentId);
+    }
+
+    function test_Credentials_ClearedOnGuardianRevoke() public {
+        _registerWalletFree(human1, nullifier1, advAgentPrivKey1, human1);
+        uint256 agentId = registry.getAgentId(advAgentKey1);
+        _assertCredentialsMatch(agentId);
+
+        vm.prank(human1);
+        registry.guardianRevoke(agentId);
+        _assertCredentialsEmpty(agentId);
+    }
+
+    function test_Credentials_EmptyByDefault() public view {
+        // Query non-existent agent — all fields should be empty
+        _assertCredentialsEmpty(999);
+    }
+
+    function test_Credentials_EmitEvent() public {
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        bytes memory userData = _buildUserData(0x01);
+
+        vm.expectEmit(true, false, false, false);
+        emit SelfAgentRegistry.AgentCredentialsStored(1);
+
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    function test_Credentials_ReRegistration() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 firstAgentId = registry.getAgentId(agentKey1);
+        _assertCredentialsMatch(firstAgentId);
+
+        _deregisterViaHub(human1, nullifier1);
+        _assertCredentialsEmpty(firstAgentId);
+
+        // Re-register — credentials should be stored again
+        _registerViaHub(human1, nullifier1);
+        uint256 secondAgentId = registry.getAgentId(agentKey1);
+        _assertCredentialsMatch(secondAgentId);
+    }
 }

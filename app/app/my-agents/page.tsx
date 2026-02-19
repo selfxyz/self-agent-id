@@ -21,6 +21,30 @@ interface AgentEntry {
   mode: "simple" | "advanced" | "walletfree";
   guardian: string;
   hasMetadata: boolean;
+  credentialBadges: string[];
+}
+
+async function fetchCredentialBadges(
+  registry: ethers.Contract,
+  agentId: bigint
+): Promise<string[]> {
+  try {
+    const raw = await registry.getAgentCredentials(agentId);
+    const badges: string[] = [];
+    const nationality = raw.nationality || raw[3] || "";
+    const olderThan = raw.olderThan ?? raw[7] ?? 0n;
+    const ofac = raw.ofac || raw[8] || [false, false, false];
+    const gender = raw.gender || raw[5] || "";
+    const name = raw.name || raw[1] || [];
+    if (nationality) badges.push(nationality);
+    if (olderThan > 0n) badges.push(`${olderThan.toString()}+`);
+    if (ofac?.some(Boolean)) badges.push("Not on OFAC List");
+    if (gender) badges.push(gender === "M" ? "Male" : gender === "F" ? "Female" : gender);
+    if (name?.some((n: string) => n.length > 0)) badges.push(name.filter((n: string) => n.length > 0).join(" "));
+    return badges;
+  } catch {
+    return [];
+  }
 }
 
 export default function MyAgentsPage() {
@@ -93,6 +117,8 @@ export default function MyAgentsPage() {
         mode = guardian !== ethers.ZeroAddress ? "walletfree" : "simple";
       }
 
+      const credentialBadges = await fetchCredentialBadges(registry, agentId);
+
       setAgents([{
         agentId,
         agentKey,
@@ -102,6 +128,7 @@ export default function MyAgentsPage() {
         mode,
         guardian,
         hasMetadata,
+        credentialBadges,
       }]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to look up agent");
@@ -165,6 +192,8 @@ export default function MyAgentsPage() {
             hasMetadata = metadata.length > 0;
           } catch {}
 
+          const credentialBadges = await fetchCredentialBadges(registry, agentId);
+
           results.push({
             agentId,
             agentKey,
@@ -174,6 +203,7 @@ export default function MyAgentsPage() {
             mode: "walletfree", // guardian-managed agents are walletfree or smartwallet
             guardian,
             hasMetadata,
+            credentialBadges,
           });
         } catch {
           // Token was burned — skip
@@ -259,6 +289,8 @@ export default function MyAgentsPage() {
             mode = guardian !== ethers.ZeroAddress ? "walletfree" : "simple";
           }
 
+          const credentialBadges = await fetchCredentialBadges(registry, agentId);
+
           results.push({
             agentId,
             agentKey,
@@ -268,6 +300,7 @@ export default function MyAgentsPage() {
             mode,
             guardian,
             hasMetadata,
+            credentialBadges,
           });
         } catch {
           // Token was burned — skip
@@ -560,6 +593,19 @@ function renderAgentCards(
               </span>
             )}
           </div>
+
+          {agent.credentialBadges.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-border">
+              {agent.credentialBadges.map((badge, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-accent/10 text-accent border border-accent/20"
+                >
+                  {badge}
+                </span>
+              ))}
+            </div>
+          )}
         </Card>
       </Link>
 

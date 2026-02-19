@@ -93,6 +93,22 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     /// @notice Maps agentId to delegated credential metadata (JSON string)
     mapping(uint256 => string) public agentMetadata;
 
+    /// @notice Stores ZK-attested credential claims for each agent
+    struct AgentCredentials {
+        string issuingState;
+        string[] name;
+        string idNumber;
+        string nationality;
+        string dateOfBirth;
+        string gender;
+        string expiryDate;
+        uint256 olderThan;
+        bool[3] ofac;
+    }
+
+    /// @notice Maps agentId to ZK-attested credentials (populated at registration)
+    mapping(uint256 => AgentCredentials) private _agentCredentials;
+
     /// @notice The next agent ID to mint
     uint256 private _nextAgentId;
 
@@ -123,6 +139,9 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     /// @notice Emitted when agent metadata is updated
     event AgentMetadataUpdated(uint256 indexed agentId);
 
+    /// @notice Emitted when ZK-attested credentials are stored for an agent
+    event AgentCredentialsStored(uint256 indexed agentId);
+
     // ====================================================
     // Constructor
     // ====================================================
@@ -140,12 +159,13 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
         // Start agent IDs at 1 (0 is reserved as "no agent")
         _nextAgentId = 1;
 
-        // Register minimal verification config with Hub V2:
-        // no age check, no country restrictions, no OFAC
+        // Register verification config with Hub V2:
+        // Enable OFAC + age check so frontend can request any disclosure.
+        // The contract stores whatever the ZK proof attests — enforcement is optional.
         SelfUtils.UnformattedVerificationConfigV2 memory rawCfg = SelfUtils.UnformattedVerificationConfigV2({
-            olderThan: 0,
+            olderThan: 18,
             forbiddenCountries: new string[](0),
-            ofacEnabled: false
+            ofacEnabled: true
         });
 
         SelfStructs.VerificationConfigV2 memory config = SelfUtils.formatVerificationConfigV2(rawCfg);
@@ -220,7 +240,7 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
         if (actionByte == ACTION_REGISTER || actionByte == ASCII_R) {
             // Simple mode: agent key = human wallet address
             bytes32 agentPubKey = bytes32(uint256(uint160(humanAddress)));
-            _registerAgent(nullifier, agentPubKey, humanAddress);
+            _registerAgent(nullifier, agentPubKey, humanAddress, output);
         } else if (actionByte == ACTION_DEREGISTER || actionByte == ASCII_D) {
             // Simple deregister
             bytes32 agentPubKey = bytes32(uint256(uint160(humanAddress)));
@@ -239,7 +259,7 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
                 v := byte(0, mload(add(userData, 117))) // offset 85
             }
             bytes32 agentPubKey = _verifyAgentSignature(agentAddr, humanAddress, v, r, s);
-            _registerAgent(nullifier, agentPubKey, humanAddress);
+            _registerAgent(nullifier, agentPubKey, humanAddress, output);
         } else if (actionByte == ACTION_DEREGISTER_ADVANCED) {
             // Binary advanced deregister: 1B action + 20B address = 21 bytes
             if (userData.length < 21) revert InvalidUserData();
@@ -257,7 +277,7 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
             bytes32 s = _hexStringToBytes32(userData, 105);
             uint8 v = _hexStringToUint8(userData, 169);
             bytes32 agentPubKey = _verifyAgentSignature(agentAddr, humanAddress, v, r, s);
-            _registerAgent(nullifier, agentPubKey, humanAddress);
+            _registerAgent(nullifier, agentPubKey, humanAddress, output);
         } else if (actionByte == ASCII_X) {
             // String advanced deregister: "X" + address(40) = 41 chars
             if (userData.length < 41) revert InvalidUserData();
@@ -280,7 +300,7 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
                 v := byte(0, mload(add(userData, 137)))          // offset 105
             }
             bytes32 agentPubKey = _verifyAgentSignature(agentAddr, humanAddress, v, r, s);
-            _registerAgentWalletFree(nullifier, agentPubKey, agentAddr, guardian);
+            _registerAgentWalletFree(nullifier, agentPubKey, agentAddr, guardian, output);
         } else if (actionByte == ASCII_W) {
             // String wallet-free: "W" + agentAddr(40) + guardian(40) + r(64) + s(64) + v(2) = 211 chars
             if (userData.length < 211) revert InvalidUserData();
@@ -290,7 +310,7 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
             bytes32 s = _hexStringToBytes32(userData, 145);
             uint8 v = _hexStringToUint8(userData, 209);
             bytes32 agentPubKey = _verifyAgentSignature(agentAddr, humanAddress, v, r, s);
-            _registerAgentWalletFree(nullifier, agentPubKey, agentAddr, guardian);
+            _registerAgentWalletFree(nullifier, agentPubKey, agentAddr, guardian, output);
         } else {
             revert InvalidAction(actionByte);
         }
@@ -410,6 +430,13 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
         return agentMetadata[agentId];
     }
 
+    /// @notice Get the ZK-attested credentials for an agent
+    /// @param agentId The agent to query
+    /// @return The agent's credentials (empty fields = not disclosed)
+    function getAgentCredentials(uint256 agentId) external view returns (AgentCredentials memory) {
+        return _agentCredentials[agentId];
+    }
+
     // ====================================================
     // Guardian Functions
     // ====================================================
@@ -492,10 +519,16 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     /// @param nullifier The human's scoped nullifier
     /// @param agentPubKey The agent's public key
     /// @param humanAddress The human's address (derived from userIdentifier)
-    function _registerAgent(uint256 nullifier, bytes32 agentPubKey, address humanAddress) internal {
-        // For Hub V2 callback flow, use the selfProofProvider as the provider address
+    /// @param output The verified disclosure output (credentials stored on-chain)
+    function _registerAgent(
+        uint256 nullifier,
+        bytes32 agentPubKey,
+        address humanAddress,
+        ISelfVerificationRoot.GenericDiscloseOutputV2 memory output
+    ) internal {
         address provider = selfProofProvider;
-        _mintAgent(nullifier, agentPubKey, provider, humanAddress);
+        uint256 agentId = _mintAgent(nullifier, agentPubKey, provider, humanAddress);
+        _storeCredentials(agentId, output);
     }
 
     /// @notice Register a wallet-free agent (agent-owned NFT with optional guardian)
@@ -503,14 +536,17 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     /// @param agentPubKey The agent's public key
     /// @param agentAddress The agent's address (NFT minted here, not to humanAddress)
     /// @param guardian The guardian address (can force-revoke; address(0) = no guardian)
+    /// @param output The verified disclosure output (credentials stored on-chain)
     function _registerAgentWalletFree(
         uint256 nullifier,
         bytes32 agentPubKey,
         address agentAddress,
-        address guardian
+        address guardian,
+        ISelfVerificationRoot.GenericDiscloseOutputV2 memory output
     ) internal {
         address provider = selfProofProvider;
         uint256 agentId = _mintAgent(nullifier, agentPubKey, provider, agentAddress);
+        _storeCredentials(agentId, output);
 
         if (guardian != address(0)) {
             agentGuardian[agentId] = guardian;
@@ -546,14 +582,35 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
         agentHasHumanProof[agentId] = false;
         activeAgentCount[nullifier]--;
 
-        // Clear guardian and metadata
+        // Clear guardian, metadata, and credentials
         delete agentGuardian[agentId];
         delete agentMetadata[agentId];
+        delete _agentCredentials[agentId];
 
         // Burn the NFT
         _burn(agentId);
 
         emit HumanProofRevoked(agentId, nullifier);
+    }
+
+    /// @notice Store ZK-attested credential claims from the Hub V2 disclosure output
+    /// @param agentId The agent to store credentials for
+    /// @param output The verified disclosure output from Hub V2
+    function _storeCredentials(
+        uint256 agentId,
+        ISelfVerificationRoot.GenericDiscloseOutputV2 memory output
+    ) internal {
+        AgentCredentials storage creds = _agentCredentials[agentId];
+        creds.issuingState = output.issuingState;
+        creds.name = output.name;
+        creds.idNumber = output.idNumber;
+        creds.nationality = output.nationality;
+        creds.dateOfBirth = output.dateOfBirth;
+        creds.gender = output.gender;
+        creds.expiryDate = output.expiryDate;
+        creds.olderThan = output.olderThan;
+        creds.ofac = output.ofac;
+        emit AgentCredentialsStored(agentId);
     }
 
     // ====================================================

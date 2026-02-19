@@ -31,6 +31,8 @@ export const REGISTRY_ABI = [
   "function guardianRevoke(uint256 agentId)",
   "function selfDeregister(uint256 agentId)",
   "function updateAgentMetadata(uint256 agentId, string metadata)",
+  // V5: ZK-attested credentials
+  "function getAgentCredentials(uint256 agentId) view returns ((string issuingState, string[] name, string idNumber, string nationality, string dateOfBirth, string gender, string expiryDate, uint256 olderThan, bool[3] ofac))",
   "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
 ] as const;
 

@@ -19,6 +19,21 @@ export interface VerifierConfig {
   cacheTtlMs?: number;
   /** Max agents allowed per human (default: 1 = sybil resistant). Set to 0 to disable. */
   maxAgentsPerHuman?: number;
+  /** Include ZK-attested credentials in verification result (default: false) */
+  includeCredentials?: boolean;
+}
+
+/** ZK-attested credential claims stored on-chain for an agent */
+export interface AgentCredentials {
+  issuingState: string;
+  name: string[];
+  idNumber: string;
+  nationality: string;
+  dateOfBirth: string;
+  gender: string;
+  expiryDate: string;
+  olderThan: bigint;
+  ofac: boolean[];
 }
 
 export interface VerificationResult {
@@ -30,6 +45,8 @@ export interface VerificationResult {
   agentId: bigint;
   /** Number of agents registered by the same human */
   agentCount: bigint;
+  /** ZK-attested credentials (only populated when includeCredentials is true) */
+  credentials?: AgentCredentials;
   error?: string;
 }
 
@@ -78,6 +95,7 @@ export class SelfAgentVerifier {
   private maxAgeMs: number;
   private cacheTtlMs: number;
   private maxAgentsPerHuman: number;
+  private includeCredentials: boolean;
   private cache = new Map<string, CacheEntry>();
 
   constructor(config: VerifierConfig = {}) {
@@ -90,6 +108,7 @@ export class SelfAgentVerifier {
     this.maxAgeMs = config.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
     this.cacheTtlMs = config.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
     this.maxAgentsPerHuman = config.maxAgentsPerHuman ?? 1;
+    this.includeCredentials = config.includeCredentials ?? false;
   }
 
   /**
@@ -166,7 +185,13 @@ export class SelfAgentVerifier {
       };
     }
 
-    return { valid: true, agentAddress: signerAddress, agentKey, agentId, agentCount };
+    // 7. Fetch credentials if requested
+    let credentials: AgentCredentials | undefined;
+    if (this.includeCredentials && agentId > 0n) {
+      credentials = await this.fetchCredentials(agentId);
+    }
+
+    return { valid: true, agentAddress: signerAddress, agentKey, agentId, agentCount, credentials };
   }
 
   /**
@@ -200,6 +225,28 @@ export class SelfAgentVerifier {
     });
 
     return { isVerified, agentId, agentCount };
+  }
+
+  /**
+   * Fetch ZK-attested credentials for an agent.
+   */
+  private async fetchCredentials(agentId: bigint): Promise<AgentCredentials | undefined> {
+    try {
+      const raw = await this.registry.getAgentCredentials(agentId);
+      return {
+        issuingState: raw.issuingState ?? raw[0] ?? "",
+        name: raw.name ?? raw[1] ?? [],
+        idNumber: raw.idNumber ?? raw[2] ?? "",
+        nationality: raw.nationality ?? raw[3] ?? "",
+        dateOfBirth: raw.dateOfBirth ?? raw[4] ?? "",
+        gender: raw.gender ?? raw[5] ?? "",
+        expiryDate: raw.expiryDate ?? raw[6] ?? "",
+        olderThan: raw.olderThan ?? raw[7] ?? 0n,
+        ofac: raw.ofac ?? raw[8] ?? [false, false, false],
+      };
+    } catch {
+      return undefined;
+    }
   }
 
   /** Clear the on-chain status cache */
