@@ -21,8 +21,13 @@ const uniqueHumans = new Set<string>();
 // Helpers
 // ---------------------------------------------------------------------------
 
-function setCors(res: Parameters<Parameters<typeof http>[1]>[1]) {
-  res.set("Access-Control-Allow-Origin", "*");
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "").split(",").filter(Boolean);
+
+function setCors(req: Parameters<Parameters<typeof http>[1]>[0], res: Parameters<Parameters<typeof http>[1]>[1]) {
+  const origin = req.headers.origin || "";
+  if (ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGINS.includes("*")) {
+    res.set("Access-Control-Allow-Origin", origin);
+  }
   res.set(
     "Access-Control-Allow-Headers",
     "Content-Type, x-self-agent-address, x-self-agent-signature, x-self-agent-timestamp",
@@ -39,7 +44,7 @@ function setCors(res: Parameters<Parameters<typeof http>[1]>[1]) {
 // ---------------------------------------------------------------------------
 
 http("demoAgent", async (req, res) => {
-  setCors(res);
+  setCors(req, res);
 
   if (req.method === "OPTIONS") {
     res.status(204).send("");
