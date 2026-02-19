@@ -59,6 +59,8 @@ export interface VerificationResult {
   agentId: bigint;
   /** Number of agents registered by the same human */
   agentCount: bigint;
+  /** Human's nullifier (for rate limiting by human identity) */
+  nullifier: bigint;
   /** ZK-attested credentials (only populated when includeCredentials is true) */
   credentials?: AgentCredentials;
   error?: string;
@@ -68,6 +70,7 @@ interface CacheEntry {
   isVerified: boolean;
   agentId: bigint;
   agentCount: bigint;
+  nullifier: bigint;
   providerAddress: string;
   expiresAt: number;
 }
@@ -152,6 +155,7 @@ export class SelfAgentVerifier {
       agentKey: ethers.ZeroHash,
       agentId: 0n,
       agentCount: 0n,
+      nullifier: 0n,
     };
 
     // 1. Check timestamp freshness (replay protection)
@@ -181,7 +185,7 @@ export class SelfAgentVerifier {
     const agentKey = ethers.zeroPadValue(signerAddress, 32);
 
     // 5. Check on-chain status (with cache)
-    const { isVerified, agentId, agentCount, providerAddress } =
+    const { isVerified, agentId, agentCount, nullifier, providerAddress } =
       await this.checkOnChain(agentKey);
 
     if (!isVerified) {
@@ -191,6 +195,7 @@ export class SelfAgentVerifier {
         agentKey,
         agentId,
         agentCount,
+        nullifier,
         error: "Agent not verified on-chain",
       };
     }
@@ -207,6 +212,7 @@ export class SelfAgentVerifier {
           agentKey,
           agentId,
           agentCount,
+          nullifier,
           error: "Unable to verify proof provider — RPC error",
         };
       }
@@ -217,6 +223,7 @@ export class SelfAgentVerifier {
           agentKey,
           agentId,
           agentCount,
+          nullifier,
           error: "Agent was not verified by Self — proof provider mismatch",
         };
       }
@@ -230,6 +237,7 @@ export class SelfAgentVerifier {
         agentKey,
         agentId,
         agentCount,
+        nullifier,
         error: `Human has ${agentCount} agents (max ${this.maxAgentsPerHuman})`,
       };
     }
@@ -240,7 +248,7 @@ export class SelfAgentVerifier {
       credentials = await this.fetchCredentials(agentId);
     }
 
-    return { valid: true, agentAddress: signerAddress, agentKey, agentId, agentCount, credentials };
+    return { valid: true, agentAddress: signerAddress, agentKey, agentId, agentCount, nullifier, credentials };
   }
 
   /**
@@ -248,13 +256,14 @@ export class SelfAgentVerifier {
    */
   private async checkOnChain(
     agentKey: string
-  ): Promise<{ isVerified: boolean; agentId: bigint; agentCount: bigint; providerAddress: string }> {
+  ): Promise<{ isVerified: boolean; agentId: bigint; agentCount: bigint; nullifier: bigint; providerAddress: string }> {
     const cached = this.cache.get(agentKey);
     if (cached && cached.expiresAt > Date.now()) {
       return {
         isVerified: cached.isVerified,
         agentId: cached.agentId,
         agentCount: cached.agentCount,
+        nullifier: cached.nullifier,
         providerAddress: cached.providerAddress,
       };
     }
@@ -266,14 +275,16 @@ export class SelfAgentVerifier {
 
     // Fetch sybil data and provider address if agent exists
     let agentCount = 0n;
+    let nullifier = 0n;
     let providerAddress = "";
     if (agentId > 0n) {
       const promises: Promise<unknown>[] = [];
 
       if (this.maxAgentsPerHuman > 0) {
         promises.push(
-          this.registry.getHumanNullifier(agentId).then(async (nullifier: bigint) => {
-            agentCount = await this.registry.getAgentCountForHuman(nullifier);
+          this.registry.getHumanNullifier(agentId).then(async (n: bigint) => {
+            nullifier = n;
+            agentCount = await this.registry.getAgentCountForHuman(n);
           })
         );
       }
@@ -293,11 +304,12 @@ export class SelfAgentVerifier {
       isVerified,
       agentId,
       agentCount,
+      nullifier,
       providerAddress,
       expiresAt: Date.now() + this.cacheTtlMs,
     });
 
-    return { isVerified, agentId, agentCount, providerAddress };
+    return { isVerified, agentId, agentCount, nullifier, providerAddress };
   }
 
   /**
