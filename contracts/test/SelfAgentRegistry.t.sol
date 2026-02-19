@@ -101,7 +101,11 @@ contract SelfAgentRegistryTest is Test {
     }
 
     function _buildUserData(uint8 action) internal pure returns (bytes memory) {
-        return abi.encodePacked(action);
+        return abi.encodePacked(action, uint8(0)); // action + config 0
+    }
+
+    function _buildUserData(uint8 action, uint8 configIdx) internal pure returns (bytes memory) {
+        return abi.encodePacked(action, configIdx);
     }
 
     function _registerViaHub(address humanAddr, uint256 nullifier) internal {
@@ -130,10 +134,11 @@ contract SelfAgentRegistryTest is Test {
         assertEq(registry.name(), "Self Agent ID");
         assertEq(registry.symbol(), "SAID");
         assertEq(registry.owner(), owner);
-        assertEq(registry.verificationConfigId(), fakeConfigId);
+        assertEq(registry.configIds(0), fakeConfigId);
     }
 
     function test_GetConfigId_ReturnsStoredId() public view {
+        // Short data defaults to config 0
         bytes32 result = registry.getConfigId(bytes32(0), bytes32(0), "");
         assertEq(result, fakeConfigId);
     }
@@ -342,14 +347,14 @@ contract SelfAgentRegistryTest is Test {
 
     function _registerViaHubString(address humanAddr, uint256 nullifier) internal {
         bytes memory encodedOutput = _buildEncodedOutput(humanAddr, nullifier);
-        bytes memory userData = abi.encodePacked("R");
+        bytes memory userData = abi.encodePacked("R0");
         vm.prank(hubMock);
         registry.onVerificationSuccess(encodedOutput, userData);
     }
 
     function _deregisterViaHubString(address humanAddr, uint256 nullifier) internal {
         bytes memory encodedOutput = _buildEncodedOutput(humanAddr, nullifier);
-        bytes memory userData = abi.encodePacked("D");
+        bytes memory userData = abi.encodePacked("D0");
         vm.prank(hubMock);
         registry.onVerificationSuccess(encodedOutput, userData);
     }
@@ -698,7 +703,7 @@ contract SelfAgentRegistryTest is Test {
         bytes32 r,
         bytes32 s
     ) internal pure returns (bytes memory) {
-        return abi.encodePacked(action, agentAddr, r, s, v);
+        return abi.encodePacked(action, uint8(0), agentAddr, r, s, v);
     }
 
     function _registerViaHubAdvanced(address humanAddr, uint256 nullifier, uint256 agentPrivKey) internal {
@@ -712,7 +717,7 @@ contract SelfAgentRegistryTest is Test {
 
     function _deregisterViaHubAdvanced(address humanAddr, uint256 nullifier, address agentAddr) internal {
         bytes memory encodedOutput = _buildEncodedOutput(humanAddr, nullifier);
-        bytes memory userData = abi.encodePacked(uint8(0x04), agentAddr);
+        bytes memory userData = abi.encodePacked(uint8(0x04), uint8(0), agentAddr);
         vm.prank(hubMock);
         registry.onVerificationSuccess(encodedOutput, userData);
     }
@@ -742,8 +747,8 @@ contract SelfAgentRegistryTest is Test {
         bytes memory sHex = bytes(_toHexString32(s));
         bytes memory vHex = bytes(_toHexString8(v));
 
-        bytes memory userData = abi.encodePacked("K", addrHex, rHex, sHex, vHex);
-        assertEq(userData.length, 171, "String-encoded advanced userData should be 171 bytes");
+        bytes memory userData = abi.encodePacked("K0", addrHex, rHex, sHex, vHex);
+        assertEq(userData.length, 172, "String-encoded advanced userData should be 172 bytes");
 
         bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
         vm.prank(hubMock);
@@ -799,8 +804,8 @@ contract SelfAgentRegistryTest is Test {
 
     function test_RevertWhen_AdvancedUserDataTooShort() public {
         bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
-        // Only 10 bytes — too short for binary advanced (needs 86)
-        bytes memory userData = abi.encodePacked(uint8(0x03), bytes9(0));
+        // Only 11 bytes — too short for binary advanced (needs 87)
+        bytes memory userData = abi.encodePacked(uint8(0x03), uint8(0), bytes9(0));
 
         vm.prank(hubMock);
         vm.expectRevert(SelfAgentRegistry.InvalidUserData.selector);
@@ -883,7 +888,7 @@ contract SelfAgentRegistryTest is Test {
         bytes32 r,
         bytes32 s
     ) internal pure returns (bytes memory) {
-        return abi.encodePacked(action, agentAddr, guardian, r, s, v);
+        return abi.encodePacked(action, uint8(0), agentAddr, guardian, r, s, v);
     }
 
     function _registerWalletFree(
@@ -951,8 +956,8 @@ contract SelfAgentRegistryTest is Test {
         bytes memory sHex = bytes(_toHexString32(s));
         bytes memory vHex = bytes(_toHexString8(v));
 
-        bytes memory userData = abi.encodePacked("W", addrHex, guardianHex, rHex, sHex, vHex);
-        assertEq(userData.length, 211, "String-encoded wallet-free userData should be 211 bytes");
+        bytes memory userData = abi.encodePacked("W0", addrHex, guardianHex, rHex, sHex, vHex);
+        assertEq(userData.length, 212, "String-encoded wallet-free userData should be 212 bytes");
 
         bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
         vm.prank(hubMock);
@@ -965,7 +970,7 @@ contract SelfAgentRegistryTest is Test {
 
     function test_RevertWhen_WalletFreeUserDataTooShort() public {
         bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
-        bytes memory userData = abi.encodePacked(uint8(0x05), bytes20(0));
+        bytes memory userData = abi.encodePacked(uint8(0x05), uint8(0), bytes20(0));
 
         vm.prank(hubMock);
         vm.expectRevert(SelfAgentRegistry.InvalidUserData.selector);
@@ -1267,7 +1272,6 @@ contract SelfAgentRegistryTest is Test {
     }
 
     function test_Credentials_EmptyByDefault() public view {
-        // Query non-existent agent — all fields should be empty
         _assertCredentialsEmpty(999);
     }
 
@@ -1290,9 +1294,311 @@ contract SelfAgentRegistryTest is Test {
         _deregisterViaHub(human1, nullifier1);
         _assertCredentialsEmpty(firstAgentId);
 
-        // Re-register — credentials should be stored again
         _registerViaHub(human1, nullifier1);
         uint256 secondAgentId = registry.getAgentId(agentKey1);
         _assertCredentialsMatch(secondAgentId);
+    }
+
+    // ====================================================
+    // V4: Multi-Config Verification Tests
+    // ====================================================
+
+    function test_MultiConfig_GetConfigIdBase() public view {
+        bytes32 result = registry.getConfigId(0, 0, bytes("R0"));
+        assertEq(result, registry.configIds(0));
+    }
+
+    function test_MultiConfig_GetConfigIdAge18() public view {
+        bytes32 result = registry.getConfigId(0, 0, bytes("R1"));
+        assertEq(result, registry.configIds(1));
+    }
+
+    function test_MultiConfig_GetConfigIdAge21() public view {
+        bytes32 result = registry.getConfigId(0, 0, bytes("R2"));
+        assertEq(result, registry.configIds(2));
+    }
+
+    function test_MultiConfig_GetConfigIdOFAC() public view {
+        bytes32 result = registry.getConfigId(0, 0, bytes("R3"));
+        assertEq(result, registry.configIds(3));
+    }
+
+    function test_MultiConfig_GetConfigIdAge18OFAC() public view {
+        bytes32 result = registry.getConfigId(0, 0, bytes("R4"));
+        assertEq(result, registry.configIds(4));
+    }
+
+    function test_MultiConfig_GetConfigIdAge21OFAC() public view {
+        bytes32 result = registry.getConfigId(0, 0, bytes("R5"));
+        assertEq(result, registry.configIds(5));
+    }
+
+    function test_MultiConfig_DefaultOnShortData() public view {
+        bytes32 result = registry.getConfigId(0, 0, bytes("R"));
+        assertEq(result, registry.configIds(0));
+    }
+
+    function test_MultiConfig_DefaultOnInvalidDigit() public view {
+        bytes32 result = registry.getConfigId(0, 0, bytes("R9"));
+        assertEq(result, registry.configIds(0));
+    }
+
+    function test_MultiConfig_BinaryConfigByte() public view {
+        // Binary: action 0x01, config 0x04
+        bytes memory data = abi.encodePacked(uint8(0x01), uint8(0x04));
+        bytes32 result = registry.getConfigId(0, 0, data);
+        assertEq(result, registry.configIds(4));
+    }
+
+    function test_MultiConfig_AllConfigIdsNonZero() public view {
+        for (uint256 i = 0; i < 6; i++) {
+            assertTrue(registry.configIds(i) != bytes32(0), "Config ID should be non-zero");
+        }
+        // All should be the same fakeConfigId since we mock all calls
+        // (In production they'd be distinct — the mock returns the same value)
+    }
+
+    function test_MultiConfig_RegisterWithConfig4() public {
+        // Register simple mode with config "4" (18+ OFAC)
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        bytes memory userData = abi.encodePacked("R4");
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+
+        assertTrue(registry.isVerifiedAgent(agentKey1));
+    }
+
+    function test_MultiConfig_AdvancedWithConfig1() public {
+        // "K1" + addr + sig
+        (uint8 v, bytes32 r, bytes32 s) = _signRegistration(advAgentPrivKey1, human1);
+
+        bytes memory addrHex = bytes(_toHexString(advAgentAddr1));
+        bytes memory rHex = bytes(_toHexString32(r));
+        bytes memory sHex = bytes(_toHexString32(s));
+        bytes memory vHex = bytes(_toHexString8(v));
+
+        bytes memory userData = abi.encodePacked("K1", addrHex, rHex, sHex, vHex);
+        assertEq(userData.length, 172);
+
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+
+        assertTrue(registry.isVerifiedAgent(advAgentKey1));
+    }
+
+    function test_MultiConfig_WalletFreeWithConfig3() public {
+        // "W3" + agent + guardian + sig
+        (uint8 v, bytes32 r, bytes32 s) = _signRegistration(advAgentPrivKey1, human1);
+
+        bytes memory addrHex = bytes(_toHexString(advAgentAddr1));
+        bytes memory guardianHex = bytes(_toHexString(human1));
+        bytes memory rHex = bytes(_toHexString32(r));
+        bytes memory sHex = bytes(_toHexString32(s));
+        bytes memory vHex = bytes(_toHexString8(v));
+
+        bytes memory userData = abi.encodePacked("W3", addrHex, guardianHex, rHex, sHex, vHex);
+        assertEq(userData.length, 212);
+
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+
+        assertTrue(registry.isVerifiedAgent(advAgentKey1));
+        assertEq(registry.agentGuardian(registry.getAgentId(advAgentKey1)), human1);
+    }
+
+    // ====================================================
+    // V4: Edge Case & Robustness Tests
+    // ====================================================
+
+    function test_MultiConfig_EmptyDataReverts() public {
+        // Empty userData should revert with InvalidUserData (length == 0 check)
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        vm.expectRevert(SelfAgentRegistry.InvalidUserData.selector);
+        registry.onVerificationSuccess(encodedOutput, "");
+    }
+
+    function test_MultiConfig_SingleByteDefaultsToConfig0() public view {
+        // Single byte "R" (no config digit) — getConfigId defaults to config 0
+        bytes32 result = registry.getConfigId(0, 0, bytes("R"));
+        assertEq(result, registry.configIds(0), "Single byte should default to config 0");
+    }
+
+    function test_MultiConfig_ASCII6DefaultsToConfig0() public view {
+        // '6' = 0x36 is out of range — should default to config 0
+        bytes32 result = registry.getConfigId(0, 0, bytes("R6"));
+        assertEq(result, registry.configIds(0), "ASCII '6' should default to config 0");
+    }
+
+    function test_MultiConfig_Binary6DefaultsToConfig0() public view {
+        // Binary 0x06 is out of range — should default to config 0
+        bytes memory data = abi.encodePacked(uint8(0x01), uint8(0x06));
+        bytes32 result = registry.getConfigId(0, 0, data);
+        assertEq(result, registry.configIds(0), "Binary 0x06 should default to config 0");
+    }
+
+    function test_MultiConfig_HighByteDefaultsToConfig0() public view {
+        // 0xFF is out of both ASCII and binary range — should default to config 0
+        bytes memory data = abi.encodePacked(uint8(0x01), uint8(0xFF));
+        bytes32 result = registry.getConfigId(0, 0, data);
+        assertEq(result, registry.configIds(0), "0xFF should default to config 0");
+    }
+
+    function test_MultiConfig_BinaryAllConfigs() public view {
+        // Verify all 6 binary config bytes (0x00-0x05) map correctly
+        for (uint8 i = 0; i <= 5; i++) {
+            bytes memory data = abi.encodePacked(uint8(0x01), i);
+            bytes32 result = registry.getConfigId(0, 0, data);
+            assertEq(result, registry.configIds(i), "Binary config mismatch");
+        }
+    }
+
+    function test_MultiConfig_ASCIIAllConfigs() public view {
+        // Verify all 6 ASCII config chars ('0'-'5') map correctly
+        bytes memory chars = bytes("012345");
+        for (uint256 i = 0; i < 6; i++) {
+            bytes memory data = abi.encodePacked(uint8(0x52), chars[i]); // "R" + digit
+            bytes32 result = registry.getConfigId(0, 0, data);
+            assertEq(result, registry.configIds(i), "ASCII config mismatch");
+        }
+    }
+
+    function test_MultiConfig_DeregisterWithConfig0Works() public {
+        // Register then deregister with "D0" format
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, bytes("R0"));
+        assertTrue(registry.isVerifiedAgent(agentKey1));
+
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, bytes("D0"));
+        assertFalse(registry.isVerifiedAgent(agentKey1));
+    }
+
+    function test_MultiConfig_BinaryDeregisterAdvancedWithConfig() public {
+        // Register advanced, then deregister with binary 0x04 + config byte
+        (uint8 v, bytes32 r, bytes32 s) = _signRegistration(advAgentPrivKey1, human1);
+        bytes memory regData = abi.encodePacked(uint8(0x03), uint8(0x00), advAgentAddr1, r, s, v);
+        assertEq(regData.length, 87);
+
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, regData);
+        assertTrue(registry.isVerifiedAgent(advAgentKey1));
+
+        // Deregister: 0x04 + config(1B) + address(20B) = 22 bytes
+        bytes memory deregData = abi.encodePacked(uint8(0x04), uint8(0x00), advAgentAddr1);
+        assertEq(deregData.length, 22);
+
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, deregData);
+        assertFalse(registry.isVerifiedAgent(advAgentKey1));
+    }
+
+    function test_MultiConfig_StringDeregisterAdvancedWithConfig() public {
+        // Register with "K0", deregister with "X0"
+        (uint8 v, bytes32 r, bytes32 s) = _signRegistration(advAgentPrivKey1, human1);
+        bytes memory addrHex = bytes(_toHexString(advAgentAddr1));
+        bytes memory rHex = bytes(_toHexString32(r));
+        bytes memory sHex = bytes(_toHexString32(s));
+        bytes memory vHex = bytes(_toHexString8(v));
+
+        bytes memory regData = abi.encodePacked("K0", addrHex, rHex, sHex, vHex);
+        assertEq(regData.length, 172);
+
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, regData);
+        assertTrue(registry.isVerifiedAgent(advAgentKey1));
+
+        // Deregister: "X0" + address = 42 chars
+        bytes memory deregData = abi.encodePacked("X0", addrHex);
+        assertEq(deregData.length, 42);
+
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, deregData);
+        assertFalse(registry.isVerifiedAgent(advAgentKey1));
+    }
+
+    function test_MultiConfig_ConfigDoesNotAffectRegistration() public {
+        // Config 0 and config 5 should both register successfully
+        // (Config only affects Hub V2 verification requirements, not our contract logic)
+        bytes memory encodedOutput1 = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput1, bytes("R0"));
+        assertTrue(registry.isVerifiedAgent(agentKey1));
+
+        bytes memory encodedOutput2 = _buildEncodedOutput(human2, nullifier2);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput2, bytes("R5"));
+        assertTrue(registry.isVerifiedAgent(agentKey2));
+    }
+
+    function test_MultiConfig_BinaryRegisterTooShort() public {
+        // Binary advanced with only 86 bytes (missing 1 byte) should revert
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        bytes memory tooShort = new bytes(86);
+        tooShort[0] = bytes1(uint8(0x03));
+        tooShort[1] = bytes1(uint8(0x00));
+        vm.prank(hubMock);
+        vm.expectRevert(SelfAgentRegistry.InvalidUserData.selector);
+        registry.onVerificationSuccess(encodedOutput, tooShort);
+    }
+
+    function test_MultiConfig_BinaryWalletFreeTooShort() public {
+        // Binary wallet-free with only 106 bytes (missing 1 byte) should revert
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        bytes memory tooShort = new bytes(106);
+        tooShort[0] = bytes1(uint8(0x05));
+        tooShort[1] = bytes1(uint8(0x00));
+        vm.prank(hubMock);
+        vm.expectRevert(SelfAgentRegistry.InvalidUserData.selector);
+        registry.onVerificationSuccess(encodedOutput, tooShort);
+    }
+
+    function test_MultiConfig_BinaryDeregAdvancedTooShort() public {
+        // Binary advanced deregister with only 21 bytes (missing 1 byte) should revert
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        bytes memory tooShort = new bytes(21);
+        tooShort[0] = bytes1(uint8(0x04));
+        tooShort[1] = bytes1(uint8(0x00));
+        vm.prank(hubMock);
+        vm.expectRevert(SelfAgentRegistry.InvalidUserData.selector);
+        registry.onVerificationSuccess(encodedOutput, tooShort);
+    }
+
+    function test_MultiConfig_GapBetweenBinaryAndASCII() public view {
+        // Bytes 0x06-0x2F fall between binary (0-5) and ASCII ('0'=0x30)
+        // All should default to config 0
+        bytes memory data06 = abi.encodePacked(uint8(0x01), uint8(0x06));
+        assertEq(registry.getConfigId(0, 0, data06), registry.configIds(0));
+
+        bytes memory data10 = abi.encodePacked(uint8(0x01), uint8(0x10));
+        assertEq(registry.getConfigId(0, 0, data10), registry.configIds(0));
+
+        bytes memory data2F = abi.encodePacked(uint8(0x01), uint8(0x2F));
+        assertEq(registry.getConfigId(0, 0, data2F), registry.configIds(0));
+    }
+
+    function test_MultiConfig_SimpleRegisterAllConfigsEndToEnd() public {
+        // Register with each of the 6 configs via simple mode and verify each works
+        address[6] memory humans;
+        uint256[6] memory nullifiers;
+        for (uint256 i = 0; i < 6; i++) {
+            humans[i] = address(uint160(0xBEEF00 + i));
+            nullifiers[i] = 900000 + i;
+        }
+
+        bytes memory configChars = bytes("012345");
+        for (uint256 i = 0; i < 6; i++) {
+            bytes memory encodedOutput = _buildEncodedOutput(humans[i], nullifiers[i]);
+            bytes memory userData = abi.encodePacked(uint8(0x52), configChars[i]); // "R" + digit
+            vm.prank(hubMock);
+            registry.onVerificationSuccess(encodedOutput, userData);
+            bytes32 key = bytes32(uint256(uint160(humans[i])));
+            assertTrue(registry.isVerifiedAgent(key), "Agent should be verified");
+        }
     }
 }

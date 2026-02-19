@@ -42,7 +42,7 @@ export default function CodeBlock({ tabs }: CodeBlockProps) {
 
   return (
     <div className="w-full rounded-lg border border-border overflow-hidden">
-      <div className="flex border-b border-border bg-surface-2">
+      <div className="flex border-b border-border" style={{ backgroundColor: "#12121c" }}>
         {tabs.map((tab, i) => (
           <button
             key={tab.label}
@@ -73,7 +73,7 @@ export default function CodeBlock({ tabs }: CodeBlockProps) {
         {({ style, tokens, getLineProps, getTokenProps }) => (
           <pre
             className="p-4 overflow-x-auto text-sm leading-relaxed"
-            style={{ ...style, margin: 0 }}
+            style={{ ...style, margin: 0, backgroundColor: "#0d0d14" }}
           >
             {tokens.map((line, i) => (
               <div key={i} {...getLineProps({ line })}>

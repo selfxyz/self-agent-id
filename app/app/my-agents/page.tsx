@@ -12,6 +12,13 @@ import { Button } from "@/components/Button";
 import { StatusDot } from "@/components/StatusDot";
 import { signInWithPasskey, sendUserOperation, encodeGuardianRevoke, isPasskeySupported, isGaslessSupported } from "@/lib/aa";
 
+interface AgentCredentials {
+  issuingState: string;
+  nationality: string;
+  olderThan: bigint;
+  ofac: boolean[];
+}
+
 interface AgentEntry {
   agentId: bigint;
   agentKey: string;
@@ -21,30 +28,37 @@ interface AgentEntry {
   mode: "simple" | "advanced" | "walletfree";
   guardian: string;
   hasMetadata: boolean;
-  credentialBadges: string[];
+  credentials?: AgentCredentials;
 }
 
-async function fetchCredentialBadges(
+async function fetchCredentials(
   registry: ethers.Contract,
-  agentId: bigint
-): Promise<string[]> {
+  agentId: bigint,
+): Promise<AgentCredentials | undefined> {
   try {
     const raw = await registry.getAgentCredentials(agentId);
-    const badges: string[] = [];
-    const nationality = raw.nationality || raw[3] || "";
-    const olderThan = raw.olderThan ?? raw[7] ?? 0n;
-    const ofac = raw.ofac || raw[8] || [false, false, false];
-    const gender = raw.gender || raw[5] || "";
-    const name = raw.name || raw[1] || [];
-    if (nationality) badges.push(nationality);
-    if (olderThan > 0n) badges.push(`${olderThan.toString()}+`);
-    if (ofac?.some(Boolean)) badges.push("Not on OFAC List");
-    if (gender) badges.push(gender === "M" ? "Male" : gender === "F" ? "Female" : gender);
-    if (name?.some((n: string) => n.length > 0)) badges.push(name.filter((n: string) => n.length > 0).join(" "));
-    return badges;
+    const creds: AgentCredentials = {
+      issuingState: raw.issuingState || raw[0] || "",
+      nationality: raw.nationality || raw[3] || "",
+      olderThan: raw.olderThan ?? raw[7] ?? 0n,
+      ofac: raw.ofac || raw[8] || [false, false, false],
+    };
+    if (creds.nationality || creds.issuingState || creds.olderThan > 0n || creds.ofac?.some(Boolean)) {
+      return creds;
+    }
   } catch {
-    return [];
+    // Contract without getAgentCredentials
   }
+  return undefined;
+}
+
+function buildDisclosureBadges(creds: AgentCredentials): string[] {
+  const badges: string[] = [];
+  if (creds.olderThan > 0n) badges.push(`${creds.olderThan.toString()}+`);
+  if (creds.ofac?.some(Boolean)) badges.push("Not on OFAC List");
+  if (creds.nationality) badges.push(creds.nationality);
+  if (creds.issuingState) badges.push(`Issued: ${creds.issuingState}`);
+  return badges;
 }
 
 export default function MyAgentsPage() {
@@ -117,7 +131,7 @@ export default function MyAgentsPage() {
         mode = guardian !== ethers.ZeroAddress ? "walletfree" : "simple";
       }
 
-      const credentialBadges = await fetchCredentialBadges(registry, agentId);
+      const credentials = await fetchCredentials(registry, agentId);
 
       setAgents([{
         agentId,
@@ -128,7 +142,7 @@ export default function MyAgentsPage() {
         mode,
         guardian,
         hasMetadata,
-        credentialBadges,
+        credentials,
       }]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to look up agent");
@@ -192,7 +206,7 @@ export default function MyAgentsPage() {
             hasMetadata = metadata.length > 0;
           } catch {}
 
-          const credentialBadges = await fetchCredentialBadges(registry, agentId);
+          const credentials = await fetchCredentials(registry, agentId);
 
           results.push({
             agentId,
@@ -203,7 +217,7 @@ export default function MyAgentsPage() {
             mode: "walletfree", // guardian-managed agents are walletfree or smartwallet
             guardian,
             hasMetadata,
-            credentialBadges,
+            credentials,
           });
         } catch {
           // Token was burned — skip
@@ -289,7 +303,7 @@ export default function MyAgentsPage() {
             mode = guardian !== ethers.ZeroAddress ? "walletfree" : "simple";
           }
 
-          const credentialBadges = await fetchCredentialBadges(registry, agentId);
+          const credentials = await fetchCredentials(registry, agentId);
 
           results.push({
             agentId,
@@ -300,7 +314,7 @@ export default function MyAgentsPage() {
             mode,
             guardian,
             hasMetadata,
-            credentialBadges,
+            credentials,
           });
         } catch {
           // Token was burned — skip
@@ -576,6 +590,19 @@ function renderAgentCards(
             </p>
           </div>
 
+          {agent.credentials && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {buildDisclosureBadges(agent.credentials).map((badge, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-accent/10 text-accent border border-accent/20"
+                >
+                  {badge}
+                </span>
+              ))}
+            </div>
+          )}
+
           <div className="flex items-center gap-3 mt-2">
             {agent.guardian !== ethers.ZeroAddress && (
               <span className="flex items-center gap-1 text-xs text-muted">
@@ -594,18 +621,6 @@ function renderAgentCards(
             )}
           </div>
 
-          {agent.credentialBadges.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-border">
-              {agent.credentialBadges.map((badge, i) => (
-                <span
-                  key={i}
-                  className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-accent/10 text-accent border border-accent/20"
-                >
-                  {badge}
-                </span>
-              ))}
-            </div>
-          )}
         </Card>
       </Link>
 

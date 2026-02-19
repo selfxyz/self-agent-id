@@ -22,9 +22,10 @@ import {
   Loader2,
   Shield,
 } from "lucide-react";
+import MatrixRain from "@/components/MatrixRain";
 import { connectWallet } from "@/lib/wallet";
 import { REGISTRY_ADDRESS, RPC_URL, REGISTRY_ABI } from "@/lib/constants";
-import { getAgentSnippets } from "@/lib/snippets";
+import { getAgentSnippets, AGENT_FEATURES } from "@/lib/snippets";
 import CodeBlock from "@/components/CodeBlock";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
@@ -43,6 +44,16 @@ let SelfAppBuilder: typeof import("@selfxyz/qrcode").SelfAppBuilder;
 
 type Mode = "simple" | "advanced" | "walletfree" | "smartwallet";
 type Step = "mode" | "connect" | "scan" | "success";
+
+/** Map disclosure choices → config index digit (0-5) for the contract's configIds array */
+function getConfigIndex(disc: { minimumAge: number; ofac: boolean }): string {
+  if (disc.minimumAge === 18 && disc.ofac) return "4";
+  if (disc.minimumAge === 21 && disc.ofac) return "5";
+  if (disc.minimumAge === 18) return "1";
+  if (disc.minimumAge === 21) return "2";
+  if (disc.ofac) return "3";
+  return "0"; // base — data disclosures only
+}
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -80,6 +91,16 @@ export default function RegisterPage() {
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [showKeyInfo, setShowKeyInfo] = useState(false);
   const [activeAgentSnippet, setActiveAgentSnippet] = useState(0);
+  const [activeAgentFeatures, setActiveAgentFeatures] = useState<Set<string>>(new Set());
+
+  const toggleAgentFeature = (id: string) => {
+    setActiveAgentFeatures((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // Load SelfAppBuilder on client
   useEffect(() => {
@@ -163,8 +184,10 @@ export default function RegisterPage() {
 
     setAlreadyRegistered(false);
 
+    const cfgIdx = getConfigIndex(disclosures);
+
     if (mode === "simple") {
-      setSelfApp(buildSelfApp(address, "R"));
+      setSelfApp(buildSelfApp(address, "R" + cfgIdx));
       setStep("scan");
     } else {
       // Advanced mode: generate keypair, sign challenge
@@ -176,7 +199,7 @@ export default function RegisterPage() {
       const rHex = sig.r.slice(2);
       const sHex = sig.s.slice(2);
       const vHex = sig.v.toString(16).padStart(2, "0");
-      const userDefinedData = "K" + agentAddrHex + rHex + sHex + vHex;
+      const userDefinedData = "K" + cfgIdx + agentAddrHex + rHex + sHex + vHex;
 
       setSelfApp(buildSelfApp(address, userDefinedData));
       setStep("scan");
@@ -202,13 +225,14 @@ export default function RegisterPage() {
     // The contract uses humanAddress from output.userIdentifier (which will be agentAddress)
     const sig = await signAgentChallenge(newWallet, agentAddress);
 
-    // Build "W" + agentAddr(40) + guardian(40) + r(64) + s(64) + v(2) = 211 chars
+    // Build "W" + config(1) + agentAddr(40) + guardian(40) + r(64) + s(64) + v(2) = 212 chars
+    const cfgIdx = getConfigIndex(disclosures);
     const agentAddrHex = newWallet.address.slice(2).toLowerCase();
     const guardianHex = "0".repeat(40); // no guardian (address(0))
     const rHex = sig.r.slice(2);
     const sHex = sig.s.slice(2);
     const vHex = sig.v.toString(16).padStart(2, "0");
-    const userDefinedData = "W" + agentAddrHex + guardianHex + rHex + sHex + vHex;
+    const userDefinedData = "W" + cfgIdx + agentAddrHex + guardianHex + rHex + sHex + vHex;
 
     setSelfApp(buildSelfApp(agentAddress, userDefinedData));
     setStep("scan");
@@ -238,13 +262,14 @@ export default function RegisterPage() {
       const agentAddress = newWallet.address.toLowerCase();
       const sig = await signAgentChallenge(newWallet, agentAddress);
 
-      // 4. Build userDefinedData: "W" + agentAddr(40) + smartWalletAddr(40) + r(64) + s(64) + v(2)
+      // 4. Build userDefinedData: "W" + config(1) + agentAddr(40) + smartWalletAddr(40) + r(64) + s(64) + v(2)
+      const cfgIdx = getConfigIndex(disclosures);
       const agentAddrHex = newWallet.address.slice(2).toLowerCase();
       const guardianHex = swAddress.slice(2).toLowerCase();
       const rHex = sig.r.slice(2);
       const sHex = sig.s.slice(2);
       const vHex = sig.v.toString(16).padStart(2, "0");
-      const userDefinedData = "W" + agentAddrHex + guardianHex + rHex + sHex + vHex;
+      const userDefinedData = "W" + cfgIdx + agentAddrHex + guardianHex + rHex + sHex + vHex;
 
       // 5. Save passkey for later sign-in
       savePasskey({
@@ -265,6 +290,7 @@ export default function RegisterPage() {
 
   const handleSuccess = () => {
     setStep("success");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleError = (error: unknown) => {
@@ -539,7 +565,7 @@ export default function RegisterPage() {
                 ["date_of_birth", "Date of Birth", false],
                 ["gender", "Gender", false],
                 ["issuing_state", "Issuing State", false],
-                ["ofac", "Not on OFAC List", true],
+                ["ofac", "Not on OFAC List", false],
               ] as const).map(([key, label, disabled]) => (
                 <label
                   key={key}
@@ -564,12 +590,10 @@ export default function RegisterPage() {
               ))}
             </div>
 
-            <div className="flex items-center gap-3 opacity-40">
+            <div className="flex items-center gap-3">
               <label className="text-sm text-muted">Age Verification</label>
-              <span className="text-xs text-subtle">coming soon</span>
               <select
                 value={disclosures.minimumAge}
-                disabled
                 onChange={(e) =>
                   setDisclosures((d) => ({ ...d, minimumAge: Number(e.target.value) }))
                 }
@@ -766,6 +790,12 @@ export default function RegisterPage() {
               </a>
             </div>
           </Card>
+          {mode === "smartwallet" && smartWalletAddress && (
+            <div className="bg-accent/5 border border-accent/20 rounded-lg px-4 py-3 text-xs text-muted w-full max-w-md">
+              <strong className="text-foreground">Testnet:</strong> On Celo Sepolia, the smart wallet is computed
+              but not deployed. Gasless passkey operations are available on Celo Mainnet.
+            </div>
+          )}
           {selfApp ? (
             <div className="rounded-xl p-4 bg-white">
               <SelfQRcodeWrapper
@@ -810,6 +840,7 @@ export default function RegisterPage() {
       {/* Step 4: Success */}
       {step === "success" && (
         <div className="flex flex-col items-center gap-4 w-full">
+          <MatrixRain duration={2000} fadeOut={2000} speed={3} maxOpacity={0.3} />
           <CheckCircle2 size={48} className="text-accent-success" />
           <p className="text-lg font-medium text-accent-success">
             Agent registered successfully!
@@ -921,42 +952,61 @@ export default function RegisterPage() {
               </Card>
 
               {/* How to use your agent */}
-              <Card className="w-full">
-                <p className="font-bold text-sm mb-1">How to use your agent</p>
-                <p className="text-xs text-muted mb-3">
+              <div className="w-full space-y-3">
+                <p className="font-bold text-sm">How to use your agent</p>
+                <p className="text-xs text-muted">
                   Set <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">AGENT_PRIVATE_KEY</code> in
                   your agent&apos;s environment, then use one of these patterns.
                   If the key is <strong className="text-foreground">lost</strong>, deregister and create a new agent.
                   If <strong className="text-foreground">leaked</strong>, deregister immediately.
                 </p>
 
-                <div className="flex gap-2 mb-3">
-                  {getAgentSnippets().map((snippet, i) => (
-                    <button
-                      key={snippet.title}
-                      onClick={() => setActiveAgentSnippet(i)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                        i === activeAgentSnippet
-                          ? "bg-gradient-to-r from-accent to-accent-2 text-white"
-                          : "bg-surface-2 text-muted hover:text-foreground"
-                      }`}
-                    >
-                      {snippet.title}
-                    </button>
-                  ))}
-                </div>
-
                 {(() => {
-                  const snippets = getAgentSnippets();
-                  const active = snippets[activeAgentSnippet];
+                  const agentSnippets = getAgentSnippets(activeAgentFeatures);
                   return (
                     <>
-                      <p className="text-xs text-muted mb-2">{active.description}</p>
-                      <CodeBlock tabs={active.snippets} />
+                      <div className="flex gap-2 flex-wrap">
+                        {agentSnippets.map((snippet, i) => (
+                          <button
+                            key={snippet.title}
+                            onClick={() => setActiveAgentSnippet(i)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                              i === activeAgentSnippet
+                                ? "bg-gradient-to-r from-accent to-accent-2 text-white"
+                                : "bg-surface-2 text-muted hover:text-foreground"
+                            }`}
+                          >
+                            {snippet.title}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="flex gap-1.5 flex-wrap">
+                        {AGENT_FEATURES.map((feat) => {
+                          const active = activeAgentFeatures.has(feat.id);
+                          return (
+                            <button
+                              key={feat.id}
+                              onClick={() => toggleAgentFeature(feat.id)}
+                              title={feat.description}
+                              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                                active
+                                  ? "bg-accent/15 text-accent border border-accent/40"
+                                  : "bg-surface-2 text-muted border border-transparent hover:text-foreground"
+                              }`}
+                            >
+                              {active ? "\u2713" : "+"} {feat.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <p className="text-xs text-muted">{agentSnippets[activeAgentSnippet].description}</p>
+                      <CodeBlock tabs={agentSnippets[activeAgentSnippet].snippets} />
                     </>
                   );
                 })()}
-              </Card>
+              </div>
 
               {/* Registration details */}
               <Card className="w-full">
