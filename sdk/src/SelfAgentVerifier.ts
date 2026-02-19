@@ -4,14 +4,17 @@ import {
   HEADERS,
   DEFAULT_MAX_AGE_MS,
   DEFAULT_CACHE_TTL_MS,
-  DEFAULT_REGISTRY_ADDRESS,
-  DEFAULT_RPC_URL,
+  NETWORKS,
+  DEFAULT_NETWORK,
 } from "./constants";
+import type { NetworkName } from "./constants";
 
 export interface VerifierConfig {
-  /** Deployed SelfAgentRegistry contract address (default: Celo Sepolia) */
+  /** Network to use: "mainnet" (default) or "testnet" */
+  network?: NetworkName;
+  /** Override: custom registry address (takes precedence over network) */
   registryAddress?: string;
-  /** JSON-RPC URL for reading contract state (default: Celo Sepolia) */
+  /** Override: custom RPC URL (takes precedence over network) */
   rpcUrl?: string;
   /** Max age for signed timestamps (default: 5 min) */
   maxAgeMs?: number;
@@ -85,10 +88,11 @@ interface CacheEntry {
  *
  * Usage:
  * ```ts
- * const verifier = new SelfAgentVerifier({
- *   registryAddress: "0x...",
- *   rpcUrl: "https://forno.celo-sepolia.celo-testnet.org",
- * });
+ * // Mainnet (default — no config needed)
+ * const verifier = new SelfAgentVerifier();
+ *
+ * // Testnet
+ * const verifier = new SelfAgentVerifier({ network: "testnet" });
  *
  * const result = await verifier.verify({
  *   signature: req.headers["x-self-agent-signature"],
@@ -114,9 +118,10 @@ export class SelfAgentVerifier {
   private selfProviderCache: { address: string; expiresAt: number } | null = null;
 
   constructor(config: VerifierConfig = {}) {
-    const provider = new ethers.JsonRpcProvider(config.rpcUrl ?? DEFAULT_RPC_URL);
+    const net = NETWORKS[config.network ?? DEFAULT_NETWORK];
+    const provider = new ethers.JsonRpcProvider(config.rpcUrl ?? net.rpcUrl);
     this.registry = new ethers.Contract(
-      config.registryAddress ?? DEFAULT_REGISTRY_ADDRESS,
+      config.registryAddress ?? net.registryAddress,
       REGISTRY_ABI,
       provider
     );

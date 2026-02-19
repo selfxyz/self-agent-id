@@ -12,11 +12,29 @@ export const REGISTRY_ABI = [
   "function getAgentCredentials(uint256 agentId) view returns ((string issuingState, string[] name, string idNumber, string nationality, string dateOfBirth, string gender, string expiryDate, uint256 olderThan, bool[3] ofac))",
 ] as const;
 
-/** Default deployed SelfAgentRegistry on Celo Sepolia (V4 — multi-config + credentials) */
-export const DEFAULT_REGISTRY_ADDRESS = "0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b";
+/** Supported network names */
+export type NetworkName = "mainnet" | "testnet";
 
-/** Default RPC URL (Celo Sepolia) */
-export const DEFAULT_RPC_URL = "https://forno.celo-sepolia.celo-testnet.org";
+/** Per-network configuration (registry address + RPC URL) */
+export const NETWORKS: Record<NetworkName, { registryAddress: string; rpcUrl: string }> = {
+  mainnet: {
+    registryAddress: "0x62E37d0f6c5f67784b8828B3dF68BCDbB2e55095",
+    rpcUrl: "https://forno.celo.org",
+  },
+  testnet: {
+    registryAddress: "0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b",
+    rpcUrl: "https://forno.celo-sepolia.celo-testnet.org",
+  },
+};
+
+/** Default network — production-safe */
+export const DEFAULT_NETWORK: NetworkName = "mainnet";
+
+/** @deprecated Use NETWORKS[network].registryAddress instead */
+export const DEFAULT_REGISTRY_ADDRESS = NETWORKS.mainnet.registryAddress;
+
+/** @deprecated Use NETWORKS[network].rpcUrl instead */
+export const DEFAULT_RPC_URL = NETWORKS.mainnet.rpcUrl;
 
 /** Default signature validity window (5 minutes) */
 export const DEFAULT_MAX_AGE_MS = 5 * 60 * 1000;
