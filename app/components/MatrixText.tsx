@@ -96,7 +96,7 @@ export default function MatrixText({ text, className = "", fontSize = 90 }: Matr
       glowCtx.lineWidth = 1.5;
       glowCtx.strokeText(text, totalW / 2, totalH / 2);
 
-      let animId: number;
+      let animId = 0;
 
       const draw = () => {
         // 1. Update rain on offscreen canvas
