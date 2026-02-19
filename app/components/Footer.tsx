@@ -1,6 +1,6 @@
 import { ExternalLink } from "lucide-react";
 
-const REGISTRY_ADDRESS = "0xaC3DF9ABf80d0F5c020C06B04Cced27763355944";
+const REGISTRY_ADDRESS = "0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b";
 const BLOCKSCOUT_URL = `https://celo-sepolia.blockscout.com/address/${REGISTRY_ADDRESS}`;
 
 export function Footer() {

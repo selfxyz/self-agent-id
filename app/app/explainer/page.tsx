@@ -17,9 +17,12 @@ import {
   Key,
   Search,
   ExternalLink,
+  Code2,
+  Cpu,
 } from "lucide-react";
 import CodeBlock from "@/components/CodeBlock";
 import { REGISTRY_ADDRESS, REGISTRY_ABI, RPC_URL } from "@/lib/constants";
+import { getServiceSnippets, getAgentSnippets, SERVICE_FEATURES, AGENT_FEATURES } from "@/lib/snippets";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
@@ -31,6 +34,31 @@ export default function ExplainerPage() {
   const [pubKeyInput, setPubKeyInput] = useState("");
   const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>("idle");
   const [verifyError, setVerifyError] = useState("");
+  const [activeUseCase, setActiveUseCase] = useState(0);
+  const [activeAgentSnippet, setActiveAgentSnippet] = useState(0);
+  const [activeServiceFeatures, setActiveServiceFeatures] = useState<Set<string>>(new Set());
+  const [activeAgentFeatures, setActiveAgentFeatures] = useState<Set<string>>(new Set());
+
+  const toggleServiceFeature = (id: string) => {
+    setActiveServiceFeatures((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAgentFeature = (id: string) => {
+    setActiveAgentFeatures((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const snippets = getServiceSnippets(REGISTRY_ADDRESS, activeServiceFeatures);
+  const agentSnippets = getAgentSnippets(activeAgentFeatures);
 
   const handleVerify = async () => {
     const trimmed = pubKeyInput.trim();
@@ -190,6 +218,122 @@ export default function ExplainerPage() {
                 </p>
               </Card>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ───────────────────── 3b. Integration Guide ──────────────────────── */}
+      <section className="px-6 py-20">
+        <div className="max-w-4xl mx-auto space-y-8">
+          {/* Service developer snippets */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Code2 size={20} className="text-accent" />
+              <h2 className="text-3xl font-bold">Integration Guide for Developers</h2>
+            </div>
+            <p className="text-sm text-muted">
+              These code snippets are for <strong className="text-foreground">service developers</strong> who want to verify
+              agents in their applications. Pre-filled with the deployed contract address.
+            </p>
+
+            <div className="flex gap-2 flex-wrap">
+              {snippets.map((uc, i) => (
+                <button
+                  key={uc.title}
+                  onClick={() => setActiveUseCase(i)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                    i === activeUseCase
+                      ? "bg-gradient-to-r from-accent to-accent-2 text-white"
+                      : "bg-surface-2 text-muted hover:text-foreground"
+                  }`}
+                >
+                  {uc.title}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-1.5 flex-wrap">
+              {SERVICE_FEATURES.map((feat) => {
+                const active = activeServiceFeatures.has(feat.id);
+                return (
+                  <button
+                    key={feat.id}
+                    onClick={() => toggleServiceFeature(feat.id)}
+                    title={feat.description}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                      active
+                        ? "bg-accent/15 text-accent border border-accent/40"
+                        : "bg-surface-2 text-muted border border-transparent hover:text-foreground"
+                    }`}
+                  >
+                    {active ? "\u2713" : "+"} {feat.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="text-sm text-muted">
+              {snippets[activeUseCase].description}
+            </p>
+            <p className="text-xs text-subtle font-mono">
+              {snippets[activeUseCase].flow}
+            </p>
+            <CodeBlock tabs={snippets[activeUseCase].snippets} />
+          </div>
+
+          {/* Agent operator snippets */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Cpu size={20} className="text-accent" />
+              <h2 className="text-3xl font-bold">How to Use Your Agent</h2>
+            </div>
+            <p className="text-sm text-muted">
+              If you are the <strong className="text-foreground">agent operator</strong>, use these snippets to
+              authenticate your agent with services or submit on-chain transactions.
+              Set <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">AGENT_PRIVATE_KEY</code> in
+              your agent&apos;s environment first.
+            </p>
+
+            <div className="flex gap-2 flex-wrap">
+              {agentSnippets.map((snippet, i) => (
+                <button
+                  key={snippet.title}
+                  onClick={() => setActiveAgentSnippet(i)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                    i === activeAgentSnippet
+                      ? "bg-gradient-to-r from-accent to-accent-2 text-white"
+                      : "bg-surface-2 text-muted hover:text-foreground"
+                  }`}
+                >
+                  {snippet.title}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-1.5 flex-wrap">
+              {AGENT_FEATURES.map((feat) => {
+                const active = activeAgentFeatures.has(feat.id);
+                return (
+                  <button
+                    key={feat.id}
+                    onClick={() => toggleAgentFeature(feat.id)}
+                    title={feat.description}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                      active
+                        ? "bg-accent/15 text-accent border border-accent/40"
+                        : "bg-surface-2 text-muted border border-transparent hover:text-foreground"
+                    }`}
+                  >
+                    {active ? "\u2713" : "+"} {feat.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="text-sm text-muted">
+              {agentSnippets[activeAgentSnippet].description}
+            </p>
+            <CodeBlock tabs={agentSnippets[activeAgentSnippet].snippets} />
           </div>
         </div>
       </section>

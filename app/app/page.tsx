@@ -1,5 +1,8 @@
 "use client";
 
+import { useState, useEffect } from "react";
+import MatrixRain from "@/components/MatrixRain";
+import MatrixText from "@/components/MatrixText";
 import Link from "next/link";
 import {
   Search,
@@ -22,20 +25,26 @@ function StepNumber({ n }: { n: number }) {
 }
 
 export default function Home() {
+  const [showIntro, setShowIntro] = useState(false);
+
+  useEffect(() => {
+    if (!sessionStorage.getItem("matrix-intro-shown")) {
+      setShowIntro(true);
+      sessionStorage.setItem("matrix-intro-shown", "1");
+    }
+  }, []);
+
   return (
     <main className="min-h-screen">
+      {showIntro && <MatrixRain duration={2000} fadeOut={2000} speed={1} maxOpacity={1} />}
       {/* Hero */}
       <section className="relative overflow-hidden hero-glow bg-grid">
-        <div className="relative z-10 max-w-4xl mx-auto px-6 pt-32 pb-20 text-center">
+        <div className="relative z-10 max-w-4xl mx-auto px-6 pt-28 pb-10 text-center">
           <Badge variant="info" className="mb-6">
             Proof-of-Human for AI Agents
           </Badge>
-          <div className="flex items-center justify-center gap-4 mb-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/self-icon.png" alt="Self" width={56} height={56} className="rounded-xl" />
-            <h1 className="text-5xl sm:text-6xl font-bold">
-              <span className="text-gradient">Self Agent ID</span>
-            </h1>
+          <div className="flex items-center justify-center mb-4">
+            <MatrixText text="Self Agent ID" fontSize={110} />
           </div>
           <p className="text-lg text-muted max-w-xl mx-auto mb-10">
             Register AI agents with on-chain proof-of-human verification via{" "}
@@ -103,8 +112,8 @@ export default function Home() {
       </section>
 
       {/* How It Works */}
-      <section className="max-w-4xl mx-auto px-6 py-12">
-        <h2 className="text-2xl font-bold text-center mb-10">How It Works</h2>
+      <section className="max-w-4xl mx-auto px-6 py-8">
+        <h2 className="text-2xl font-bold text-center mb-8">How It Works</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Agent Operators */}

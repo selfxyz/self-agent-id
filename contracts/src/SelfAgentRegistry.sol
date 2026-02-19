@@ -57,8 +57,11 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     // Storage
     // ====================================================
 
-    /// @notice The verification config ID registered with Hub V2
-    bytes32 public verificationConfigId;
+    /// @notice Number of verification configs (age × OFAC combos)
+    uint8 public constant NUM_CONFIGS = 6;
+
+    /// @notice Verification config IDs registered with Hub V2 (indexed 0-5)
+    bytes32[6] public configIds;
 
     /// @notice Maps agentId to the human's scoped nullifier
     mapping(uint256 => uint256) public agentNullifier;
@@ -93,6 +96,22 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     /// @notice Maps agentId to delegated credential metadata (JSON string)
     mapping(uint256 => string) public agentMetadata;
 
+    /// @notice Stores ZK-attested credential claims for each agent
+    struct AgentCredentials {
+        string issuingState;
+        string[] name;
+        string idNumber;
+        string nationality;
+        string dateOfBirth;
+        string gender;
+        string expiryDate;
+        uint256 olderThan;
+        bool[3] ofac;
+    }
+
+    /// @notice Maps agentId to ZK-attested credentials (populated at registration)
+    mapping(uint256 => AgentCredentials) private _agentCredentials;
+
     /// @notice The next agent ID to mint
     uint256 private _nextAgentId;
 
@@ -123,6 +142,9 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     /// @notice Emitted when agent metadata is updated
     event AgentMetadataUpdated(uint256 indexed agentId);
 
+    /// @notice Emitted when ZK-attested credentials are stored for an agent
+    event AgentCredentialsStored(uint256 indexed agentId);
+
     // ====================================================
     // Constructor
     // ====================================================
@@ -140,16 +162,28 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
         // Start agent IDs at 1 (0 is reserved as "no agent")
         _nextAgentId = 1;
 
-        // Register minimal verification config with Hub V2:
-        // no age check, no country restrictions, no OFAC
-        SelfUtils.UnformattedVerificationConfigV2 memory rawCfg = SelfUtils.UnformattedVerificationConfigV2({
-            olderThan: 0,
-            forbiddenCountries: new string[](0),
-            ofacEnabled: false
-        });
+        // Register 6 verification configs with Hub V2 (all combos of age × OFAC).
+        // Each user selects their config at registration time via a digit in userDefinedData.
+        configIds[0] = _registerConfig(hubV2, 0, false);   // Base (data disclosures only)
+        configIds[1] = _registerConfig(hubV2, 18, false);  // Over 18
+        configIds[2] = _registerConfig(hubV2, 21, false);  // Over 21
+        configIds[3] = _registerConfig(hubV2, 0, true);    // OFAC only
+        configIds[4] = _registerConfig(hubV2, 18, true);   // Over 18 + OFAC
+        configIds[5] = _registerConfig(hubV2, 21, true);   // Over 21 + OFAC
+    }
 
+    function _registerConfig(
+        address hubV2,
+        uint256 olderThan,
+        bool ofacEnabled
+    ) private returns (bytes32) {
+        SelfUtils.UnformattedVerificationConfigV2 memory rawCfg = SelfUtils.UnformattedVerificationConfigV2({
+            olderThan: olderThan,
+            forbiddenCountries: new string[](0),
+            ofacEnabled: ofacEnabled
+        });
         SelfStructs.VerificationConfigV2 memory config = SelfUtils.formatVerificationConfigV2(rawCfg);
-        verificationConfigId = IIdentityVerificationHubV2(hubV2).setVerificationConfigV2(config);
+        return IIdentityVerificationHubV2(hubV2).setVerificationConfigV2(config);
     }
 
     // ====================================================
@@ -190,21 +224,38 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     // SelfVerificationRoot Overrides
     // ====================================================
 
-    /// @notice Returns the single verification config ID for all proofs
+    /// @notice Returns the verification config based on the config digit in userDefinedData
+    /// @dev Format: | 1B action | 1B configIndex ('0'-'5' or 0x00-0x05) | payload... |
+    ///      Defaults to config 0 if no config byte or unrecognized value.
     function getConfigId(
         bytes32,
         bytes32,
-        bytes memory
+        bytes memory userDefinedData
     ) public view override returns (bytes32) {
-        return verificationConfigId;
+        if (userDefinedData.length < 2) return configIds[0];
+
+        uint8 raw = uint8(userDefinedData[1]);
+        uint8 idx;
+
+        if (raw >= 0x30 && raw <= 0x35) {
+            idx = raw - 0x30; // ASCII '0'-'5'
+        } else if (raw <= 0x05) {
+            idx = raw; // Binary 0x00-0x05
+        } else {
+            return configIds[0]; // Unrecognized → base config
+        }
+
+        return configIds[idx];
     }
 
     /// @notice Processes the verified proof: mints NFT or burns NFT based on action byte
     /// @dev Called by SelfVerificationRoot after Hub V2 verification succeeds.
-    ///      MVP: agentPubKey is derived from the human's wallet address (userIdentifier).
-    ///      userData only needs a single action byte:
-    ///        Binary:  0x01 (register) or 0x02 (deregister)
-    ///        String:  "R" (register) or "D" (deregister)
+    ///      userData format: | 1B action | 1B configIndex | payload... |
+    ///      Config index selects which of the 6 verification configs to use (see getConfigId).
+    ///      Action bytes:
+    ///        0x01/"R" = simple register, 0x02/"D" = simple deregister
+    ///        0x03/"K" = advanced register, 0x04/"X" = advanced deregister
+    ///        0x05/"W" = wallet-free register
     /// @param output The verified disclosure output containing the nullifier
     /// @param userData The user-defined data containing the action byte/char
     function customVerificationHook(
@@ -220,77 +271,77 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
         if (actionByte == ACTION_REGISTER || actionByte == ASCII_R) {
             // Simple mode: agent key = human wallet address
             bytes32 agentPubKey = bytes32(uint256(uint160(humanAddress)));
-            _registerAgent(nullifier, agentPubKey, humanAddress);
+            _registerAgent(nullifier, agentPubKey, humanAddress, output);
         } else if (actionByte == ACTION_DEREGISTER || actionByte == ASCII_D) {
             // Simple deregister
             bytes32 agentPubKey = bytes32(uint256(uint160(humanAddress)));
             _deregisterAgent(nullifier, agentPubKey);
         } else if (actionByte == ACTION_REGISTER_ADVANCED) {
-            // Binary advanced register: 1B action + 20B address + 32B r + 32B s + 1B v = 86 bytes
-            if (userData.length < 86) revert InvalidUserData();
+            // Binary advanced register: 1B action + 1B config + 20B address + 32B r + 32B s + 1B v = 87 bytes
+            if (userData.length < 87) revert InvalidUserData();
             address agentAddr;
             bytes32 r;
             bytes32 s;
             uint8 v;
             assembly {
-                agentAddr := shr(96, mload(add(userData, 33))) // offset 1, 20 bytes
-                r := mload(add(userData, 53)) // offset 21
-                s := mload(add(userData, 85)) // offset 53
-                v := byte(0, mload(add(userData, 117))) // offset 85
+                agentAddr := shr(96, mload(add(userData, 34))) // offset 2, 20 bytes
+                r := mload(add(userData, 54)) // offset 22
+                s := mload(add(userData, 86)) // offset 54
+                v := byte(0, mload(add(userData, 118))) // offset 86
             }
             bytes32 agentPubKey = _verifyAgentSignature(agentAddr, humanAddress, v, r, s);
-            _registerAgent(nullifier, agentPubKey, humanAddress);
+            _registerAgent(nullifier, agentPubKey, humanAddress, output);
         } else if (actionByte == ACTION_DEREGISTER_ADVANCED) {
-            // Binary advanced deregister: 1B action + 20B address = 21 bytes
-            if (userData.length < 21) revert InvalidUserData();
+            // Binary advanced deregister: 1B action + 1B config + 20B address = 22 bytes
+            if (userData.length < 22) revert InvalidUserData();
             address agentAddr;
             assembly {
-                agentAddr := shr(96, mload(add(userData, 33)))
+                agentAddr := shr(96, mload(add(userData, 34))) // offset 2
             }
             bytes32 agentPubKey = bytes32(uint256(uint160(agentAddr)));
             _deregisterAgent(nullifier, agentPubKey);
         } else if (actionByte == ASCII_K) {
-            // String advanced register: "K" + address(40) + r(64) + s(64) + v(2) = 171 chars
-            if (userData.length < 171) revert InvalidUserData();
-            address agentAddr = _hexStringToAddress(userData, 1);
-            bytes32 r = _hexStringToBytes32(userData, 41);
-            bytes32 s = _hexStringToBytes32(userData, 105);
-            uint8 v = _hexStringToUint8(userData, 169);
+            // String advanced register: "K" + config(1) + address(40) + r(64) + s(64) + v(2) = 172 chars
+            if (userData.length < 172) revert InvalidUserData();
+            address agentAddr = _hexStringToAddress(userData, 2);
+            bytes32 r = _hexStringToBytes32(userData, 42);
+            bytes32 s = _hexStringToBytes32(userData, 106);
+            uint8 v = _hexStringToUint8(userData, 170);
             bytes32 agentPubKey = _verifyAgentSignature(agentAddr, humanAddress, v, r, s);
-            _registerAgent(nullifier, agentPubKey, humanAddress);
+            _registerAgent(nullifier, agentPubKey, humanAddress, output);
         } else if (actionByte == ASCII_X) {
-            // String advanced deregister: "X" + address(40) = 41 chars
-            if (userData.length < 41) revert InvalidUserData();
-            address agentAddr = _hexStringToAddress(userData, 1);
+            // String advanced deregister: "X" + config(1) + address(40) = 42 chars
+            if (userData.length < 42) revert InvalidUserData();
+            address agentAddr = _hexStringToAddress(userData, 2);
             bytes32 agentPubKey = bytes32(uint256(uint160(agentAddr)));
             _deregisterAgent(nullifier, agentPubKey);
         } else if (actionByte == ACTION_REGISTER_WALLETFREE) {
-            // Binary wallet-free: 1B action + 20B agentAddr + 20B guardian + 32B r + 32B s + 1B v = 106 bytes
-            if (userData.length < 106) revert InvalidUserData();
+            // Binary wallet-free: 1B action + 1B config + 20B agentAddr + 20B guardian + 32B r + 32B s + 1B v = 107 bytes
+            if (userData.length < 107) revert InvalidUserData();
             address agentAddr;
             address guardian;
             bytes32 r;
             bytes32 s;
             uint8 v;
             assembly {
-                agentAddr := shr(96, mload(add(userData, 33)))  // offset 1, 20 bytes
-                guardian := shr(96, mload(add(userData, 53)))    // offset 21, 20 bytes
-                r := mload(add(userData, 73))                    // offset 41
-                s := mload(add(userData, 105))                   // offset 73
-                v := byte(0, mload(add(userData, 137)))          // offset 105
+                agentAddr := shr(96, mload(add(userData, 34)))  // offset 2, 20 bytes
+                guardian := shr(96, mload(add(userData, 54)))    // offset 22, 20 bytes
+                r := mload(add(userData, 74))                    // offset 42
+                s := mload(add(userData, 106))                   // offset 74
+                v := byte(0, mload(add(userData, 138)))          // offset 106
             }
             bytes32 agentPubKey = _verifyAgentSignature(agentAddr, humanAddress, v, r, s);
-            _registerAgentWalletFree(nullifier, agentPubKey, agentAddr, guardian);
+            _registerAgentWalletFree(nullifier, agentPubKey, agentAddr, guardian, output);
         } else if (actionByte == ASCII_W) {
-            // String wallet-free: "W" + agentAddr(40) + guardian(40) + r(64) + s(64) + v(2) = 211 chars
-            if (userData.length < 211) revert InvalidUserData();
-            address agentAddr = _hexStringToAddress(userData, 1);
-            address guardian = _hexStringToAddress(userData, 41);
-            bytes32 r = _hexStringToBytes32(userData, 81);
-            bytes32 s = _hexStringToBytes32(userData, 145);
-            uint8 v = _hexStringToUint8(userData, 209);
+            // String wallet-free: "W" + config(1) + agentAddr(40) + guardian(40) + r(64) + s(64) + v(2) = 212 chars
+            if (userData.length < 212) revert InvalidUserData();
+            address agentAddr = _hexStringToAddress(userData, 2);
+            address guardian = _hexStringToAddress(userData, 42);
+            bytes32 r = _hexStringToBytes32(userData, 82);
+            bytes32 s = _hexStringToBytes32(userData, 146);
+            uint8 v = _hexStringToUint8(userData, 210);
             bytes32 agentPubKey = _verifyAgentSignature(agentAddr, humanAddress, v, r, s);
-            _registerAgentWalletFree(nullifier, agentPubKey, agentAddr, guardian);
+            _registerAgentWalletFree(nullifier, agentPubKey, agentAddr, guardian, output);
         } else {
             revert InvalidAction(actionByte);
         }
@@ -410,6 +461,13 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
         return agentMetadata[agentId];
     }
 
+    /// @notice Get the ZK-attested credentials for an agent
+    /// @param agentId The agent to query
+    /// @return The agent's credentials (empty fields = not disclosed)
+    function getAgentCredentials(uint256 agentId) external view returns (AgentCredentials memory) {
+        return _agentCredentials[agentId];
+    }
+
     // ====================================================
     // Guardian Functions
     // ====================================================
@@ -492,10 +550,16 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     /// @param nullifier The human's scoped nullifier
     /// @param agentPubKey The agent's public key
     /// @param humanAddress The human's address (derived from userIdentifier)
-    function _registerAgent(uint256 nullifier, bytes32 agentPubKey, address humanAddress) internal {
-        // For Hub V2 callback flow, use the selfProofProvider as the provider address
+    /// @param output The verified disclosure output (credentials stored on-chain)
+    function _registerAgent(
+        uint256 nullifier,
+        bytes32 agentPubKey,
+        address humanAddress,
+        ISelfVerificationRoot.GenericDiscloseOutputV2 memory output
+    ) internal {
         address provider = selfProofProvider;
-        _mintAgent(nullifier, agentPubKey, provider, humanAddress);
+        uint256 agentId = _mintAgent(nullifier, agentPubKey, provider, humanAddress);
+        _storeCredentials(agentId, output);
     }
 
     /// @notice Register a wallet-free agent (agent-owned NFT with optional guardian)
@@ -503,14 +567,17 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     /// @param agentPubKey The agent's public key
     /// @param agentAddress The agent's address (NFT minted here, not to humanAddress)
     /// @param guardian The guardian address (can force-revoke; address(0) = no guardian)
+    /// @param output The verified disclosure output (credentials stored on-chain)
     function _registerAgentWalletFree(
         uint256 nullifier,
         bytes32 agentPubKey,
         address agentAddress,
-        address guardian
+        address guardian,
+        ISelfVerificationRoot.GenericDiscloseOutputV2 memory output
     ) internal {
         address provider = selfProofProvider;
         uint256 agentId = _mintAgent(nullifier, agentPubKey, provider, agentAddress);
+        _storeCredentials(agentId, output);
 
         if (guardian != address(0)) {
             agentGuardian[agentId] = guardian;
@@ -546,14 +613,35 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
         agentHasHumanProof[agentId] = false;
         activeAgentCount[nullifier]--;
 
-        // Clear guardian and metadata
+        // Clear guardian, metadata, and credentials
         delete agentGuardian[agentId];
         delete agentMetadata[agentId];
+        delete _agentCredentials[agentId];
 
         // Burn the NFT
         _burn(agentId);
 
         emit HumanProofRevoked(agentId, nullifier);
+    }
+
+    /// @notice Store ZK-attested credential claims from the Hub V2 disclosure output
+    /// @param agentId The agent to store credentials for
+    /// @param output The verified disclosure output from Hub V2
+    function _storeCredentials(
+        uint256 agentId,
+        ISelfVerificationRoot.GenericDiscloseOutputV2 memory output
+    ) internal {
+        AgentCredentials storage creds = _agentCredentials[agentId];
+        creds.issuingState = output.issuingState;
+        creds.name = output.name;
+        creds.idNumber = output.idNumber;
+        creds.nationality = output.nationality;
+        creds.dateOfBirth = output.dateOfBirth;
+        creds.gender = output.gender;
+        creds.expiryDate = output.expiryDate;
+        creds.olderThan = output.olderThan;
+        creds.ofac = output.ofac;
+        emit AgentCredentialsStored(agentId);
     }
 
     // ====================================================

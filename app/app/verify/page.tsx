@@ -17,7 +17,7 @@ import {
   Loader2,
 } from "lucide-react";
 import CodeBlock from "@/components/CodeBlock";
-import { getServiceSnippets, getAgentSnippets } from "@/lib/snippets";
+import { getServiceSnippets, getAgentSnippets, SERVICE_FEATURES, AGENT_FEATURES } from "@/lib/snippets";
 import { connectWallet } from "@/lib/wallet";
 import { REGISTRY_ADDRESS, REGISTRY_ABI, RPC_URL } from "@/lib/constants";
 import { Card } from "@/components/Card";
@@ -33,6 +33,18 @@ const SelfQRcodeWrapper = dynamic(
 
 let SelfAppBuilder: typeof import("@selfxyz/qrcode").SelfAppBuilder;
 
+interface AgentCredentials {
+  issuingState: string;
+  name: string[];
+  idNumber: string;
+  nationality: string;
+  dateOfBirth: string;
+  gender: string;
+  expiryDate: string;
+  olderThan: bigint;
+  ofac: boolean[];
+}
+
 interface AgentInfo {
   isVerified: boolean;
   agentId: bigint;
@@ -42,6 +54,21 @@ interface AgentInfo {
   metadata: string;
   mode: "simple" | "advanced" | "walletfree";
   isSmartWallet: boolean;
+  credentials?: AgentCredentials;
+}
+
+function buildCredentialBadges(creds: AgentCredentials): string[] {
+  const badges: string[] = [];
+  if (creds.nationality) badges.push(creds.nationality);
+  if (creds.olderThan > 0n) badges.push(`${creds.olderThan.toString()}+`);
+  if (creds.ofac?.some(Boolean)) badges.push("Not on OFAC List");
+  if (creds.gender) badges.push(creds.gender === "M" ? "Male" : creds.gender === "F" ? "Female" : creds.gender);
+  if (creds.dateOfBirth) badges.push(`DOB: ${creds.dateOfBirth}`);
+  if (creds.issuingState) badges.push(`Issued: ${creds.issuingState}`);
+  if (creds.name?.some((n: string) => n.length > 0)) {
+    badges.push(creds.name.filter((n: string) => n.length > 0).join(" "));
+  }
+  return badges;
 }
 
 function VerifyContent() {
@@ -53,7 +80,27 @@ function VerifyContent() {
   const [error, setError] = useState("");
   const [activeUseCase, setActiveUseCase] = useState(0);
   const [activeAgentSnippet, setActiveAgentSnippet] = useState(0);
+  const [activeServiceFeatures, setActiveServiceFeatures] = useState<Set<string>>(new Set());
+  const [activeAgentFeatures, setActiveAgentFeatures] = useState<Set<string>>(new Set());
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+
+  const toggleServiceFeature = (id: string) => {
+    setActiveServiceFeatures((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAgentFeature = (id: string) => {
+    setActiveAgentFeatures((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
   const [showDeregister, setShowDeregister] = useState(false);
   const [passkeyRevoking, setPasskeyRevoking] = useState(false);
   const [selfApp, setSelfApp] = useState<ReturnType<
@@ -121,6 +168,29 @@ function VerifyContent() {
           }
         }
 
+        // Fetch ZK-attested credentials
+        let credentials: AgentCredentials | undefined;
+        try {
+          const raw = await contract.getAgentCredentials(agentId);
+          const creds: AgentCredentials = {
+            issuingState: raw.issuingState || raw[0] || "",
+            name: raw.name || raw[1] || [],
+            idNumber: raw.idNumber || raw[2] || "",
+            nationality: raw.nationality || raw[3] || "",
+            dateOfBirth: raw.dateOfBirth || raw[4] || "",
+            gender: raw.gender || raw[5] || "",
+            expiryDate: raw.expiryDate || raw[6] || "",
+            olderThan: raw.olderThan ?? raw[7] ?? 0n,
+            ofac: raw.ofac || raw[8] || [false, false, false],
+          };
+          // Only set if at least one field is non-empty
+          if (creds.nationality || creds.issuingState || creds.name?.some((n: string) => n.length > 0) || creds.olderThan > 0n) {
+            credentials = creds;
+          }
+        } catch {
+          // V4 contract without getAgentCredentials — ignore
+        }
+
         // Detect smart wallet: guardian is a contract (has code)
         let isSmartWallet = false;
         if (guardian !== ethers.ZeroAddress) {
@@ -139,6 +209,7 @@ function VerifyContent() {
           metadata,
           mode,
           isSmartWallet,
+          credentials,
         });
       }
     } catch (err) {
@@ -179,15 +250,15 @@ function VerifyContent() {
     let userId: string;
 
     if (agentInfo.mode === "simple") {
-      userDefinedData = "D";
+      userDefinedData = "D0";
       userId = walletAddress || agentAddress;
     } else if (agentInfo.mode === "walletfree") {
       // Wallet-free: use "D" action with agent address as userId
-      userDefinedData = "D";
+      userDefinedData = "D0";
       userId = agentAddress;
     } else {
       // Advanced mode
-      userDefinedData = "X" + resolvedKey.slice(26);
+      userDefinedData = "X0" + resolvedKey.slice(26);
       userId = walletAddress || agentAddress;
     }
 
@@ -218,7 +289,7 @@ function VerifyContent() {
     lookupAgent(agentKey);
   };
 
-  const snippets = getServiceSnippets(REGISTRY_ADDRESS);
+  const snippets = getServiceSnippets(REGISTRY_ADDRESS, activeServiceFeatures);
 
   return (
     <>
@@ -319,6 +390,23 @@ function VerifyContent() {
                     <pre className="text-xs bg-surface-2 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all">
                       {agentInfo.metadata}
                     </pre>
+                  </div>
+                )}
+                {agentInfo.credentials && (
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <div className="flex items-center gap-1 text-muted mb-2">
+                      <Shield size={12} /> ZK-Attested Credentials
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {buildCredentialBadges(agentInfo.credentials).map((badge, i) => (
+                        <span
+                          key={i}
+                          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-accent/10 text-accent border border-accent/20"
+                        >
+                          {badge}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -462,7 +550,7 @@ function VerifyContent() {
         </>
       )}
 
-      {/* Integration Guide */}
+      {/* Integration Guide — shown after agent lookup */}
       {agentInfo && agentInfo.isVerified && (
         <div className="w-full mt-8 space-y-4">
           <div className="flex items-center gap-2">
@@ -490,6 +578,26 @@ function VerifyContent() {
             ))}
           </div>
 
+          <div className="flex gap-1.5 flex-wrap">
+            {SERVICE_FEATURES.map((feat) => {
+              const active = activeServiceFeatures.has(feat.id);
+              return (
+                <button
+                  key={feat.id}
+                  onClick={() => toggleServiceFeature(feat.id)}
+                  title={feat.description}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                    active
+                      ? "bg-accent/15 text-accent border border-accent/40"
+                      : "bg-surface-2 text-muted border border-transparent hover:text-foreground"
+                  }`}
+                >
+                  {active ? "\u2713" : "+"} {feat.label}
+                </button>
+              );
+            })}
+          </div>
+
           <p className="text-sm text-muted">
             {snippets[activeUseCase].description}
           </p>
@@ -515,7 +623,7 @@ function VerifyContent() {
           </p>
 
           {(() => {
-            const agentSnippets = getAgentSnippets();
+            const agentSnippets = getAgentSnippets(activeAgentFeatures);
             return (
               <>
                 <div className="flex gap-2 flex-wrap">
@@ -532,6 +640,26 @@ function VerifyContent() {
                       {snippet.title}
                     </button>
                   ))}
+                </div>
+
+                <div className="flex gap-1.5 flex-wrap">
+                  {AGENT_FEATURES.map((feat) => {
+                    const active = activeAgentFeatures.has(feat.id);
+                    return (
+                      <button
+                        key={feat.id}
+                        onClick={() => toggleAgentFeature(feat.id)}
+                        title={feat.description}
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                          active
+                            ? "bg-accent/15 text-accent border border-accent/40"
+                            : "bg-surface-2 text-muted border border-transparent hover:text-foreground"
+                        }`}
+                      >
+                        {active ? "\u2713" : "+"} {feat.label}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 <p className="text-sm text-muted">

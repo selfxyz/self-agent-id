@@ -28,8 +28,10 @@ contract DeploySelfAgentRegistry is BaseScript {
         console.log("SelfAgentRegistry deployed to:", address(registry));
         console.log("Hub V2:", hubAddress);
         console.log("Scope:", registry.scope());
-        console.log("Config ID:");
-        console.logBytes32(registry.verificationConfigId());
+        console.log("Config IDs (6 configs: base, 18+, 21+, OFAC, 18+OFAC, 21+OFAC):");
+        for (uint256 i = 0; i < 6; i++) {
+            console.logBytes32(registry.configIds(i));
+        }
 
         if (address(registry) == address(0)) revert DeploymentFailed();
 
