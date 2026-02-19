@@ -11,6 +11,8 @@ import {
   Code2,
   Cpu,
   ChevronLeft,
+  Shield,
+  FileText,
 } from "lucide-react";
 import CodeBlock from "@/components/CodeBlock";
 import { getServiceSnippets, getAgentSnippets } from "@/lib/snippets";
@@ -31,6 +33,9 @@ interface AgentInfo {
   agentId: bigint;
   owner: string;
   registeredAt: bigint;
+  guardian: string;
+  metadata: string;
+  mode: "simple" | "advanced" | "walletfree";
 }
 
 function VerifyContent() {
@@ -81,15 +86,35 @@ function VerifyContent() {
           agentId: 0n,
           owner: ethers.ZeroAddress,
           registeredAt: 0n,
+          guardian: ethers.ZeroAddress,
+          metadata: "",
+          mode: "simple",
         });
       } else {
         let owner = ethers.ZeroAddress;
         let registeredAt = 0n;
+        let guardian = ethers.ZeroAddress;
+        let metadata = "";
         try {
           owner = await contract.ownerOf(agentId);
           registeredAt = await contract.agentRegisteredAt(agentId);
+          guardian = await contract.agentGuardian(agentId);
+          metadata = await contract.getAgentMetadata(agentId);
         } catch {
-          // Token was burned (deregistered)
+          // Token was burned (deregistered) or V3 contract without guardian/metadata
+        }
+
+        // Detect mode: wallet-free if owner === agent address (derived from key)
+        const agentAddress = "0x" + keyHash.slice(26);
+        let mode: "simple" | "advanced" | "walletfree" = "advanced";
+        if (owner !== ethers.ZeroAddress) {
+          if (agentAddress.toLowerCase() === owner.toLowerCase()) {
+            // Owner IS the agent address — could be simple or wallet-free
+            // Wallet-free agents have a guardian set (or were registered via W action)
+            // Simple mode: agentPubKey = zeroPadValue(humanWallet), so agent addr === human wallet
+            // For now, if guardian is set it's wallet-free, otherwise simple
+            mode = guardian !== ethers.ZeroAddress ? "walletfree" : "simple";
+          }
         }
 
         setAgentInfo({
@@ -97,6 +122,9 @@ function VerifyContent() {
           agentId: owner === ethers.ZeroAddress ? 0n : agentId,
           owner,
           registeredAt,
+          guardian,
+          metadata,
+          mode,
         });
       }
     } catch (err) {
@@ -128,15 +156,26 @@ function VerifyContent() {
   };
 
   const handleDeregister = () => {
-    if (!walletAddress || !resolvedKey || !SelfAppBuilder || !agentInfo) return;
+    if (!resolvedKey || !SelfAppBuilder || !agentInfo) return;
 
     const agentAddress = "0x" + resolvedKey.slice(26);
-    const isSimpleMode =
-      agentAddress.toLowerCase() === agentInfo.owner.toLowerCase();
 
-    const userDefinedData = isSimpleMode
-      ? "D"
-      : "X" + resolvedKey.slice(26);
+    // Determine deregistration userData based on mode
+    let userDefinedData: string;
+    let userId: string;
+
+    if (agentInfo.mode === "simple") {
+      userDefinedData = "D";
+      userId = walletAddress || agentAddress;
+    } else if (agentInfo.mode === "walletfree") {
+      // Wallet-free: use "D" action with agent address as userId
+      userDefinedData = "D";
+      userId = agentAddress;
+    } else {
+      // Advanced mode
+      userDefinedData = "X" + resolvedKey.slice(26);
+      userId = walletAddress || agentAddress;
+    }
 
     const app = new SelfAppBuilder({
       version: 2,
@@ -144,7 +183,7 @@ function VerifyContent() {
       scope: process.env.NEXT_PUBLIC_SELF_SCOPE_SEED || "self-agent-id",
       endpoint: REGISTRY_ADDRESS,
       logoBase64: "https://i.postimg.cc/mrmVf9hm/self.png",
-      userId: walletAddress,
+      userId,
       endpointType: "staging_celo",
       userIdType: "hex",
       userDefinedData,
@@ -219,22 +258,90 @@ function VerifyContent() {
                   <span className="font-mono">{agentInfo.agentId.toString()}</span>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-muted">Mode</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    agentInfo.mode === "simple" ? "bg-surface-2 text-muted" :
+                    agentInfo.mode === "advanced" ? "bg-accent/10 text-accent" :
+                    "bg-accent-2/10 text-accent-2"
+                  }`}>
+                    {agentInfo.mode === "simple" ? "Verified Wallet" :
+                     agentInfo.mode === "advanced" ? "Agent Identity" :
+                     "Wallet-Free"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-muted">Owner</span>
                   <span className="font-mono">
                     {agentInfo.owner.slice(0, 6)}...{agentInfo.owner.slice(-4)}
                   </span>
                 </div>
+                {agentInfo.guardian !== ethers.ZeroAddress && (
+                  <div className="flex justify-between">
+                    <span className="text-muted flex items-center gap-1">
+                      <Shield size={12} /> Guardian
+                    </span>
+                    <span className="font-mono">
+                      {agentInfo.guardian.slice(0, 6)}...{agentInfo.guardian.slice(-4)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-muted">Registered at block</span>
                   <span className="font-mono">{agentInfo.registeredAt.toString()}</span>
                 </div>
+                {agentInfo.metadata && (
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <div className="flex items-center gap-1 text-muted mb-1">
+                      <FileText size={12} /> Metadata
+                    </div>
+                    <pre className="text-xs bg-surface-2 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all">
+                      {agentInfo.metadata}
+                    </pre>
+                  </div>
+                )}
               </div>
             )}
           </Card>
 
           {agentInfo.isVerified && (
             <div className="w-full mt-2">
-              {!walletAddress ? (
+              {agentInfo.mode === "walletfree" ? (
+                // Wallet-free: no wallet needed, deregister via passport scan
+                !showDeregister ? (
+                  <Button onClick={handleDeregister} variant="danger" size="sm">
+                    Deregister (scan passport)
+                  </Button>
+                ) : (
+                  <Card variant="error" className="w-full">
+                    <div className="flex items-center gap-2 mb-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src="/self-icon.png" alt="Self" width={20} height={20} className="rounded" />
+                      <p className="text-sm text-muted">
+                        Scan with Self App to confirm deregistration
+                      </p>
+                    </div>
+                    {selfApp && (
+                      <div className="rounded-xl p-4 bg-white inline-block">
+                        <SelfQRcodeWrapper
+                          selfApp={selfApp}
+                          onSuccess={handleDeregisterSuccess}
+                          onError={() => alert("Deregistration failed.")}
+                        />
+                      </div>
+                    )}
+                    <div className="mt-3">
+                      <Button
+                        onClick={() => { setShowDeregister(false); setSelfApp(null); }}
+                        variant="ghost"
+                        size="sm"
+                      >
+                        <ChevronLeft size={14} />
+                        Cancel
+                      </Button>
+                    </div>
+                  </Card>
+                )
+              ) : !walletAddress ? (
                 <Button onClick={handleConnectForDeregister} variant="danger" size="sm">
                   Connect wallet to deregister
                 </Button>
@@ -245,9 +352,13 @@ function VerifyContent() {
                   </Button>
                 ) : (
                   <Card variant="error" className="w-full">
-                    <p className="text-sm text-muted mb-3">
-                      Scan with Self App to confirm deregistration
-                    </p>
+                    <div className="flex items-center gap-2 mb-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src="/self-icon.png" alt="Self" width={20} height={20} className="rounded" />
+                      <p className="text-sm text-muted">
+                        Scan with Self App to confirm deregistration
+                      </p>
+                    </div>
                     {selfApp && (
                       <div className="rounded-xl p-4 bg-white inline-block">
                         <SelfQRcodeWrapper

@@ -19,18 +19,15 @@ import {
   ExternalLink,
 } from "lucide-react";
 import CodeBlock from "@/components/CodeBlock";
-import { getServiceSnippets } from "@/lib/snippets";
 import { REGISTRY_ADDRESS, REGISTRY_ABI, RPC_URL } from "@/lib/constants";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 
-const useCases = getServiceSnippets();
 
 type VerifyStatus = "idle" | "loading" | "verified" | "not-registered" | "error";
 
 export default function ExplainerPage() {
-  const [activeUseCase, setActiveUseCase] = useState(0);
   const [pubKeyInput, setPubKeyInput] = useState("");
   const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>("idle");
   const [verifyError, setVerifyError] = useState("");
@@ -78,6 +75,8 @@ export default function ExplainerPage() {
           <Badge variant="info" className="mb-4">
             Proposed Extension to ERC-8004
           </Badge>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/self-icon.png" alt="Self" width={64} height={64} className="rounded-xl mb-4" />
           <h1 className="text-5xl md:text-6xl font-bold max-w-3xl leading-tight mb-6">
             Proof-of-Human for <span className="text-gradient">AI&nbsp;Agents</span>
           </h1>
@@ -358,45 +357,7 @@ export default function ExplainerPage() {
         </div>
       </section>
 
-      {/* ───────────────────────── 5. Use Cases ───────────────────────── */}
-      <section className="px-6 py-20">
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-3xl font-bold text-center mb-10">Use Cases</h2>
-
-          {/* Tabs */}
-          <div className="flex justify-center gap-2 mb-8 flex-wrap">
-            {useCases.map((uc, i) => (
-              <button
-                key={uc.title}
-                onClick={() => setActiveUseCase(i)}
-                className={`px-5 py-2 rounded-full text-sm font-medium transition-colors ${
-                  i === activeUseCase
-                    ? "bg-gradient-to-r from-accent to-accent-2 text-white"
-                    : "bg-surface-2 text-muted hover:text-foreground"
-                }`}
-              >
-                {uc.title}
-              </button>
-            ))}
-          </div>
-
-          {/* Active card */}
-          <Card>
-            <h3 className="text-xl font-bold mb-2">
-              {useCases[activeUseCase].title}
-            </h3>
-            <p className="text-muted mb-3">
-              {useCases[activeUseCase].description}
-            </p>
-            <p className="text-sm text-subtle font-mono italic mb-6">
-              {useCases[activeUseCase].flow}
-            </p>
-            <CodeBlock tabs={useCases[activeUseCase].snippets} />
-          </Card>
-        </div>
-      </section>
-
-      {/* ───────────────────────── 6. Live Demo ───────────────────────── */}
+      {/* ───────────────────────── 5. Live Demo ───────────────────────── */}
       <section id="demo" className="bg-surface-1 px-6 py-20">
         <div className="max-w-2xl mx-auto">
           <h2 className="text-3xl font-bold text-center mb-4">Live Demo</h2>
@@ -588,7 +549,7 @@ interface IHumanProofProvider {
               </a>{" "}
               or the deployed contract on{" "}
               <a
-                href="https://celo-sepolia.blockscout.com/address/0x404A2Bce7Dc4A9c19Cc41c4247E2bA107bce394C"
+                href="https://celo-sepolia.blockscout.com/address/0xaC3DF9ABf80d0F5c020C06B04Cced27763355944"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-accent hover:text-accent-2 underline"

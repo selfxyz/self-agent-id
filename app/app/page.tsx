@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import {
-  Shield,
   Search,
   FileCode2,
   Key,
@@ -10,8 +9,8 @@ import {
   CheckCircle2,
   ArrowRight,
   Cpu,
-  Vote,
-  Store,
+  Wallet,
+  Smartphone,
 } from "lucide-react";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
@@ -33,12 +32,16 @@ export default function Home() {
           <Badge variant="info" className="mb-6">
             Proof-of-Human for AI Agents
           </Badge>
-          <h1 className="text-5xl sm:text-6xl font-bold mb-4">
-            <span className="text-gradient">Self Agent ID</span>
-          </h1>
+          <div className="flex items-center justify-center gap-4 mb-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/self-icon.png" alt="Self" width={56} height={56} className="rounded-xl" />
+            <h1 className="text-5xl sm:text-6xl font-bold">
+              <span className="text-gradient">Self Agent ID</span>
+            </h1>
+          </div>
           <p className="text-lg text-muted max-w-xl mx-auto mb-10">
-            Register AI agents with on-chain proof-of-human verification via Self
-            Protocol. Prove your agent is backed by a real, unique human.
+            Register AI agents with on-chain proof-of-human verification via{" "}
+            <a href="https://self.xyz" target="_blank" rel="noopener noreferrer" className="text-foreground hover:text-accent transition-colors underline underline-offset-2 whitespace-nowrap">Self Protocol</a>. Prove your agent is backed by a real, unique human.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -65,10 +68,16 @@ export default function Home() {
             </Link>
             <Link
               href="/explainer"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium text-muted hover:text-foreground hover:bg-surface-1 transition-all"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium bg-surface-1 border border-border text-muted hover:text-foreground hover:border-border-strong transition-all"
             >
               <FileCode2 size={18} />
-              ERC-8004
+              How It Works
+            </Link>
+            <Link
+              href="/erc8004"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium bg-surface-1 border border-border text-muted hover:text-foreground hover:border-border-strong transition-all"
+            >
+              ERC-8004 Proposal
             </Link>
           </div>
         </div>
@@ -96,7 +105,7 @@ export default function Home() {
       </section>
 
       {/* How It Works */}
-      <section className="max-w-4xl mx-auto px-6 py-20">
+      <section className="max-w-4xl mx-auto px-6 py-12">
         <h2 className="text-2xl font-bold text-center mb-10">How It Works</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -106,22 +115,41 @@ export default function Home() {
             <p className="text-sm text-muted mb-5">
               Register your AI agent so services trust it
             </p>
+
+            {/* Three modes */}
+            <div className="space-y-3 mb-6">
+              <div className="flex gap-3 p-3 rounded-lg bg-surface-2 border border-border">
+                <Wallet size={18} className="text-accent flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-sm">Verified Wallet</p>
+                  <p className="text-xs text-muted">Your wallet address is the agent identity. Simplest option for crypto-native users.</p>
+                </div>
+              </div>
+              <div className="flex gap-3 p-3 rounded-lg bg-surface-2 border border-border">
+                <Key size={18} className="text-accent flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-sm">Agent Identity</p>
+                  <p className="text-xs text-muted">Agent gets its own keypair, separate from your wallet. Best for dedicated agent infrastructure.</p>
+                </div>
+              </div>
+              <div className="flex gap-3 p-3 rounded-lg bg-surface-2 border border-border">
+                <Smartphone size={18} className="text-accent-2 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-sm">No Wallet Needed</p>
+                  <p className="text-xs text-muted">No crypto wallet required. Just scan your passport with the Self app &mdash; an agent key is generated for you automatically.</p>
+                </div>
+              </div>
+            </div>
+
             <ol className="space-y-4">
               {[
                 {
-                  title: "Connect wallet",
-                  desc: "Open the app and connect your browser wallet (MetaMask, etc.)",
+                  title: "Choose your mode",
+                  desc: "Pick from Verified Wallet, Agent Identity, or No Wallet. Non-crypto users can skip wallet setup entirely.",
                 },
                 {
-                  title: "Choose identity mode",
-                  desc: (
-                    <>
-                      <strong>Agent Identity</strong> &mdash; agent gets its own
-                      keypair.{" "}
-                      <strong>Verified Wallet</strong> &mdash; your wallet address
-                      is the agent identity.
-                    </>
-                  ),
+                  title: "Connect wallet (if applicable)",
+                  desc: "Wallet modes require connecting MetaMask or similar. No Wallet mode skips this step.",
                 },
                 {
                   title: "Scan with Self app",
@@ -129,7 +157,7 @@ export default function Home() {
                 },
                 {
                   title: "Agent is registered",
-                  desc: "An NFT is minted on-chain binding your agent key to a verified human. Save the private key for Agent Identity mode.",
+                  desc: "An NFT is minted on-chain binding your agent key to a verified human. Save your credentials securely.",
                 },
                 {
                   title: "Agent signs requests",
@@ -262,35 +290,6 @@ export default function Home() {
         </Card>
       </section>
 
-      {/* Use Cases */}
-      <section className="max-w-4xl mx-auto px-6 pb-20">
-        <h2 className="text-2xl font-bold text-center mb-10">Use Cases</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[
-            {
-              icon: Shield,
-              title: "DeFi Protocols",
-              desc: "Gate smart contract access to verified human-backed agents only.",
-            },
-            {
-              icon: Store,
-              title: "AI Marketplaces",
-              desc: "Ensure every agent listed is accountable to a real person.",
-            },
-            {
-              icon: Vote,
-              title: "Governance",
-              desc: "Sybil-resistant voting and proposal systems for agent DAOs.",
-            },
-          ].map((uc) => (
-            <Card key={uc.title} glow>
-              <uc.icon size={24} className="text-accent mb-3" />
-              <h3 className="font-semibold mb-1">{uc.title}</h3>
-              <p className="text-sm text-muted">{uc.desc}</p>
-            </Card>
-          ))}
-        </div>
-      </section>
     </main>
   );
 }

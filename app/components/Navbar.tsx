@@ -9,7 +9,8 @@ const links = [
   { href: "/register", label: "Register" },
   { href: "/my-agents", label: "My Agents" },
   { href: "/verify", label: "Verify" },
-  { href: "/explainer", label: "Explainer" },
+  { href: "/explainer", label: "How It Works" },
+  { href: "/erc8004", label: "ERC-8004" },
 ];
 
 export function Navbar() {
@@ -21,7 +22,14 @@ export function Navbar() {
       <div className="max-w-6xl mx-auto h-full px-6 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5">
-          <span className="text-gradient font-bold text-lg">SA</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/self-icon.png"
+            alt="Self"
+            width={28}
+            height={28}
+            className="rounded-md"
+          />
           <span className="text-foreground font-medium text-sm hidden sm:inline">
             Self Agent ID
           </span>

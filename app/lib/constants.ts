@@ -25,5 +25,11 @@ export const REGISTRY_ABI = [
   "function agentIdToPubkey(uint256 agentId) view returns (bytes32)",
   "function agentHasHumanProof(uint256 agentId) view returns (bool)",
   "function agentProofProvider(uint256 agentId) view returns (address)",
+  // V4 additions
+  "function agentGuardian(uint256 agentId) view returns (address)",
+  "function getAgentMetadata(uint256 agentId) view returns (string)",
+  "function guardianRevoke(uint256 agentId)",
+  "function selfDeregister(uint256 agentId)",
+  "function updateAgentMetadata(uint256 agentId, string metadata)",
   "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
 ] as const;

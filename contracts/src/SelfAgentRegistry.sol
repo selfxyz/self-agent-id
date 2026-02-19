@@ -32,6 +32,7 @@ import { IHumanProofProvider } from "./interfaces/IHumanProofProvider.sol";
 ///        0x02 / "D" = deregister simple (revoke proof, burn NFT)
 ///        0x03 / "K" = register advanced (agent signs challenge, ECDSA verified)
 ///        0x04 / "X" = deregister advanced (by agent address)
+///        0x05 / "W" = register wallet-free (agent-owned NFT, optional guardian)
 contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004ProofOfHuman {
 
     // ====================================================
@@ -43,12 +44,14 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
 
     uint8 constant ACTION_REGISTER_ADVANCED = 0x03;
     uint8 constant ACTION_DEREGISTER_ADVANCED = 0x04;
+    uint8 constant ACTION_REGISTER_WALLETFREE = 0x05;
 
     // ASCII action prefixes used in userDefinedData (string-based encoding)
     uint8 constant ASCII_R = 0x52; // 'R' = register
     uint8 constant ASCII_D = 0x44; // 'D' = deregister
     uint8 constant ASCII_K = 0x4B; // 'K' = advanced register
     uint8 constant ASCII_X = 0x58; // 'X' = advanced deregister
+    uint8 constant ASCII_W = 0x57; // 'W' = wallet-free register
 
     // ====================================================
     // Storage
@@ -84,6 +87,12 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     /// @notice The address of the SelfHumanProofProvider (this contract's companion)
     address public selfProofProvider;
 
+    /// @notice Maps agentId to its guardian address (can force-revoke the agent)
+    mapping(uint256 => address) public agentGuardian;
+
+    /// @notice Maps agentId to delegated credential metadata (JSON string)
+    mapping(uint256 => string) public agentMetadata;
+
     /// @notice The next agent ID to mint
     uint256 private _nextAgentId;
 
@@ -100,6 +109,19 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     error ProviderAlreadyApproved(address provider);
     error AgentHasNoHumanProof(uint256 agentId);
     error InvalidAgentSignature();
+    error NotGuardian(uint256 agentId);
+    error NotNftOwner(uint256 agentId);
+    error NoGuardianSet(uint256 agentId);
+
+    // ====================================================
+    // Events (V4 additions)
+    // ====================================================
+
+    /// @notice Emitted when a guardian is set for an agent
+    event GuardianSet(uint256 indexed agentId, address indexed guardian);
+
+    /// @notice Emitted when agent metadata is updated
+    event AgentMetadataUpdated(uint256 indexed agentId);
 
     // ====================================================
     // Constructor
@@ -242,6 +264,33 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
             address agentAddr = _hexStringToAddress(userData, 1);
             bytes32 agentPubKey = bytes32(uint256(uint160(agentAddr)));
             _deregisterAgent(nullifier, agentPubKey);
+        } else if (actionByte == ACTION_REGISTER_WALLETFREE) {
+            // Binary wallet-free: 1B action + 20B agentAddr + 20B guardian + 32B r + 32B s + 1B v = 106 bytes
+            if (userData.length < 106) revert InvalidUserData();
+            address agentAddr;
+            address guardian;
+            bytes32 r;
+            bytes32 s;
+            uint8 v;
+            assembly {
+                agentAddr := shr(96, mload(add(userData, 33)))  // offset 1, 20 bytes
+                guardian := shr(96, mload(add(userData, 53)))    // offset 21, 20 bytes
+                r := mload(add(userData, 73))                    // offset 41
+                s := mload(add(userData, 105))                   // offset 73
+                v := byte(0, mload(add(userData, 137)))          // offset 105
+            }
+            bytes32 agentPubKey = _verifyAgentSignature(agentAddr, humanAddress, v, r, s);
+            _registerAgentWalletFree(nullifier, agentPubKey, agentAddr, guardian);
+        } else if (actionByte == ASCII_W) {
+            // String wallet-free: "W" + agentAddr(40) + guardian(40) + r(64) + s(64) + v(2) = 211 chars
+            if (userData.length < 211) revert InvalidUserData();
+            address agentAddr = _hexStringToAddress(userData, 1);
+            address guardian = _hexStringToAddress(userData, 41);
+            bytes32 r = _hexStringToBytes32(userData, 81);
+            bytes32 s = _hexStringToBytes32(userData, 145);
+            uint8 v = _hexStringToUint8(userData, 209);
+            bytes32 agentPubKey = _verifyAgentSignature(agentAddr, humanAddress, v, r, s);
+            _registerAgentWalletFree(nullifier, agentPubKey, agentAddr, guardian);
         } else {
             revert InvalidAction(actionByte);
         }
@@ -354,6 +403,49 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
         return pubkeyToAgentId[agentPubKey];
     }
 
+    /// @notice Get the delegated credential metadata for an agent
+    /// @param agentId The agent to query
+    /// @return The metadata JSON string (empty if none set)
+    function getAgentMetadata(uint256 agentId) external view returns (string memory) {
+        return agentMetadata[agentId];
+    }
+
+    // ====================================================
+    // Guardian Functions
+    // ====================================================
+
+    /// @notice Guardian force-revokes a compromised agent
+    /// @dev Only callable by the agent's designated guardian
+    /// @param agentId The agent to revoke
+    function guardianRevoke(uint256 agentId) external {
+        address guardian = agentGuardian[agentId];
+        if (guardian == address(0)) revert NoGuardianSet(agentId);
+        if (msg.sender != guardian) revert NotGuardian(agentId);
+        _revokeAgent(agentId);
+    }
+
+    /// @notice Agent (NFT owner) deregisters itself
+    /// @dev Only callable by the current owner of the agent NFT
+    /// @param agentId The agent to deregister
+    function selfDeregister(uint256 agentId) external {
+        if (msg.sender != ownerOf(agentId)) revert NotNftOwner(agentId);
+        _revokeAgent(agentId);
+    }
+
+    // ====================================================
+    // Metadata Functions
+    // ====================================================
+
+    /// @notice Update delegated credential metadata for an agent
+    /// @dev Only callable by the current owner of the agent NFT
+    /// @param agentId The agent to update
+    /// @param metadata The new metadata JSON string
+    function updateAgentMetadata(uint256 agentId, string calldata metadata) external {
+        if (msg.sender != ownerOf(agentId)) revert NotNftOwner(agentId);
+        agentMetadata[agentId] = metadata;
+        emit AgentMetadataUpdated(agentId);
+    }
+
     // ====================================================
     // Internal Logic
     // ====================================================
@@ -406,6 +498,26 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
         _mintAgent(nullifier, agentPubKey, provider, humanAddress);
     }
 
+    /// @notice Register a wallet-free agent (agent-owned NFT with optional guardian)
+    /// @param nullifier The human's scoped nullifier
+    /// @param agentPubKey The agent's public key
+    /// @param agentAddress The agent's address (NFT minted here, not to humanAddress)
+    /// @param guardian The guardian address (can force-revoke; address(0) = no guardian)
+    function _registerAgentWalletFree(
+        uint256 nullifier,
+        bytes32 agentPubKey,
+        address agentAddress,
+        address guardian
+    ) internal {
+        address provider = selfProofProvider;
+        uint256 agentId = _mintAgent(nullifier, agentPubKey, provider, agentAddress);
+
+        if (guardian != address(0)) {
+            agentGuardian[agentId] = guardian;
+            emit GuardianSet(agentId, guardian);
+        }
+    }
+
     /// @notice Deregister an agent through the Hub V2 callback flow
     /// @param nullifier The caller's nullifier (must match the agent's owner)
     /// @param agentPubKey The agent's public key
@@ -433,6 +545,10 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
 
         agentHasHumanProof[agentId] = false;
         activeAgentCount[nullifier]--;
+
+        // Clear guardian and metadata
+        delete agentGuardian[agentId];
+        delete agentMetadata[agentId];
 
         // Burn the NFT
         _burn(agentId);

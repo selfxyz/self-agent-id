@@ -1,0 +1,23 @@
+{
+  "lib/forge-std": {
+    "tag": {
+      "name": "v1.15.0",
+      "rev": "0844d7e1fc5e60d77b68e469bff60265f236c398"
+    }
+  },
+  "lib/hardhat": {
+    "tag": {
+      "name": "2.9.2",
+      "rev": "4abe9ae98f58ab01e85b0cc94800db0b82dc521c"
+    }
+  },
+  "lib/openzeppelin-contracts": {
+    "tag": {
+      "name": "v5.1.0",
+      "rev": "69c8def5f222ff96f2b5beff05dfba996368aa79"
+    }
+  },
+  "lib/self": {
+    "rev": "84224984305cf9fe452337fb36208ff747442bea"
+  }
+}

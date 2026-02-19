@@ -870,4 +870,328 @@ contract SelfAgentRegistryTest is Test {
         result[0] = hexChars[(val >> 4) & 0xf];
         return string(result);
     }
+
+    // ====================================================
+    // V4: Wallet-Free Registration — Helpers
+    // ====================================================
+
+    function _buildWalletFreeUserData(
+        uint8 action,
+        address agentAddr,
+        address guardian,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) internal pure returns (bytes memory) {
+        return abi.encodePacked(action, agentAddr, guardian, r, s, v);
+    }
+
+    function _registerWalletFree(
+        address humanAddr,
+        uint256 nullifier,
+        uint256 agentPrivKey,
+        address guardian
+    ) internal {
+        address agentAddr = vm.addr(agentPrivKey);
+        (uint8 v, bytes32 r, bytes32 s) = _signRegistration(agentPrivKey, humanAddr);
+        bytes memory encodedOutput = _buildEncodedOutput(humanAddr, nullifier);
+        bytes memory userData = _buildWalletFreeUserData(0x05, agentAddr, guardian, v, r, s);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    // ====================================================
+    // V4: Wallet-Free Registration — Tests
+    // ====================================================
+
+    function test_WalletFreeRegister_MintsToAgent() public {
+        _registerWalletFree(human1, nullifier1, advAgentPrivKey1, human1);
+
+        uint256 agentId = registry.getAgentId(advAgentKey1);
+        assertEq(agentId, 1);
+        assertTrue(registry.isVerifiedAgent(advAgentKey1));
+        assertTrue(registry.hasHumanProof(agentId));
+        // NFT minted to agent address, NOT human address
+        assertEq(registry.ownerOf(agentId), advAgentAddr1);
+    }
+
+    function test_WalletFreeRegister_SetsGuardian() public {
+        _registerWalletFree(human1, nullifier1, advAgentPrivKey1, human1);
+
+        uint256 agentId = registry.getAgentId(advAgentKey1);
+        assertEq(registry.agentGuardian(agentId), human1);
+    }
+
+    function test_WalletFreeRegister_NoGuardian() public {
+        _registerWalletFree(human1, nullifier1, advAgentPrivKey1, address(0));
+
+        uint256 agentId = registry.getAgentId(advAgentKey1);
+        assertEq(registry.agentGuardian(agentId), address(0));
+    }
+
+    function test_WalletFreeRegister_EmitsGuardianEvent() public {
+        address agentAddr = vm.addr(advAgentPrivKey1);
+        (uint8 v, bytes32 r, bytes32 s) = _signRegistration(advAgentPrivKey1, human1);
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        bytes memory userData = _buildWalletFreeUserData(0x05, agentAddr, human1, v, r, s);
+
+        vm.expectEmit(true, true, false, false);
+        emit SelfAgentRegistry.GuardianSet(1, human1);
+
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    function test_WalletFreeRegister_StringEncoding() public {
+        (uint8 v, bytes32 r, bytes32 s) = _signRegistration(advAgentPrivKey1, human1);
+
+        bytes memory addrHex = bytes(_toHexString(advAgentAddr1));
+        bytes memory guardianHex = bytes(_toHexString(human1));
+        bytes memory rHex = bytes(_toHexString32(r));
+        bytes memory sHex = bytes(_toHexString32(s));
+        bytes memory vHex = bytes(_toHexString8(v));
+
+        bytes memory userData = abi.encodePacked("W", addrHex, guardianHex, rHex, sHex, vHex);
+        assertEq(userData.length, 211, "String-encoded wallet-free userData should be 211 bytes");
+
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+
+        assertTrue(registry.isVerifiedAgent(advAgentKey1));
+        assertEq(registry.ownerOf(registry.getAgentId(advAgentKey1)), advAgentAddr1);
+        assertEq(registry.agentGuardian(registry.getAgentId(advAgentKey1)), human1);
+    }
+
+    function test_RevertWhen_WalletFreeUserDataTooShort() public {
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        bytes memory userData = abi.encodePacked(uint8(0x05), bytes20(0));
+
+        vm.prank(hubMock);
+        vm.expectRevert(SelfAgentRegistry.InvalidUserData.selector);
+        registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    function test_RevertWhen_WalletFreeWrongSignature() public {
+        // Agent 2 signs, but we claim it's agent 1
+        (uint8 v, bytes32 r, bytes32 s) = _signRegistration(advAgentPrivKey2, human1);
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        bytes memory userData = _buildWalletFreeUserData(0x05, advAgentAddr1, human1, v, r, s);
+
+        vm.prank(hubMock);
+        vm.expectRevert(SelfAgentRegistry.InvalidAgentSignature.selector);
+        registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    // ====================================================
+    // V4: Guardian Revoke — Tests
+    // ====================================================
+
+    function test_GuardianRevoke() public {
+        _registerWalletFree(human1, nullifier1, advAgentPrivKey1, human1);
+        uint256 agentId = registry.getAgentId(advAgentKey1);
+        assertTrue(registry.isVerifiedAgent(advAgentKey1));
+
+        vm.prank(human1); // guardian
+        registry.guardianRevoke(agentId);
+
+        assertFalse(registry.isVerifiedAgent(advAgentKey1));
+        assertEq(registry.getAgentCountForHuman(nullifier1), 0);
+    }
+
+    function test_RevertWhen_GuardianRevoke_NotGuardian() public {
+        _registerWalletFree(human1, nullifier1, advAgentPrivKey1, human1);
+        uint256 agentId = registry.getAgentId(advAgentKey1);
+
+        vm.prank(human2); // not guardian
+        vm.expectRevert(abi.encodeWithSelector(SelfAgentRegistry.NotGuardian.selector, agentId));
+        registry.guardianRevoke(agentId);
+    }
+
+    function test_RevertWhen_GuardianRevoke_NoGuardianSet() public {
+        // Register without guardian
+        _registerWalletFree(human1, nullifier1, advAgentPrivKey1, address(0));
+        uint256 agentId = registry.getAgentId(advAgentKey1);
+
+        vm.prank(human1);
+        vm.expectRevert(abi.encodeWithSelector(SelfAgentRegistry.NoGuardianSet.selector, agentId));
+        registry.guardianRevoke(agentId);
+    }
+
+    function test_GuardianRevoke_ClearsGuardian() public {
+        _registerWalletFree(human1, nullifier1, advAgentPrivKey1, human1);
+        uint256 agentId = registry.getAgentId(advAgentKey1);
+
+        vm.prank(human1);
+        registry.guardianRevoke(agentId);
+
+        assertEq(registry.agentGuardian(agentId), address(0));
+    }
+
+    // ====================================================
+    // V4: Self-Deregister — Tests
+    // ====================================================
+
+    function test_SelfDeregister_ByNftOwner() public {
+        _registerWalletFree(human1, nullifier1, advAgentPrivKey1, human1);
+        uint256 agentId = registry.getAgentId(advAgentKey1);
+
+        // Agent (NFT owner) deregisters itself
+        vm.prank(advAgentAddr1);
+        registry.selfDeregister(agentId);
+
+        assertFalse(registry.isVerifiedAgent(advAgentKey1));
+    }
+
+    function test_SelfDeregister_SimpleMode() public {
+        // Simple mode: human owns the NFT, human can self-deregister
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        vm.prank(human1);
+        registry.selfDeregister(agentId);
+
+        assertFalse(registry.isVerifiedAgent(agentKey1));
+    }
+
+    function test_RevertWhen_SelfDeregister_NotOwner() public {
+        _registerWalletFree(human1, nullifier1, advAgentPrivKey1, human1);
+        uint256 agentId = registry.getAgentId(advAgentKey1);
+
+        vm.prank(human2); // not the NFT owner
+        vm.expectRevert(abi.encodeWithSelector(SelfAgentRegistry.NotNftOwner.selector, agentId));
+        registry.selfDeregister(agentId);
+    }
+
+    // ====================================================
+    // V4: Metadata — Tests
+    // ====================================================
+
+    function test_UpdateMetadata() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        string memory metadata = '{"verified":{"olderThan":18},"declared":{"name":"REMI"}}';
+
+        vm.prank(human1);
+        registry.updateAgentMetadata(agentId, metadata);
+
+        assertEq(registry.getAgentMetadata(agentId), metadata);
+    }
+
+    function test_UpdateMetadata_EmitsEvent() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        vm.expectEmit(true, false, false, false);
+        emit SelfAgentRegistry.AgentMetadataUpdated(agentId);
+
+        vm.prank(human1);
+        registry.updateAgentMetadata(agentId, "{}");
+    }
+
+    function test_RevertWhen_UpdateMetadata_NotOwner() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        vm.prank(human2);
+        vm.expectRevert(abi.encodeWithSelector(SelfAgentRegistry.NotNftOwner.selector, agentId));
+        registry.updateAgentMetadata(agentId, "{}");
+    }
+
+    function test_Metadata_WalletFreeAgent() public {
+        _registerWalletFree(human1, nullifier1, advAgentPrivKey1, human1);
+        uint256 agentId = registry.getAgentId(advAgentKey1);
+
+        // Agent (NFT owner) can update its own metadata
+        string memory metadata = '{"verified":{"olderThan":21},"declared":{"purpose":"trading"}}';
+        vm.prank(advAgentAddr1);
+        registry.updateAgentMetadata(agentId, metadata);
+
+        assertEq(registry.getAgentMetadata(agentId), metadata);
+    }
+
+    function test_Metadata_ClearedOnRevoke() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        vm.prank(human1);
+        registry.updateAgentMetadata(agentId, '{"test":true}');
+        assertEq(registry.getAgentMetadata(agentId), '{"test":true}');
+
+        _deregisterViaHub(human1, nullifier1);
+        assertEq(registry.getAgentMetadata(agentId), "");
+    }
+
+    function test_Metadata_DefaultEmpty() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+        assertEq(registry.getAgentMetadata(agentId), "");
+    }
+
+    // ====================================================
+    // V4: Mixed Modes — All three modes coexist
+    // ====================================================
+
+    function test_AllThreeModes() public {
+        // Simple: human1
+        _registerViaHub(human1, nullifier1);
+
+        // Advanced: human2 + advAgentPrivKey1
+        _registerViaHubAdvanced(human2, nullifier2, advAgentPrivKey1);
+
+        // Wallet-free: human1alt + advAgentPrivKey2 (same human as human1 via nullifier1)
+        _registerWalletFree(human1alt, nullifier1, advAgentPrivKey2, human1alt);
+
+        // Verify all three
+        assertTrue(registry.isVerifiedAgent(agentKey1));
+        assertTrue(registry.isVerifiedAgent(advAgentKey1));
+        assertTrue(registry.isVerifiedAgent(advAgentKey2));
+
+        // Simple → NFT owned by human
+        assertEq(registry.ownerOf(registry.getAgentId(agentKey1)), human1);
+        // Advanced → NFT owned by human
+        assertEq(registry.ownerOf(registry.getAgentId(advAgentKey1)), human2);
+        // Wallet-free → NFT owned by agent
+        assertEq(registry.ownerOf(registry.getAgentId(advAgentKey2)), advAgentAddr2);
+
+        // Wallet-free has guardian
+        assertEq(registry.agentGuardian(registry.getAgentId(advAgentKey2)), human1alt);
+        // Others don't
+        assertEq(registry.agentGuardian(registry.getAgentId(agentKey1)), address(0));
+        assertEq(registry.agentGuardian(registry.getAgentId(advAgentKey1)), address(0));
+
+        // Same human check
+        assertTrue(registry.sameHuman(
+            registry.getAgentId(agentKey1),
+            registry.getAgentId(advAgentKey2)
+        ));
+        assertFalse(registry.sameHuman(
+            registry.getAgentId(agentKey1),
+            registry.getAgentId(advAgentKey1)
+        ));
+    }
+
+    // ====================================================
+    // V4: Fuzz — Wallet-Free
+    // ====================================================
+
+    function testFuzz_WalletFreeRegister(uint256 nullifier, address humanAddr, uint256 agentPrivKey) public {
+        vm.assume(humanAddr != address(0));
+        vm.assume(nullifier != 0);
+        vm.assume(agentPrivKey != 0);
+        vm.assume(agentPrivKey < 115792089237316195423570985008687907852837564279074904382605163141518161494337); // secp256k1 order
+
+        address agentAddr = vm.addr(agentPrivKey);
+        vm.assume(agentAddr != address(0));
+
+        _registerWalletFree(humanAddr, nullifier, agentPrivKey, humanAddr);
+
+        bytes32 agentPubKey = bytes32(uint256(uint160(agentAddr)));
+        uint256 agentId = registry.getAgentId(agentPubKey);
+        assertTrue(agentId != 0);
+        assertTrue(registry.isVerifiedAgent(agentPubKey));
+        assertEq(registry.ownerOf(agentId), agentAddr);
+        assertEq(registry.agentGuardian(agentId), humanAddr);
+    }
 }
