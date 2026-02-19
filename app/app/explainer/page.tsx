@@ -541,6 +541,13 @@ export default function ExplainerPage() {
                 never trusted from a header. This closes the off-chain verification gap
                 completely.
               </p>
+              <p className="text-muted mt-3">
+                <strong className="text-foreground">Fully composable</strong> &mdash; SDKs are available for{" "}
+                <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">TypeScript</code>,{" "}
+                <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">Python</code>, and raw implementations in any language.
+                Sign requests in Python, verify in TypeScript, or vice versa. The signing
+                protocol is language-agnostic &mdash; all SDKs produce identical signatures.
+              </p>
             </div>
 
             {/* Sybil resistance */}

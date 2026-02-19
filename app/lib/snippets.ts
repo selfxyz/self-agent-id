@@ -265,10 +265,12 @@ ${abiEntries}
 registry = w3.eth.contract(address=REGISTRY, abi=REGISTRY_ABI)${rateLimiterDecl}
 
 def verify_agent(address: str, signature: str, ts: str,
-                 method: str, url: str) -> bool:
+                 method: str, url: str, body: str = "") -> bool:
     if time.time() * 1000 - int(ts) > 5 * 60 * 1000:
         return False
-    message = encode_defunct(text=ts + method + url)
+    body_hash = Web3.keccak(text=body).hex() if body else Web3.keccak(text="").hex()
+    msg_hash = Web3.keccak(text=ts + method.upper() + url + body_hash)
+    message = encode_defunct(primitive=msg_hash)
     recovered = w3.eth.account.recover_message(message, signature=signature)
     if recovered.lower() != address.lower():
         return False
@@ -371,6 +373,105 @@ ${checks}
 
     true
 }`;
+}
+
+function buildServicePythonSDK(f: Set<string>): string {
+  const creds = needsCreds(f);
+  const sybil = f.has("sybil");
+  const rateLimit = f.has("rateLimit");
+
+  const opts: string[] = [];
+  if (sybil) opts.push("    max_agents_per_human=5,");
+  if (creds) opts.push("    include_credentials=True,");
+  const verifierOpts = opts.length ? `\n${opts.join("\n")}\n` : "";
+
+  let body = `    print("Verified agent:", g.agent.agent_address)`;
+
+  if (rateLimit) {
+    body += `\n\n    # Rate limit: 10 requests per agent per minute
+    key = g.agent.agent_address.lower()
+    now = time.time()
+    timestamps = rate_limiter.get(key, [])
+    timestamps = [t for t in timestamps if now - t < 60]
+    if len(timestamps) >= 10:
+        return jsonify(error="Rate limit exceeded"), 429
+    timestamps.append(now)
+    rate_limiter[key] = timestamps`;
+  }
+
+  if (creds) {
+    body += `\n\n    creds = g.agent.credentials`;
+    if (f.has("age18")) body += `\n    if creds.older_than < 18:\n        return jsonify(error="Must be 18+"), 403`;
+    if (f.has("age21")) body += `\n    if creds.older_than < 21:\n        return jsonify(error="Must be 21+"), 403`;
+    if (f.has("ofac")) body += `\n    if not creds.ofac[0]:\n        return jsonify(error="OFAC check failed"), 403`;
+    if (f.has("nationality")) body += `\n    print("Nationality:", creds.nationality)`;
+    if (f.has("issuingState")) body += `\n    print("Issuing state:", creds.issuing_state)`;
+    if (f.has("credentials")) body += `\n    print("All credentials:", creds)`;
+  }
+
+  body += `\n\n    return jsonify(ok=True)`;
+
+  let rateLimiterDecl = "";
+  if (rateLimit) rateLimiterDecl = `\nrate_limiter: dict[str, list[float]] = {}\n`;
+
+  let imports = `from flask import Flask, g, jsonify
+from self_agent_sdk import SelfAgentVerifier
+from self_agent_sdk.middleware.flask import require_agent`;
+  if (rateLimit) imports += `\nimport time`;
+
+  return `${imports}
+
+app = Flask(__name__)
+verifier = SelfAgentVerifier(${verifierOpts})${rateLimiterDecl}
+
+@app.route("/api/data", methods=["POST"])
+@require_agent(verifier)
+def handle():
+${body}`;
+}
+
+function buildAgentAgentPythonSDK(f: Set<string>): string {
+  const mutual = f.has("mutual");
+  const sameHuman = f.has("sameHuman");
+  const diffHuman = f.has("diffHuman");
+
+  let body = `    result = verifier.verify(
+        signature=headers.get("x-self-agent-signature", ""),
+        timestamp=headers.get("x-self-agent-timestamp", ""),
+        method=method, url=url,
+    )
+    if not result.valid:
+        return False`;
+
+  if (mutual) {
+    body += `\n\n    # Both agents are verified (mutual check)
+    # result.valid confirms the peer; your agent is verified by registration`;
+  }
+
+  if (sameHuman) {
+    body += `\n\n    # Check if peer is the same human as you
+    print("Same human:", result.nullifier == my_nullifier)`;
+  }
+
+  if (diffHuman) {
+    body += `\n\n    # Reject if peer is operated by the same human
+    if result.nullifier == my_nullifier:
+        return False`;
+  }
+
+  body += `\n\n    return True`;
+
+  let myNullifier = "";
+  if (sameHuman || diffHuman) {
+    myNullifier = `\nmy_nullifier = 0  # Set from your own agent info\n`;
+  }
+
+  return `from self_agent_sdk import SelfAgentVerifier
+
+verifier = SelfAgentVerifier()${myNullifier}
+
+def verify_peer(headers: dict, method: str, url: str) -> bool:
+${body}`;
 }
 
 // ── Agent → Agent builders ──
@@ -759,6 +860,54 @@ async function runTests() {
 runTests().catch(console.error);`;
 }
 
+function buildTestSetupPythonSDK(): string {
+  return `import os, json
+from self_agent_sdk import SelfAgent, SelfAgentVerifier
+
+DEMO_SERVICE = "https://agent-id-demo-service-4aawyjohja-uc.a.run.app"
+DEMO_AGENT = "https://agent-id-demo-agent-4aawyjohja-uc.a.run.app"
+DEMO_APP = "https://agent-id.self.xyz"
+
+agent = SelfAgent(
+    private_key=os.environ["AGENT_PRIVATE_KEY"],
+    network="testnet",
+)
+print(f"Agent: {agent.address}")
+print(f"Registered: {agent.is_registered()}")
+
+# Test 1: Agent → Service (sign request, hit live endpoint)
+print("\\n--- Test 1: Agent → Service ---")
+body = json.dumps({"action": "test"})
+res = agent.fetch(DEMO_SERVICE + "/verify", method="POST", body=body,
+                  headers={"Content-Type": "application/json"})
+data = res.json()
+print(f"Verified: {data.get('valid')} Agent ID: {data.get('agentId')}")
+
+# Test 2: Agent → Agent (peer verification)
+print("\\n--- Test 2: Agent → Agent ---")
+body2 = json.dumps({"action": "peer-verify"})
+res2 = agent.fetch(DEMO_AGENT, method="POST", body=body2,
+                   headers={"Content-Type": "application/json"})
+peer = res2.json()
+print(f"Verified: {peer.get('verified')} Same human: {peer.get('sameHuman')}")
+print(f"Response signed: {'x-self-agent-signature' in res2.headers}")
+
+# Test 3: Local verification round-trip
+print("\\n--- Test 3: Local Verify Round-Trip ---")
+verifier = SelfAgentVerifier(network="testnet", max_agents_per_human=0)
+headers = agent.sign_request("POST", "/api/test", body='{"test":true}')
+result = verifier.verify(
+    signature=headers["x-self-agent-signature"],
+    timestamp=headers["x-self-agent-timestamp"],
+    method="POST", url="/api/test", body='{"test":true}',
+)
+print(f"Valid: {result.valid}")
+print(f"Agent ID: {result.agent_id}")
+print(f"Address: {result.agent_address}")
+
+print("\\nAll 3 tests passed!")`;
+}
+
 function buildTestSetupPython(): string {
   return `import time, json, os, requests, struct
 from web3 import Web3
@@ -778,9 +927,9 @@ w3 = Web3(Web3.HTTPProvider(RPC))
 
 def sign_request(method: str, url: str, body: str = ""):
     ts = str(int(time.time() * 1000))
-    body_hash = Web3.keccak(text=body).hex() if body else Web3.keccak(text="").hex()
+    body_hash = "0x" + Web3.keccak(text=body).hex() if body else "0x" + Web3.keccak(text="").hex()
     msg = Web3.keccak(text=ts + method.upper() + url + body_hash)
-    sig = agent.sign_message(encode_defunct(msg)).signature.hex()
+    sig = agent.sign_message(encode_defunct(primitive=msg)).signature.hex()
     return {
         "x-self-agent-address": agent.address,
         "x-self-agent-signature": "0x" + sig,
@@ -1088,10 +1237,11 @@ export function getServiceSnippets(
       title: "Agent \u2192 Service",
       description:
         "Verify that an AI agent calling your API is human-backed. The SDK handles signature verification, on-chain checks, and caching.",
-      flow: "npm install @selfxyz/agent-sdk \u2192 Create verifier \u2192 Add middleware \u2192 Done",
+      flow: "npm install @selfxyz/agent-sdk (or pip install selfxyz-agent-sdk) \u2192 Create verifier \u2192 Add middleware \u2192 Done",
       snippets: [
         { label: "TypeScript (SDK)", language: "typescript", code: buildServiceTS(f) },
-        { label: "Python", language: "python", code: buildServicePython(f, registryAddress, rpcUrl) },
+        { label: "Python (SDK)", language: "python", code: buildServicePythonSDK(f) },
+        { label: "Python (raw)", language: "python", code: buildServicePython(f, registryAddress, rpcUrl) },
         { label: "Rust", language: "rust", code: buildServiceRust(f, registryAddress, rpcUrl) },
       ],
     },
@@ -1102,6 +1252,7 @@ export function getServiceSnippets(
       flow: "Receive signed message \u2192 Verify via SDK \u2192 Check identity \u2192 Collaborate",
       snippets: [
         { label: "TypeScript (SDK)", language: "typescript", code: buildAgentAgentTS(f, registryAddress, rpcUrl) },
+        { label: "Python (SDK)", language: "python", code: buildAgentAgentPythonSDK(f) },
         { label: "Solidity", language: "solidity", code: buildAgentAgentSolidity(f, registryAddress) },
       ],
     },
@@ -1129,9 +1280,28 @@ export function getAgentSnippets(
       title: "Sign Requests",
       description:
         "Your agent signs every outgoing request with its private key. Services that support Self Agent ID verify your agent automatically.",
-      flow: "npm install @selfxyz/agent-sdk \u2192 Create SelfAgent \u2192 Use agent.fetch() \u2192 Service verifies automatically",
+      flow: "npm install @selfxyz/agent-sdk (or pip install selfxyz-agent-sdk) \u2192 Create agent \u2192 Use agent.fetch() \u2192 Service verifies automatically",
       snippets: [
-        { label: "TypeScript", language: "typescript", code: buildSignRequestsTS(f) },
+        { label: "TypeScript (SDK)", language: "typescript", code: buildSignRequestsTS(f) },
+        {
+          label: "Python (SDK)",
+          language: "python",
+          code: `from self_agent_sdk import SelfAgent
+import os
+
+agent = SelfAgent(private_key=os.environ["AGENT_PRIVATE_KEY"])
+
+# Every request is signed automatically
+res = agent.fetch("https://api.example.com/data",
+                   method="POST", body='{"query": "test"}')
+
+# Check your own registration status
+print("Registered:", agent.is_registered())
+
+# Get full agent info (ID, nullifier, sybil count)
+info = agent.get_info()
+print(f"Agent ID: {info.agent_id}, Verified: {info.is_verified}")`,
+        },
         {
           label: "Rust",
           language: "rust",
@@ -1164,7 +1334,7 @@ fn sign_request(
 }`,
         },
         {
-          label: "Python",
+          label: "Python (raw)",
           language: "python",
           code: `import time, requests, os, json
 from eth_account import Account
@@ -1176,10 +1346,10 @@ agent = Account.from_key(os.environ["AGENT_PRIVATE_KEY"])
 def signed_request(method: str, url: str, **kwargs):
     ts = str(int(time.time() * 1000))
     body = json.dumps(kwargs.get("json", "")) if "json" in kwargs else ""
-    body_hash = Web3.keccak(text=body).hex()
+    body_hash = "0x" + Web3.keccak(text=body).hex()
     msg_hash = Web3.keccak(text=ts + method.upper() + url + body_hash)
     sig = agent.sign_message(
-        encode_defunct(msg_hash)
+        encode_defunct(primitive=msg_hash)
     ).signature.hex()
 
     headers = kwargs.pop("headers", {})
@@ -1215,7 +1385,8 @@ res = signed_request("POST", "https://api.example.com/data",
       flow: "Set AGENT_PRIVATE_KEY → Run script → Hits live endpoints → Confirms agent works end-to-end",
       snippets: [
         { label: "TypeScript", language: "typescript", code: buildTestSetupTS() },
-        { label: "Python", language: "python", code: buildTestSetupPython() },
+        { label: "Python (SDK)", language: "python", code: buildTestSetupPythonSDK() },
+        { label: "Python (raw)", language: "python", code: buildTestSetupPython() },
         { label: "Bash", language: "bash", code: buildTestSetupBash() },
       ],
     },

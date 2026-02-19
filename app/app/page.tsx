@@ -174,6 +174,10 @@ export default function Home() {
                       <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">
                         npm install @selfxyz/agent-sdk
                       </code>{" "}
+                      or{" "}
+                      <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">
+                        pip install selfxyz-agent-sdk
+                      </code>{" "}
                       — or use the on-chain registry directly.
                     </>
                   ),
