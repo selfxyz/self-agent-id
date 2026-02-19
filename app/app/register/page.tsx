@@ -43,8 +43,8 @@ const SelfQRcodeWrapper = dynamic(
   { ssr: false }
 );
 
-// Import SelfAppBuilder separately (not a component)
-let SelfAppBuilder: typeof import("@selfxyz/qrcode").SelfAppBuilder;
+// SelfAppBuilder loaded lazily on client side
+let SelfAppBuilderClass: typeof import("@selfxyz/qrcode").SelfAppBuilder | null = null;
 
 type Mode = "simple" | "advanced" | "walletfree" | "smartwallet";
 type Step = "mode" | "connect" | "scan" | "success";
@@ -111,9 +111,13 @@ export default function RegisterPage() {
 
   // Load SelfAppBuilder on client
   useEffect(() => {
-    import("@selfxyz/qrcode").then((mod) => {
-      SelfAppBuilder = mod.SelfAppBuilder;
-    });
+    import("@selfxyz/qrcode")
+      .then((mod) => {
+        SelfAppBuilderClass = mod.SelfAppBuilder;
+      })
+      .catch((err) => {
+        console.error("Failed to load @selfxyz/qrcode:", err);
+      });
   }, []);
 
   const checkIfRegistered = async (address: string): Promise<boolean> => {
@@ -139,7 +143,7 @@ export default function RegisterPage() {
     if (disclosures.ofac) disc.ofac = true;
     if (disclosures.minimumAge > 0) disc.minimumAge = disclosures.minimumAge;
 
-    return new SelfAppBuilder({
+    return new SelfAppBuilderClass!({
       version: 2,
       appName: process.env.NEXT_PUBLIC_SELF_APP_NAME || "Self Agent ID",
       scope: process.env.NEXT_PUBLIC_SELF_SCOPE_SEED || "self-agent-id",
@@ -159,8 +163,8 @@ export default function RegisterPage() {
   ) => {
     const messageHash = ethers.keccak256(
       ethers.solidityPacked(
-        ["string", "address"],
-        ["self-agent-id:register:", humanIdentifier]
+        ["string", "address", "uint256", "address"],
+        ["self-agent-id:register:", humanIdentifier, network.chainId, network.registryAddress]
       )
     );
     const signature = await newWallet.signMessage(ethers.getBytes(messageHash));
@@ -183,7 +187,7 @@ export default function RegisterPage() {
       }
     }
 
-    if (!SelfAppBuilder) {
+    if (!SelfAppBuilderClass) {
       setErrorMessage("Self SDK still loading. Please try again.");
       setStep("connect");
       return;
@@ -216,7 +220,7 @@ export default function RegisterPage() {
   const handleWalletFreeStart = async () => {
     setErrorMessage("");
 
-    if (!SelfAppBuilder) {
+    if (!SelfAppBuilderClass) {
       setErrorMessage("Self SDK still loading. Please try again.");
       return;
     }
@@ -249,7 +253,7 @@ export default function RegisterPage() {
     setErrorMessage("");
     setLoading(true);
 
-    if (!SelfAppBuilder) {
+    if (!SelfAppBuilderClass) {
       setErrorMessage("Self SDK still loading. Please try again.");
       setLoading(false);
       return;

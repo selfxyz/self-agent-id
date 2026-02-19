@@ -7,8 +7,7 @@ import {
 } from "@/lib/constants";
 import { getNetwork, NETWORKS, type NetworkId } from "@/lib/network";
 
-const RELAYER_PK =
-  process.env.RELAYER_PRIVATE_KEY || process.env.DEMO_AGENT_PRIVATE_KEY;
+const RELAYER_PK = process.env.RELAYER_PRIVATE_KEY;
 
 // ---------------------------------------------------------------------------
 // Rate limiter — 3 verifications per hour per human nullifier
@@ -45,8 +44,8 @@ function checkRateLimit(nullifier: string): {
 export async function POST(req: NextRequest) {
   if (!RELAYER_PK) {
     return NextResponse.json(
-      { error: "Relayer not configured (missing RELAYER_PRIVATE_KEY)" },
-      { status: 500 },
+      { error: "Relayer not configured" },
+      { status: 503 },
     );
   }
 
@@ -145,8 +144,10 @@ export async function POST(req: NextRequest) {
       );
     }
   } catch {
-    // If we can't resolve nullifier, skip rate limiting (agent might not exist)
-    rateLimitResult = { allowed: true, remaining: 3 };
+    return NextResponse.json(
+      { error: "Unable to verify rate limit — try again later" },
+      { status: 503 },
+    );
   }
 
   // 6. Set up contract + relayer

@@ -46,24 +46,16 @@ export function getChain(network: NetworkConfig): Chain {
 }
 
 // ── Config ────────────────────────────────────────────────────────────
-function getPimlicoApiKey(): string | null {
-  return process.env.NEXT_PUBLIC_PIMLICO_API_KEY || null;
-}
-
 function getZeroDevProjectId(): string | null {
   return process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID || null;
 }
 
 function getBundlerUrl(chain: Chain): string {
-  const key = getPimlicoApiKey();
-  if (!key) throw new Error("NEXT_PUBLIC_PIMLICO_API_KEY not set — gasless operations unavailable on this network");
-  return `https://api.pimlico.io/v2/${chain.id}/rpc?apikey=${key}`;
+  return `/api/aa/bundler?chainId=${chain.id}`;
 }
 
 function getPaymasterUrl(chain: Chain): string {
-  const key = getPimlicoApiKey();
-  if (!key) throw new Error("NEXT_PUBLIC_PIMLICO_API_KEY not set — gasless operations unavailable on this network");
-  return `https://api.pimlico.io/v2/${chain.id}/rpc?apikey=${key}`;
+  return `/api/aa/paymaster?chainId=${chain.id}`;
 }
 
 function getPasskeyServerUrl(): string {
@@ -85,11 +77,11 @@ export function isPasskeySupported(): boolean {
  * Returns true if gasless UserOps are available (Pimlico bundler + paymaster configured).
  * On testnet (Celo Sepolia), Pimlico doesn't support the chain — passkey creation still
  * works (counterfactual address), but gasless revocation is unavailable.
- * On mainnet (Celo), Pimlico supports gasless operations.
+ * On mainnet (Celo), Pimlico supports gasless operations via server-side proxy.
  */
 export function isGaslessSupported(network?: NetworkConfig): boolean {
   const isTestnet = network ? network.isTestnet : true;
-  return !!getPimlicoApiKey() && !isTestnet;
+  return !isTestnet;
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────
@@ -184,10 +176,6 @@ export async function sendUserOperation(
       "Gasless operations are not available on this network. " +
       "On testnet, use passport scan to deregister your agent instead."
     );
-  }
-
-  if (!getPimlicoApiKey()) {
-    throw new Error("Pimlico API key not configured — gasless operations unavailable.");
   }
 
   const publicClient = getPublicClient(chain);
