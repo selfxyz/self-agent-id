@@ -183,6 +183,57 @@ def handle():
 ${body}`;
 }
 
+function buildServiceRustSDK(f: Set<string>): string {
+  const creds = needsCreds(f);
+  const sybil = f.has("sybil");
+
+  const opts: string[] = [];
+  if (sybil) opts.push("        max_agents_per_human: Some(5),");
+  if (creds) opts.push("        include_credentials: Some(true),");
+  const verifierOpts = opts.length
+    ? `\n${opts.join("\n")}\n        ..VerifierConfig::default()\n    `
+    : "VerifierConfig::default()";
+
+  let handler = `    let agent = req.extensions().get::<VerifiedAgent>().unwrap();
+    println!("Verified agent: {:?}", agent.address);`;
+
+  if (creds) {
+    handler += `
+
+    // Read ZK-attested credentials from verification result
+    // (available when include_credentials is enabled)`;
+  }
+
+  handler += `
+
+    Json(serde_json::json!({ "ok": true }))`;
+
+  return `use axum::{Router, routing::post, middleware, Json, Extension};
+use self_agent_sdk::{SelfAgentVerifier, VerifierConfig, VerifiedAgent, self_agent_auth};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+#[tokio::main]
+async fn main() {
+    let verifier = Arc::new(Mutex::new(
+        SelfAgentVerifier::new(${verifierOpts})
+    ));
+
+    let app = Router::new()
+        .route("/api/data", post(handle))
+        .layer(middleware::from_fn_with_state(verifier, self_agent_auth));
+
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    axum::serve(listener, app).await.unwrap();
+}
+
+async fn handle(
+    Extension(agent): Extension<VerifiedAgent>,
+) -> Json<serde_json::Value> {
+${handler}
+}`;
+}
+
 function buildAgentAgentPythonSDK(f: Set<string>): string {
   const mutual = f.has("mutual");
   const sameHuman = f.has("sameHuman");
@@ -225,6 +276,58 @@ verifier = SelfAgentVerifier()${myNullifier}
 
 def verify_peer(headers: dict, method: str, url: str) -> bool:
 ${body}`;
+}
+
+function buildAgentAgentRustSDK(f: Set<string>): string {
+  const mutual = f.has("mutual");
+  const sameHuman = f.has("sameHuman");
+  const diffHuman = f.has("diffHuman");
+
+  let body = `    let result = verifier.verify(
+        signature, timestamp, method, url, body,
+    ).await;
+    if !result.valid { return false; }`;
+
+  if (mutual) {
+    body += `
+
+    // Both agents are verified (mutual check)
+    // result.valid confirms the peer; your agent is verified by registration`;
+  }
+
+  if (sameHuman) {
+    body += `
+
+    // Check if peer is the same human as you
+    println!("Same human: {}", result.nullifier == my_nullifier);`;
+  }
+
+  if (diffHuman) {
+    body += `
+
+    // Reject if peer is operated by the same human
+    if result.nullifier == my_nullifier { return false; }`;
+  }
+
+  body += `
+
+    true`;
+
+  let myNullifier = "";
+  if (sameHuman || diffHuman) {
+    myNullifier = `\nlet my_nullifier = U256::ZERO; // Set from your own agent info\n`;
+  }
+
+  return `use self_agent_sdk::{SelfAgentVerifier, VerifierConfig};
+
+let mut verifier = SelfAgentVerifier::new(VerifierConfig::default());${myNullifier}
+async fn verify_peer(
+    verifier: &mut SelfAgentVerifier,
+    signature: &str, timestamp: &str,
+    method: &str, url: &str, body: Option<&str>,
+) -> bool {
+${body}
+}`;
 }
 
 // ── Agent → Agent builders ──
@@ -507,7 +610,100 @@ const res = await agent.fetch("https://api.example.com/data", {
 const registered = await agent.isRegistered();${extra}`;
 }
 
+function buildSignRequestsRustSDK(f: Set<string>): string {
+  const sameHuman = f.has("sameHuman");
+  const diffHuman = f.has("diffHuman");
+  const mutual = f.has("mutual");
+
+  let extra = "";
+  if (sameHuman || diffHuman || mutual) {
+    extra += `
+
+// Verify peer agents before collaborating
+let mut verifier = SelfAgentVerifier::new(VerifierConfig::default());`;
+  }
+  if (mutual) {
+    extra += `
+
+// Ensure peer is also a verified agent
+let peer_result = verifier.verify(sig, ts, method, url, body).await;
+if !peer_result.valid { panic!("Peer not verified"); }`;
+  }
+
+  return `use self_agent_sdk::{SelfAgent, SelfAgentConfig, NetworkName};
+
+let agent = SelfAgent::new(SelfAgentConfig {
+    private_key: std::env::var("AGENT_PRIVATE_KEY").unwrap(),
+    network: Some(NetworkName::Testnet),
+    registry_address: None,
+    rpc_url: None,
+}).unwrap();
+
+// Every request is signed automatically
+let res = agent.fetch(
+    "https://api.example.com/data",
+    Some(reqwest::Method::POST),
+    Some(r#"{"query":"test"}"#.to_string()),
+).await.unwrap();
+
+// Check your own registration status
+let registered = agent.is_registered().await.unwrap();
+println!("Registered: {registered}");
+
+// Get full agent info (ID, nullifier, sybil count)
+let info = agent.get_info().await.unwrap();
+println!("Agent ID: {:?}, Verified: {}", info.agent_id, info.is_verified);${extra}`;
+}
+
 // ── Test Setup (run all demo tests from CLI) ──
+
+function buildTestSetupRustSDK(): string {
+  return `use self_agent_sdk::{
+    SelfAgent, SelfAgentConfig, SelfAgentVerifier, VerifierConfig, NetworkName,
+    constants::headers,
+};
+
+#[tokio::main]
+async fn main() {
+    let agent = SelfAgent::new(SelfAgentConfig {
+        private_key: std::env::var("AGENT_PRIVATE_KEY").unwrap(),
+        network: Some(NetworkName::Testnet),
+        registry_address: None,
+        rpc_url: None,
+    }).unwrap();
+
+    println!("Agent: {:?}", agent.address());
+    println!("Registered: {}", agent.is_registered().await.unwrap());
+
+    // Test 1: Agent → Service (sign request, hit live endpoint)
+    println!("\\n--- Test 1: Agent → Service ---");
+    let res = agent.fetch(
+        "https://agent-id-demo-service-4aawyjohja-uc.a.run.app/verify",
+        Some(reqwest::Method::POST),
+        Some(r#"{"action":"test"}"#.to_string()),
+    ).await.unwrap();
+    println!("Status: {}", res.status());
+
+    // Test 2: Local verification round-trip
+    println!("\\n--- Test 2: Local Verify Round-Trip ---");
+    let body = r#"{"test":true}"#;
+    let hdrs = agent.sign_request("POST", "/api/test", Some(body)).await.unwrap();
+    let mut verifier = SelfAgentVerifier::new(VerifierConfig {
+        network: Some(NetworkName::Testnet),
+        max_agents_per_human: Some(0),
+        ..VerifierConfig::default()
+    });
+    let result = verifier.verify(
+        &hdrs[headers::SIGNATURE],
+        &hdrs[headers::TIMESTAMP],
+        "POST", "/api/test", Some(body),
+    ).await;
+    println!("Recovered address: {:?}", result.agent_address);
+    println!("Agent key: {:?}", result.agent_key);
+
+    println!("\\nDone!");
+}`;
+}
 
 function buildTestSetupTS(): string {
   return `import { SelfAgent } from "@selfxyz/agent-sdk";
@@ -733,7 +929,7 @@ async fn main() -> eyre::Result<()> {
 
     let provider = ProviderBuilder::new()
         .wallet(signer)
-        .on_http("${rpcUrl}".parse()?);
+        .connect_http("${rpcUrl}".parse()?);
 
     let contract = IMyProtocol::new(
         CONTRACT_ADDRESS.parse()?,
@@ -798,10 +994,11 @@ export function getServiceSnippets(
       title: "Agent \u2192 Service",
       description:
         "Verify that an AI agent calling your API is human-backed. The SDK recovers the signer from the ECDSA signature, checks isVerifiedAgent() on-chain, and optionally reads ZK-attested credentials and enforces sybil limits.",
-      flow: "npm install @selfxyz/agent-sdk (or pip install selfxyz-agent-sdk) \u2192 Create verifier \u2192 Add middleware \u2192 Done",
+      flow: "npm install @selfxyz/agent-sdk (or pip install selfxyz-agent-sdk or cargo add self-agent-sdk) \u2192 Create verifier \u2192 Add middleware \u2192 Done",
       snippets: [
         { label: "TypeScript", language: "typescript", code: buildServiceTS(f) },
         { label: "Python", language: "python", code: buildServicePythonSDK(f) },
+        { label: "Rust", language: "rust", code: buildServiceRustSDK(f) },
       ],
     },
     {
@@ -812,6 +1009,7 @@ export function getServiceSnippets(
       snippets: [
         { label: "TypeScript", language: "typescript", code: buildAgentAgentTS(f, registryAddress, rpcUrl) },
         { label: "Python", language: "python", code: buildAgentAgentPythonSDK(f) },
+        { label: "Rust", language: "rust", code: buildAgentAgentRustSDK(f) },
         { label: "Solidity", language: "solidity", code: buildAgentAgentSolidity(f, registryAddress) },
       ],
     },
@@ -839,7 +1037,7 @@ export function getAgentSnippets(
       title: "Sign Requests",
       description:
         "Your agent signs every outgoing HTTP request with ECDSA (timestamp + method + URL + body hash). Services recover the signer from the signature and check isVerifiedAgent() on-chain \u2014 no API keys or tokens needed.",
-      flow: "npm install @selfxyz/agent-sdk (or pip install selfxyz-agent-sdk) \u2192 Create agent \u2192 Use agent.fetch() \u2192 Service verifies automatically",
+      flow: "npm install @selfxyz/agent-sdk (or pip install selfxyz-agent-sdk or cargo add self-agent-sdk) \u2192 Create agent \u2192 Use agent.fetch() \u2192 Service verifies automatically",
       snippets: [
         { label: "TypeScript", language: "typescript", code: buildSignRequestsTS(f) },
         {
@@ -861,6 +1059,7 @@ print("Registered:", agent.is_registered())
 info = agent.get_info()
 print(f"Agent ID: {info.agent_id}, Verified: {info.is_verified}")`,
         },
+        { label: "Rust", language: "rust", code: buildSignRequestsRustSDK(f) },
       ],
     },
     {
@@ -883,6 +1082,7 @@ print(f"Agent ID: {info.agent_id}, Verified: {info.is_verified}")`,
       snippets: [
         { label: "TypeScript", language: "typescript", code: buildTestSetupTS() },
         { label: "Python", language: "python", code: buildTestSetupPythonSDK() },
+        { label: "Rust", language: "rust", code: buildTestSetupRustSDK() },
       ],
     },
   ];

@@ -6,6 +6,9 @@ python-sdk/node_modules/
 python-sdk/package.json
 python-sdk/package-lock.json
 
+# Rust
+rust-sdk/target/
+
 # Python
 __pycache__/
 *.pyc
