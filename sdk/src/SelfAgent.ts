@@ -1,11 +1,14 @@
 import { ethers } from "ethers";
 import {
   REGISTRY_ABI,
+  PROVIDER_ABI,
   HEADERS,
   NETWORKS,
   DEFAULT_NETWORK,
 } from "./constants";
 import type { NetworkName } from "./constants";
+import type { A2AAgentCard, AgentSkill } from "./agentCard";
+import { buildAgentCard } from "./agentCard";
 
 export interface SelfAgentConfig {
   /** Agent's private key (hex, with or without 0x) */
@@ -164,5 +167,102 @@ export class SelfAgent {
         ...headers,
       },
     });
+  }
+
+  // ─── A2A Agent Card Methods ──────────────────────────────────────────────
+
+  /** Read the A2A Agent Card from on-chain metadata (if set) */
+  async getAgentCard(): Promise<A2AAgentCard | undefined> {
+    const agentId: bigint = await this.registry.getAgentId(this._agentKey);
+    if (agentId === 0n) return undefined;
+
+    const raw: string = await this.registry.getAgentMetadata(agentId);
+    if (!raw) return undefined;
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.a2aVersion) return parsed as A2AAgentCard;
+    } catch {
+      // metadata is not a valid A2A card
+    }
+    return undefined;
+  }
+
+  /**
+   * Build and write an A2A Agent Card to on-chain metadata.
+   * Auto-populates selfProtocol fields from on-chain data.
+   * Returns the transaction hash.
+   */
+  async setAgentCard(fields: {
+    name: string;
+    description?: string;
+    url?: string;
+    skills?: AgentSkill[];
+  }): Promise<string> {
+    const agentId: bigint = await this.registry.getAgentId(this._agentKey);
+    if (agentId === 0n) throw new Error("Agent not registered");
+
+    const providerAddr: string = await this.registry.getProofProvider(agentId);
+    if (!providerAddr || providerAddr === ethers.ZeroAddress) {
+      throw new Error("Agent has no proof provider — cannot build card");
+    }
+    const provider = new ethers.Contract(
+      providerAddr,
+      PROVIDER_ABI,
+      this.registry.runner
+    );
+
+    const card = await buildAgentCard(
+      Number(agentId),
+      this.registry,
+      provider,
+      fields
+    );
+
+    const registryWithSigner = this.registry.connect(this.wallet) as ethers.Contract;
+    const tx = await registryWithSigner.updateAgentMetadata(
+      agentId,
+      JSON.stringify(card)
+    );
+    await tx.wait();
+    return tx.hash;
+  }
+
+  /** Returns a data: URI containing the base64-encoded Agent Card JSON */
+  async toAgentCardDataURI(): Promise<string> {
+    const card = await this.getAgentCard();
+    if (!card) throw new Error("No A2A Agent Card set");
+    const json = JSON.stringify(card);
+    const encoded = btoa(json);
+    return `data:application/json;base64,${encoded}`;
+  }
+
+  /** Read ZK-attested credentials for this agent from on-chain */
+  async getCredentials(): Promise<Record<string, unknown> | undefined> {
+    const agentId: bigint = await this.registry.getAgentId(this._agentKey);
+    if (agentId === 0n) return undefined;
+
+    try {
+      return await this.registry.getAgentCredentials(agentId);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Read the verification strength score from the provider that verified this agent */
+  async getVerificationStrength(): Promise<number> {
+    const agentId: bigint = await this.registry.getAgentId(this._agentKey);
+    if (agentId === 0n) return 0;
+
+    const providerAddr: string = await this.registry.getProofProvider(agentId);
+    if (providerAddr === ethers.ZeroAddress) return 0;
+
+    const provider = new ethers.Contract(
+      providerAddr,
+      PROVIDER_ABI,
+      this.registry.runner
+    );
+    const strength: number = await provider.verificationStrength();
+    return Number(strength);
   }
 }

@@ -30,6 +30,12 @@ export const REGISTRY_ABI = [
   "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
 ] as const;
 
+// Provider ABI — used to query provider metadata
+export const PROVIDER_ABI = [
+  "function providerName() view returns (string)",
+  "function verificationStrength() view returns (uint8)",
+] as const;
+
 // AgentDemoVerifier V2 — EIP-712 meta-tx contract
 export const AGENT_DEMO_VERIFIER_ABI = [
   "function metaVerifyAgent(bytes32 agentKey, uint256 nonce, uint256 deadline, bytes signature) returns (uint256 agentId)",

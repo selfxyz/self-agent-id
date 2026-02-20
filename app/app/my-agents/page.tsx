@@ -6,7 +6,7 @@ import MatrixText from "@/components/MatrixText";
 import { ethers } from "ethers";
 import { Wallet, RefreshCw, Cpu, Shield, FileText, Search, Key, Fingerprint, Loader2 } from "lucide-react";
 import { connectWallet } from "@/lib/wallet";
-import { REGISTRY_ABI } from "@/lib/constants";
+import { REGISTRY_ABI, PROVIDER_ABI } from "@/lib/constants";
 import { useNetwork } from "@/lib/NetworkContext";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
@@ -30,6 +30,8 @@ interface AgentEntry {
   mode: "simple" | "advanced" | "walletfree";
   guardian: string;
   hasMetadata: boolean;
+  hasA2ACard: boolean;
+  verificationStrength?: number;
   credentials?: AgentCredentials;
 }
 
@@ -52,6 +54,31 @@ async function fetchCredentials(
     // Contract without getAgentCredentials
   }
   return undefined;
+}
+
+async function fetchVerificationStrength(
+  registry: ethers.Contract,
+  agentId: bigint,
+  provider: ethers.JsonRpcProvider,
+): Promise<{ strength?: number; hasA2ACard: boolean }> {
+  let strength: number | undefined;
+  let hasA2ACard = false;
+  try {
+    const provAddr: string = await registry.agentProofProvider(agentId);
+    if (provAddr && provAddr !== ethers.ZeroAddress) {
+      const prov = new ethers.Contract(provAddr, PROVIDER_ABI, provider);
+      const s: number = await prov.verificationStrength();
+      strength = Number(s);
+    }
+  } catch {}
+  try {
+    const metadata: string = await registry.getAgentMetadata(agentId);
+    if (metadata) {
+      const parsed = JSON.parse(metadata);
+      hasA2ACard = !!parsed.a2aVersion;
+    }
+  } catch {}
+  return { strength, hasA2ACard };
 }
 
 function buildDisclosureBadges(creds: AgentCredentials): string[] {
@@ -140,6 +167,7 @@ export default function MyAgentsPage() {
       }
 
       const credentials = await fetchCredentials(registry, agentId);
+      const { strength, hasA2ACard } = await fetchVerificationStrength(registry, agentId, provider);
 
       setAgents([{
         agentId,
@@ -150,6 +178,8 @@ export default function MyAgentsPage() {
         mode,
         guardian,
         hasMetadata,
+        hasA2ACard,
+        verificationStrength: strength,
         credentials,
       }]);
     } catch (err) {
@@ -215,6 +245,7 @@ export default function MyAgentsPage() {
           } catch {}
 
           const credentials = await fetchCredentials(registry, agentId);
+          const { strength, hasA2ACard } = await fetchVerificationStrength(registry, agentId, provider);
 
           results.push({
             agentId,
@@ -225,6 +256,8 @@ export default function MyAgentsPage() {
             mode: "walletfree", // guardian-managed agents are walletfree or smartwallet
             guardian,
             hasMetadata,
+            hasA2ACard,
+            verificationStrength: strength,
             credentials,
           });
         } catch {
@@ -312,6 +345,7 @@ export default function MyAgentsPage() {
           }
 
           const credentials = await fetchCredentials(registry, agentId);
+          const { strength, hasA2ACard } = await fetchVerificationStrength(registry, agentId, provider);
 
           results.push({
             agentId,
@@ -322,6 +356,8 @@ export default function MyAgentsPage() {
             mode,
             guardian,
             hasMetadata,
+            hasA2ACard,
+            verificationStrength: strength,
             credentials,
           });
         } catch {
@@ -584,10 +620,24 @@ function renderAgentCards(
                   Smart Wallet
                 </Badge>
               )}
+              {agent.hasA2ACard && (
+                <Badge variant="info">A2A</Badge>
+              )}
             </div>
-            <Badge variant={agent.isVerified ? "success" : "error"}>
-              {agent.isVerified ? "Verified" : "Revoked"}
-            </Badge>
+            <div className="flex items-center gap-2">
+              {agent.verificationStrength !== undefined && (
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white ${
+                  agent.verificationStrength >= 80 ? "bg-green-500" :
+                  agent.verificationStrength >= 60 ? "bg-blue-500" :
+                  agent.verificationStrength >= 40 ? "bg-amber-500" : "bg-gray-500"
+                }`}>
+                  {agent.verificationStrength}
+                </div>
+              )}
+              <Badge variant={agent.isVerified ? "success" : "error"}>
+                {agent.isVerified ? "Verified" : "Revoked"}
+              </Badge>
+            </div>
           </div>
 
           <div className="space-y-1">

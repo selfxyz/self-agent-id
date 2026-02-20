@@ -3257,6 +3257,7 @@ dependencies = [
  "alloy",
  "axum",
  "axum-core",
+ "base64",
  "hex",
  "reqwest",
  "serde",

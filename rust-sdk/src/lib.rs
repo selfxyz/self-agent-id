@@ -34,6 +34,7 @@
 //! ```
 
 pub mod agent;
+pub mod agent_card;
 pub mod constants;
 pub mod verifier;
 
@@ -42,6 +43,10 @@ pub mod middleware;
 
 // Re-exports
 pub use agent::{AgentInfo, SelfAgent, SelfAgentConfig};
+pub use agent_card::{
+    A2AAgentCard, AgentSkill, CardCredentials, SelfProtocolExtension, TrustModel,
+    get_provider_label, get_strength_color,
+};
 pub use constants::{headers, NetworkName};
 pub use verifier::{AgentCredentials, SelfAgentVerifier, VerificationResult, VerifierConfig};
 

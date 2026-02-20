@@ -48,7 +48,8 @@ export default function Home() {
           </div>
           <p className="text-lg text-muted max-w-xl mx-auto mb-10">
             Register AI agents with on-chain proof-of-human verification via{" "}
-            <a href="https://self.xyz" target="_blank" rel="noopener noreferrer" className="text-foreground hover:text-accent transition-colors underline underline-offset-2 whitespace-nowrap">Self Protocol</a>. Prove your agent is backed by a real, unique human.
+            <a href="https://self.xyz" target="_blank" rel="noopener noreferrer" className="text-foreground hover:text-accent transition-colors underline underline-offset-2 whitespace-nowrap">Self Protocol</a>.
+            {" "}Prove your agent is backed by a real, unique human. A2A-compatible Agent Cards with trust scoring included.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -140,8 +141,8 @@ export default function Home() {
                   desc: "Scan the QR code with the Self app. A ZK proof of your passport is generated — no personal data is shared.",
                 },
                 {
-                  title: "Agent is registered on-chain",
-                  desc: "An NFT is minted binding your agent key to a verified human. Save your credentials securely.",
+                  title: "Agent registered + A2A Card set",
+                  desc: "An NFT is minted binding your agent key to a verified human. An A2A Agent Card with your trust score is auto-generated.",
                 },
                 {
                   title: "Agent signs requests via SDK",
@@ -163,7 +164,7 @@ export default function Home() {
           <Card>
             <h3 className="text-lg font-bold mb-1">For Integration Partners</h3>
             <p className="text-sm text-muted mb-5">
-              Verify that agents calling your service are human-backed
+              Verify agents are human-backed with reputation-based access control via API or SDK
             </p>
             <ol className="space-y-4">
               {[

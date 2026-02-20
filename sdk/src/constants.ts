@@ -10,6 +10,16 @@ export const REGISTRY_ABI = [
   "function ownerOf(uint256 tokenId) view returns (address)",
   // V5: ZK-attested credentials
   "function getAgentCredentials(uint256 agentId) view returns ((string issuingState, string[] name, string idNumber, string nationality, string dateOfBirth, string gender, string expiryDate, uint256 olderThan, bool[3] ofac))",
+  // A2A Agent Cards
+  "function getAgentMetadata(uint256 agentId) view returns (string)",
+  "function updateAgentMetadata(uint256 agentId, string metadata)",
+  "function agentRegisteredAt(uint256 agentId) view returns (uint256)",
+] as const;
+
+/** ABI for IHumanProofProvider — used to query provider metadata */
+export const PROVIDER_ABI = [
+  "function providerName() view returns (string)",
+  "function verificationStrength() view returns (uint8)",
 ] as const;
 
 /** Supported network names */

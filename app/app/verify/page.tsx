@@ -12,15 +12,19 @@ import {
   Code2,
   Cpu,
   ChevronLeft,
+  ChevronDown,
+  ChevronUp,
   Shield,
   FileText,
   Fingerprint,
   Loader2,
+  Copy,
+  Check,
 } from "lucide-react";
 import CodeBlock from "@/components/CodeBlock";
 import { getServiceSnippets, getAgentSnippets, SERVICE_FEATURES, AGENT_FEATURES } from "@/lib/snippets";
 import { connectWallet } from "@/lib/wallet";
-import { REGISTRY_ABI } from "@/lib/constants";
+import { REGISTRY_ABI, PROVIDER_ABI } from "@/lib/constants";
 import { useNetwork } from "@/lib/NetworkContext";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
@@ -58,6 +62,8 @@ interface AgentInfo {
   mode: "simple" | "advanced" | "walletfree";
   isSmartWallet: boolean;
   credentials?: AgentCredentials;
+  verificationStrength?: number;
+  agentCard?: Record<string, unknown>;
 }
 
 function cleanStr(s: string): string {
@@ -122,6 +128,13 @@ function VerifyContent() {
   };
   const [showDeregister, setShowDeregister] = useState(false);
   const [passkeyRevoking, setPasskeyRevoking] = useState(false);
+  const [showCardJsonVerify, setShowCardJsonVerify] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const copyToClipboard = (text: string, field: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
   const [selfApp, setSelfApp] = useState<ReturnType<
     InstanceType<typeof import("@selfxyz/qrcode").SelfAppBuilder>["build"]
   > | null>(null);
@@ -219,6 +232,26 @@ function VerifyContent() {
           } catch {}
         }
 
+        // Read verification strength from provider
+        let verificationStrength: number | undefined;
+        try {
+          const provAddr: string = await contract.agentProofProvider(agentId);
+          if (provAddr && provAddr !== ethers.ZeroAddress) {
+            const provContract = new ethers.Contract(provAddr, PROVIDER_ABI, provider);
+            const s: number = await provContract.verificationStrength();
+            verificationStrength = Number(s);
+          }
+        } catch {}
+
+        // Parse A2A card from metadata
+        let agentCard: Record<string, unknown> | undefined;
+        if (metadata) {
+          try {
+            const parsed = JSON.parse(metadata);
+            if (parsed.a2aVersion) agentCard = parsed;
+          } catch {}
+        }
+
         setAgentInfo({
           isVerified,
           agentId: owner === ethers.ZeroAddress ? 0n : agentId,
@@ -229,6 +262,8 @@ function VerifyContent() {
           mode,
           isSmartWallet,
           credentials,
+          verificationStrength,
+          agentCard,
         });
       }
     } catch (err) {
@@ -426,6 +461,90 @@ function VerifyContent() {
                         </span>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* Verification Strength + A2A Card */}
+                {agentInfo.verificationStrength !== undefined && (
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${
+                        agentInfo.verificationStrength >= 80 ? "bg-green-500" :
+                        agentInfo.verificationStrength >= 60 ? "bg-blue-500" :
+                        agentInfo.verificationStrength >= 40 ? "bg-amber-500" : "bg-gray-500"
+                      }`}>
+                        {agentInfo.verificationStrength}
+                      </div>
+                      <span className="text-xs text-muted">
+                        Verification Strength:{" "}
+                        <strong className="text-foreground">
+                          {agentInfo.verificationStrength >= 100 ? "Passport" :
+                           agentInfo.verificationStrength >= 80 ? "KYC" :
+                           agentInfo.verificationStrength >= 60 ? "Govt ID" : "Liveness"}
+                        </strong>
+                      </span>
+                    </div>
+
+                    {agentInfo.agentCard && (
+                      <>
+                        <div className="flex items-center gap-1 text-muted mb-2">
+                          <FileText size={12} /> A2A Agent Card
+                        </div>
+                        <div className="text-xs space-y-1">
+                          <p><span className="text-muted">Name:</span> {(agentInfo.agentCard as Record<string, string>).name}</p>
+                          {(agentInfo.agentCard as Record<string, string>).description && (
+                            <p><span className="text-muted">Description:</span> {(agentInfo.agentCard as Record<string, string>).description}</p>
+                          )}
+                        </div>
+
+                        {/* API Links */}
+                        <div className="mt-2 space-y-1">
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-muted">Card URL:</span>
+                            <code className="font-mono bg-surface-2 border border-border rounded px-1.5 py-0.5 flex-1 truncate">
+                              /api/cards/{network.chainId}/{agentInfo.agentId.toString()}
+                            </code>
+                            <button
+                              onClick={() => copyToClipboard(
+                                `${window.location.origin}/api/cards/${network.chainId}/${agentInfo.agentId.toString()}`,
+                                "vCardUrl"
+                              )}
+                              className="p-1 text-muted hover:text-foreground shrink-0"
+                            >
+                              {copiedField === "vCardUrl" ? <Check size={12} className="text-accent-success" /> : <Copy size={12} />}
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-muted">Rep URL:</span>
+                            <code className="font-mono bg-surface-2 border border-border rounded px-1.5 py-0.5 flex-1 truncate">
+                              /api/reputation/{network.chainId}/{agentInfo.agentId.toString()}
+                            </code>
+                            <button
+                              onClick={() => copyToClipboard(
+                                `${window.location.origin}/api/reputation/${network.chainId}/${agentInfo.agentId.toString()}`,
+                                "vRepUrl"
+                              )}
+                              className="p-1 text-muted hover:text-foreground shrink-0"
+                            >
+                              {copiedField === "vRepUrl" ? <Check size={12} className="text-accent-success" /> : <Copy size={12} />}
+                            </button>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => setShowCardJsonVerify(!showCardJsonVerify)}
+                          className="text-xs text-accent hover:text-accent-2 mt-2 flex items-center gap-1"
+                        >
+                          {showCardJsonVerify ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                          {showCardJsonVerify ? "Hide" : "Show"} Raw JSON
+                        </button>
+                        {showCardJsonVerify && (
+                          <pre className="mt-1 text-xs bg-surface-2 border border-border rounded p-2 overflow-auto max-h-40">
+                            {JSON.stringify(agentInfo.agentCard, null, 2)}
+                          </pre>
+                        )}
+                      </>
+                    )}
                   </div>
                 )}
               </div>

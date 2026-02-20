@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import MatrixRain from "@/components/MatrixRain";
 import { connectWallet } from "@/lib/wallet";
-import { REGISTRY_ABI } from "@/lib/constants";
+import { REGISTRY_ABI, PROVIDER_ABI } from "@/lib/constants";
 import { useNetwork } from "@/lib/NetworkContext";
 import { getAgentSnippets, AGENT_FEATURES } from "@/lib/snippets";
 import CodeBlock from "@/components/CodeBlock";
@@ -98,6 +98,13 @@ export default function RegisterPage() {
   const [showKeyInfo, setShowKeyInfo] = useState(false);
   const [activeAgentSnippet, setActiveAgentSnippet] = useState(0);
   const [activeAgentFeatures, setActiveAgentFeatures] = useState<Set<string>>(new Set());
+
+  // Agent Card flow state
+  const [cardStep, setCardStep] = useState<"pending" | "writing" | "done" | "skipped">("pending");
+  const [verificationStrength, setVerificationStrength] = useState<number | null>(null);
+  const [showCardJson, setShowCardJson] = useState(false);
+  const [cardJson, setCardJson] = useState<string>("");
+  const [agentIdResult, setAgentIdResult] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const toggleAgentFeature = (id: string) => {
@@ -338,9 +345,84 @@ export default function RegisterPage() {
     }
   };
 
+  const writeAgentCard = async () => {
+    try {
+      const agentAddress = mode === "simple" ? walletAddress! : agentWallet!.address;
+      const agentKey = ethers.zeroPadValue(agentAddress, 32);
+
+      const provider = new ethers.BrowserProvider((window as unknown as { ethereum: ethers.Eip1193Provider }).ethereum);
+      const registry = new ethers.Contract(network.registryAddress, REGISTRY_ABI, provider);
+
+      const agentId: bigint = await registry.getAgentId(agentKey);
+      if (agentId === 0n) { setCardStep("skipped"); return; }
+      setAgentIdResult(agentId.toString());
+
+      // Read provider strength
+      const providerAddr: string = await registry.agentProofProvider(agentId);
+      if (providerAddr && providerAddr !== ethers.ZeroAddress) {
+        const prov = new ethers.Contract(providerAddr, PROVIDER_ABI, provider);
+        const strength: number = await prov.verificationStrength();
+        setVerificationStrength(Number(strength));
+      }
+
+      // Read credentials for card
+      let credentials = null;
+      try { credentials = await registry.getAgentCredentials(agentId); } catch { /* no creds */ }
+
+      // Build card JSON
+      const card = {
+        a2aVersion: "0.1",
+        name: `Agent #${agentId}`,
+        description: "Human-verified AI agent on Self Protocol",
+        selfProtocol: {
+          agentId: Number(agentId),
+          registry: network.registryAddress,
+          chainId: network.chainId,
+          proofProvider: providerAddr,
+          providerName: providerAddr !== ethers.ZeroAddress ? "self" : "unknown",
+          verificationStrength: verificationStrength ?? 100,
+          trustModel: {
+            proofType: "passport",
+            sybilResistant: true,
+            ofacScreened: disclosures.ofac,
+            minimumAgeVerified: disclosures.minimumAge,
+          },
+          ...(credentials ? {
+            credentials: {
+              nationality: credentials.nationality || undefined,
+              issuingState: credentials.issuingState || undefined,
+              olderThan: Number(credentials.olderThan) || undefined,
+              ofacClean: credentials.ofac?.[0] ?? undefined,
+              hasName: credentials.name?.length > 0 ? true : undefined,
+              hasDateOfBirth: credentials.dateOfBirth ? true : undefined,
+              hasGender: credentials.gender ? true : undefined,
+              documentExpiry: credentials.expiryDate || undefined,
+            },
+          } : {}),
+        },
+      };
+
+      const json = JSON.stringify(card, null, 2);
+      setCardJson(json);
+      setCardStep("writing");
+
+      // Write on-chain
+      const signer = await provider.getSigner();
+      const registryWrite = new ethers.Contract(network.registryAddress, REGISTRY_ABI, signer);
+      const tx = await registryWrite.updateAgentMetadata(agentId, JSON.stringify(card));
+      await tx.wait();
+      setCardStep("done");
+    } catch (err) {
+      console.warn("[writeAgentCard] Skipped:", err);
+      setCardStep("skipped");
+    }
+  };
+
   const handleSuccess = () => {
     setStep("success");
     window.scrollTo({ top: 0, behavior: "smooth" });
+    // Auto-trigger Agent Card writing after a short delay
+    setTimeout(() => writeAgentCard(), 500);
   };
 
   const handleError = (error: unknown) => {
@@ -923,6 +1005,105 @@ export default function RegisterPage() {
           <p className="text-lg font-medium text-accent-success">
             Agent registered successfully!
           </p>
+
+          {/* Agent Card progress */}
+          <Card className="w-full">
+            <div className="flex items-center gap-3 text-sm">
+              <CheckCircle2 size={16} className="text-accent-success shrink-0" />
+              <span>Step 1/2: Agent Registered</span>
+            </div>
+            <div className="flex items-center gap-3 text-sm mt-2">
+              {cardStep === "pending" || cardStep === "writing" ? (
+                <Loader2 size={16} className="text-accent animate-spin shrink-0" />
+              ) : cardStep === "done" ? (
+                <CheckCircle2 size={16} className="text-accent-success shrink-0" />
+              ) : (
+                <XCircle size={16} className="text-muted shrink-0" />
+              )}
+              <span>
+                {cardStep === "pending" ? "Step 2/2: Preparing Agent Card..." :
+                 cardStep === "writing" ? "Step 2/2: Setting Agent Card (confirm in wallet)..." :
+                 cardStep === "done" ? "Step 2/2: Agent Card Set" :
+                 "Step 2/2: Agent Card skipped — you can set it later from My Agents"}
+              </span>
+            </div>
+          </Card>
+
+          {/* Verification Strength Badge */}
+          {verificationStrength !== null && (
+            <div className="flex items-center gap-2">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white ${
+                verificationStrength >= 80 ? "bg-green-500" :
+                verificationStrength >= 60 ? "bg-blue-500" :
+                verificationStrength >= 40 ? "bg-amber-500" : "bg-gray-500"
+              }`}>
+                {verificationStrength}
+              </div>
+              <span className="text-sm">
+                Verification Strength: <strong>
+                  {verificationStrength >= 100 ? "Passport" :
+                   verificationStrength >= 80 ? "KYC" :
+                   verificationStrength >= 60 ? "Govt ID" : "Liveness"}
+                </strong>
+              </span>
+            </div>
+          )}
+
+          {/* API Links */}
+          {agentIdResult && cardStep === "done" && (
+            <Card className="w-full">
+              <p className="font-bold text-sm mb-2">API Endpoints</p>
+              <div className="space-y-2 text-xs">
+                <div>
+                  <p className="text-muted mb-1">Agent Card Resolver</p>
+                  <div className="flex items-center gap-2">
+                    <code className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1 flex-1">
+                      /api/cards/{network.chainId}/{agentIdResult}
+                    </code>
+                    <button
+                      onClick={() => copyToClipboard(
+                        `${window.location.origin}/api/cards/${network.chainId}/${agentIdResult}`,
+                        "cardUrl"
+                      )}
+                      className="p-2 text-muted hover:text-foreground bg-surface-2 hover:bg-surface-1 rounded border border-border transition-colors shrink-0"
+                    >
+                      {copiedField === "cardUrl" ? <Check size={14} className="text-accent-success" /> : <Copy size={14} />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-muted mb-1">Reputation Score</p>
+                  <div className="flex items-center gap-2">
+                    <code className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1 flex-1">
+                      /api/reputation/{network.chainId}/{agentIdResult}
+                    </code>
+                    <button
+                      onClick={() => copyToClipboard(
+                        `${window.location.origin}/api/reputation/${network.chainId}/${agentIdResult}`,
+                        "repUrl"
+                      )}
+                      className="p-2 text-muted hover:text-foreground bg-surface-2 hover:bg-surface-1 rounded border border-border transition-colors shrink-0"
+                    >
+                      {copiedField === "repUrl" ? <Check size={14} className="text-accent-success" /> : <Copy size={14} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {/* Collapsible JSON preview */}
+              <button
+                onClick={() => setShowCardJson(!showCardJson)}
+                className="text-xs text-accent hover:text-accent-2 mt-3 flex items-center gap-1"
+              >
+                {showCardJson ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                {showCardJson ? "Hide" : "Show"} Agent Card JSON
+              </button>
+              {showCardJson && cardJson && (
+                <pre className="mt-2 text-xs bg-surface-2 border border-border rounded p-3 overflow-auto max-h-48">
+                  {cardJson}
+                </pre>
+              )}
+            </Card>
+          )}
 
           {mode === "simple" ? (
             <>

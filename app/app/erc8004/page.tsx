@@ -250,6 +250,54 @@ interface IHumanProofProvider {
         </div>
       </section>
 
+      {/* Full ERC-8004 Provider Coverage */}
+      <section className="space-y-4">
+        <h2 className="text-2xl font-bold">Full ERC-8004 Provider Coverage</h2>
+        <p className="text-muted">
+          ERC-8004 defines three registry types. Self Agent ID implements all three as on-chain contracts:
+        </p>
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <Badge variant="success" className="mb-2">Identity</Badge>
+            <p className="font-bold text-sm">SelfAgentRegistry</p>
+            <p className="text-xs text-muted mt-1">
+              Agent NFT minting, human proof storage, ZK-attested credentials, and metadata (A2A Agent Cards).
+            </p>
+          </Card>
+          <Card>
+            <Badge variant="info" className="mb-2">Reputation</Badge>
+            <p className="font-bold text-sm">SelfReputationProvider</p>
+            <p className="text-xs text-muted mt-1">
+              Reads <code className="text-accent-2">verificationStrength()</code> from the proof provider.
+              Supports batch queries across multiple agents.
+            </p>
+          </Card>
+          <Card>
+            <Badge variant="muted" className="mb-2">Validation</Badge>
+            <p className="font-bold text-sm">SelfValidationProvider</p>
+            <p className="text-xs text-muted mt-1">
+              Real-time proof validation with configurable freshness threshold (default: ~1 year).
+            </p>
+          </Card>
+        </div>
+
+        <Card>
+          <p className="font-bold text-sm mb-2">Agent Cards as agentURI</p>
+          <p className="text-xs text-muted mb-3">
+            A2A Agent Cards are stored on-chain in <code className="text-accent-2">agentMetadata</code>.
+            A stateless API reads the blockchain and serves the data as HTTP JSON. That URL becomes the
+            agent&apos;s <code className="text-accent-2">agentURI</code> in ERC-8004.
+          </p>
+          <pre className="bg-surface-2 border border-border rounded p-3 text-xs overflow-auto">
+{`GET /api/cards/{chainId}/{agentId}  → Agent Card JSON
+GET /api/reputation/{chainId}/{agentId}  → { score, proofType }
+GET /.well-known/a2a/{agentId}  → Redirect to card resolver`}</pre>
+          <p className="text-xs text-muted mt-3">
+            For fully on-chain contexts, the SDK generates <code className="text-accent-2">data:application/json;base64,...</code> URIs.
+          </p>
+        </Card>
+      </section>
+
       {/* Reference Implementation */}
       <section className="space-y-4">
         <h2 className="text-2xl font-bold">Reference Implementation</h2>

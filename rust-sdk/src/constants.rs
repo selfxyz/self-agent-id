@@ -77,5 +77,19 @@ sol! {
             bool[3] ofac;
         }
         function getAgentCredentials(uint256 agentId) external view returns (AgentCredentials);
+
+        // A2A Agent Cards
+        function getAgentMetadata(uint256 agentId) external view returns (string);
+        function updateAgentMetadata(uint256 agentId, string metadata) external;
+        function agentRegisteredAt(uint256 agentId) external view returns (uint256);
+    }
+}
+
+// Provider ABI — used to query provider metadata.
+sol! {
+    #[sol(rpc)]
+    interface IHumanProofProvider {
+        function providerName() external view returns (string);
+        function verificationStrength() external view returns (uint8);
     }
 }

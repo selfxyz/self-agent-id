@@ -6,8 +6,12 @@ use reqwest::{Client, Method, RequestBuilder, Response};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::agent_card::{
+    A2AAgentCard, AgentSkill, CardCredentials, SelfProtocolExtension, TrustModel,
+    get_provider_label,
+};
 use crate::constants::{
-    headers, network_config, IAgentRegistry, NetworkName, DEFAULT_NETWORK,
+    headers, network_config, IAgentRegistry, IHumanProofProvider, NetworkName, DEFAULT_NETWORK,
 };
 
 /// Configuration for creating a [`SelfAgent`].
@@ -228,6 +232,218 @@ impl SelfAgent {
             .await
             .map_err(|e| crate::Error::HttpError(e.to_string()))
     }
+
+    // ─── A2A Agent Card Methods ────────────────────────────────────────────
+
+    /// Read the A2A Agent Card from on-chain metadata (if set).
+    pub async fn get_agent_card(&self) -> Result<Option<A2AAgentCard>, crate::Error> {
+        let provider = self.make_provider()?;
+        let registry = IAgentRegistry::new(self.registry_address, provider);
+
+        let agent_id = registry
+            .getAgentId(self.agent_key)
+            .call()
+            .await
+            .map_err(|e| crate::Error::RpcError(e.to_string()))?;
+        if agent_id == U256::ZERO {
+            return Ok(None);
+        }
+
+        let raw = registry
+            .getAgentMetadata(agent_id)
+            .call()
+            .await
+            .map_err(|e| crate::Error::RpcError(e.to_string()))?;
+        if raw.is_empty() {
+            return Ok(None);
+        }
+
+        match serde_json::from_str::<A2AAgentCard>(&raw) {
+            Ok(card) if card.a2a_version == "0.1" => Ok(Some(card)),
+            _ => Ok(None),
+        }
+    }
+
+    /// Build and write an A2A Agent Card to on-chain metadata.
+    /// Returns the transaction hash.
+    pub async fn set_agent_card(
+        &self,
+        name: String,
+        description: Option<String>,
+        url: Option<String>,
+        skills: Option<Vec<AgentSkill>>,
+    ) -> Result<B256, crate::Error> {
+        let provider = self.make_provider()?;
+        let registry = IAgentRegistry::new(self.registry_address, &provider);
+
+        let agent_id = registry
+            .getAgentId(self.agent_key)
+            .call()
+            .await
+            .map_err(|e| crate::Error::RpcError(e.to_string()))?;
+        if agent_id == U256::ZERO {
+            return Err(crate::Error::RpcError("Agent not registered".into()));
+        }
+
+        let proof_provider_addr = registry
+            .getProofProvider(agent_id)
+            .call()
+            .await
+            .map_err(|e| crate::Error::RpcError(e.to_string()))?;
+
+        let proof_provider =
+            IHumanProofProvider::new(proof_provider_addr, &provider);
+
+        let provider_name = proof_provider
+            .providerName()
+            .call()
+            .await
+            .map_err(|e| crate::Error::RpcError(e.to_string()))?;
+        let strength = proof_provider
+            .verificationStrength()
+            .call()
+            .await
+            .map_err(|e| crate::Error::RpcError(e.to_string()))?;
+
+        let credentials = registry
+            .getAgentCredentials(agent_id)
+            .call()
+            .await
+            .ok();
+
+        let proof_type = get_provider_label(strength).to_string();
+
+        let mut trust_model = TrustModel {
+            proof_type,
+            sybil_resistant: true,
+            ofac_screened: false,
+            minimum_age_verified: 0,
+        };
+
+        let card_credentials = credentials.map(|creds| {
+            let older_than = creds.olderThan.try_into().unwrap_or(0u64);
+            let ofac_screened = creds.ofac.first().copied().unwrap_or(false);
+            trust_model.ofac_screened = ofac_screened;
+            trust_model.minimum_age_verified = older_than;
+
+            CardCredentials {
+                nationality: non_empty(&creds.nationality),
+                issuing_state: non_empty(&creds.issuingState),
+                older_than: if older_than > 0 { Some(older_than) } else { None },
+                ofac_clean: if ofac_screened { Some(creds.ofac[0]) } else { None },
+                has_name: if !creds.name.is_empty() { Some(true) } else { None },
+                has_date_of_birth: non_empty(&creds.dateOfBirth).map(|_| true),
+                has_gender: non_empty(&creds.gender).map(|_| true),
+                document_expiry: non_empty(&creds.expiryDate),
+            }
+        });
+
+        let chain_id: u64 = alloy::providers::Provider::get_chain_id(&provider)
+            .await
+            .map_err(|e: alloy::transports::RpcError<alloy::transports::TransportErrorKind>| crate::Error::RpcError(e.to_string()))?;
+
+        let card = A2AAgentCard {
+            a2a_version: "0.1".into(),
+            name,
+            description,
+            url,
+            capabilities: None,
+            skills,
+            self_protocol: SelfProtocolExtension {
+                agent_id: agent_id.try_into().unwrap_or(0),
+                registry: format!("{:#x}", self.registry_address),
+                chain_id,
+                proof_provider: format!("{:#x}", proof_provider_addr),
+                provider_name,
+                verification_strength: strength,
+                trust_model,
+                credentials: card_credentials,
+            },
+        };
+
+        let json =
+            serde_json::to_string(&card).map_err(|e| crate::Error::RpcError(e.to_string()))?;
+
+        let tx_hash = registry
+            .updateAgentMetadata(agent_id, json)
+            .send()
+            .await
+            .map_err(|e| crate::Error::RpcError(e.to_string()))?
+            .watch()
+            .await
+            .map_err(|e| crate::Error::RpcError(e.to_string()))?;
+
+        Ok(tx_hash)
+    }
+
+    /// Returns a `data:` URI containing the base64-encoded Agent Card JSON.
+    pub async fn to_agent_card_data_uri(&self) -> Result<String, crate::Error> {
+        let card = self
+            .get_agent_card()
+            .await?
+            .ok_or_else(|| crate::Error::RpcError("No A2A Agent Card set".into()))?;
+        let json =
+            serde_json::to_string(&card).map_err(|e| crate::Error::RpcError(e.to_string()))?;
+        use base64::Engine;
+        let encoded = base64::engine::general_purpose::STANDARD.encode(json.as_bytes());
+        Ok(format!("data:application/json;base64,{}", encoded))
+    }
+
+    /// Read ZK-attested credentials for this agent from on-chain.
+    pub async fn get_credentials(
+        &self,
+    ) -> Result<Option<IAgentRegistry::AgentCredentials>, crate::Error> {
+        let provider = self.make_provider()?;
+        let registry = IAgentRegistry::new(self.registry_address, provider);
+
+        let agent_id = registry
+            .getAgentId(self.agent_key)
+            .call()
+            .await
+            .map_err(|e| crate::Error::RpcError(e.to_string()))?;
+        if agent_id == U256::ZERO {
+            return Ok(None);
+        }
+
+        let creds = registry
+            .getAgentCredentials(agent_id)
+            .call()
+            .await
+            .map_err(|e| crate::Error::RpcError(e.to_string()))?;
+        Ok(Some(creds))
+    }
+
+    /// Read the verification strength score from the provider contract.
+    pub async fn get_verification_strength(&self) -> Result<u8, crate::Error> {
+        let provider = self.make_provider()?;
+        let registry = IAgentRegistry::new(self.registry_address, &provider);
+
+        let agent_id = registry
+            .getAgentId(self.agent_key)
+            .call()
+            .await
+            .map_err(|e| crate::Error::RpcError(e.to_string()))?;
+        if agent_id == U256::ZERO {
+            return Ok(0);
+        }
+
+        let provider_addr = registry
+            .getProofProvider(agent_id)
+            .call()
+            .await
+            .map_err(|e| crate::Error::RpcError(e.to_string()))?;
+        if provider_addr == Address::ZERO {
+            return Ok(0);
+        }
+
+        let proof_provider = IHumanProofProvider::new(provider_addr, &provider);
+        let strength = proof_provider
+            .verificationStrength()
+            .call()
+            .await
+            .map_err(|e| crate::Error::RpcError(e.to_string()))?;
+        Ok(strength)
+    }
 }
 
 /// Convert a 20-byte address to a 32-byte agent key (left zero-padded).
@@ -244,6 +460,15 @@ fn now_millis() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_millis() as u64
+}
+
+/// Returns `Some(s)` if non-empty, `None` otherwise.
+fn non_empty(s: &str) -> Option<String> {
+    if s.is_empty() {
+        None
+    } else {
+        Some(s.to_string())
+    }
 }
 
 /// Compute the signing message from request components.

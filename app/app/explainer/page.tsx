@@ -595,6 +595,105 @@ export default function ExplainerPage() {
         </div>
       </section>
 
+      {/* ───────────────── 4b. A2A Agent Cards & Reputation ──────────── */}
+      <section className="px-6 py-20">
+        <div className="max-w-2xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-4">A2A Agent Cards &amp; Reputation Scoring</h2>
+          <p className="text-center text-muted mb-10">
+            Every registered agent gets an A2A-compatible identity card with a trust score backed by on-chain verification.
+          </p>
+
+          {/* Verification Strength Scale */}
+          <Card className="mb-8">
+            <p className="font-bold text-sm mb-3">Verification Strength Scale</p>
+            <p className="text-xs text-muted mb-4">
+              The score comes from the proof provider that verified the agent &mdash; not computed client-side.
+              Self Protocol uses passport/biometric NFC verification (strength 100).
+            </p>
+            <div className="space-y-2 font-mono text-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-[10px]">100</div>
+                <div className="flex-1 bg-green-500/20 rounded h-4" />
+                <span className="text-muted w-48">Passport / Biometric ID</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-[10px]">80</div>
+                <div className="flex-1 bg-green-500/20 rounded h-4 w-4/5" />
+                <span className="text-muted w-48">KYC Verification</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-[10px]">60</div>
+                <div className="flex-1 bg-blue-500/20 rounded h-4 w-3/5" />
+                <span className="text-muted w-48">Government ID (no chip)</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white font-bold text-[10px]">40</div>
+                <div className="flex-1 bg-amber-500/20 rounded h-4 w-2/5" />
+                <span className="text-muted w-48">Liveness Check</span>
+              </div>
+            </div>
+          </Card>
+
+          {/* Developer Examples */}
+          <Card className="mb-8">
+            <p className="font-bold text-sm mb-3">For Developers: Reputation-Based Access Control</p>
+            <p className="text-xs text-muted mb-4">
+              Use the HTTP API to check an agent&apos;s verification strength before granting access.
+            </p>
+            <pre className="bg-surface-2 border border-border rounded-lg p-4 text-xs overflow-auto mb-4">
+{`// Quick check: Only accept passport-verified agents
+const res = await fetch(\`https://selfagentid.xyz/api/reputation/42220/\${agentId}\`);
+const { score, proofType } = await res.json();
+
+if (score < 100) {
+  throw new Error("Agent must be verified with passport");
+}`}</pre>
+            <pre className="bg-surface-2 border border-border rounded-lg p-4 text-xs overflow-auto mb-4">
+{`// Tiered access based on verification strength
+const accessLevel = score >= 100 ? "full"
+                  : score >= 80  ? "standard"
+                  : score >= 60  ? "limited"
+                  : "rejected";`}</pre>
+            <pre className="bg-surface-2 border border-border rounded-lg p-4 text-xs overflow-auto">
+{`// On-chain: Use SelfReputationProvider directly
+SelfReputationProvider rep = SelfReputationProvider(0x...);
+uint8 score = rep.getReputationScore(agentId);
+require(score >= 80, "Insufficient verification");`}</pre>
+          </Card>
+
+          {/* ERC-8004 Three Registries */}
+          <Card>
+            <p className="font-bold text-sm mb-3">ERC-8004: Three Registries</p>
+            <p className="text-xs text-muted mb-4">
+              Self Protocol covers all three registry types defined by ERC-8004:
+            </p>
+            <div className="space-y-3 text-xs">
+              <div className="flex items-start gap-3">
+                <Badge variant="success">Identity</Badge>
+                <div>
+                  <p className="font-medium">SelfAgentRegistry</p>
+                  <p className="text-muted">Agent NFT + human proof + ZK-attested credentials</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <Badge variant="info">Reputation</Badge>
+                <div>
+                  <p className="font-medium">SelfReputationProvider</p>
+                  <p className="text-muted">Verification strength score from proof providers</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <Badge variant="muted">Validation</Badge>
+                <div>
+                  <p className="font-medium">SelfValidationProvider</p>
+                  <p className="text-muted">Real-time proof status + freshness check</p>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </section>
+
       {/* ───────────────────────── 5. Live Demo ───────────────────────── */}
       <section id="demo" className="bg-surface-1 px-6 py-20">
         <div className="max-w-2xl mx-auto">

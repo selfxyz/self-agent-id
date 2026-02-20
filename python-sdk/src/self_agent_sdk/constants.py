@@ -73,4 +73,22 @@ REGISTRY_ABI = [
          {"name": "ofac", "type": "bool[]"},
      ]}],
     },
+    # A2A Agent Cards
+    {"name": "getAgentMetadata", "type": "function", "stateMutability": "view",
+     "inputs": [{"name": "agentId", "type": "uint256"}],
+     "outputs": [{"name": "", "type": "string"}]},
+    {"name": "updateAgentMetadata", "type": "function", "stateMutability": "nonpayable",
+     "inputs": [{"name": "agentId", "type": "uint256"}, {"name": "metadata", "type": "string"}],
+     "outputs": []},
+    {"name": "agentRegisteredAt", "type": "function", "stateMutability": "view",
+     "inputs": [{"name": "agentId", "type": "uint256"}],
+     "outputs": [{"name": "", "type": "uint256"}]},
+]
+
+# ABI for IHumanProofProvider — used to query provider metadata
+PROVIDER_ABI = [
+    {"name": "providerName", "type": "function", "stateMutability": "view",
+     "inputs": [], "outputs": [{"name": "", "type": "string"}]},
+    {"name": "verificationStrength", "type": "function", "stateMutability": "view",
+     "inputs": [], "outputs": [{"name": "", "type": "uint8"}]},
 ]
