@@ -1,7 +1,30 @@
 """Pure signing functions — no network dependencies."""
+from urllib.parse import urlparse
 from web3 import Web3
 from eth_account import Account
 from eth_account.messages import encode_defunct
+
+
+def canonicalize_signing_url(url: str) -> str:
+    """Canonical URL for signing/verification: path + optional query string."""
+    if not url:
+        return ""
+
+    parsed = urlparse(url)
+
+    # Absolute URL: keep only path + query
+    if parsed.scheme and parsed.netloc:
+        path = parsed.path or "/"
+        return path + (f"?{parsed.query}" if parsed.query else "")
+
+    # Relative URL/path inputs
+    if url.startswith("?"):
+        return "/" + url
+
+    path = parsed.path or "/"
+    if not path.startswith("/"):
+        path = "/" + path
+    return path + (f"?{parsed.query}" if parsed.query else "")
 
 
 def compute_body_hash(body: str | None) -> str:
@@ -19,7 +42,8 @@ def compute_message(timestamp: str, method: str, url: str, body_hash: str) -> by
     Matches TS: ethers.keccak256(ethers.toUtf8Bytes(timestamp + METHOD + url + bodyHash))
     Note: body_hash MUST include "0x" prefix (it's part of the string).
     """
-    payload = timestamp + method.upper() + url + body_hash
+    canonical_url = canonicalize_signing_url(url)
+    payload = timestamp + method.upper() + canonical_url + body_hash
     return Web3.keccak(text=payload)
 
 

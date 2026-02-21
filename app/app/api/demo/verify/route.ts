@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SelfAgentVerifier, HEADERS } from "@selfxyz/agent-sdk";
-import { getNetwork, NETWORKS, type NetworkId } from "@/lib/network";
+import { HEADERS } from "@selfxyz/agent-sdk";
+import { NETWORKS, type NetworkId } from "@/lib/network";
+import { getCachedVerifier } from "@/lib/selfVerifier";
+import { checkAndRecordReplay } from "@/lib/replayGuard";
 
 // In-memory verification counter (resets on server restart — fine for demo)
 let verificationCount = 0;
@@ -22,12 +24,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const network = getNetwork(resolveNetwork(req));
-  const verifier = new SelfAgentVerifier({
-    registryAddress: network.registryAddress,
-    rpcUrl: network.rpcUrl,
+  const verifier = getCachedVerifier(resolveNetwork(req), {
     maxAgentsPerHuman: 0, // disable sybil check for demo
     includeCredentials: true,
+    enableReplayProtection: true,
   });
 
   const body = await req.text();
@@ -39,6 +39,23 @@ export async function POST(req: NextRequest) {
     url: req.url,
     body: body || undefined,
   });
+
+  if (result.valid) {
+    const replay = await checkAndRecordReplay({
+      signature,
+      timestamp,
+      method: "POST",
+      url: req.url,
+      body: body || undefined,
+      scope: "demo-verify",
+    });
+    if (!replay.ok) {
+      return NextResponse.json(
+        { valid: false, error: replay.error || "Replay detected" },
+        { status: 409 },
+      );
+    }
+  }
 
   if (result.valid) verificationCount++;
 

@@ -3,6 +3,7 @@ import assert from "node:assert";
 import { ethers } from "ethers";
 import { SelfAgent } from "../SelfAgent";
 import { HEADERS } from "../constants";
+import { computeSigningMessage } from "../signing";
 
 // These tests verify the signing protocol without needing a deployed contract.
 // They test: key derivation, request signing, signature verification.
@@ -85,5 +86,21 @@ describe("SelfAgent signing", () => {
       headers1[HEADERS.SIGNATURE],
       headers2[HEADERS.SIGNATURE]
     );
+  });
+
+  it("canonicalizes full URL and path+query to the same signing message", () => {
+    const ts = "1700000000000";
+    const method = "POST";
+    const body = '{"ok":true}';
+
+    const full = computeSigningMessage(
+      ts,
+      method,
+      "https://demo.example.com/api/data?x=1",
+      body
+    );
+    const path = computeSigningMessage(ts, method, "/api/data?x=1", body);
+
+    assert.strictEqual(full, path);
   });
 });

@@ -163,7 +163,7 @@ impl SelfAgent {
 
     /// Generate authentication headers for a request.
     ///
-    /// Signature covers: `keccak256(timestamp + METHOD + url + bodyHash)`
+    /// Signature covers: `keccak256(timestamp + METHOD + canonicalPathAndQuery + bodyHash)`
     pub async fn sign_request(
         &self,
         method: &str,
@@ -183,19 +183,7 @@ impl SelfAgent {
         body: Option<&str>,
         timestamp: &str,
     ) -> Result<HashMap<String, String>, crate::Error> {
-        let body_text = body.unwrap_or("");
-        let body_hash = keccak256(body_text.as_bytes());
-        // CRITICAL: Format as "0x..." hex string before concatenating — matches TS SDK
-        let body_hash_hex = format!("{:#x}", body_hash);
-
-        let concat = format!(
-            "{}{}{}{}",
-            timestamp,
-            method.to_uppercase(),
-            url,
-            body_hash_hex
-        );
-        let message = keccak256(concat.as_bytes());
+        let message = compute_signing_message(timestamp, method, url, body);
 
         // EIP-191 personal_sign over the raw 32 bytes
         let signature = self
@@ -496,6 +484,7 @@ pub(crate) fn compute_signing_message(
     url: &str,
     body: Option<&str>,
 ) -> B256 {
+    let canonical_url = canonicalize_signing_url(url);
     let body_text = body.unwrap_or("");
     let body_hash = keccak256(body_text.as_bytes());
     let body_hash_hex = format!("{:#x}", body_hash);
@@ -503,8 +492,49 @@ pub(crate) fn compute_signing_message(
         "{}{}{}{}",
         timestamp,
         method.to_uppercase(),
-        url,
+        canonical_url,
         body_hash_hex
     );
     keccak256(concat.as_bytes())
+}
+
+/// Canonical URL for signing/verification: path + optional query string.
+pub(crate) fn canonicalize_signing_url(url: &str) -> String {
+    if url.is_empty() {
+        return String::new();
+    }
+
+    if url.starts_with("http://") || url.starts_with("https://") {
+        if let Ok(parsed) = reqwest::Url::parse(url) {
+            let mut out = parsed.path().to_string();
+            if out.is_empty() {
+                out.push('/');
+            }
+            if let Some(query) = parsed.query() {
+                out.push('?');
+                out.push_str(query);
+            }
+            return out;
+        }
+        return url.to_string();
+    }
+
+    if url.starts_with('?') {
+        return format!("/{url}");
+    }
+    if url.starts_with('/') {
+        return url.to_string();
+    }
+
+    // Best effort for inputs like "api/data?x=1"
+    if let Ok(parsed) = reqwest::Url::parse(&format!("http://self.local/{url}")) {
+        let mut out = parsed.path().to_string();
+        if let Some(query) = parsed.query() {
+            out.push('?');
+            out.push_str(query);
+        }
+        return out;
+    }
+
+    url.to_string()
 }

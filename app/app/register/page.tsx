@@ -173,16 +173,30 @@ export default function RegisterPage() {
     newWallet: ethers.Wallet | ethers.HDNodeWallet,
     humanIdentifier: string
   ) => {
-    // Must match the deployed contract's _verifyAgentSignature:
-    // keccak256(abi.encodePacked("self-agent-id:register:", humanAddress))
-    const messageHash = ethers.keccak256(
-      ethers.solidityPacked(
-        ["string", "address"],
-        ["self-agent-id:register:", humanIdentifier]
-      )
-    );
+    // Network config controls challenge domain so this app can support:
+    // - legacy deployments: keccak256("self-agent-id:register:", humanAddress)
+    // - chain-bound deployments: + chainId + registryAddress
+    const messageHash = network.registrationChallengeMode === "chain-and-contract"
+      ? ethers.keccak256(
+          ethers.solidityPacked(
+            ["string", "address", "uint256", "address"],
+            [
+              "self-agent-id:register:",
+              humanIdentifier,
+              BigInt(network.chainId),
+              network.registryAddress,
+            ],
+          ),
+        )
+      : ethers.keccak256(
+          ethers.solidityPacked(
+            ["string", "address"],
+            ["self-agent-id:register:", humanIdentifier],
+          ),
+        );
 
     console.log("[signAgentChallenge] humanIdentifier:", humanIdentifier);
+    console.log("[signAgentChallenge] mode:", network.registrationChallengeMode);
     console.log("[signAgentChallenge] messageHash:", messageHash);
 
     const signature = await newWallet.signMessage(ethers.getBytes(messageHash));

@@ -9,6 +9,7 @@ import {
 import type { NetworkName } from "./constants";
 import type { A2AAgentCard, AgentSkill } from "./agentCard";
 import { buildAgentCard } from "./agentCard";
+import { computeSigningMessage } from "./signing";
 
 export interface SelfAgentConfig {
   /** Agent's private key (hex, with or without 0x) */
@@ -121,7 +122,7 @@ export class SelfAgent {
    * The service recovers the signer address from the signature,
    * converts it to a bytes32 agent key, and checks on-chain status.
    *
-   * Signature covers: keccak256(timestamp + method + url + bodyHash)
+   * Signature covers: keccak256(timestamp + method + canonicalPathAndQuery + bodyHash)
    */
   async signRequest(
     method: string,
@@ -129,13 +130,7 @@ export class SelfAgent {
     body?: string
   ): Promise<Record<string, string>> {
     const timestamp = Date.now().toString();
-    const bodyHash = body
-      ? ethers.keccak256(ethers.toUtf8Bytes(body))
-      : ethers.keccak256(ethers.toUtf8Bytes(""));
-
-    const message = ethers.keccak256(
-      ethers.toUtf8Bytes(timestamp + method.toUpperCase() + url + bodyHash)
-    );
+    const message = computeSigningMessage(timestamp, method, url, body);
 
     const signature = await this.wallet.signMessage(ethers.getBytes(message));
 

@@ -38,6 +38,8 @@ class SelfAgentVerifier:
         max_agents_per_human: int = 1,
         include_credentials: bool = False,
         require_self_provider: bool = True,
+        enable_replay_protection: bool = True,
+        replay_cache_max_entries: int = 10_000,
     ):
         net = NETWORKS[network or DEFAULT_NETWORK]
         self._w3 = Web3(Web3.HTTPProvider(rpc_url or net["rpc_url"]))
@@ -50,10 +52,13 @@ class SelfAgentVerifier:
         self._max_agents_per_human = max_agents_per_human
         self._include_credentials = include_credentials
         self._require_self_provider = require_self_provider
+        self._enable_replay_protection = enable_replay_protection
+        self._replay_cache_max_entries = replay_cache_max_entries
 
         # Cache: agentKey hex -> {is_verified, agent_id, agent_count, nullifier, provider, expires_at}
         self._cache: dict[str, dict] = {}
         self._self_provider_cache: dict | None = None
+        self._replay_cache: dict[str, float] = {}
 
     def verify(
         self, signature: str, timestamp: str,
@@ -101,10 +106,20 @@ class SelfAgentVerifier:
                 error="Invalid signature",
             )
 
-        # 4. Derive agent key
+        # 4. Replay cache check (after signature validity to avoid cache poisoning)
+        if self._enable_replay_protection:
+            replay_error = self._check_and_record_replay(signature, message.hex(), ts, now_ms)
+            if replay_error is not None:
+                return VerificationResult(
+                    valid=False, agent_address=signer,
+                    agent_key=address_to_agent_key(signer), agent_id=0, agent_count=0,
+                    error=replay_error,
+                )
+
+        # 5. Derive agent key
         agent_key = address_to_agent_key(signer)
 
-        # 5. On-chain check (with cache)
+        # 6. On-chain check (with cache)
         chain = self._check_on_chain(agent_key)
 
         if not chain["is_verified"]:
@@ -115,7 +130,7 @@ class SelfAgentVerifier:
                 error="Agent not verified on-chain",
             )
 
-        # 6. Provider check
+        # 7. Provider check
         if self._require_self_provider and chain["agent_id"] > 0:
             try:
                 self_provider = self._get_self_provider()
@@ -134,7 +149,7 @@ class SelfAgentVerifier:
                     error="Agent was not verified by Self — proof provider mismatch",
                 )
 
-        # 7. Sybil check
+        # 8. Sybil check
         if self._max_agents_per_human > 0 and chain["agent_count"] > self._max_agents_per_human:
             return VerificationResult(
                 valid=False, agent_address=signer, agent_key=agent_key,
@@ -143,7 +158,7 @@ class SelfAgentVerifier:
                 error=f"Human has {chain['agent_count']} agents (max {self._max_agents_per_human})",
             )
 
-        # 8. Credentials (optional)
+        # 9. Credentials (optional)
         credentials = None
         if self._include_credentials and chain["agent_id"] > 0:
             credentials = self._fetch_credentials(chain["agent_id"])
@@ -214,3 +229,32 @@ class SelfAgentVerifier:
         """Clear both agent status and provider address caches."""
         self._cache.clear()
         self._self_provider_cache = None
+        self._replay_cache.clear()
+
+    def _check_and_record_replay(
+        self, signature: str, message_hex: str, ts: int, now_ms: int
+    ) -> str | None:
+        self._prune_replay_cache(now_ms)
+
+        key = f"{signature.lower()}:{message_hex.lower()}"
+        expires_at = self._replay_cache.get(key)
+        if expires_at and expires_at > now_ms:
+            return "Replay detected"
+
+        self._replay_cache[key] = ts + self._max_age_ms
+        return None
+
+    def _prune_replay_cache(self, now_ms: int) -> None:
+        expired = [k for k, exp in self._replay_cache.items() if exp <= now_ms]
+        for k in expired:
+            self._replay_cache.pop(k, None)
+
+        overflow = len(self._replay_cache) - self._replay_cache_max_entries
+        if overflow <= 0:
+            return
+
+        # Drop earliest-expiring entries first.
+        for key, _exp in sorted(
+            self._replay_cache.items(), key=lambda item: item[1]
+        )[:overflow]:
+            self._replay_cache.pop(key, None)

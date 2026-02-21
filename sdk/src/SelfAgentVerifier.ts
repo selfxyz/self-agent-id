@@ -8,6 +8,7 @@ import {
   DEFAULT_NETWORK,
 } from "./constants";
 import type { NetworkName } from "./constants";
+import { canonicalizeSigningUrl, computeSigningMessage } from "./signing";
 
 export interface VerifierConfig {
   /** Network to use: "mainnet" (default) or "testnet" */
@@ -35,6 +36,13 @@ export interface VerifierConfig {
    * any approved provider on the registry.
    */
   requireSelfProvider?: boolean;
+  /**
+   * Reject duplicate signatures within the validity window (default: true).
+   * Uses an in-memory replay cache per process.
+   */
+  enableReplayProtection?: boolean;
+  /** Max replay cache entries before pruning (default: 10k) */
+  replayCacheMaxEntries?: number;
 }
 
 /** ZK-attested credential claims stored on-chain for an agent */
@@ -72,6 +80,10 @@ interface CacheEntry {
   agentCount: bigint;
   nullifier: bigint;
   providerAddress: string;
+  expiresAt: number;
+}
+
+interface ReplayEntry {
   expiresAt: number;
 }
 
@@ -117,7 +129,10 @@ export class SelfAgentVerifier {
   private maxAgentsPerHuman: number;
   private includeCredentials: boolean;
   private requireSelfProvider: boolean;
+  private enableReplayProtection: boolean;
+  private replayCacheMaxEntries: number;
   private cache = new Map<string, CacheEntry>();
+  private replayCache = new Map<string, ReplayEntry>();
   private selfProviderCache: { address: string; expiresAt: number } | null = null;
 
   constructor(config: VerifierConfig = {}) {
@@ -133,6 +148,8 @@ export class SelfAgentVerifier {
     this.maxAgentsPerHuman = config.maxAgentsPerHuman ?? 1;
     this.includeCredentials = config.includeCredentials ?? false;
     this.requireSelfProvider = config.requireSelfProvider ?? true;
+    this.enableReplayProtection = config.enableReplayProtection ?? true;
+    this.replayCacheMaxEntries = config.replayCacheMaxEntries ?? 10_000;
   }
 
   /**
@@ -165,13 +182,8 @@ export class SelfAgentVerifier {
     }
 
     // 2. Reconstruct the signed message
-    const bodyHash = body
-      ? ethers.keccak256(ethers.toUtf8Bytes(body))
-      : ethers.keccak256(ethers.toUtf8Bytes(""));
-
-    const message = ethers.keccak256(
-      ethers.toUtf8Bytes(timestamp + method.toUpperCase() + url + bodyHash)
-    );
+    const canonicalUrl = canonicalizeSigningUrl(url);
+    const message = computeSigningMessage(timestamp, method, canonicalUrl, body);
 
     // 3. Recover signer address from signature (cryptographic — can't be faked)
     let signerAddress: string;
@@ -181,10 +193,23 @@ export class SelfAgentVerifier {
       return { ...empty, error: "Invalid signature" };
     }
 
-    // 4. Derive the on-chain agent key from the recovered address
+    // 4. Replay cache check (after signature validity to avoid cache poisoning)
+    if (this.enableReplayProtection) {
+      const replayError = this.checkAndRecordReplay(signature, message, ts);
+      if (replayError) {
+        return {
+          ...empty,
+          agentAddress: signerAddress,
+          agentKey: ethers.zeroPadValue(signerAddress, 32),
+          error: replayError,
+        };
+      }
+    }
+
+    // 5. Derive the on-chain agent key from the recovered address
     const agentKey = ethers.zeroPadValue(signerAddress, 32);
 
-    // 5. Check on-chain status (with cache)
+    // 6. Check on-chain status (with cache)
     const { isVerified, agentId, agentCount, nullifier, providerAddress } =
       await this.checkOnChain(agentKey);
 
@@ -200,7 +225,7 @@ export class SelfAgentVerifier {
       };
     }
 
-    // 6. Provider check: ensure agent was verified by Self Protocol
+    // 7. Provider check: ensure agent was verified by Self Protocol
     if (this.requireSelfProvider && agentId > 0n) {
       let selfProvider: string;
       try {
@@ -229,7 +254,7 @@ export class SelfAgentVerifier {
       }
     }
 
-    // 7. Sybil resistance: reject if human has too many agents
+    // 8. Sybil resistance: reject if human has too many agents
     if (this.maxAgentsPerHuman > 0 && agentCount > BigInt(this.maxAgentsPerHuman)) {
       return {
         valid: false,
@@ -242,7 +267,7 @@ export class SelfAgentVerifier {
       };
     }
 
-    // 8. Fetch credentials if requested
+    // 9. Fetch credentials if requested
     let credentials: AgentCredentials | undefined;
     if (this.includeCredentials && agentId > 0n) {
       credentials = await this.fetchCredentials(agentId);
@@ -356,6 +381,41 @@ export class SelfAgentVerifier {
   clearCache(): void {
     this.cache.clear();
     this.selfProviderCache = null;
+    this.replayCache.clear();
+  }
+
+  private checkAndRecordReplay(signature: string, message: string, ts: number): string | null {
+    const now = Date.now();
+    this.pruneReplayCache(now);
+
+    const key = `${signature.toLowerCase()}:${message.toLowerCase()}`;
+    const existing = this.replayCache.get(key);
+    if (existing && existing.expiresAt > now) {
+      return "Replay detected";
+    }
+
+    const expiresAt = ts + this.maxAgeMs;
+    this.replayCache.set(key, { expiresAt });
+    return null;
+  }
+
+  private pruneReplayCache(now: number): void {
+    for (const [key, entry] of this.replayCache) {
+      if (entry.expiresAt <= now) {
+        this.replayCache.delete(key);
+      }
+    }
+
+    if (this.replayCache.size <= this.replayCacheMaxEntries) return;
+
+    // Drop oldest-ish entries by earliest expiration first.
+    const overflow = this.replayCache.size - this.replayCacheMaxEntries;
+    const sorted = [...this.replayCache.entries()].sort(
+      (a, b) => a[1].expiresAt - b[1].expiresAt
+    );
+    for (let i = 0; i < overflow; i++) {
+      this.replayCache.delete(sorted[i][0]);
+    }
   }
 
   /**
@@ -385,7 +445,16 @@ export class SelfAgentVerifier {
         timestamp,
         method: req.method,
         url: req.originalUrl || req.url,
-        body: req.body ? JSON.stringify(req.body) : undefined,
+        body:
+          typeof req.rawBody === "string"
+            ? req.rawBody
+            : Buffer.isBuffer(req.rawBody)
+              ? req.rawBody.toString("utf8")
+              : typeof req.body === "string"
+                ? req.body
+                : req.body
+                  ? JSON.stringify(req.body)
+                  : undefined,
       });
 
       if (!result.valid) {

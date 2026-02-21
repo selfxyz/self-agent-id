@@ -1,19 +1,80 @@
 import { NextRequest, NextResponse } from "next/server";
 import { HEADERS } from "@selfxyz/agent-sdk";
+import { NETWORKS, type NetworkId } from "@/lib/network";
+import { getCachedVerifier } from "@/lib/selfVerifier";
+import { checkAndRecordReplay } from "@/lib/replayGuard";
 
 const LANGCHAIN_URL = process.env.LANGCHAIN_URL || "http://127.0.0.1:8090";
 
+function resolveNetwork(req: NextRequest): NetworkId {
+  const param = req.nextUrl.searchParams.get("network");
+  if (param && param in NETWORKS) return param as NetworkId;
+  return "celo-sepolia";
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.text();
-  const parsed = JSON.parse(body || "{}");
+  let parsed: { query?: string; session_id?: string } = {};
+  try {
+    parsed = JSON.parse(body || "{}");
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
-  // The SDK sends x-self-agent-address alongside the signature.
-  // We pass it through — the LangChain service verifies on-chain itself
-  // and the AI agent refuses unverified callers.
-  const agentAddress = req.headers.get(HEADERS.ADDRESS) || "anonymous";
+  const networkId = resolveNetwork(req);
 
-  // Network comes from query param (?network=celo-sepolia)
-  const network = req.nextUrl.searchParams.get("network") || "celo-sepolia";
+  const signature = req.headers.get(HEADERS.SIGNATURE);
+  const timestamp = req.headers.get(HEADERS.TIMESTAMP);
+  let agentAddress = "anonymous";
+
+  // Signed requests are cryptographically verified.
+  // Unsigned requests are treated as anonymous (LangChain hard-refuses).
+  if (signature || timestamp) {
+    if (!signature || !timestamp) {
+      return NextResponse.json(
+        { error: "Both signature and timestamp headers are required" },
+        { status: 401 },
+      );
+    }
+
+    const verifier = getCachedVerifier(networkId, {
+      maxAgentsPerHuman: 0,
+      includeCredentials: false,
+      enableReplayProtection: true,
+    });
+
+    const result = await verifier.verify({
+      signature,
+      timestamp,
+      method: "POST",
+      url: req.url,
+      body: body || undefined,
+    });
+
+    if (!result.valid) {
+      return NextResponse.json(
+        { error: result.error || "Agent verification failed" },
+        { status: 403 },
+      );
+    }
+
+    const replay = await checkAndRecordReplay({
+      signature,
+      timestamp,
+      method: "POST",
+      url: req.url,
+      body: body || undefined,
+      scope: "demo-chat",
+    });
+    if (!replay.ok) {
+      return NextResponse.json(
+        { error: replay.error || "Replay detected" },
+        { status: 409 },
+      );
+    }
+
+    agentAddress = result.agentAddress;
+  }
 
   try {
     const langchainRes = await fetch(`${LANGCHAIN_URL}/agent`, {
@@ -22,7 +83,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         query: parsed.query || "",
         agent_address: agentAddress,
-        network,
+        network: networkId,
         session_id: parsed.session_id || "unknown",
       }),
     });

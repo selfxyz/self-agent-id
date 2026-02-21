@@ -1,7 +1,7 @@
 import pytest
 from self_agent_sdk._signing import (
     compute_body_hash, compute_message, sign_message,
-    recover_signer, address_to_agent_key,
+    recover_signer, address_to_agent_key, canonicalize_signing_url,
 )
 
 TEST_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
@@ -38,6 +38,23 @@ class TestMessage:
         m1 = compute_message("100", "GET", "https://x.com", bh)
         m2 = compute_message("200", "GET", "https://x.com", bh)
         assert m1 != m2
+
+    def test_full_url_canonicalized_to_path_and_query(self):
+        bh = compute_body_hash(None)
+        m1 = compute_message("123", "GET", "https://x.com/api/data?x=1", bh)
+        m2 = compute_message("123", "GET", "/api/data?x=1", bh)
+        assert m1 == m2
+
+
+class TestCanonicalUrl:
+    def test_absolute_url(self):
+        assert canonicalize_signing_url("https://api.example.com/v1?a=1") == "/v1?a=1"
+
+    def test_path_only(self):
+        assert canonicalize_signing_url("/v1/data") == "/v1/data"
+
+    def test_query_only(self):
+        assert canonicalize_signing_url("?a=1") == "/?a=1"
 
 
 class TestSignAndRecover:

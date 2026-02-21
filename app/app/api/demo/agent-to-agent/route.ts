@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
-import { SelfAgentVerifier, SelfAgent, HEADERS } from "@selfxyz/agent-sdk";
+import { SelfAgent, HEADERS } from "@selfxyz/agent-sdk";
 import { getNetwork, NETWORKS, type NetworkId } from "@/lib/network";
+import { getCachedVerifier } from "@/lib/selfVerifier";
+import { checkAndRecordReplay } from "@/lib/replayGuard";
 
 const DEMO_AGENT_PK = process.env.DEMO_AGENT_PRIVATE_KEY;
 
@@ -39,11 +41,10 @@ export async function POST(req: NextRequest) {
   const body = await req.text();
 
   // 2. Demo agent verifies the caller's identity on-chain
-  const verifier = new SelfAgentVerifier({
-    registryAddress: network.registryAddress,
-    rpcUrl: network.rpcUrl,
+  const verifier = getCachedVerifier(network.id, {
     maxAgentsPerHuman: 0,
     includeCredentials: false,
+    enableReplayProtection: true,
   });
 
   const verifyResult = await verifier.verify({
@@ -61,6 +62,24 @@ export async function POST(req: NextRequest) {
         error: verifyResult.error || "Agent verification failed",
       },
       { status: 403 }
+    );
+  }
+
+  const replay = await checkAndRecordReplay({
+    signature,
+    timestamp,
+    method: "POST",
+    url: req.url,
+    body: body || undefined,
+    scope: "demo-agent-to-agent",
+  });
+  if (!replay.ok) {
+    return NextResponse.json(
+      {
+        verified: false,
+        error: replay.error || "Replay detected",
+      },
+      { status: 409 },
     );
   }
 

@@ -22,7 +22,7 @@ contract SelfHumanProofProviderTest is Test {
     }
 
     function test_ProviderName() public view {
-        assertEq(provider.providerName(), "Self Protocol");
+        assertEq(provider.providerName(), "self");
     }
 
     function test_VerificationStrength() public view {

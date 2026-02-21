@@ -18,8 +18,12 @@ const uniqueHumans = new Set();
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function setCors(res) {
-    res.set("Access-Control-Allow-Origin", "*");
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "").split(",").filter(Boolean);
+function setCors(req, res) {
+    const origin = req.headers.origin || "";
+    if (ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGINS.includes("*")) {
+        res.set("Access-Control-Allow-Origin", origin);
+    }
     res.set("Access-Control-Allow-Headers", "Content-Type, x-self-agent-address, x-self-agent-signature, x-self-agent-timestamp");
     res.set("Access-Control-Expose-Headers", "x-self-agent-address, x-self-agent-signature, x-self-agent-timestamp");
     res.set("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
@@ -28,7 +32,7 @@ function setCors(res) {
 // Cloud Function entry point
 // ---------------------------------------------------------------------------
 (0, functions_framework_1.http)("demoAgent", async (req, res) => {
-    setCors(res);
+    setCors(req, res);
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;

@@ -17,7 +17,7 @@ import {
   Bot,
   Send,
 } from "lucide-react";
-import { SelfAgent } from "@selfxyz/agent-sdk";
+import { SelfAgent, SelfAgentVerifier } from "@selfxyz/agent-sdk";
 import TestCard, { StepEntry } from "@/components/TestCard";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
@@ -781,23 +781,127 @@ async function runPeerTest(
     dispatch({ type: "UPDATE_TEST", testId: id, state: { steps: makeSteps(steps, 1, t) } });
 
     t0 = performance.now();
-    const data = await res.json();
+    const responseBody = await res.text();
+    let data: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(responseBody);
+      if (!parsed || typeof parsed !== "object") {
+        throw new Error("Response is not a JSON object");
+      }
+      data = parsed as Record<string, unknown>;
+    } catch {
+      log(id, "Demo agent returned invalid JSON");
+      dispatch({
+        type: "UPDATE_TEST",
+        testId: id,
+        state: {
+          status: "error",
+          steps: makeSteps(steps, 1, t, true),
+          error: "Invalid JSON response from demo agent",
+        },
+      });
+      return;
+    }
     const parseElapsed = Math.round(performance.now() - t0);
     t.push(parseElapsed);
-    log(id, `Demo agent: ID #${data.demoAgent?.agentId}, verified=${data.demoAgent?.verified}`);
-    log(id, `Caller agent: ID #${data.callerAgent?.agentId}, verified=${data.callerAgent?.verified}`);
-    log(id, `sameHuman(#${data.demoAgent?.agentId}, #${data.callerAgent?.agentId}) = ${data.sameHuman}`);
+    const demoAgentInfo = (data.demoAgent as {
+      address?: string;
+      agentId?: string;
+      verified?: boolean;
+    } | undefined) ?? {};
+    const callerAgentInfo = (data.callerAgent as {
+      agentId?: string;
+      verified?: boolean;
+    } | undefined) ?? {};
+    const sameHuman = Boolean(data.sameHuman);
+    const message = typeof data.message === "string" ? data.message : "";
+
+    log(id, `Demo agent: ID #${demoAgentInfo.agentId}, verified=${demoAgentInfo.verified}`);
+    log(id, `Caller agent: ID #${callerAgentInfo.agentId}, verified=${callerAgentInfo.verified}`);
+    log(id, `sameHuman(#${demoAgentInfo.agentId}, #${callerAgentInfo.agentId}) = ${sameHuman}`);
 
     // Verify response came from demo agent
     const demoSig = res.headers.get("x-self-agent-signature");
     const demoAddr = res.headers.get("x-self-agent-address");
+    const demoTs = res.headers.get("x-self-agent-timestamp");
+    let responseSigVerified = false;
 
     dispatch({ type: "UPDATE_TEST", testId: id, state: { steps: makeSteps(steps, 2, t) } });
     log(id, "Verifying demo agent's response signature...");
     if (demoAddr) log(id, `x-self-agent-address: ${shortAddr(demoAddr)}`);
-    if (demoSig) log(id, `x-self-agent-signature: ${shortAddr(demoSig)} \u2713`);
+    if (demoSig) log(id, `x-self-agent-signature: ${shortAddr(demoSig)}`);
+    if (demoTs) log(id, `x-self-agent-timestamp: ${demoTs}`);
 
-    if (data.message) log(id, `"${data.message}"`);
+    if (demoSig && demoTs) {
+      const responseVerifier = new SelfAgentVerifier({
+        registryAddress: net.registryAddress,
+        rpcUrl: net.rpcUrl,
+        maxAgentsPerHuman: 0,
+        includeCredentials: false,
+      });
+      const sigCheck = await responseVerifier.verify({
+        signature: demoSig,
+        timestamp: demoTs,
+        method: "POST",
+        url: agentUrl,
+        body: responseBody || undefined,
+      });
+
+      const expectedDemoAddr = (net.demoAgentAddress || demoAgentInfo.address || "").toLowerCase();
+      if (net.demoAgentAddress && demoAgentInfo.address) {
+        const payloadDemoAddr = demoAgentInfo.address.toLowerCase();
+        if (payloadDemoAddr !== net.demoAgentAddress.toLowerCase()) {
+          log(
+            id,
+            `Demo agent payload address mismatch: expected ${shortAddr(net.demoAgentAddress)}, got ${shortAddr(demoAgentInfo.address)}`,
+          );
+          dispatch({
+            type: "UPDATE_TEST",
+            testId: id,
+            state: {
+              status: "error",
+              steps: makeSteps(steps, 2, t, true),
+              error: "Demo agent identity mismatch",
+            },
+          });
+          return;
+        }
+      }
+      responseSigVerified =
+        sigCheck.valid &&
+        expectedDemoAddr.length > 0 &&
+        sigCheck.agentAddress.toLowerCase() === expectedDemoAddr;
+
+      if (responseSigVerified) {
+        log(id, "Response signature verified against on-chain demo agent identity \u2713");
+      } else {
+        log(id, `Response signature invalid: ${sigCheck.error || "address mismatch"}`);
+        dispatch({
+          type: "UPDATE_TEST",
+          testId: id,
+          state: {
+            status: "error",
+            steps: makeSteps(steps, 2, t, true),
+            error: sigCheck.error || "Demo agent response signature invalid",
+          },
+        });
+        return;
+      }
+    } else {
+      log(id, "Missing response signature headers");
+      dispatch({
+        type: "UPDATE_TEST",
+        testId: id,
+        state: {
+          status: "error",
+          steps: makeSteps(steps, 2, t, true),
+          error: "Demo agent response was not signed",
+        },
+      });
+      return;
+    }
+
+    if (message) log(id, `"${message}"`);
 
     const totalElapsed = Math.round(performance.now() - totalStart);
     log(id, `Test complete (${totalElapsed}ms total)`);
@@ -813,28 +917,28 @@ async function runPeerTest(
           <div className="space-y-1 text-xs">
             <p className="text-accent-success font-bold text-sm">Agent-to-Agent Verified</p>
             <p className="text-muted">
-              Your agent: <span className={data.callerAgent.verified ? "text-accent-success" : "text-accent-error"}>
-                {data.callerAgent.verified ? "Verified" : "Not verified"}
-              </span> (ID #{data.callerAgent.agentId})
+              Your agent: <span className={callerAgentInfo.verified ? "text-accent-success" : "text-accent-error"}>
+                {callerAgentInfo.verified ? "Verified" : "Not verified"}
+              </span> (ID #{callerAgentInfo.agentId ?? "unknown"})
             </p>
             <p className="text-muted">
-              Demo agent: <span className={data.demoAgent.verified ? "text-accent-success" : "text-accent-error"}>
-                {data.demoAgent.verified ? "Verified" : "Not registered"}
-              </span> (ID #{data.demoAgent.agentId})
+              Demo agent: <span className={demoAgentInfo.verified ? "text-accent-success" : "text-accent-error"}>
+                {demoAgentInfo.verified ? "Verified" : "Not registered"}
+              </span> (ID #{demoAgentInfo.agentId ?? "unknown"})
             </p>
             <p className="text-muted">
-              Same human: <span className={data.sameHuman ? "text-accent-success" : "text-foreground"}>
-                {data.sameHuman ? "Yes" : "No (different humans)"}
+              Same human: <span className={sameHuman ? "text-accent-success" : "text-foreground"}>
+                {sameHuman ? "Yes" : "No (different humans)"}
               </span>
             </p>
             <p className="text-muted">
               Response signed by: <span className="font-mono text-foreground">
                 {demoAddr ? shortAddr(demoAddr) : "unsigned"}
               </span>
-              {demoSig ? " \u2713" : " (no signature)"}
+              {responseSigVerified ? " \u2713 verified" : " (invalid signature)"}
             </p>
-            {data.message && (
-              <p className="text-muted italic mt-1">&ldquo;{data.message}&rdquo;</p>
+            {message && (
+              <p className="text-muted italic mt-1">&ldquo;{message}&rdquo;</p>
             )}
           </div>
         ),

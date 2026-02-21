@@ -71,7 +71,7 @@ REGISTRY_ABI = [
          {"name": "gender", "type": "string"},
          {"name": "expiryDate", "type": "string"},
          {"name": "olderThan", "type": "uint256"},
-         {"name": "ofac", "type": "bool[]"},
+         {"name": "ofac", "type": "bool[3]"},
      ]}],
     },
     # A2A Agent Cards

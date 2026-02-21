@@ -29,6 +29,10 @@ pub struct VerifierConfig {
     pub include_credentials: Option<bool>,
     /// Require proof-of-human was provided by Self Protocol (default: true).
     pub require_self_provider: Option<bool>,
+    /// Reject duplicate signatures within validity window (default: true).
+    pub enable_replay_protection: Option<bool>,
+    /// Max replay cache entries before pruning (default: 10k).
+    pub replay_cache_max_entries: Option<usize>,
 }
 
 impl Default for VerifierConfig {
@@ -42,6 +46,8 @@ impl Default for VerifierConfig {
             max_agents_per_human: None,
             include_credentials: None,
             require_self_provider: None,
+            enable_replay_protection: None,
+            replay_cache_max_entries: None,
         }
     }
 }
@@ -127,7 +133,10 @@ pub struct SelfAgentVerifier {
     max_agents_per_human: u64,
     include_credentials: bool,
     require_self_provider: bool,
+    enable_replay_protection: bool,
+    replay_cache_max_entries: usize,
     cache: HashMap<B256, CacheEntry>,
+    replay_cache: HashMap<String, u64>,
     self_provider_cache: Option<(Address, u64)>,
 }
 
@@ -143,7 +152,10 @@ impl SelfAgentVerifier {
             max_agents_per_human: config.max_agents_per_human.unwrap_or(1),
             include_credentials: config.include_credentials.unwrap_or(false),
             require_self_provider: config.require_self_provider.unwrap_or(true),
+            enable_replay_protection: config.enable_replay_protection.unwrap_or(true),
+            replay_cache_max_entries: config.replay_cache_max_entries.unwrap_or(10_000),
             cache: HashMap::new(),
+            replay_cache: HashMap::new(),
             self_provider_cache: None,
         }
     }
@@ -182,6 +194,7 @@ impl SelfAgentVerifier {
 
         // 2. Reconstruct the signed message
         let message = compute_signing_message(timestamp, method, url, body);
+        let message_key = format!("{:#x}", message);
 
         // 3. Recover signer address from signature
         let signer_address = match recover_address(&message, signature) {
@@ -189,10 +202,26 @@ impl SelfAgentVerifier {
             Err(_) => return VerificationResult::empty_with_error("Invalid signature"),
         };
 
-        // 4. Derive the on-chain agent key from the recovered address
+        // 4. Replay cache check (after signature validity to avoid cache poisoning)
+        if self.enable_replay_protection {
+            if let Some(err) = self.check_and_record_replay(signature, &message_key, ts, now) {
+                return VerificationResult {
+                    valid: false,
+                    agent_address: signer_address,
+                    agent_key: address_to_agent_key(signer_address),
+                    agent_id: U256::ZERO,
+                    agent_count: U256::ZERO,
+                    nullifier: U256::ZERO,
+                    credentials: None,
+                    error: Some(err),
+                };
+            }
+        }
+
+        // 5. Derive the on-chain agent key from the recovered address
         let agent_key = address_to_agent_key(signer_address);
 
-        // 5. Check on-chain status (with cache)
+        // 6. Check on-chain status (with cache)
         let on_chain = match self.check_on_chain(agent_key).await {
             Ok(v) => v,
             Err(e) => {
@@ -222,7 +251,7 @@ impl SelfAgentVerifier {
             };
         }
 
-        // 6. Provider check: ensure agent was verified by Self Protocol
+        // 7. Provider check: ensure agent was verified by Self Protocol
         if self.require_self_provider && on_chain.agent_id > U256::ZERO {
             let self_provider = match self.get_self_provider_address().await {
                 Ok(addr) => addr,
@@ -257,7 +286,7 @@ impl SelfAgentVerifier {
             }
         }
 
-        // 7. Sybil resistance: reject if human has too many agents
+        // 8. Sybil resistance: reject if human has too many agents
         if self.max_agents_per_human > 0
             && on_chain.agent_count > U256::from(self.max_agents_per_human)
         {
@@ -276,7 +305,7 @@ impl SelfAgentVerifier {
             };
         }
 
-        // 8. Fetch credentials if requested
+        // 9. Fetch credentials if requested
         let credentials = if self.include_credentials && on_chain.agent_id > U256::ZERO {
             self.fetch_credentials(on_chain.agent_id).await.ok()
         } else {
@@ -423,7 +452,49 @@ impl SelfAgentVerifier {
     /// Clear the on-chain status cache.
     pub fn clear_cache(&mut self) {
         self.cache.clear();
+        self.replay_cache.clear();
         self.self_provider_cache = None;
+    }
+
+    fn check_and_record_replay(
+        &mut self,
+        signature: &str,
+        message: &str,
+        ts: u64,
+        now: u64,
+    ) -> Option<String> {
+        self.prune_replay_cache(now);
+
+        let key = format!(
+            "{}:{}",
+            signature.to_ascii_lowercase(),
+            message.to_ascii_lowercase()
+        );
+        if let Some(expires_at) = self.replay_cache.get(&key) {
+            if *expires_at > now {
+                return Some("Replay detected".to_string());
+            }
+        }
+
+        self.replay_cache.insert(key, ts.saturating_add(self.max_age_ms));
+        None
+    }
+
+    fn prune_replay_cache(&mut self, now: u64) {
+        self.replay_cache.retain(|_, exp| *exp > now);
+
+        if self.replay_cache.len() <= self.replay_cache_max_entries {
+            return;
+        }
+
+        let overflow = self.replay_cache.len() - self.replay_cache_max_entries;
+        let mut items: Vec<(String, u64)> =
+            self.replay_cache.iter().map(|(k, v)| (k.clone(), *v)).collect();
+        items.sort_by_key(|(_, exp)| *exp);
+
+        for (key, _) in items.into_iter().take(overflow) {
+            self.replay_cache.remove(&key);
+        }
     }
 }
 

@@ -135,6 +135,8 @@ async fn sign_then_verify_roundtrip_recovers_correct_address() {
         max_agents_per_human: None,
         include_credentials: None,
         require_self_provider: None,
+        enable_replay_protection: None,
+        replay_cache_max_entries: None,
     });
 
     let result = verifier
@@ -336,6 +338,110 @@ async fn tampered_body_fails_verification() {
     println!("Tampered body correctly produces wrong recovery (integrity check works)");
     println!("  Expected: {:#x}", agent.address());
     println!("  Recovered: {:#x}", result.agent_address);
+}
+
+// ---------------------------------------------------------------------------
+// 6. Replay detection
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn replayed_signature_is_rejected() {
+    let agent = SelfAgent::new(SelfAgentConfig {
+        private_key: TEST_PRIVATE_KEY.to_string(),
+        network: None,
+        registry_address: Some(
+            Address::from_str("0x0000000000000000000000000000000000000001").unwrap(),
+        ),
+        rpc_url: Some("http://localhost:8545".to_string()),
+    })
+    .unwrap();
+
+    let hdrs = agent
+        .sign_request("GET", "/api/replay", None)
+        .await
+        .unwrap();
+
+    let sig = hdrs.get(headers::SIGNATURE).unwrap().to_string();
+    let ts = hdrs.get(headers::TIMESTAMP).unwrap().to_string();
+
+    let mut verifier = SelfAgentVerifier::new(VerifierConfig {
+        max_age_ms: Some(60_000),
+        registry_address: Some(
+            Address::from_str("0x0000000000000000000000000000000000000001").unwrap(),
+        ),
+        rpc_url: Some("http://localhost:8545".to_string()),
+        ..VerifierConfig::default()
+    });
+
+    let first = verifier.verify(&sig, &ts, "GET", "/api/replay", None).await;
+    assert!(
+        first.error.as_deref().unwrap_or("").contains("RPC error"),
+        "first verification should reach RPC path"
+    );
+
+    let second = verifier.verify(&sig, &ts, "GET", "/api/replay", None).await;
+    assert_eq!(second.error.as_deref(), Some("Replay detected"));
+}
+
+#[tokio::test]
+async fn invalid_message_does_not_poison_replay_cache() {
+    let agent = SelfAgent::new(SelfAgentConfig {
+        private_key: TEST_PRIVATE_KEY.to_string(),
+        network: None,
+        registry_address: Some(
+            Address::from_str("0x0000000000000000000000000000000000000001").unwrap(),
+        ),
+        rpc_url: Some("http://localhost:8545".to_string()),
+    })
+    .unwrap();
+
+    let hdrs = agent
+        .sign_request("POST", "/api/replay", Some(r#"{"amount":100}"#))
+        .await
+        .unwrap();
+
+    let sig = hdrs.get(headers::SIGNATURE).unwrap().to_string();
+    let ts = hdrs.get(headers::TIMESTAMP).unwrap().to_string();
+
+    let mut verifier = SelfAgentVerifier::new(VerifierConfig {
+        max_age_ms: Some(60_000),
+        registry_address: Some(
+            Address::from_str("0x0000000000000000000000000000000000000001").unwrap(),
+        ),
+        rpc_url: Some("http://localhost:8545".to_string()),
+        ..VerifierConfig::default()
+    });
+
+    // Wrong body => different signing message, should not consume replay key for legit message.
+    let tampered = verifier
+        .verify(
+            &sig,
+            &ts,
+            "POST",
+            "/api/replay",
+            Some(r#"{"amount":999}"#),
+        )
+        .await;
+    assert!(
+        !tampered.error.as_deref().unwrap_or("").contains("Replay detected"),
+        "tampered message must not trigger replay key for legit message"
+    );
+
+    // Correct body should still proceed (and reach RPC path in this test setup).
+    let legit = verifier
+        .verify(
+            &sig,
+            &ts,
+            "POST",
+            "/api/replay",
+            Some(r#"{"amount":100}"#),
+        )
+        .await;
+    assert!(
+        legit.error.as_deref().unwrap_or("").contains("RPC error"),
+        "expected RPC error after successful signature/replay checks, got {:?}",
+        legit.error
+    );
 }
 
 // ---------------------------------------------------------------------------

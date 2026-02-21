@@ -181,3 +181,33 @@ async fn sign_request_returns_all_required_headers() {
     assert!(hdrs.contains_key(headers::SIGNATURE));
     assert!(hdrs.contains_key(headers::TIMESTAMP));
 }
+
+#[tokio::test]
+async fn full_url_and_path_signatures_match() {
+    let agent = SelfAgent::new(SelfAgentConfig {
+        private_key: TEST_PRIVATE_KEY.to_string(),
+        network: None,
+        registry_address: Some(
+            Address::from_str("0x0000000000000000000000000000000000000001").unwrap(),
+        ),
+        rpc_url: Some("http://localhost:8545".to_string()),
+    })
+    .unwrap();
+
+    let body = r#"{"q":"ok"}"#;
+    let full = agent
+        .sign_request_with_timestamp(
+            "POST",
+            "https://demo.example.com/api/data?x=1",
+            Some(body),
+            TIMESTAMP,
+        )
+        .await
+        .unwrap();
+    let path = agent
+        .sign_request_with_timestamp("POST", "/api/data?x=1", Some(body), TIMESTAMP)
+        .await
+        .unwrap();
+
+    assert_eq!(full.get(headers::SIGNATURE), path.get(headers::SIGNATURE));
+}

@@ -16,6 +16,26 @@ interface TestVector {
   agent_key: string;
 }
 
+function canonicalizeSigningUrl(url: string): string {
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    try {
+      const parsed = new URL(url);
+      return (parsed.pathname || "/") + parsed.search;
+    } catch {
+      return url;
+    }
+  }
+  if (url.startsWith("?")) return `/${url}`;
+  if (url.startsWith("/")) return url;
+  try {
+    const parsed = new URL(url, "http://self.local");
+    return (parsed.pathname || "/") + parsed.search;
+  } catch {
+    return url;
+  }
+}
+
 const cases = [
   { ts: "1700000000000", method: "GET",  url: "https://api.example.com/data", body: null },
   { ts: "1700000000001", method: "POST", url: "https://api.example.com/data", body: '{"query":"test"}' },
@@ -33,8 +53,9 @@ async function generate(): Promise<void> {
       ? ethers.keccak256(ethers.toUtf8Bytes(c.body))
       : ethers.keccak256(ethers.toUtf8Bytes(""));
 
+    const canonicalUrl = canonicalizeSigningUrl(c.url);
     const message = ethers.keccak256(
-      ethers.toUtf8Bytes(c.ts + c.method.toUpperCase() + c.url + bodyHash)
+      ethers.toUtf8Bytes(c.ts + c.method.toUpperCase() + canonicalUrl + bodyHash)
     );
 
     const signature = await wallet.signMessage(ethers.getBytes(message));

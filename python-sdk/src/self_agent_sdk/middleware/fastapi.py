@@ -25,10 +25,13 @@ class AgentAuth:
             raise HTTPException(401, "Missing agent authentication headers")
 
         body = (await request.body()).decode("utf-8") or None
+        url = request.url.path
+        if request.url.query:
+            url = f"{url}?{request.url.query}"
         result = self._verifier.verify(
             signature=sig, timestamp=ts,
             method=request.method,
-            url=str(request.url),
+            url=url,
             body=body,
         )
         if not result.valid:

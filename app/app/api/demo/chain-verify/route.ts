@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
-import { SelfAgentVerifier, HEADERS } from "@selfxyz/agent-sdk";
+import { HEADERS } from "@selfxyz/agent-sdk";
 import {
   AGENT_DEMO_VERIFIER_ABI,
   REGISTRY_ABI,
 } from "@/lib/constants";
 import { getNetwork, NETWORKS, type NetworkId } from "@/lib/network";
+import { getCachedVerifier } from "@/lib/selfVerifier";
+import { checkAndRecordReplay } from "@/lib/replayGuard";
 
 const RELAYER_PK = process.env.RELAYER_PRIVATE_KEY;
 
@@ -97,11 +99,10 @@ export async function POST(req: NextRequest) {
   }
 
   // 4. Verify agent identity via SDK
-  const verifier = new SelfAgentVerifier({
-    registryAddress: network.registryAddress,
-    rpcUrl: network.rpcUrl,
+  const verifier = getCachedVerifier(networkId, {
     maxAgentsPerHuman: 0,
     includeCredentials: true,
+    enableReplayProtection: true,
   });
 
   const result = await verifier.verify({
@@ -116,6 +117,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: result.error || "Agent verification failed" },
       { status: 403 },
+    );
+  }
+
+  const replay = await checkAndRecordReplay({
+    signature,
+    timestamp,
+    method: "POST",
+    url: req.url,
+    body: bodyText || undefined,
+    scope: "demo-chain-verify",
+  });
+  if (!replay.ok) {
+    return NextResponse.json(
+      { error: replay.error || "Replay detected" },
+      { status: 409 },
     );
   }
 

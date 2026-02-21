@@ -159,3 +159,33 @@ def test_cache_ttl(mock_web3):
     assert result2.valid is True
     # isVerifiedAgent should not be called again (cache hit)
     assert registry.functions.isVerifiedAgent.return_value.call.call_count == call_count_before
+
+
+def test_reject_replayed_signature(mock_web3):
+    _, _, registry = mock_web3
+    _setup_verified(registry)
+
+    verifier = SelfAgentVerifier(network="testnet", enable_replay_protection=True)
+    sig, ts = _make_signature("GET", "/api/replay")
+
+    first = verifier.verify(sig, ts, "GET", "/api/replay")
+    assert first.valid is True
+
+    second = verifier.verify(sig, ts, "GET", "/api/replay")
+    assert second.valid is False
+    assert "replay" in second.error.lower()
+
+
+def test_invalid_message_does_not_poison_replay_cache(mock_web3):
+    _, _, registry = mock_web3
+    _setup_verified(registry)
+
+    verifier = SelfAgentVerifier(network="testnet", enable_replay_protection=True)
+    sig, ts = _make_signature("POST", "/api/replay", '{"amount":100}')
+
+    tampered = verifier.verify(sig, ts, "POST", "/api/replay", '{"amount":999}')
+    assert "replay" not in (tampered.error or "").lower()
+
+    # A verification for a different message must not consume this message's replay key.
+    legit = verifier.verify(sig, ts, "POST", "/api/replay", '{"amount":100}')
+    assert legit.valid is True

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SelfAgentVerifier, HEADERS } from "@selfxyz/agent-sdk";
-import { getNetwork, NETWORKS, type NetworkId } from "@/lib/network";
+import { HEADERS } from "@selfxyz/agent-sdk";
+import { NETWORKS, type NetworkId } from "@/lib/network";
+import { getCachedVerifier } from "@/lib/selfVerifier";
+import { checkAndRecordReplay } from "@/lib/replayGuard";
 
 // ---------------------------------------------------------------------------
 // In-memory census store (portable to Firestore later)
@@ -28,12 +30,10 @@ function resolveNetwork(req: NextRequest): NetworkId {
 }
 
 function createVerifier(req: NextRequest) {
-  const network = getNetwork(resolveNetwork(req));
-  return new SelfAgentVerifier({
-    registryAddress: network.registryAddress,
-    rpcUrl: network.rpcUrl,
+  return getCachedVerifier(resolveNetwork(req), {
     maxAgentsPerHuman: 0,
     includeCredentials: true,
+    enableReplayProtection: true,
   });
 }
 
@@ -46,13 +46,30 @@ async function verifyAgent(req: NextRequest, body: string) {
   }
 
   const verifier = createVerifier(req);
-  return verifier.verify({
+  const result = await verifier.verify({
     signature,
     timestamp,
     method: req.method,
     url: req.url,
     body: body || undefined,
   });
+
+  if (!result.valid) return result;
+
+  const replay = await checkAndRecordReplay({
+    signature,
+    timestamp,
+    method: req.method,
+    url: req.url,
+    body: body || undefined,
+    scope: "demo-census",
+  });
+
+  if (!replay.ok) {
+    return { valid: false as const, error: replay.error || "Replay detected" };
+  }
+
+  return result;
 }
 
 function computeStats() {

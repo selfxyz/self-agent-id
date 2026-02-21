@@ -58,6 +58,36 @@ function getPaymasterUrl(chain: Chain): string {
   return `/api/aa/paymaster?chainId=${chain.id}`;
 }
 
+let aaTokenCache: { token: string; expiresAt: number; chainId: number } | null = null;
+
+async function getAaProxyToken(chain: Chain): Promise<string> {
+  const now = Date.now();
+  if (
+    aaTokenCache &&
+    aaTokenCache.chainId === chain.id &&
+    aaTokenCache.expiresAt - now > 5_000
+  ) {
+    return aaTokenCache.token;
+  }
+
+  const res = await fetch(`/api/aa/token?chainId=${chain.id}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: "AA token request failed" }));
+    throw new Error(body.error || `AA token request failed (${res.status})`);
+  }
+
+  const data = await res.json() as { token?: string; expiresAt?: number };
+  if (!data.token || !data.expiresAt) {
+    throw new Error("AA token response missing fields");
+  }
+  aaTokenCache = { token: data.token, expiresAt: data.expiresAt, chainId: chain.id };
+  return data.token;
+}
+
 function getPasskeyServerUrl(): string {
   const id = getZeroDevProjectId();
   if (!id) throw new Error("NEXT_PUBLIC_ZERODEV_PROJECT_ID not set — passkey server unavailable");
@@ -178,6 +208,8 @@ export async function sendUserOperation(
     );
   }
 
+  const aaToken = await getAaProxyToken(chain);
+
   const publicClient = getPublicClient(chain);
 
   const webAuthnKey = await toWebAuthnKey({
@@ -201,13 +233,21 @@ export async function sendUserOperation(
 
   const paymasterClient = createZeroDevPaymasterClient({
     chain,
-    transport: http(getPaymasterUrl(chain)),
+    transport: http(getPaymasterUrl(chain), {
+      fetchOptions: {
+        headers: { "x-aa-proxy-token": aaToken },
+      },
+    }),
   });
 
   const kernelClient = createKernelAccountClient({
     account,
     chain,
-    bundlerTransport: http(getBundlerUrl(chain)),
+    bundlerTransport: http(getBundlerUrl(chain), {
+      fetchOptions: {
+        headers: { "x-aa-proxy-token": aaToken },
+      },
+    }),
     paymaster: paymasterClient,
   });
 
