@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useState, useEffect, useCallback } from "react";
+import React, { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import MatrixText from "@/components/MatrixText";
 import { ethers } from "ethers";
@@ -25,6 +25,7 @@ import CodeBlock from "@/components/CodeBlock";
 import { getServiceSnippets, getAgentSnippets, SERVICE_FEATURES, AGENT_FEATURES } from "@/lib/snippets";
 import { connectWallet } from "@/lib/wallet";
 import { REGISTRY_ABI, PROVIDER_ABI } from "@/lib/constants";
+import type { A2AAgentCard } from "@selfxyz/agent-sdk";
 import { useNetwork } from "@/lib/NetworkContext";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
@@ -63,7 +64,7 @@ interface AgentInfo {
   isSmartWallet: boolean;
   credentials?: AgentCredentials;
   verificationStrength?: number;
-  agentCard?: Record<string, unknown>;
+  agentCard?: A2AAgentCard;
 }
 
 function cleanStr(s: string): string {
@@ -244,7 +245,7 @@ function VerifyContent() {
         } catch {}
 
         // Parse A2A card from metadata
-        let agentCard: Record<string, unknown> | undefined;
+        let agentCard: A2AAgentCard | undefined;
         if (metadata) {
           try {
             const parsed = JSON.parse(metadata);
@@ -343,7 +344,15 @@ function VerifyContent() {
     lookupAgent(agentKey);
   };
 
-  const snippets = getServiceSnippets(network.registryAddress, network.rpcUrl, activeServiceFeatures);
+  const snippets = useMemo(
+    () => getServiceSnippets(network.registryAddress, network.rpcUrl, activeServiceFeatures),
+    [network.registryAddress, network.rpcUrl, activeServiceFeatures]
+  );
+
+  const agentSnippets = useMemo(
+    () => getAgentSnippets(network.registryAddress, network.rpcUrl, activeAgentFeatures),
+    [network.registryAddress, network.rpcUrl, activeAgentFeatures]
+  );
 
   return (
     <>
@@ -491,9 +500,9 @@ function VerifyContent() {
                           <FileText size={12} /> A2A Agent Card
                         </div>
                         <div className="text-xs space-y-1">
-                          <p><span className="text-muted">Name:</span> {(agentInfo.agentCard as Record<string, string>).name}</p>
-                          {(agentInfo.agentCard as Record<string, string>).description && (
-                            <p><span className="text-muted">Description:</span> {(agentInfo.agentCard as Record<string, string>).description}</p>
+                          <p><span className="text-muted">Name:</span> {agentInfo.agentCard.name}</p>
+                          {agentInfo.agentCard.description && (
+                            <p><span className="text-muted">Description:</span> {agentInfo.agentCard.description}</p>
                           )}
                         </div>
 
@@ -760,53 +769,46 @@ function VerifyContent() {
             your agent&apos;s environment first.
           </p>
 
-          {(() => {
-            const agentSnippets = getAgentSnippets(network.registryAddress, network.rpcUrl, activeAgentFeatures);
-            return (
-              <>
-                <div className="flex gap-2 flex-wrap">
-                  {agentSnippets.map((snippet, i) => (
-                    <button
-                      key={snippet.title}
-                      onClick={() => setActiveAgentSnippet(i)}
-                      className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors border ${
-                        i === activeAgentSnippet
-                          ? "bg-gradient-to-r from-accent to-accent-2 text-white border-transparent"
-                          : "bg-surface-1 text-foreground border-border hover:bg-surface-2"
-                      }`}
-                    >
-                      {snippet.title}
-                    </button>
-                  ))}
-                </div>
+          <div className="flex gap-2 flex-wrap">
+            {agentSnippets.map((snippet, i) => (
+              <button
+                key={snippet.title}
+                onClick={() => setActiveAgentSnippet(i)}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors border ${
+                  i === activeAgentSnippet
+                    ? "bg-gradient-to-r from-accent to-accent-2 text-white border-transparent"
+                    : "bg-surface-1 text-foreground border-border hover:bg-surface-2"
+                }`}
+              >
+                {snippet.title}
+              </button>
+            ))}
+          </div>
 
-                <div className="flex gap-1.5 flex-wrap">
-                  {AGENT_FEATURES.map((feat) => {
-                    const active = activeAgentFeatures.has(feat.id);
-                    return (
-                      <button
-                        key={feat.id}
-                        onClick={() => toggleAgentFeature(feat.id)}
-                        title={feat.description}
-                        className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                          active
-                            ? "bg-accent/15 text-accent border border-accent/40"
-                            : "bg-surface-2 text-muted border border-transparent hover:text-foreground"
-                        }`}
-                      >
-                        {active ? "\u2713" : "+"} {feat.label}
-                      </button>
-                    );
-                  })}
-                </div>
+          <div className="flex gap-1.5 flex-wrap">
+            {AGENT_FEATURES.map((feat) => {
+              const active = activeAgentFeatures.has(feat.id);
+              return (
+                <button
+                  key={feat.id}
+                  onClick={() => toggleAgentFeature(feat.id)}
+                  title={feat.description}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                    active
+                      ? "bg-accent/15 text-accent border border-accent/40"
+                      : "bg-surface-2 text-muted border border-transparent hover:text-foreground"
+                  }`}
+                >
+                  {active ? "\u2713" : "+"} {feat.label}
+                </button>
+              );
+            })}
+          </div>
 
-                <p className="text-sm text-muted">
-                  {agentSnippets[activeAgentSnippet].description}
-                </p>
-                <CodeBlock tabs={agentSnippets[activeAgentSnippet].snippets} />
-              </>
-            );
-          })()}
+          <p className="text-sm text-muted">
+            {agentSnippets[activeAgentSnippet].description}
+          </p>
+          <CodeBlock tabs={agentSnippets[activeAgentSnippet].snippets} />
         </div>
       )}
     </>

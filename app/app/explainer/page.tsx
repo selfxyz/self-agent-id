@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import MatrixText from "@/components/MatrixText";
 import { ethers } from "ethers";
@@ -60,8 +60,14 @@ export default function ExplainerPage() {
     });
   };
 
-  const snippets = getServiceSnippets(network.registryAddress, network.rpcUrl, activeServiceFeatures);
-  const agentSnippets = getAgentSnippets(network.registryAddress, network.rpcUrl, activeAgentFeatures);
+  const snippets = useMemo(
+    () => getServiceSnippets(network.registryAddress, network.rpcUrl, activeServiceFeatures),
+    [network.registryAddress, network.rpcUrl, activeServiceFeatures]
+  );
+  const agentSnippets = useMemo(
+    () => getAgentSnippets(network.registryAddress, network.rpcUrl, activeAgentFeatures),
+    [network.registryAddress, network.rpcUrl, activeAgentFeatures]
+  );
 
   const handleVerify = async () => {
     const trimmed = pubKeyInput.trim();

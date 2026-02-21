@@ -21,6 +21,7 @@ NETWORKS: dict[NetworkName, NetworkConfig] = {
 }
 
 DEFAULT_NETWORK: NetworkName = "mainnet"
+ZERO_ADDRESS = "0x" + "0" * 40
 DEFAULT_MAX_AGE_MS = 5 * 60 * 1000       # 5 minutes
 DEFAULT_CACHE_TTL_MS = 60_000             # 1 minute
 

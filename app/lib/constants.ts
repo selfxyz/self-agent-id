@@ -1,3 +1,19 @@
+// ── ABI Definitions ─────────────────────────────────────────────────────────
+//
+// Two ABI sources exist in this project:
+//
+// 1. THIS FILE (local ABI) — full contract surface including auto-generated
+//    public mapping getters (agentProofProvider, agentGuardian, agentHasHumanProof,
+//    agentIdToPubkey, etc.) plus management functions (guardianRevoke, selfDeregister).
+//    Used by dApp pages that need direct contract interaction beyond the standard interface.
+//
+// 2. @selfxyz/agent-sdk REGISTRY_ABI — the canonical cross-language interface.
+//    Contains only the standard ERC-8004 + extension functions (hasHumanProof,
+//    getProofProvider, isVerifiedAgent, etc.). Used by API routes and external integrators.
+//
+// Both ABIs point to the same on-chain contract. The local ABI is a superset.
+// ────────────────────────────────────────────────────────────────────────────
+
 // Minimal ABI for reading SelfAgentRegistry state
 export const REGISTRY_ABI = [
   "function isVerifiedAgent(bytes32 agentPubKey) view returns (bool)",

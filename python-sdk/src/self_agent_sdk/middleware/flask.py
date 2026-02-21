@@ -20,7 +20,7 @@ def require_agent(verifier):
             result = verifier.verify(
                 signature=sig, timestamp=ts,
                 method=request.method,
-                url=request.path,
+                url=request.full_path.rstrip("?"),
                 body=body,
             )
             if not result.valid:

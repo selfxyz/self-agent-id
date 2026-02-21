@@ -137,6 +137,9 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     error NoGuardianSet(uint256 agentId);
     error TooManyAgentsForHuman(uint256 nullifier, uint256 max);
     error InvalidConfigIndex(uint8 raw);
+    error VerificationFailed();
+    error ProviderDataTooShort();
+    error NotSameHuman();
 
     // ====================================================
     // Events (V4 additions)
@@ -382,10 +385,10 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
 
         // Attempt synchronous verification through the provider
         (bool verified, uint256 nullifier) = IHumanProofProvider(proofProvider).verifyHumanProof(proof, providerData);
-        require(verified, "Human proof verification failed");
+        if (!verified) revert VerificationFailed();
 
         // Extract agentPubKey from providerData (first 32 bytes)
-        require(providerData.length >= 32, "Provider data must contain agent public key");
+        if (providerData.length < 32) revert ProviderDataTooShort();
         bytes32 agentPubKey;
         assembly {
             agentPubKey := calldataload(providerData.offset)
@@ -407,8 +410,8 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
 
         // Verify the caller is the same human (same nullifier)
         (bool verified, uint256 nullifier) = IHumanProofProvider(proofProvider).verifyHumanProof(proof, providerData);
-        require(verified, "Human proof verification failed");
-        require(nullifier == agentNullifier[agentId], "Not the same human");
+        if (!verified) revert VerificationFailed();
+        if (nullifier != agentNullifier[agentId]) revert NotSameHuman();
 
         _revokeAgent(agentId);
     }

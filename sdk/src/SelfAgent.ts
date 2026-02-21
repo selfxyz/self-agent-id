@@ -182,8 +182,8 @@ export class SelfAgent {
     try {
       const parsed = JSON.parse(raw);
       if (parsed.a2aVersion) return parsed as A2AAgentCard;
-    } catch {
-      // metadata is not a valid A2A card
+    } catch (err) {
+      console.warn("[SelfAgent] Failed to parse agent card metadata:", err);
     }
     return undefined;
   }

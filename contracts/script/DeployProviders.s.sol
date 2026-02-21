@@ -14,6 +14,8 @@ import { SelfValidationProvider } from "../src/SelfValidationProvider.sol";
 contract DeployProviders is BaseScript {
     function run() external broadcast {
         address registry = vm.envAddress("REGISTRY");
+        require(registry != address(0), "REGISTRY env var is zero address");
+        require(registry.code.length > 0, "REGISTRY is not a deployed contract");
 
         SelfReputationProvider rep = new SelfReputationProvider(registry);
         SelfValidationProvider val = new SelfValidationProvider(registry);

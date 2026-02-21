@@ -7,7 +7,7 @@ import httpx
 from web3 import Web3
 from eth_account import Account
 
-from .constants import NETWORKS, DEFAULT_NETWORK, REGISTRY_ABI, PROVIDER_ABI, HEADERS, NetworkName
+from .constants import NETWORKS, DEFAULT_NETWORK, REGISTRY_ABI, PROVIDER_ABI, HEADERS, ZERO_ADDRESS, NetworkName
 from .types import AgentInfo, AgentCredentials
 from .agent_card import (
     A2AAgentCard, AgentSkill, SelfProtocolExtension, TrustModel, CardCredentials,
@@ -105,7 +105,10 @@ class SelfAgent:
     # ─── A2A Agent Card Methods ───────────────────────────────────────────
 
     def get_agent_card(self) -> A2AAgentCard | None:
-        """Read the A2A Agent Card from on-chain metadata (if set)."""
+        """Read the A2A Agent Card from on-chain metadata (if set).
+
+        Returns None if the agent is not registered or has no card.
+        """
         agent_id = self._registry.functions.getAgentId(self._agent_key).call()
         if agent_id == 0:
             return None
@@ -127,13 +130,17 @@ class SelfAgent:
         url: str | None = None,
         skills: list[AgentSkill] | None = None,
     ) -> str:
-        """Build and write an A2A Agent Card. Returns tx hash."""
+        """Build and write an A2A Agent Card to on-chain metadata.
+
+        Auto-populates selfProtocol fields (trust model, credentials) from on-chain data.
+        Returns the transaction hash as a hex string.
+        """
         agent_id = self._registry.functions.getAgentId(self._agent_key).call()
         if agent_id == 0:
             raise ValueError("Agent not registered")
 
         provider_addr = self._registry.functions.getProofProvider(agent_id).call()
-        if not provider_addr or provider_addr == "0x" + "0" * 40:
+        if not provider_addr or provider_addr == ZERO_ADDRESS:
             raise ValueError("Agent has no proof provider — cannot build card")
         provider_contract = self._w3.eth.contract(
             address=Web3.to_checksum_address(provider_addr), abi=PROVIDER_ABI,
@@ -204,7 +211,10 @@ class SelfAgent:
         return tx_hash.hex()
 
     def to_agent_card_data_uri(self) -> str:
-        """Returns a data: URI with base64-encoded Agent Card JSON."""
+        """Return a data: URI with base64-encoded Agent Card JSON.
+
+        Raises ValueError if no agent card is set.
+        """
         card = self.get_agent_card()
         if card is None:
             raise ValueError("No A2A Agent Card set")
@@ -213,7 +223,10 @@ class SelfAgent:
         return f"data:application/json;base64,{encoded}"
 
     def get_credentials(self) -> AgentCredentials | None:
-        """Read ZK-attested credentials from on-chain."""
+        """Read ZK-attested credentials from on-chain.
+
+        Returns None if the agent is not registered or has no credentials.
+        """
         agent_id = self._registry.functions.getAgentId(self._agent_key).call()
         if agent_id == 0:
             return None
@@ -234,12 +247,15 @@ class SelfAgent:
             return None
 
     def get_verification_strength(self) -> int:
-        """Read the verification strength score from the provider contract."""
+        """Read the verification strength score (0-100) from the provider contract.
+
+        Returns 0 if the agent is not registered or has no provider.
+        """
         agent_id = self._registry.functions.getAgentId(self._agent_key).call()
         if agent_id == 0:
             return 0
         provider_addr = self._registry.functions.getProofProvider(agent_id).call()
-        if provider_addr == "0x" + "0" * 40:
+        if provider_addr == ZERO_ADDRESS:
             return 0
         provider_contract = self._w3.eth.contract(
             address=Web3.to_checksum_address(provider_addr), abi=PROVIDER_ABI,

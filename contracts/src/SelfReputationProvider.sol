@@ -2,14 +2,7 @@
 pragma solidity 0.8.28;
 
 import { IHumanProofProvider } from "./interfaces/IHumanProofProvider.sol";
-
-/// @title ISelfAgentRegistryReader
-/// @notice Minimal read interface for SelfAgentRegistry
-interface ISelfAgentRegistryReader {
-    function hasHumanProof(uint256 agentId) external view returns (bool);
-    function getProofProvider(uint256 agentId) external view returns (address);
-    function agentRegisteredAt(uint256 agentId) external view returns (uint256);
-}
+import { ISelfAgentRegistryReader } from "./interfaces/ISelfAgentRegistryReader.sol";
 
 /// @title SelfReputationProvider
 /// @notice ERC-8004 compatible reputation scoring — reads verification strength from proof providers.
@@ -18,6 +11,7 @@ interface ISelfAgentRegistryReader {
 contract SelfReputationProvider {
     ISelfAgentRegistryReader public immutable registry;
 
+    /// @param _registry Address of the deployed SelfAgentRegistry
     constructor(address _registry) {
         registry = ISelfAgentRegistryReader(_registry);
     }
@@ -25,6 +19,8 @@ contract SelfReputationProvider {
     /// @notice Get reputation score for an agent (0-100).
     /// @dev Reads verificationStrength() from the provider that verified this agent.
     ///      Returns 0 if agent has no human proof.
+    /// @param agentId The agent to query
+    /// @return score The reputation score (0-100), or 0 if unverified
     function getReputationScore(uint256 agentId) external view returns (uint8 score) {
         if (!registry.hasHumanProof(agentId)) return 0;
         address provider = registry.getProofProvider(agentId);
@@ -32,7 +28,12 @@ contract SelfReputationProvider {
         return IHumanProofProvider(provider).verificationStrength();
     }
 
-    /// @notice Get full reputation details.
+    /// @notice Get full reputation details for an agent.
+    /// @param agentId The agent to query
+    /// @return score The reputation score (0-100)
+    /// @return providerName The name of the proof provider (e.g. "Self Protocol")
+    /// @return hasProof Whether the agent has an active human proof
+    /// @return registeredAtBlock The block number at which the agent was registered
     function getReputation(uint256 agentId)
         external
         view
@@ -49,7 +50,9 @@ contract SelfReputationProvider {
         providerName = IHumanProofProvider(provider).providerName();
     }
 
-    /// @notice Batch query — check multiple agents at once.
+    /// @notice Batch query — get reputation scores for multiple agents at once.
+    /// @param agentIds Array of agent IDs to query
+    /// @return scores Array of reputation scores (0-100), matching agentIds order
     function getReputationBatch(uint256[] calldata agentIds) external view returns (uint8[] memory scores) {
         scores = new uint8[](agentIds.length);
         for (uint256 i; i < agentIds.length; ++i) {
@@ -60,11 +63,14 @@ contract SelfReputationProvider {
         }
     }
 
-    /// @notice Provider metadata.
+    /// @notice Provider metadata — returns the provider name.
+    /// @return The provider name string
     function name() external pure returns (string memory) {
         return "Self Protocol";
     }
 
+    /// @notice Provider metadata — returns the provider version.
+    /// @return The version string
     function version() external pure returns (string memory) {
         return "1.0";
     }

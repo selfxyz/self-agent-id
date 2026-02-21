@@ -475,7 +475,7 @@ contract SelfAgentRegistryTest is Test {
         bytes memory providerData = abi.encodePacked(agentKey1);
 
         vm.prank(human1);
-        vm.expectRevert("Human proof verification failed");
+        vm.expectRevert(SelfAgentRegistry.VerificationFailed.selector);
         registry.registerWithHumanProof("", address(mockProvider), "", providerData);
     }
 
@@ -483,7 +483,7 @@ contract SelfAgentRegistryTest is Test {
         mockProvider.setNextNullifier(nullifier1);
 
         vm.prank(human1);
-        vm.expectRevert("Provider data must contain agent public key");
+        vm.expectRevert(SelfAgentRegistry.ProviderDataTooShort.selector);
         registry.registerWithHumanProof("", address(mockProvider), "", "");
     }
 
@@ -524,7 +524,7 @@ contract SelfAgentRegistryTest is Test {
         // human2 tries to revoke (different nullifier)
         mockProvider.setNextNullifier(nullifier2);
         vm.prank(human2);
-        vm.expectRevert("Not the same human");
+        vm.expectRevert(SelfAgentRegistry.NotSameHuman.selector);
         registry.revokeHumanProof(agentId, address(mockProvider), "", "");
     }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import MatrixText from "@/components/MatrixText";
 import { ethers } from "ethers";
@@ -107,6 +107,11 @@ export default function RegisterPage() {
   const [agentIdResult, setAgentIdResult] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
+  const agentSnippets = useMemo(
+    () => getAgentSnippets(network.registryAddress, network.rpcUrl, activeAgentFeatures),
+    [network.registryAddress, network.rpcUrl, activeAgentFeatures]
+  );
+
   const toggleAgentFeature = (id: string) => {
     setActiveAgentFeatures((prev) => {
       const next = new Set(prev);
@@ -170,9 +175,6 @@ export default function RegisterPage() {
   ) => {
     // Must match the deployed contract's _verifyAgentSignature:
     // keccak256(abi.encodePacked("self-agent-id:register:", humanAddress))
-    // NOTE: The source code now includes chainId + registryAddress but the
-    // currently deployed V4 bytecode does NOT (chain-binds commit is newer
-    // than the deployment). Update this after redeployment.
     const messageHash = ethers.keccak256(
       ethers.solidityPacked(
         ["string", "address"],
@@ -350,7 +352,7 @@ export default function RegisterPage() {
       const agentAddress = mode === "simple" ? walletAddress! : agentWallet!.address;
       const agentKey = ethers.zeroPadValue(agentAddress, 32);
 
-      const provider = new ethers.BrowserProvider((window as unknown as { ethereum: ethers.Eip1193Provider }).ethereum);
+      const provider = new ethers.BrowserProvider(window.ethereum!);
       const registry = new ethers.Contract(network.registryAddress, REGISTRY_ABI, provider);
 
       const agentId: bigint = await registry.getAgentId(agentKey);
@@ -1220,51 +1222,44 @@ export default function RegisterPage() {
                   If <strong className="text-foreground">leaked</strong>, deregister immediately.
                 </p>
 
-                {(() => {
-                  const agentSnippets = getAgentSnippets(network.registryAddress, network.rpcUrl, activeAgentFeatures);
-                  return (
-                    <>
-                      <div className="flex gap-2 flex-wrap">
-                        {agentSnippets.map((snippet, i) => (
-                          <button
-                            key={snippet.title}
-                            onClick={() => setActiveAgentSnippet(i)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
-                              i === activeAgentSnippet
-                                ? "bg-gradient-to-r from-accent to-accent-2 text-white border-transparent"
-                                : "bg-surface-1 text-foreground border-border hover:bg-surface-2"
-                            }`}
-                          >
-                            {snippet.title}
-                          </button>
-                        ))}
-                      </div>
+                <div className="flex gap-2 flex-wrap">
+                  {agentSnippets.map((snippet, i) => (
+                    <button
+                      key={snippet.title}
+                      onClick={() => setActiveAgentSnippet(i)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
+                        i === activeAgentSnippet
+                          ? "bg-gradient-to-r from-accent to-accent-2 text-white border-transparent"
+                          : "bg-surface-1 text-foreground border-border hover:bg-surface-2"
+                      }`}
+                    >
+                      {snippet.title}
+                    </button>
+                  ))}
+                </div>
 
-                      <div className="flex gap-1.5 flex-wrap">
-                        {AGENT_FEATURES.map((feat) => {
-                          const active = activeAgentFeatures.has(feat.id);
-                          return (
-                            <button
-                              key={feat.id}
-                              onClick={() => toggleAgentFeature(feat.id)}
-                              title={feat.description}
-                              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                                active
-                                  ? "bg-accent/15 text-accent border border-accent/40"
-                                  : "bg-surface-2 text-muted border border-transparent hover:text-foreground"
-                              }`}
-                            >
-                              {active ? "\u2713" : "+"} {feat.label}
-                            </button>
-                          );
-                        })}
-                      </div>
+                <div className="flex gap-1.5 flex-wrap">
+                  {AGENT_FEATURES.map((feat) => {
+                    const active = activeAgentFeatures.has(feat.id);
+                    return (
+                      <button
+                        key={feat.id}
+                        onClick={() => toggleAgentFeature(feat.id)}
+                        title={feat.description}
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                          active
+                            ? "bg-accent/15 text-accent border border-accent/40"
+                            : "bg-surface-2 text-muted border border-transparent hover:text-foreground"
+                        }`}
+                      >
+                        {active ? "\u2713" : "+"} {feat.label}
+                      </button>
+                    );
+                  })}
+                </div>
 
-                      <p className="text-xs text-muted">{agentSnippets[activeAgentSnippet].description}</p>
-                      <CodeBlock tabs={agentSnippets[activeAgentSnippet].snippets} />
-                    </>
-                  );
-                })()}
+                <p className="text-xs text-muted">{agentSnippets[activeAgentSnippet].description}</p>
+                <CodeBlock tabs={agentSnippets[activeAgentSnippet].snippets} />
               </div>
 
               {/* Registration details */}

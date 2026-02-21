@@ -4,7 +4,7 @@ from web3 import Web3
 
 from .constants import (
     NETWORKS, DEFAULT_NETWORK, REGISTRY_ABI, DEFAULT_MAX_AGE_MS,
-    DEFAULT_CACHE_TTL_MS, NetworkName,
+    DEFAULT_CACHE_TTL_MS, ZERO_ADDRESS, NetworkName,
 )
 from .types import VerificationResult, AgentCredentials
 from ._signing import compute_body_hash, compute_message, recover_signer, address_to_agent_key
@@ -59,9 +59,13 @@ class SelfAgentVerifier:
         self, signature: str, timestamp: str,
         method: str, url: str, body: str | None = None,
     ) -> VerificationResult:
-        """Verify a signed agent request."""
+        """Verify a signed agent request.
+
+        Performs: timestamp freshness, ECDSA recovery, on-chain status,
+        provider check, and sybil check.
+        """
         empty = VerificationResult(
-            valid=False, agent_address="0x" + "0" * 40,
+            valid=False, agent_address=ZERO_ADDRESS,
             agent_key=b"\x00" * 32, agent_id=0, agent_count=0,
         )
 
@@ -207,6 +211,6 @@ class SelfAgentVerifier:
             return None
 
     def clear_cache(self) -> None:
-        """Clear both agent and provider caches."""
+        """Clear both agent status and provider address caches."""
         self._cache.clear()
         self._self_provider_cache = None

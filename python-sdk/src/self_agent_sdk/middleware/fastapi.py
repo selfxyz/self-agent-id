@@ -28,7 +28,7 @@ class AgentAuth:
         result = self._verifier.verify(
             signature=sig, timestamp=ts,
             method=request.method,
-            url=request.url.path,
+            url=str(request.url),
             body=body,
         )
         if not result.valid:
