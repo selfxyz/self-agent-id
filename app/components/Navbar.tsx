@@ -10,6 +10,7 @@ import { getNetwork, isNetworkReady } from "@/lib/network";
 const links = [
   { href: "/register", label: "Register" },
   { href: "/cli", label: "CLI" },
+  { href: "/api-docs", label: "API" },
   { href: "/my-agents", label: "My Agents" },
   { href: "/verify", label: "Verify" },
   { href: "/demo", label: "Demo" },
