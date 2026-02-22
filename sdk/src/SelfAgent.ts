@@ -10,6 +10,20 @@ import type { NetworkName } from "./constants";
 import type { A2AAgentCard, AgentSkill } from "./agentCard";
 import { buildAgentCard } from "./agentCard";
 import { computeSigningMessage } from "./signing";
+import type {
+  RegistrationRequest,
+  RegistrationSession,
+  DeregistrationRequest,
+  DeregistrationSession,
+  ApiAgentInfo,
+  ApiAgentsForHuman,
+} from "./registration-flow";
+import {
+  requestRegistration as _requestRegistration,
+  requestDeregistration as _requestDeregistration,
+  getAgentInfo as _getAgentInfo,
+  getAgentsForHuman as _getAgentsForHuman,
+} from "./registration-flow";
 
 export interface SelfAgentConfig {
   /** Agent's private key (hex, with or without 0x). Required unless signer is provided. */
@@ -271,5 +285,110 @@ export class SelfAgent {
     );
     const strength: number = await provider.verificationStrength();
     return Number(strength);
+  }
+
+  // ─── Registration & Deregistration (REST API) ─────────────────────────────
+
+  /**
+   * Request agent registration through the Self Agent ID REST API.
+   *
+   * Returns a session with a QR code / deep link for the human to scan,
+   * plus a `waitForCompletion()` method that polls until on-chain verification.
+   *
+   * ```ts
+   * const session = await SelfAgent.requestRegistration({
+   *   mode: "agent-identity",
+   *   network: "mainnet",
+   *   disclosures: { minimumAge: 18, ofac: true },
+   *   humanAddress: "0x...",
+   * });
+   *
+   * console.log(session.deepLink);       // open in Self app
+   * console.log(session.humanInstructions); // tell human what to do
+   *
+   * const result = await session.waitForCompletion();
+   * const agent = new SelfAgent({ privateKey: await session.exportKey() });
+   * ```
+   */
+  static async requestRegistration(
+    opts: RegistrationRequest
+  ): Promise<RegistrationSession> {
+    return _requestRegistration(opts);
+  }
+
+  /**
+   * Get agent info from the public REST API (no private key needed).
+   */
+  static async getAgentInfo(
+    agentId: number,
+    opts?: { network?: NetworkName; apiBase?: string }
+  ): Promise<ApiAgentInfo> {
+    return _getAgentInfo(agentId, opts);
+  }
+
+  /**
+   * Get all agents registered for a human address from the public REST API.
+   */
+  static async getAgentsForHuman(
+    address: string,
+    opts?: { network?: NetworkName; apiBase?: string }
+  ): Promise<ApiAgentsForHuman> {
+    return _getAgentsForHuman(address, opts);
+  }
+
+  /**
+   * Request deregistration for this agent through the Self Agent ID REST API.
+   *
+   * Returns a session with a QR code / deep link for the human to scan,
+   * plus a `waitForCompletion()` method that polls until on-chain removal.
+   *
+   * ```ts
+   * const session = await agent.requestDeregistration();
+   * console.log(session.deepLink);
+   * await session.waitForCompletion();
+   * ```
+   */
+  async requestDeregistration(
+    opts?: { apiBase?: string }
+  ): Promise<DeregistrationSession> {
+    const network = this.networkName();
+    return _requestDeregistration({
+      network,
+      agentAddress: this.wallet.address,
+      apiBase: opts?.apiBase,
+    });
+  }
+
+  /**
+   * Fetch this agent's credentials from the public REST API.
+   * Returns null if the agent is not registered or has no credentials.
+   */
+  async getCredentialsFromApi(
+    opts?: { apiBase?: string }
+  ): Promise<Record<string, unknown> | null> {
+    try {
+      const info = await this.getInfo();
+      if (info.agentId === 0n) return null;
+
+      const network = this.networkName();
+      const apiInfo = await _getAgentInfo(Number(info.agentId), {
+        network,
+        apiBase: opts?.apiBase,
+      });
+      return apiInfo.credentials ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Resolve the network name from the registry address */
+  private networkName(): NetworkName {
+    const registryAddr = (this.registry.target as string).toLowerCase();
+    for (const [name, config] of Object.entries(NETWORKS)) {
+      if (config.registryAddress.toLowerCase() === registryAddr) {
+        return name as NetworkName;
+      }
+    }
+    return DEFAULT_NETWORK;
   }
 }

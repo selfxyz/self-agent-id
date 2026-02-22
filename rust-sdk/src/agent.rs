@@ -13,6 +13,10 @@ use crate::agent_card::{
 use crate::constants::{
     headers, network_config, IAgentRegistry, IHumanProofProvider, NetworkName, DEFAULT_NETWORK,
 };
+use crate::registration_flow::{
+    DeregistrationRequest, DeregistrationSession, RegistrationError, RegistrationRequest,
+    RegistrationSession, DEFAULT_API_BASE,
+};
 
 /// Configuration for creating a [`SelfAgent`].
 #[derive(Debug, Clone)]
@@ -44,6 +48,8 @@ pub struct AgentInfo {
 /// For off-chain authentication, the agent signs each request with its private key.
 pub struct SelfAgent {
     signer: PrivateKeySigner,
+    private_key: String,
+    network_name: NetworkName,
     registry_address: Address,
     rpc_url: String,
     agent_key: B256,
@@ -53,7 +59,8 @@ pub struct SelfAgent {
 impl SelfAgent {
     /// Create a new agent instance.
     pub fn new(config: SelfAgentConfig) -> Result<Self, crate::Error> {
-        let net = network_config(config.network.unwrap_or(DEFAULT_NETWORK));
+        let network_name = config.network.unwrap_or(DEFAULT_NETWORK);
+        let net = network_config(network_name);
         let signer: PrivateKeySigner = config
             .private_key
             .parse()
@@ -62,6 +69,8 @@ impl SelfAgent {
 
         Ok(Self {
             signer,
+            private_key: config.private_key,
+            network_name,
             registry_address: config.registry_address.unwrap_or(net.registry_address),
             rpc_url: config.rpc_url.unwrap_or_else(|| net.rpc_url.to_string()),
             agent_key,
@@ -448,6 +457,80 @@ impl SelfAgent {
             .await
             .map_err(|e| crate::Error::RpcError(e.to_string()))?;
         Ok(strength)
+    }
+
+    // ─── Registration / Deregistration (REST API) ────────────────────────
+
+    /// Initiate agent registration via the REST API.
+    ///
+    /// Returns a [`RegistrationSession`] with a QR code URL and deep link
+    /// that the human operator must scan with the Self app.
+    pub async fn request_registration(
+        req: RegistrationRequest,
+        api_base: Option<&str>,
+    ) -> Result<RegistrationSession, RegistrationError> {
+        RegistrationSession::request(req, api_base).await
+    }
+
+    /// Query agent info via the REST API (no private key needed).
+    pub async fn get_agent_info_rest(
+        agent_id: u64,
+        network: NetworkName,
+        api_base: Option<&str>,
+    ) -> Result<serde_json::Value, RegistrationError> {
+        let base = api_base.unwrap_or(DEFAULT_API_BASE);
+        let chain_id: u64 = match network {
+            NetworkName::Mainnet => 42220,
+            NetworkName::Testnet => 11142220,
+        };
+        let resp = reqwest::get(format!("{base}/api/agent/info/{chain_id}/{agent_id}"))
+            .await
+            .map_err(|e| RegistrationError::Http(e.to_string()))?;
+        resp.json()
+            .await
+            .map_err(|e| RegistrationError::Http(e.to_string()))
+    }
+
+    /// Query all agents registered to a human address via the REST API.
+    pub async fn get_agents_for_human(
+        address: &str,
+        network: NetworkName,
+        api_base: Option<&str>,
+    ) -> Result<serde_json::Value, RegistrationError> {
+        let base = api_base.unwrap_or(DEFAULT_API_BASE);
+        let chain_id: u64 = match network {
+            NetworkName::Mainnet => 42220,
+            NetworkName::Testnet => 11142220,
+        };
+        let resp = reqwest::get(format!("{base}/api/agent/agents/{chain_id}/{address}"))
+            .await
+            .map_err(|e| RegistrationError::Http(e.to_string()))?;
+        resp.json()
+            .await
+            .map_err(|e| RegistrationError::Http(e.to_string()))
+    }
+
+    /// Initiate deregistration for this agent via the REST API.
+    ///
+    /// Returns a [`DeregistrationSession`] with a QR code URL that the
+    /// human operator must scan with the Self app to confirm removal.
+    pub async fn request_deregistration(
+        &self,
+        api_base: Option<&str>,
+    ) -> Result<DeregistrationSession, RegistrationError> {
+        let network_str = match self.network_name {
+            NetworkName::Mainnet => "mainnet",
+            NetworkName::Testnet => "testnet",
+        };
+        DeregistrationSession::request(
+            DeregistrationRequest {
+                network: network_str.to_string(),
+                agent_address: format!("{:#x}", self.signer.address()),
+                agent_private_key: self.private_key.clone(),
+            },
+            api_base,
+        )
+        .await
     }
 }
 

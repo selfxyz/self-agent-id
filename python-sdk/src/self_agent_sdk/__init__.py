@@ -19,6 +19,13 @@ from .registration import (
     build_advanced_deregister_user_data_ascii,
     build_wallet_free_register_user_data_ascii,
 )
+from .registration_flow import (
+    RegistrationSession,
+    RegistrationResult,
+    DeregistrationSession,
+    ExpiredSessionError,
+    DEFAULT_API_BASE,
+)
 
 __all__ = [
     "SelfAgent", "SelfAgentVerifier", "VerifierBuilder", "RateLimiter",
@@ -35,4 +42,9 @@ __all__ = [
     "build_advanced_register_user_data_ascii",
     "build_advanced_deregister_user_data_ascii",
     "build_wallet_free_register_user_data_ascii",
+    "RegistrationSession",
+    "RegistrationResult",
+    "DeregistrationSession",
+    "ExpiredSessionError",
+    "DEFAULT_API_BASE",
 ]

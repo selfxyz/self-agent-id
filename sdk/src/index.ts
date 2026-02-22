@@ -57,3 +57,21 @@ export {
   DEFAULT_RPC_URL,
 } from "./constants";
 export type { NetworkName } from "./constants";
+
+export {
+  requestRegistration,
+  requestDeregistration,
+  getAgentInfo,
+  getAgentsForHuman,
+  ExpiredSessionError,
+  RegistrationError,
+} from "./registration-flow";
+export type {
+  RegistrationRequest,
+  RegistrationSession,
+  RegistrationResult,
+  DeregistrationRequest,
+  DeregistrationSession,
+  ApiAgentInfo,
+  ApiAgentsForHuman,
+} from "./registration-flow";

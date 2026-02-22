@@ -14,6 +14,9 @@ from .agent_card import (
     get_provider_label, build_agent_card_dict,
 )
 from ._signing import compute_body_hash, compute_message, sign_message, address_to_agent_key
+from .registration_flow import (
+    DEFAULT_API_BASE, RegistrationSession, DeregistrationSession,
+)
 
 
 class SelfAgent:
@@ -35,7 +38,8 @@ class SelfAgent:
         registry_address: str | None = None,
         rpc_url: str | None = None,
     ):
-        net = NETWORKS[network or DEFAULT_NETWORK]
+        self._network_name: NetworkName = network or DEFAULT_NETWORK
+        net = NETWORKS[self._network_name]
         self._rpc_url = rpc_url or net["rpc_url"]
         self._registry_address = registry_address or net["registry_address"]
 
@@ -261,6 +265,139 @@ class SelfAgent:
             address=Web3.to_checksum_address(provider_addr), abi=PROVIDER_ABI,
         )
         return provider_contract.functions.verificationStrength().call()
+
+    # ─── Registration / Deregistration (REST API) ──────────────────────
+
+    @classmethod
+    def request_registration(
+        cls,
+        *,
+        mode: str = "agent-identity",
+        network: NetworkName = "mainnet",
+        disclosures: dict | None = None,
+        human_address: str | None = None,
+        agent_name: str | None = None,
+        agent_description: str | None = None,
+        api_base: str = DEFAULT_API_BASE,
+    ) -> RegistrationSession:
+        """Initiate agent registration via the REST API.
+
+        Returns a :class:`RegistrationSession` with a QR code URL and deep link
+        that the human operator must scan with the Self app.
+
+        Args:
+            mode: Registration mode (``"verified-wallet"``, ``"agent-identity"``,
+                ``"wallet-free"``, ``"smart-wallet"``).
+            network: ``"mainnet"`` or ``"testnet"``.
+            disclosures: Optional disclosure requirements (e.g.
+                ``{"minimumAge": 18, "ofac": True}``).
+            human_address: Human's wallet address (required for some modes).
+            agent_name: Display name stored on-chain.
+            agent_description: Description stored on-chain.
+            api_base: Base URL for the Self Agent ID API.
+        """
+        payload: dict = {
+            "mode": mode,
+            "network": network,
+            "disclosures": disclosures or {},
+        }
+        if human_address is not None:
+            payload["humanAddress"] = human_address
+        if agent_name is not None:
+            payload["agentName"] = agent_name
+        if agent_description is not None:
+            payload["agentDescription"] = agent_description
+
+        resp = httpx.post(f"{api_base}/api/agent/register", json=payload)
+        data = resp.json()
+        if "error" in data:
+            raise RuntimeError(data["error"])
+
+        return RegistrationSession(
+            session_token=data["sessionToken"],
+            stage=data["stage"],
+            qr_url=data.get("qrUrl", ""),
+            deep_link=data.get("deepLink", ""),
+            agent_address=data.get("agentAddress", ""),
+            expires_at=data.get("expiresAt", ""),
+            time_remaining_ms=data.get("timeRemainingMs", 0),
+            human_instructions=data.get("humanInstructions", []),
+            _api_base=api_base,
+        )
+
+    @classmethod
+    def get_agent_info(
+        cls,
+        agent_id: int,
+        *,
+        network: NetworkName = "mainnet",
+        api_base: str = DEFAULT_API_BASE,
+    ) -> dict:
+        """Query agent info via the REST API (no private key needed).
+
+        Args:
+            agent_id: On-chain agent ID.
+            network: ``"mainnet"`` or ``"testnet"``.
+            api_base: Base URL for the Self Agent ID API.
+
+        Returns:
+            Dict with agent info, credentials, and card data.
+        """
+        chain_id = 42220 if network == "mainnet" else 11142220
+        resp = httpx.get(f"{api_base}/api/agent/info/{chain_id}/{agent_id}")
+        return resp.json()
+
+    @classmethod
+    def get_agents_for_human(
+        cls,
+        address: str,
+        *,
+        network: NetworkName = "mainnet",
+        api_base: str = DEFAULT_API_BASE,
+    ) -> dict:
+        """Query all agents registered to a human address via the REST API.
+
+        Args:
+            address: Human's Ethereum address.
+            network: ``"mainnet"`` or ``"testnet"``.
+            api_base: Base URL for the Self Agent ID API.
+
+        Returns:
+            Dict with the list of agent IDs for the given human.
+        """
+        chain_id = 42220 if network == "mainnet" else 11142220
+        resp = httpx.get(f"{api_base}/api/agent/agents/{chain_id}/{address}")
+        return resp.json()
+
+    def request_deregistration(
+        self,
+        *,
+        api_base: str = DEFAULT_API_BASE,
+    ) -> DeregistrationSession:
+        """Initiate deregistration for this agent via the REST API.
+
+        Returns a :class:`DeregistrationSession` with a QR code URL that the
+        human operator must scan with the Self app to confirm removal.
+        """
+        resp = httpx.post(f"{api_base}/api/agent/deregister", json={
+            "network": self._network_name,
+            "agentAddress": self._account.address,
+            "agentPrivateKey": self._private_key,
+        })
+        data = resp.json()
+        if "error" in data:
+            raise RuntimeError(data["error"])
+
+        return DeregistrationSession(
+            session_token=data["sessionToken"],
+            stage=data["stage"],
+            qr_url=data.get("qrUrl", ""),
+            deep_link=data.get("deepLink", ""),
+            expires_at=data.get("expiresAt", ""),
+            time_remaining_ms=data.get("timeRemainingMs", 0),
+            human_instructions=data.get("humanInstructions", []),
+            _api_base=api_base,
+        )
 
     @staticmethod
     def _dict_to_card(d: dict) -> A2AAgentCard:

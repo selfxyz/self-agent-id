@@ -33,14 +33,17 @@ export function getCachedVerifier(
   if (existing) return existing;
 
   const network = getNetwork(networkId);
-  const verifier = new SelfAgentVerifier({
-    registryAddress: network.registryAddress,
-    rpcUrl: network.rpcUrl,
-    maxAgentsPerHuman: profile.maxAgentsPerHuman,
-    includeCredentials: profile.includeCredentials,
-    enableReplayProtection: profile.enableReplayProtection,
-    replayCacheMaxEntries: profile.replayCacheMaxEntries,
-  });
+  const builder = SelfAgentVerifier.create()
+    .registry(network.registryAddress)
+    .rpc(network.rpcUrl)
+    .sybilLimit(profile.maxAgentsPerHuman)
+    .replayProtection(profile.enableReplayProtection ?? true);
+
+  if (profile.includeCredentials) {
+    builder.includeCredentials();
+  }
+
+  const verifier = builder.build();
   verifierCache.set(key, verifier);
   return verifier;
 }

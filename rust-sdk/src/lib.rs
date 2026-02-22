@@ -36,6 +36,7 @@
 pub mod agent;
 pub mod agent_card;
 pub mod constants;
+pub mod registration_flow;
 pub mod verifier;
 
 #[cfg(feature = "axum")]
@@ -48,6 +49,10 @@ pub use agent_card::{
     get_provider_label, get_strength_color,
 };
 pub use constants::{headers, NetworkName};
+pub use registration_flow::{
+    DeregistrationRequest, DeregistrationSession, RegistrationError, RegistrationRequest,
+    RegistrationResult, RegistrationSession,
+};
 pub use verifier::{
     AgentCredentials, RateLimitConfig, SelfAgentVerifier, VerificationResult, VerifierBuilder,
     VerifierConfig, VerifierFromConfig,
