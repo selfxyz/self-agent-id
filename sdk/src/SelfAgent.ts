@@ -12,8 +12,10 @@ import { buildAgentCard } from "./agentCard";
 import { computeSigningMessage } from "./signing";
 
 export interface SelfAgentConfig {
-  /** Agent's private key (hex, with or without 0x) */
-  privateKey: string;
+  /** Agent's private key (hex, with or without 0x). Required unless signer is provided. */
+  privateKey?: string;
+  /** An ethers Signer (e.g. browser wallet). Required unless privateKey is provided. */
+  signer?: ethers.Signer;
   /** Network to use: "mainnet" (default) or "testnet" */
   network?: NetworkName;
   /** Override: custom registry address (takes precedence over network) */
@@ -53,14 +55,24 @@ export interface AgentInfo {
  * ```
  */
 export class SelfAgent {
-  private wallet: ethers.Wallet;
+  private wallet: ethers.Signer & { address: string };
   private registry: ethers.Contract;
   private _agentKey: string;
 
   constructor(config: SelfAgentConfig) {
+    if (!config.privateKey && !config.signer) {
+      throw new Error("Either privateKey or signer must be provided");
+    }
+
     const net = NETWORKS[config.network ?? DEFAULT_NETWORK];
     const provider = new ethers.JsonRpcProvider(config.rpcUrl ?? net.rpcUrl);
-    this.wallet = new ethers.Wallet(config.privateKey, provider);
+
+    if (config.signer) {
+      this.wallet = config.signer as ethers.Signer & { address: string };
+    } else {
+      this.wallet = new ethers.Wallet(config.privateKey!, provider);
+    }
+
     this.registry = new ethers.Contract(
       config.registryAddress ?? net.registryAddress,
       REGISTRY_ABI,

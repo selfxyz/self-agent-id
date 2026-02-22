@@ -1,8 +1,14 @@
 export { SelfAgent } from "./SelfAgent";
 export type { SelfAgentConfig, AgentInfo } from "./SelfAgent";
 
-export { SelfAgentVerifier } from "./SelfAgentVerifier";
-export type { VerifierConfig, VerificationResult, AgentCredentials } from "./SelfAgentVerifier";
+export { SelfAgentVerifier, VerifierBuilder } from "./SelfAgentVerifier";
+export type {
+  VerifierConfig,
+  VerificationResult,
+  AgentCredentials,
+  RateLimitConfig,
+  VerifierFromConfig,
+} from "./SelfAgentVerifier";
 
 export {
   getRegistrationConfigIndex,

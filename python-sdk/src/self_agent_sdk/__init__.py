@@ -1,5 +1,5 @@
 from .agent import SelfAgent
-from .verifier import SelfAgentVerifier
+from .verifier import SelfAgentVerifier, VerifierBuilder, RateLimiter
 from .constants import HEADERS, NETWORKS, DEFAULT_NETWORK, REGISTRY_ABI, PROVIDER_ABI
 from .types import (
     AgentInfo, VerificationResult, AgentCredentials,
@@ -21,7 +21,7 @@ from .registration import (
 )
 
 __all__ = [
-    "SelfAgent", "SelfAgentVerifier",
+    "SelfAgent", "SelfAgentVerifier", "VerifierBuilder", "RateLimiter",
     "HEADERS", "NETWORKS", "DEFAULT_NETWORK", "REGISTRY_ABI", "PROVIDER_ABI",
     "AgentInfo", "VerificationResult", "AgentCredentials",
     "A2AAgentCard", "SelfProtocolExtension", "TrustModel", "CardCredentials", "AgentSkill",

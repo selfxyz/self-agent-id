@@ -137,6 +137,10 @@ async fn sign_then_verify_roundtrip_recovers_correct_address() {
         require_self_provider: None,
         enable_replay_protection: None,
         replay_cache_max_entries: None,
+        minimum_age: None,
+        require_ofac_passed: None,
+        allowed_nationalities: None,
+        rate_limit_config: None,
     });
 
     let result = verifier

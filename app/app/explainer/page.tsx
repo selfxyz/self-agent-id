@@ -251,6 +251,9 @@ export default function ExplainerPage() {
               <code className="bg-surface-2 font-mono text-accent-2 px-3 py-1.5 rounded text-xs">
                 pip install selfxyz-agent-sdk
               </code>
+              <code className="bg-surface-2 font-mono text-accent-2 px-3 py-1.5 rounded text-xs">
+                cargo add self-agent-sdk
+              </code>
             </div>
             <Card className="border border-accent/30 bg-accent/5">
               <p className="text-sm text-muted">
@@ -582,8 +585,10 @@ export default function ExplainerPage() {
               <p className="text-muted mt-3">
                 <strong className="text-foreground">Fully composable</strong> &mdash; SDKs are available for{" "}
                 <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">TypeScript</code>,{" "}
-                <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">Python</code>, and raw implementations in any language.
-                Sign requests in Python, verify in TypeScript, or vice versa. The signing
+                <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">Python</code>, and{" "}
+                <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">Rust</code>, with the signing
+                protocol open for raw implementations in any language.
+                Sign requests in Python, verify in Rust, or vice versa. The signing
                 protocol is language-agnostic &mdash; all SDKs produce identical signatures.
               </p>
             </div>

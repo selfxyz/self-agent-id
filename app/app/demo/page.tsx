@@ -10,6 +10,8 @@ import {
   Eye,
   EyeOff,
   Fingerprint,
+  KeyRound,
+  Wallet,
   Loader2,
   AlertCircle,
   Rocket,
@@ -1005,10 +1007,22 @@ async function runGateTest(
     const deadline = Math.floor(Date.now() / 1000) + 300;
     log(id, "Constructing EIP-712 typed data (MetaVerify)");
     log(id, `domain: AgentDemoVerifier v1, chainId=${net.chainId}, deadline=${deadline}`);
-    const wallet = new ethers.Wallet(privateKey);
 
-    log(id, "Signing EIP-712 with agent key (secp256k1)...");
-    const eip712Signature = await wallet.signTypedData(
+    // Use raw wallet if private key available, otherwise prompt browser wallet
+    let eip712Signer: ethers.Signer & { signTypedData: typeof ethers.Wallet.prototype.signTypedData };
+    if (privateKey) {
+      eip712Signer = new ethers.Wallet(privateKey);
+      log(id, "Signing EIP-712 with agent key (secp256k1)...");
+    } else if (window.ethereum) {
+      const browserProvider = new ethers.BrowserProvider(window.ethereum);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      eip712Signer = await browserProvider.getSigner() as any;
+      log(id, "Signing EIP-712 via browser wallet...");
+    } else {
+      throw new Error("No private key or browser wallet available for EIP-712 signing.");
+    }
+
+    const eip712Signature = await eip712Signer.signTypedData(
       {
         name: "AgentDemoVerifier",
         version: "1",
@@ -1155,7 +1169,9 @@ export default function DemoPage() {
   const agentRef = useRef<SelfAgent | null>(null);
   const privateKeyRef = useRef<string>("");
   const chatUnlockedRef = useRef(false);
-  const [setupMode, setSetupMode] = useState<"private-key" | "passkey">("private-key");
+  const [setupMode, setSetupMode] = useState<
+    "private-key" | "passkey" | "wallet"
+  >("private-key");
   const [passkeyAvailable, setPasskeyAvailable] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [loadedViaPasskey, setLoadedViaPasskey] = useState(false);
@@ -1163,6 +1179,9 @@ export default function DemoPage() {
   const [passkeyHasSigningKey, setPasskeyHasSigningKey] = useState(false);
   const [passkeyKeyInput, setPasskeyKeyInput] = useState("");
   const [passkeyKeyError, setPasskeyKeyError] = useState("");
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [walletError, setWalletError] = useState("");
 
   // Unique session ID — regenerated on every page load so the AI treats
   // each visit as a fresh encounter with no memory of prior sessions.
@@ -1508,12 +1527,68 @@ export default function DemoPage() {
     }
   }, [state.agent, loadedViaPasskey, passkeyKeyInput, network, passkeyWalletAddress, log]);
 
+  const handleConnectWallet = useCallback(async () => {
+    setWalletLoading(true);
+    setWalletError("");
+    try {
+      if (!window.ethereum) {
+        throw new Error("No wallet detected. Install MetaMask or another browser wallet.");
+      }
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const address = await signer.getAddress();
+
+      // Derive agent key (simple mode: address = agent)
+      const agentKey = ethers.zeroPadValue(address, 32);
+
+      // Check on-chain
+      const rpcProvider = new ethers.JsonRpcProvider(network.rpcUrl);
+      const registry = new ethers.Contract(
+        network.registryAddress,
+        REGISTRY_ABI,
+        rpcProvider
+      );
+      const isVerified = await registry.isVerifiedAgent(agentKey);
+
+      if (!isVerified) {
+        throw new Error(
+          "This wallet is not registered as a verified agent. " +
+          "Register first using Simple (Verified Wallet) mode."
+        );
+      }
+
+      // Create SelfAgent with wallet signer
+      const agent = new SelfAgent({ signer, network: network.isTestnet ? "testnet" : "mainnet" });
+      agentRef.current = agent;
+      privateKeyRef.current = ""; // no raw key — wallet signs directly
+      setWalletAddress(address);
+
+      // Load agent info
+      const agentId = await registry.getAgentId(agentKey);
+
+      dispatch({
+        type: "SETUP_DONE",
+        agent: {
+          address,
+          agentKey,
+          agentId: agentId.toString(),
+          isVerified: true,
+        },
+      });
+    } catch (err) {
+      setWalletError(err instanceof Error ? err.message : "Failed to connect wallet");
+    } finally {
+      setWalletLoading(false);
+    }
+  }, [network]);
+
   // ---- Tests ----
 
   const runAllTests = useCallback(async () => {
     const agent = agentRef.current;
     const pk = privateKeyRef.current;
-    if (!state.agent || !agent || !pk) {
+    const hasWallet = !!walletAddress;
+    if (!state.agent || !agent || (!pk && !hasWallet)) {
       const setupError = loadedViaPasskey
         ? "Passkey mode needs this agent signing key. Add it once to run signed tests."
         : "No agent loaded — enter a private key above";
@@ -1542,7 +1617,7 @@ export default function DemoPage() {
       runPeerTest(agent, agentLabel, dispatch, log, network),
       runGateTest(agent, pk, agentLabel, dispatch, log, network),
     ]);
-  }, [state.agent, loadedViaPasskey, log, network]);
+  }, [state.agent, loadedViaPasskey, walletAddress, log, network]);
 
   const runFakeAgent = useCallback(async () => {
     const fakeWallet = ethers.Wallet.createRandom();
@@ -1665,19 +1740,20 @@ export default function DemoPage() {
             <button
               type="button"
               onClick={() => setSetupMode("private-key")}
-              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors flex items-center justify-center gap-1.5 ${
                 setupMode === "private-key"
                   ? "bg-surface-2 border-accent text-foreground"
                   : "bg-surface-1 border-border text-muted hover:text-foreground"
               }`}
             >
+              <KeyRound className="w-3.5 h-3.5" />
               Private Key
             </button>
             <button
               type="button"
               onClick={() => passkeyAvailable && setSetupMode("passkey")}
               disabled={!passkeyAvailable}
-              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors flex items-center justify-center gap-1.5 ${
                 !passkeyAvailable
                   ? "bg-surface-1 border-border text-muted/40 cursor-not-allowed"
                   : setupMode === "passkey"
@@ -1685,7 +1761,20 @@ export default function DemoPage() {
                     : "bg-surface-1 border-border text-muted hover:text-foreground"
               }`}
             >
+              <Fingerprint className="w-3.5 h-3.5" />
               Passkey
+            </button>
+            <button
+              type="button"
+              onClick={() => setSetupMode("wallet")}
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors flex items-center justify-center gap-1.5 ${
+                setupMode === "wallet"
+                  ? "bg-surface-2 border-accent text-foreground"
+                  : "bg-surface-1 border-border text-muted hover:text-foreground"
+              }`}
+            >
+              <Wallet className="w-3.5 h-3.5" />
+              Wallet
             </button>
           </div>
 
@@ -1738,7 +1827,7 @@ export default function DemoPage() {
                 </Button>
               </form>
             </>
-          ) : (
+          ) : setupMode === "passkey" ? (
             <div className="space-y-3">
               <p className="text-xs text-muted">
                 Sign in with your passkey to load the guardian-managed agent tied to your smart wallet.
@@ -1762,6 +1851,31 @@ export default function DemoPage() {
                 )}
               </Button>
             </div>
+          ) : (
+            <>
+              <p className="text-xs text-muted mb-4">
+                Connect your browser wallet to load a Simple (Verified Wallet)
+                mode agent. Your wallet address is your agent identity.
+              </p>
+              {walletError && (
+                <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4">
+                  <AlertCircle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-red-400">{walletError}</p>
+                </div>
+              )}
+              <Button
+                onClick={handleConnectWallet}
+                disabled={walletLoading}
+                className="w-full"
+              >
+                {walletLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                ) : (
+                  <Wallet className="w-4 h-4 mr-2" />
+                )}
+                {walletLoading ? "Connecting..." : "Connect Wallet"}
+              </Button>
+            </>
           )}
 
           {state.setupError && (
@@ -1784,6 +1898,8 @@ export default function DemoPage() {
                 setPasskeyHasSigningKey(false);
                 setPasskeyKeyInput("");
                 setPasskeyKeyError("");
+                setWalletAddress(null);
+                setWalletError("");
                 setSetupMode("private-key");
               }}
               className="ml-auto text-xs text-muted hover:text-foreground"
@@ -1856,7 +1972,7 @@ export default function DemoPage() {
             Object.values(state.tests).some((t) => t.status === "running") ||
             !state.agent ||
             !agentRef.current ||
-            !privateKeyRef.current
+            (!privateKeyRef.current && !walletAddress)
           }
           size="lg"
         >

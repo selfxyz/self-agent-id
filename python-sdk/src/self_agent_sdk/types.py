@@ -34,3 +34,4 @@ class VerificationResult:
     nullifier: int = 0          # Human's nullifier (for rate limiting by human identity)
     credentials: AgentCredentials | None = None
     error: str | None = None
+    retry_after_ms: int | None = None  # Only set when rate limited

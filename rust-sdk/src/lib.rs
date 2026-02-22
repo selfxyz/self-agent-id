@@ -48,7 +48,10 @@ pub use agent_card::{
     get_provider_label, get_strength_color,
 };
 pub use constants::{headers, NetworkName};
-pub use verifier::{AgentCredentials, SelfAgentVerifier, VerificationResult, VerifierConfig};
+pub use verifier::{
+    AgentCredentials, RateLimitConfig, SelfAgentVerifier, VerificationResult, VerifierBuilder,
+    VerifierConfig, VerifierFromConfig,
+};
 
 #[cfg(feature = "axum")]
 pub use middleware::{self_agent_auth, VerifiedAgent};

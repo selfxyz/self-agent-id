@@ -43,6 +43,38 @@ export interface VerifierConfig {
   enableReplayProtection?: boolean;
   /** Max replay cache entries before pruning (default: 10k) */
   replayCacheMaxEntries?: number;
+  /** Minimum age for agent's human (credential check, default: disabled) */
+  minimumAge?: number;
+  /** Require OFAC screening passed (credential check, default: false) */
+  requireOFACPassed?: boolean;
+  /** Require nationality in list (credential check, default: disabled) */
+  allowedNationalities?: string[];
+  /** In-memory per-agent rate limiting */
+  rateLimitConfig?: RateLimitConfig;
+}
+
+/** Rate limit configuration for per-agent request throttling */
+export interface RateLimitConfig {
+  /** Max requests per agent per minute */
+  perMinute?: number;
+  /** Max requests per agent per hour */
+  perHour?: number;
+}
+
+/** Config object for the `fromConfig` static factory */
+export interface VerifierFromConfig {
+  network?: NetworkName;
+  registryAddress?: string;
+  rpcUrl?: string;
+  requireAge?: number;
+  requireOFAC?: boolean;
+  requireNationality?: string[];
+  requireSelfProvider?: boolean;
+  sybilLimit?: number;
+  rateLimit?: RateLimitConfig;
+  replayProtection?: boolean;
+  maxAgeMs?: number;
+  cacheTtlMs?: number;
 }
 
 /** ZK-attested credential claims stored on-chain for an agent */
@@ -72,6 +104,8 @@ export interface VerificationResult {
   /** ZK-attested credentials (only populated when includeCredentials is true) */
   credentials?: AgentCredentials;
   error?: string;
+  /** Milliseconds until the rate limit resets (only set when rate limited) */
+  retryAfterMs?: number;
 }
 
 interface CacheEntry {
@@ -86,6 +120,197 @@ interface CacheEntry {
 interface ReplayEntry {
   expiresAt: number;
 }
+
+// ---------------------------------------------------------------------------
+// Rate limiter — sliding window, keyed by agent address
+// ---------------------------------------------------------------------------
+
+interface RateBucket {
+  timestamps: number[];
+}
+
+class RateLimiter {
+  private perMinute: number;
+  private perHour: number;
+  private buckets = new Map<string, RateBucket>();
+
+  constructor(config: RateLimitConfig) {
+    this.perMinute = config.perMinute ?? 0;
+    this.perHour = config.perHour ?? 0;
+  }
+
+  /** Returns null if allowed, or { error, retryAfterMs } if rate limited. */
+  check(agentAddress: string): { error: string; retryAfterMs: number } | null {
+    const now = Date.now();
+    const key = agentAddress.toLowerCase();
+    let bucket = this.buckets.get(key);
+    if (!bucket) {
+      bucket = { timestamps: [] };
+      this.buckets.set(key, bucket);
+    }
+
+    // Prune timestamps older than 1 hour (longest window we care about)
+    const oneHourAgo = now - 60 * 60 * 1000;
+    bucket.timestamps = bucket.timestamps.filter((t) => t > oneHourAgo);
+
+    // Check per-minute limit
+    if (this.perMinute > 0) {
+      const oneMinuteAgo = now - 60 * 1000;
+      const recentMinute = bucket.timestamps.filter((t) => t > oneMinuteAgo);
+      if (recentMinute.length >= this.perMinute) {
+        const oldest = recentMinute[0];
+        const retryAfterMs = oldest + 60 * 1000 - now;
+        return {
+          error: `Rate limit exceeded (${this.perMinute}/min)`,
+          retryAfterMs: Math.max(1, retryAfterMs),
+        };
+      }
+    }
+
+    // Check per-hour limit
+    if (this.perHour > 0) {
+      if (bucket.timestamps.length >= this.perHour) {
+        const oldest = bucket.timestamps[0];
+        const retryAfterMs = oldest + 60 * 60 * 1000 - now;
+        return {
+          error: `Rate limit exceeded (${this.perHour}/hr)`,
+          retryAfterMs: Math.max(1, retryAfterMs),
+        };
+      }
+    }
+
+    // Record this request
+    bucket.timestamps.push(now);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// VerifierBuilder — chainable builder API
+// ---------------------------------------------------------------------------
+
+export class VerifierBuilder {
+  private _network?: NetworkName;
+  private _registryAddress?: string;
+  private _rpcUrl?: string;
+  private _maxAgeMs?: number;
+  private _cacheTtlMs?: number;
+  private _maxAgentsPerHuman?: number;
+  private _includeCredentials?: boolean;
+  private _requireSelfProvider?: boolean;
+  private _enableReplayProtection?: boolean;
+  private _minimumAge?: number;
+  private _requireOFACPassed?: boolean;
+  private _allowedNationalities?: string[];
+  private _rateLimitConfig?: RateLimitConfig;
+
+  /** Set the network: "mainnet" or "testnet" */
+  network(name: NetworkName): this {
+    this._network = name;
+    return this;
+  }
+
+  /** Set a custom registry address */
+  registry(addr: string): this {
+    this._registryAddress = addr;
+    return this;
+  }
+
+  /** Set a custom RPC URL */
+  rpc(url: string): this {
+    this._rpcUrl = url;
+    return this;
+  }
+
+  /** Require the agent's human to be at least `n` years old */
+  requireAge(n: number): this {
+    this._minimumAge = n;
+    return this;
+  }
+
+  /** Require OFAC screening passed */
+  requireOFAC(): this {
+    this._requireOFACPassed = true;
+    return this;
+  }
+
+  /** Require nationality in the given list */
+  requireNationality(...codes: string[]): this {
+    this._allowedNationalities = codes;
+    return this;
+  }
+
+  /** Require Self Protocol as proof provider (default: on) */
+  requireSelfProvider(): this {
+    this._requireSelfProvider = true;
+    return this;
+  }
+
+  /** Max agents per human (default: 1) */
+  sybilLimit(n: number): this {
+    this._maxAgentsPerHuman = n;
+    return this;
+  }
+
+  /** Enable in-memory per-agent rate limiting */
+  rateLimit(config: RateLimitConfig): this {
+    this._rateLimitConfig = config;
+    return this;
+  }
+
+  /** Enable replay protection (default: on) */
+  replayProtection(enabled = true): this {
+    this._enableReplayProtection = enabled;
+    return this;
+  }
+
+  /** Include ZK credentials in verification result */
+  includeCredentials(): this {
+    this._includeCredentials = true;
+    return this;
+  }
+
+  /** Max signed timestamp age in milliseconds */
+  maxAge(ms: number): this {
+    this._maxAgeMs = ms;
+    return this;
+  }
+
+  /** On-chain cache TTL in milliseconds */
+  cacheTtl(ms: number): this {
+    this._cacheTtlMs = ms;
+    return this;
+  }
+
+  /** Build the SelfAgentVerifier instance */
+  build(): SelfAgentVerifier {
+    // Auto-enable credentials if any credential requirement is set
+    const needsCredentials =
+      this._minimumAge != null ||
+      this._requireOFACPassed ||
+      (this._allowedNationalities && this._allowedNationalities.length > 0);
+
+    return new SelfAgentVerifier({
+      network: this._network,
+      registryAddress: this._registryAddress,
+      rpcUrl: this._rpcUrl,
+      maxAgeMs: this._maxAgeMs,
+      cacheTtlMs: this._cacheTtlMs,
+      maxAgentsPerHuman: this._maxAgentsPerHuman,
+      includeCredentials: needsCredentials || this._includeCredentials || undefined,
+      requireSelfProvider: this._requireSelfProvider,
+      enableReplayProtection: this._enableReplayProtection,
+      minimumAge: this._minimumAge,
+      requireOFACPassed: this._requireOFACPassed,
+      allowedNationalities: this._allowedNationalities,
+      rateLimitConfig: this._rateLimitConfig,
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SelfAgentVerifier
+// ---------------------------------------------------------------------------
 
 /**
  * Service-side verifier for Self Agent ID requests.
@@ -109,6 +334,21 @@ interface ReplayEntry {
  * // Testnet
  * const verifier = new SelfAgentVerifier({ network: "testnet" });
  *
+ * // Chainable builder
+ * const verifier = SelfAgentVerifier.create()
+ *   .network("testnet")
+ *   .requireAge(18)
+ *   .requireOFAC()
+ *   .rateLimit({ perMinute: 10 })
+ *   .build();
+ *
+ * // From config object
+ * const verifier = SelfAgentVerifier.fromConfig({
+ *   network: "testnet",
+ *   requireAge: 18,
+ *   requireOFAC: true,
+ * });
+ *
  * const result = await verifier.verify({
  *   signature: req.headers["x-self-agent-signature"],
  *   timestamp: req.headers["x-self-agent-timestamp"],
@@ -131,6 +371,10 @@ export class SelfAgentVerifier {
   private requireSelfProvider: boolean;
   private enableReplayProtection: boolean;
   private replayCacheMaxEntries: number;
+  private minimumAge: number | undefined;
+  private requireOFACPassed: boolean;
+  private allowedNationalities: string[] | undefined;
+  private rateLimiter: RateLimiter | null;
   private cache = new Map<string, CacheEntry>();
   private replayCache = new Map<string, ReplayEntry>();
   private selfProviderCache: { address: string; expiresAt: number } | null = null;
@@ -150,6 +394,40 @@ export class SelfAgentVerifier {
     this.requireSelfProvider = config.requireSelfProvider ?? true;
     this.enableReplayProtection = config.enableReplayProtection ?? true;
     this.replayCacheMaxEntries = config.replayCacheMaxEntries ?? 10_000;
+    this.minimumAge = config.minimumAge;
+    this.requireOFACPassed = config.requireOFACPassed ?? false;
+    this.allowedNationalities = config.allowedNationalities;
+    this.rateLimiter = config.rateLimitConfig ? new RateLimiter(config.rateLimitConfig) : null;
+  }
+
+  /** Create a chainable builder for configuring a verifier */
+  static create(): VerifierBuilder {
+    return new VerifierBuilder();
+  }
+
+  /** Create a verifier from a flat config object */
+  static fromConfig(cfg: VerifierFromConfig): SelfAgentVerifier {
+    // Auto-enable credentials if any credential requirement is set
+    const needsCredentials =
+      cfg.requireAge != null ||
+      cfg.requireOFAC ||
+      (cfg.requireNationality && cfg.requireNationality.length > 0);
+
+    return new SelfAgentVerifier({
+      network: cfg.network,
+      registryAddress: cfg.registryAddress,
+      rpcUrl: cfg.rpcUrl,
+      maxAgeMs: cfg.maxAgeMs,
+      cacheTtlMs: cfg.cacheTtlMs,
+      maxAgentsPerHuman: cfg.sybilLimit,
+      includeCredentials: needsCredentials || undefined,
+      requireSelfProvider: cfg.requireSelfProvider,
+      enableReplayProtection: cfg.replayProtection,
+      minimumAge: cfg.requireAge,
+      requireOFACPassed: cfg.requireOFAC,
+      allowedNationalities: cfg.requireNationality,
+      rateLimitConfig: cfg.rateLimit,
+    });
   }
 
   /**
@@ -271,6 +549,68 @@ export class SelfAgentVerifier {
     let credentials: AgentCredentials | undefined;
     if (this.includeCredentials && agentId > 0n) {
       credentials = await this.fetchCredentials(agentId);
+    }
+
+    // 10. Credential checks (post-verify — only if credentials were fetched)
+    if (credentials) {
+      if (this.minimumAge != null && credentials.olderThan < BigInt(this.minimumAge)) {
+        return {
+          valid: false,
+          agentAddress: signerAddress,
+          agentKey,
+          agentId,
+          agentCount,
+          nullifier,
+          credentials,
+          error: `Agent's human does not meet minimum age (required: ${this.minimumAge}, got: ${credentials.olderThan})`,
+        };
+      }
+
+      if (this.requireOFACPassed && !credentials.ofac?.[0]) {
+        return {
+          valid: false,
+          agentAddress: signerAddress,
+          agentKey,
+          agentId,
+          agentCount,
+          nullifier,
+          credentials,
+          error: "Agent's human did not pass OFAC screening",
+        };
+      }
+
+      if (this.allowedNationalities && this.allowedNationalities.length > 0) {
+        if (!this.allowedNationalities.includes(credentials.nationality)) {
+          return {
+            valid: false,
+            agentAddress: signerAddress,
+            agentKey,
+            agentId,
+            agentCount,
+            nullifier,
+            credentials,
+            error: `Nationality "${credentials.nationality}" not in allowed list`,
+          };
+        }
+      }
+    }
+
+    // 11. Rate limiting (per-agent, in-memory sliding window)
+    if (this.rateLimiter) {
+      const limited = this.rateLimiter.check(signerAddress);
+      if (limited) {
+        return {
+          valid: false,
+          agentAddress: signerAddress,
+          agentKey,
+          agentId,
+          agentCount,
+          nullifier,
+          credentials,
+          error: limited.error,
+          retryAfterMs: limited.retryAfterMs,
+        };
+      }
     }
 
     return { valid: true, agentAddress: signerAddress, agentKey, agentId, agentCount, nullifier, credentials };
@@ -458,7 +798,12 @@ export class SelfAgentVerifier {
       });
 
       if (!result.valid) {
-        res.status(401).json({ error: result.error });
+        const status = result.retryAfterMs ? 429 : 401;
+        const body: Record<string, unknown> = { error: result.error };
+        if (result.retryAfterMs) {
+          body.retryAfterMs = result.retryAfterMs;
+        }
+        res.status(status).json(body);
         return;
       }
 
