@@ -14,6 +14,7 @@ const links = [
   { href: "/my-agents", label: "My Agents" },
   { href: "/verify", label: "Verify" },
   { href: "/demo", label: "Demo" },
+  { href: "/integration", label: "Integrate" },
   { href: "/explainer", label: "How It Works" },
   { href: "/erc8004", label: "ERC-8004" },
 ];

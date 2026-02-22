@@ -1,66 +1,54 @@
-## Foundry
+# Self Agent ID — Smart Contracts
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+On-chain AI agent registry with ERC-8004 proof-of-human extension, deployed on Celo.
 
-Foundry consists of:
+## Contracts
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+| Contract | Description |
+|----------|-------------|
+| `SelfAgentRegistry` | Core registry — ERC-721 soulbound NFTs, 4 registration modes (simple/advanced/wallet-free/smart-wallet), ZK-attested credentials, multi-config verification |
+| `SelfHumanProofProvider` | Proof provider — connects to Self Protocol Hub V2, verifies ZK proofs, manages 6 verification configs (age 0/18/21 x OFAC off/on) |
+| `AgentDemoVerifier` | Demo contract — EIP-712 meta-transaction verifier for gasless on-chain agent verification |
+| `AgentGate` | Access gate — `onlyVerifiedAgent` modifier for gating contract functions to verified agents |
+| `SelfReputationProvider` | Reputation — verification strength scoring from proof providers |
+| `SelfValidationProvider` | Validation — real-time proof status and freshness checks |
+| `LocalRegistryHarness` | Test harness — local mock for testing without Hub V2 dependency |
 
-## Documentation
+## Deployed Addresses
 
-https://book.getfoundry.sh/
+### Celo Mainnet (42220)
 
-## Usage
+| Contract | Address |
+|----------|---------|
+| Registry | `0x62E37d0f6c5f67784b8828B3dF68BCDbB2e55095` |
+| Provider | `0x0B43f87aE9F2AE2a50b3698573B614fc6643A084` |
+| DemoVerifier | `0x063c3bc21F0C4A6c51A84B1dA6de6510508E4F1e` |
+| AgentGate | `0x2d710190e018fCf006E38eEB869b25C5F7d82424` |
 
-### Build
+### Celo Sepolia (11142220)
 
-```shell
-$ forge build
-```
+| Contract | Address |
+|----------|---------|
+| Registry | `0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b` |
+| Provider | `0x69Da18CF4Ac27121FD99cEB06e38c3DC78F363f4` |
+| DemoVerifier | `0x26e05bF632fb5bACB665ab014240EAC1413dAE35` |
+| AgentGate | `0x71a025e0e338EAbcB45154F8b8CA50b41e7A0577` |
 
-### Test
+## Build & Test
 
-```shell
-$ forge test
-```
-
-### Format
-
-```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
+Requires [Foundry](https://book.getfoundry.sh/).
 
 ```shell
-$ anvil
+forge build --evm-version cancun
+forge test --evm-version cancun
 ```
 
-### Deploy
+The `--evm-version cancun` flag is required because Self Protocol Hub V2 uses `PUSH0`.
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
+## Key Design Decisions
 
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+- **Soulbound NFTs**: Agent tokens are non-transferable (mint/burn only)
+- **Async verification**: ZK proof verification happens via Hub V2 callback, not in the registration tx
+- **Multi-config**: 6 verification configs (age thresholds x OFAC screening), selected via `userDefinedData[1]`
+- **Guardian system**: Wallet-free and smart-wallet modes support optional guardians for agent revocation
+- **Nullifier-based sybil resistance**: Each human maps to a unique nullifier; `sameHuman()` and `getAgentCountForHuman()` enable per-service sybil policies

@@ -1730,6 +1730,13 @@ export default function DemoPage() {
           Test Self Agent ID integration end-to-end. Load your registered agent,
           then run real verification tests against on-chain contracts and service endpoints.
         </p>
+        <p className="text-xs text-subtle max-w-lg mx-auto mt-2">
+          Don&apos;t have an agent yet?{" "}
+          <a href="/register" className="text-accent hover:text-accent-2 underline underline-offset-2">Register via dApp</a>
+          {" "}or use the{" "}
+          <a href="/cli" className="text-accent hover:text-accent-2 underline underline-offset-2">CLI</a>
+          {" "}for terminal and agent-guided workflows.
+        </p>
       </div>
 
       {/* Setup / Agent Info Card */}

@@ -282,7 +282,7 @@ const ENDPOINT_GROUPS: GroupDef[] = [
   {
     name: "Query",
     description:
-      "Read-only endpoints for querying on-chain agent data. No session token required. Use chain ID 42220 for mainnet or 44787 for Celo Sepolia testnet.",
+      "Read-only endpoints for querying on-chain agent data. No session token required. Use chain ID 42220 for mainnet or 11142220 for Celo Sepolia testnet.",
     endpoints: [
       {
         method: "GET",
@@ -296,7 +296,7 @@ const ENDPOINT_GROUPS: GroupDef[] = [
             in: "path",
             type: "number",
             required: true,
-            description: "42220 (mainnet) or 44787 (testnet)",
+            description: "42220 (mainnet) or 11142220 (testnet)",
           },
           {
             name: "agentId",
@@ -312,7 +312,7 @@ const ENDPOINT_GROUPS: GroupDef[] = [
             description: "Agent details",
             example: `{
   "agentId": 5,
-  "chainId": 44787,
+  "chainId": 11142220,
   "agentAddress": "0x83fa...ff00",
   "isVerified": true,
   "proofProvider": "0x69Da...9b80c",
@@ -342,7 +342,7 @@ const ENDPOINT_GROUPS: GroupDef[] = [
             in: "path",
             type: "number",
             required: true,
-            description: "42220 (mainnet) or 44787 (testnet)",
+            description: "42220 (mainnet) or 11142220 (testnet)",
           },
           {
             name: "address",
@@ -358,7 +358,7 @@ const ENDPOINT_GROUPS: GroupDef[] = [
             description: "List of agent IDs",
             example: `{
   "agents": [5, 12, 37],
-  "chainId": 44787,
+  "chainId": 11142220,
   "humanAddress": "0xabc..."
 }`,
           },
@@ -376,7 +376,7 @@ const ENDPOINT_GROUPS: GroupDef[] = [
             in: "path",
             type: "number",
             required: true,
-            description: "42220 (mainnet) or 44787 (testnet)",
+            description: "42220 (mainnet) or 11142220 (testnet)",
           },
           {
             name: "agentId",

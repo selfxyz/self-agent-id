@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import MatrixText from "@/components/MatrixText";
 import { ethers } from "ethers";
 import dynamic from "next/dynamic";
@@ -793,6 +794,18 @@ export default function RegisterPage() {
               </Button>
             </div>
           )}
+
+          {/* CLI / Agent-guided registration */}
+          <Card className="w-full border border-accent/30 bg-accent/5">
+            <p className="text-sm text-muted">
+              Prefer terminal workflows? Use the{" "}
+              <Link href="/cli" className="text-accent hover:text-accent-2 underline underline-offset-2 font-medium">
+                CLI
+              </Link>{" "}
+              to register from your terminal, or let your backend orchestrate registration via the{" "}
+              <strong className="text-foreground">agent-guided flow</strong> (recommended for automated onboarding).
+            </p>
+          </Card>
 
           {errorMessage && (
             <p className="text-sm text-accent-error text-center">{errorMessage}</p>

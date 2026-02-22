@@ -1,9 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
 import Link from "next/link";
 import MatrixText from "@/components/MatrixText";
-import { ethers } from "ethers";
 import {
   Users,
   Lock,
@@ -16,93 +14,18 @@ import {
   Fingerprint,
   Wallet,
   Key,
-  Search,
   ExternalLink,
   Code2,
-  Cpu,
 } from "lucide-react";
 import CodeBlock from "@/components/CodeBlock";
-import { getServiceSnippets, getAgentSnippets, SERVICE_FEATURES, AGENT_FEATURES } from "@/lib/snippets";
-import { REGISTRY_ABI } from "@/lib/constants";
 import { useNetwork } from "@/lib/NetworkContext";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 
 
-type VerifyStatus = "idle" | "loading" | "verified" | "not-registered" | "error";
-
 export default function ExplainerPage() {
   const { network } = useNetwork();
-  const [pubKeyInput, setPubKeyInput] = useState("");
-  const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>("idle");
-  const [verifyError, setVerifyError] = useState("");
-  const [activeUseCase, setActiveUseCase] = useState(0);
-  const [activeAgentSnippet, setActiveAgentSnippet] = useState(0);
-  const [activeServiceFeatures, setActiveServiceFeatures] = useState<Set<string>>(new Set());
-  const [activeAgentFeatures, setActiveAgentFeatures] = useState<Set<string>>(new Set());
-
-  const toggleServiceFeature = (id: string) => {
-    setActiveServiceFeatures((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleAgentFeature = (id: string) => {
-    setActiveAgentFeatures((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const snippets = useMemo(
-    () => getServiceSnippets(network.registryAddress, network.rpcUrl, activeServiceFeatures),
-    [network.registryAddress, network.rpcUrl, activeServiceFeatures]
-  );
-  const agentSnippets = useMemo(
-    () => getAgentSnippets(network.registryAddress, network.rpcUrl, activeAgentFeatures),
-    [network.registryAddress, network.rpcUrl, activeAgentFeatures]
-  );
-
-  const handleVerify = async () => {
-    const trimmed = pubKeyInput.trim();
-    if (!trimmed) return;
-
-    setVerifyStatus("loading");
-    setVerifyError("");
-
-    try {
-      const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-      const registry = new ethers.Contract(network.registryAddress, REGISTRY_ABI, provider);
-
-      let key = trimmed;
-      if (!key.startsWith("0x")) {
-        key = "0x" + key;
-      }
-
-      let keyHash: string;
-      if (key.length === 66) {
-        keyHash = key;
-      } else if (key.length === 42) {
-        keyHash = ethers.zeroPadValue(key, 32);
-      } else {
-        setVerifyStatus("error");
-        setVerifyError("Enter an address (0x + 40 hex) or bytes32 key (0x + 64 hex).");
-        return;
-      }
-
-      const isVerified: boolean = await registry.isVerifiedAgent(keyHash);
-      setVerifyStatus(isVerified ? "verified" : "not-registered");
-    } catch (err: unknown) {
-      setVerifyStatus("error");
-      setVerifyError(err instanceof Error ? err.message : "Failed to query contract");
-    }
-  };
 
   return (
     <main className="min-h-screen">
@@ -123,9 +46,9 @@ export default function ExplainerPage() {
             &mdash; without revealing who that human is.
           </p>
           <div className="flex flex-col sm:flex-row gap-3">
-            <a href="#demo">
-              <Button variant="primary" size="lg">Try the Demo</Button>
-            </a>
+            <Link href="/integration">
+              <Button variant="primary" size="lg">Integration Guide</Button>
+            </Link>
             <a href="#spec">
               <Button variant="secondary" size="lg">Read the Spec</Button>
             </a>
@@ -231,154 +154,27 @@ export default function ExplainerPage() {
         </div>
       </section>
 
-      {/* ───────────────────── 3b. Integration Guide ──────────────────────── */}
-      <section className="px-6 py-20">
-        <div className="max-w-4xl mx-auto space-y-8">
-          {/* Service developer snippets */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
+      {/* ───────────────────── CTA: Integration Guide ──────────────────────── */}
+      <section className="px-6 py-12">
+        <div className="max-w-4xl mx-auto">
+          <Card className="border border-accent/30 bg-accent/5 text-center">
+            <div className="flex items-center justify-center gap-2 mb-2">
               <Code2 size={20} className="text-accent" />
-              <h2 className="text-3xl font-bold">Integration Guide for Developers</h2>
+              <p className="font-bold text-lg">Ready to Integrate?</p>
             </div>
-            <p className="text-sm text-muted">
-              These code snippets are for <strong className="text-foreground">service developers</strong> who want to verify
-              agents in their applications. Pre-filled with the deployed contract address.
+            <p className="text-sm text-muted mb-4 max-w-lg mx-auto">
+              Get code snippets for verifying agents in your service, authenticating your agent with services,
+              and using the CLI for terminal workflows &mdash; in TypeScript, Python, and Rust.
             </p>
-            <div className="flex gap-3 flex-wrap">
-              <code className="bg-surface-2 font-mono text-accent-2 px-3 py-1.5 rounded text-xs">
-                npm install @selfxyz/agent-sdk
-              </code>
-              <code className="bg-surface-2 font-mono text-accent-2 px-3 py-1.5 rounded text-xs">
-                pip install selfxyz-agent-sdk
-              </code>
-              <code className="bg-surface-2 font-mono text-accent-2 px-3 py-1.5 rounded text-xs">
-                cargo add self-agent-sdk
-              </code>
-            </div>
-            <Card className="border border-accent/30 bg-accent/5">
-              <p className="text-sm text-muted">
-                Prefer terminal onboarding? Use the CLI flow for human-guided registration or backend-orchestrated agent onboarding.
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2 items-center">
-                <code className="bg-surface-2 font-mono text-accent-2 px-2 py-1 rounded text-xs">
-                  self-agent register init --mode agent-identity --human-address 0x...
-                </code>
-                <Link href="/cli" className="text-xs text-accent hover:text-accent-2 underline underline-offset-2">
-                  Open CLI Quickstart
-                </Link>
-              </div>
-            </Card>
-
-            <div className="flex gap-2 flex-wrap">
-              {snippets.map((uc, i) => (
-                <button
-                  key={uc.title}
-                  onClick={() => setActiveUseCase(i)}
-                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors border ${
-                    i === activeUseCase
-                      ? "bg-gradient-to-r from-accent to-accent-2 text-white border-transparent"
-                      : "bg-surface-1 text-foreground border-border hover:bg-surface-2"
-                  }`}
-                >
-                  {uc.title}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex gap-1.5 flex-wrap">
-              {SERVICE_FEATURES.map((feat) => {
-                const active = activeServiceFeatures.has(feat.id);
-                return (
-                  <button
-                    key={feat.id}
-                    onClick={() => toggleServiceFeature(feat.id)}
-                    title={feat.description}
-                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                      active
-                        ? "bg-accent/15 text-accent border border-accent/40"
-                        : "bg-surface-2 text-muted border border-transparent hover:text-foreground"
-                    }`}
-                  >
-                    {active ? "\u2713" : "+"} {feat.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <p className="text-sm text-muted">
-              {snippets[activeUseCase].description}
-            </p>
-            <p className="text-xs text-muted">
-              Security default: <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">requireSelfProvider: true</code>.
-              Turning this off accepts any approved proof provider, not only Self.
-            </p>
-            <p className="text-xs text-subtle font-mono">
-              {snippets[activeUseCase].flow}
-            </p>
-            <CodeBlock tabs={snippets[activeUseCase].snippets} />
-          </div>
-
-          {/* Agent operator snippets */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Cpu size={20} className="text-accent" />
-              <h2 className="text-3xl font-bold">How to Use Your Agent</h2>
-            </div>
-            <p className="text-sm text-muted">
-              If you are the <strong className="text-foreground">agent operator</strong>, use these snippets to
-              authenticate your agent with services or submit on-chain transactions.
-              Set <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">AGENT_PRIVATE_KEY</code> in
-              your agent&apos;s environment first.
-            </p>
-            <p className="text-xs text-muted">
-              CLI option: run registration from terminal and hand off browser proof at{" "}
-              <Link href="/cli" className="text-accent hover:text-accent-2 underline underline-offset-2">
-                /cli
+            <div className="flex justify-center gap-3">
+              <Link href="/integration">
+                <Button variant="primary">Integration Guide</Button>
               </Link>
-              .
-            </p>
-
-            <div className="flex gap-2 flex-wrap">
-              {agentSnippets.map((snippet, i) => (
-                <button
-                  key={snippet.title}
-                  onClick={() => setActiveAgentSnippet(i)}
-                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors border ${
-                    i === activeAgentSnippet
-                      ? "bg-gradient-to-r from-accent to-accent-2 text-white border-transparent"
-                      : "bg-surface-1 text-foreground border-border hover:bg-surface-2"
-                  }`}
-                >
-                  {snippet.title}
-                </button>
-              ))}
+              <Link href="/demo">
+                <Button variant="secondary">Try the Demo</Button>
+              </Link>
             </div>
-
-            <div className="flex gap-1.5 flex-wrap">
-              {AGENT_FEATURES.map((feat) => {
-                const active = activeAgentFeatures.has(feat.id);
-                return (
-                  <button
-                    key={feat.id}
-                    onClick={() => toggleAgentFeature(feat.id)}
-                    title={feat.description}
-                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                      active
-                        ? "bg-accent/15 text-accent border border-accent/40"
-                        : "bg-surface-2 text-muted border border-transparent hover:text-foreground"
-                    }`}
-                  >
-                    {active ? "\u2713" : "+"} {feat.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <p className="text-sm text-muted">
-              {agentSnippets[activeAgentSnippet].description}
-            </p>
-            <CodeBlock tabs={agentSnippets[activeAgentSnippet].snippets} />
-          </div>
+          </Card>
         </div>
       </section>
 
@@ -726,68 +522,6 @@ require(score >= 80, "Insufficient verification");`}</pre>
                 </div>
               </div>
             </div>
-          </Card>
-        </div>
-      </section>
-
-      {/* ───────────────────────── 5. Live Demo ───────────────────────── */}
-      <section id="demo" className="bg-surface-1 px-6 py-20">
-        <div className="max-w-2xl mx-auto">
-          <h2 className="text-3xl font-bold text-center mb-4">Live Demo</h2>
-          <p className="text-center text-muted mb-10">
-            Register a new agent or verify an existing one on Celo.
-          </p>
-
-          <div className="flex justify-center mb-10">
-            <Link href="/register">
-              <Button variant="primary" size="lg">Register an Agent</Button>
-            </Link>
-          </div>
-
-          {/* Inline verify widget */}
-          <Card>
-            <div className="flex items-center gap-2 mb-4">
-              <Search size={18} className="text-accent" />
-              <h3 className="font-bold text-lg">Verify an Agent</h3>
-            </div>
-            <p className="text-sm text-muted mb-4">
-              Paste an agent address or bytes32 key to check its on-chain status.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 mb-4">
-              <input
-                type="text"
-                placeholder="0x... (address or bytes32)"
-                value={pubKeyInput}
-                onChange={(e) => {
-                  setPubKeyInput(e.target.value);
-                  setVerifyStatus("idle");
-                }}
-                className="flex-1 px-4 py-3 bg-surface-2 border border-border rounded-lg text-sm font-mono focus:border-accent"
-              />
-              <Button
-                onClick={handleVerify}
-                disabled={verifyStatus === "loading"}
-                variant="primary"
-              >
-                {verifyStatus === "loading" ? "Checking..." : "Verify"}
-              </Button>
-            </div>
-
-            {verifyStatus === "verified" && (
-              <div className="bg-accent-success/10 border border-accent-success/20 text-accent-success rounded-lg px-4 py-3 text-sm">
-                Verified &mdash; this agent is registered and human-backed.
-              </div>
-            )}
-            {verifyStatus === "not-registered" && (
-              <div className="bg-accent-warn/10 border border-accent-warn/20 text-accent-warn rounded-lg px-4 py-3 text-sm">
-                Not registered &mdash; this public key has no verified agent entry.
-              </div>
-            )}
-            {verifyStatus === "error" && (
-              <div className="bg-accent-error/10 border border-accent-error/20 text-accent-error rounded-lg px-4 py-3 text-sm">
-                Error: {verifyError}
-              </div>
-            )}
           </Card>
         </div>
       </section>
