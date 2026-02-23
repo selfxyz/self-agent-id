@@ -40,10 +40,14 @@ Requires [Foundry](https://book.getfoundry.sh/).
 
 ```shell
 forge build --evm-version cancun
-forge test --evm-version cancun
+./scripts/test.sh
 ```
 
 The `--evm-version cancun` flag is required because Self Protocol Hub V2 uses `PUSH0`.
+
+`./scripts/test.sh` runs `forge test --offline` by default to avoid a known Foundry
+panic in some environments when resolving external signature metadata.
+Set `SELF_AGENT_CONTRACTS_ONLINE=1` to force the online `forge test` path.
 
 ## Key Design Decisions
 

@@ -18,6 +18,25 @@ from .registration_flow import (
     DEFAULT_API_BASE, RegistrationSession, DeregistrationSession,
 )
 
+def _api_json_or_raise(resp: httpx.Response, fallback_message: str) -> dict:
+    """Parse API JSON and raise RuntimeError on HTTP or API-level errors."""
+    try:
+        data = resp.json()
+    except Exception as exc:
+        raise RuntimeError(f"{fallback_message}: invalid JSON response") from exc
+
+    if not isinstance(data, dict):
+        raise RuntimeError(f"{fallback_message}: unexpected response shape")
+
+    if not resp.is_success:
+        message = data.get("error") if isinstance(data.get("error"), str) else f"HTTP {resp.status_code}"
+        raise RuntimeError(message)
+
+    if isinstance(data.get("error"), str):
+        raise RuntimeError(data["error"])
+
+    return data
+
 
 class SelfAgent:
     """
@@ -309,9 +328,7 @@ class SelfAgent:
             payload["agentDescription"] = agent_description
 
         resp = httpx.post(f"{api_base}/api/agent/register", json=payload)
-        data = resp.json()
-        if "error" in data:
-            raise RuntimeError(data["error"])
+        data = _api_json_or_raise(resp, "Registration request failed")
 
         return RegistrationSession(
             session_token=data["sessionToken"],
@@ -345,7 +362,7 @@ class SelfAgent:
         """
         chain_id = 42220 if network == "mainnet" else 11142220
         resp = httpx.get(f"{api_base}/api/agent/info/{chain_id}/{agent_id}")
-        return resp.json()
+        return _api_json_or_raise(resp, "Agent info request failed")
 
     @classmethod
     def get_agents_for_human(
@@ -367,7 +384,7 @@ class SelfAgent:
         """
         chain_id = 42220 if network == "mainnet" else 11142220
         resp = httpx.get(f"{api_base}/api/agent/agents/{chain_id}/{address}")
-        return resp.json()
+        return _api_json_or_raise(resp, "Agents-for-human request failed")
 
     def request_deregistration(
         self,
@@ -384,9 +401,7 @@ class SelfAgent:
             "agentAddress": self._account.address,
             "agentPrivateKey": self._private_key,
         })
-        data = resp.json()
-        if "error" in data:
-            raise RuntimeError(data["error"])
+        data = _api_json_or_raise(resp, "Deregistration request failed")
 
         return DeregistrationSession(
             session_token=data["sessionToken"],

@@ -73,3 +73,27 @@ def test_agent_key_is_32_bytes(mock_web3):
     agent = SelfAgent(private_key=TEST_KEY, network="testnet")
     assert len(agent.agent_key) == 32
     assert agent.agent_key[:12] == b"\x00" * 12
+
+
+@patch("self_agent_sdk.agent.httpx.get")
+def test_get_agent_info_raises_on_api_error(mock_get, mock_web3):
+    resp = MagicMock()
+    resp.is_success = False
+    resp.status_code = 400
+    resp.json.return_value = {"error": "Invalid agent ID"}
+    mock_get.return_value = resp
+
+    with pytest.raises(RuntimeError, match="Invalid agent ID"):
+        SelfAgent.get_agent_info(0, network="testnet", api_base="http://localhost:3100")
+
+
+@patch("self_agent_sdk.agent.httpx.get")
+def test_get_agents_for_human_raises_on_api_error(mock_get, mock_web3):
+    resp = MagicMock()
+    resp.is_success = False
+    resp.status_code = 400
+    resp.json.return_value = {"error": "Invalid Ethereum address"}
+    mock_get.return_value = resp
+
+    with pytest.raises(RuntimeError, match="Invalid Ethereum address"):
+        SelfAgent.get_agents_for_human("not-an-address", network="testnet", api_base="http://localhost:3100")
