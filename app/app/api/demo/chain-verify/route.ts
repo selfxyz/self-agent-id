@@ -41,6 +41,12 @@ function checkRateLimit(nullifier: string): {
 
 // ---------------------------------------------------------------------------
 // POST — EIP-712 meta-tx relay
+//
+// Unlike agent-to-service and agent-to-agent demos (which verify via SDK),
+// this route lets the ON-CHAIN CONTRACT do the verification. The contract's
+// metaVerifyAgent() calls ecrecover + isVerifiedAgent() itself.
+// We only do a staticCall simulation first (free, no gas) to catch reverts
+// before spending gas on the real tx.
 // ---------------------------------------------------------------------------
 
 export async function POST(req: NextRequest) {
@@ -51,7 +57,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 1. Extract agent auth headers
+  // 1. Extract agent auth headers (needed for replay protection only)
   const signature = req.headers.get(HEADERS.SIGNATURE);
   const timestamp = req.headers.get(HEADERS.TIMESTAMP);
 
@@ -64,7 +70,7 @@ export async function POST(req: NextRequest) {
 
   const bodyText = await req.text();
 
-  // 2. Parse request body first to get networkId
+  // 2. Parse request body
   let agentKey: string;
   let nonce: string;
   let deadline: number;
@@ -98,28 +104,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 4. Verify agent identity via SDK
-  const verifier = getCachedVerifier(networkId, {
-    maxAgentsPerHuman: 0,
-    includeCredentials: true,
-    enableReplayProtection: true,
-  });
-
-  const result = await verifier.verify({
-    signature,
-    timestamp,
-    method: "POST",
-    url: req.url,
-    body: bodyText || undefined,
-  });
-
-  if (!result.valid) {
-    return NextResponse.json(
-      { error: result.error || "Agent verification failed" },
-      { status: 403 },
-    );
-  }
-
+  // 4. Replay protection on the request signature (prevents resubmitting the same meta-tx)
   const replay = await checkAndRecordReplay({
     signature,
     timestamp,
@@ -135,14 +120,50 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 5. Rate limit by human nullifier
+  // 5. Set up provider + contracts
   const provider = new ethers.JsonRpcProvider(network.rpcUrl);
+  const relayerWallet = new ethers.Wallet(RELAYER_PK, provider);
+  const contract = new ethers.Contract(
+    network.agentDemoVerifierAddress,
+    AGENT_DEMO_VERIFIER_ABI,
+    relayerWallet,
+  );
   const registryContract = new ethers.Contract(
     network.registryAddress,
     REGISTRY_ABI,
     provider,
   );
 
+  // 6. Simulate via staticCall — the CONTRACT verifies the agent on-chain:
+  //    ecrecover(EIP-712 digest) → derive agentKey → isVerifiedAgent(agentKey)
+  //    Reverts with NotVerifiedAgent, MetaTxExpired, MetaTxInvalidNonce, or MetaTxInvalidSignature
+  try {
+    await contract.metaVerifyAgent.staticCall(
+      agentKey,
+      nonce,
+      deadline,
+      eip712Signature,
+    );
+  } catch (simErr) {
+    let reason = "On-chain simulation failed";
+    if (simErr instanceof Error) {
+      const msg = simErr.message;
+      if (msg.includes("NotVerifiedAgent")) {
+        reason = "Contract rejected: agent not verified in registry (isVerifiedAgent returned false)";
+      } else if (msg.includes("MetaTxExpired")) {
+        reason = "Contract rejected: meta-transaction deadline expired";
+      } else if (msg.includes("MetaTxInvalidNonce")) {
+        reason = "Contract rejected: invalid nonce (replay or out of order)";
+      } else if (msg.includes("MetaTxInvalidSignature")) {
+        reason = "Contract rejected: EIP-712 signature invalid — signer does not match agent key";
+      } else {
+        reason = `Contract rejected: ${msg.slice(0, 200)}`;
+      }
+    }
+    return NextResponse.json({ error: reason }, { status: 400 });
+  }
+
+  // 7. Rate limit by human nullifier (only reachable if agent is verified)
   let rateLimitResult: { allowed: boolean; remaining: number; retryAfterMs?: number };
   try {
     const agentId = await registryContract.getAgentId(agentKey);
@@ -166,42 +187,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 6. Set up contract + relayer
-  const relayerWallet = new ethers.Wallet(RELAYER_PK, provider);
-  const contract = new ethers.Contract(
-    network.agentDemoVerifierAddress,
-    AGENT_DEMO_VERIFIER_ABI,
-    relayerWallet,
-  );
-
-  // 7. Simulate via staticCall
-  try {
-    await contract.metaVerifyAgent.staticCall(
-      agentKey,
-      nonce,
-      deadline,
-      eip712Signature,
-    );
-  } catch (simErr) {
-    let reason = "Simulation failed";
-    if (simErr instanceof Error) {
-      const msg = simErr.message;
-      if (msg.includes("NotVerifiedAgent")) {
-        reason = "Agent not verified in registry";
-      } else if (msg.includes("MetaTxExpired")) {
-        reason = "Meta-transaction deadline expired";
-      } else if (msg.includes("MetaTxInvalidNonce")) {
-        reason = "Invalid nonce (replay or out of order)";
-      } else if (msg.includes("MetaTxInvalidSignature")) {
-        reason = "EIP-712 signature invalid — signer does not match agent key";
-      } else {
-        reason = msg.slice(0, 200);
-      }
-    }
-    return NextResponse.json({ error: reason }, { status: 400 });
-  }
-
   // 8. Submit real transaction (with timeout for Vercel serverless)
+  // Fetch credentials via SDK for the response (the contract doesn't return them)
+  const verifier = getCachedVerifier(networkId, {
+    maxAgentsPerHuman: 0,
+    includeCredentials: true,
+    enableReplayProtection: false, // already checked above
+  });
+  const sdkResult = await verifier.verify({
+    signature,
+    timestamp,
+    method: "POST",
+    url: req.url,
+    body: bodyText || undefined,
+  });
+
   let txHash = "";
   try {
     const tx = await contract.metaVerifyAgent(
@@ -230,12 +230,12 @@ export async function POST(req: NextRequest) {
       txHash: receipt.hash,
       blockNumber: receipt.blockNumber,
       explorerUrl: `${network.blockExplorer}/tx/${receipt.hash}`,
-      agentAddress: result.agentAddress,
-      agentId: result.agentId.toString(),
-      credentials: result.credentials
+      agentAddress: sdkResult.valid ? sdkResult.agentAddress : undefined,
+      agentId: sdkResult.valid ? sdkResult.agentId.toString() : undefined,
+      credentials: sdkResult.valid && sdkResult.credentials
         ? {
-            olderThan: result.credentials.olderThan.toString(),
-            nationality: result.credentials.nationality,
+            olderThan: sdkResult.credentials.olderThan.toString(),
+            nationality: sdkResult.credentials.nationality,
           }
         : undefined,
       verificationCount: verCount.toString(),
@@ -250,8 +250,8 @@ export async function POST(req: NextRequest) {
         txHash,
         pending: true,
         explorerUrl: `${network.blockExplorer}/tx/${txHash}`,
-        agentAddress: result.agentAddress,
-        agentId: result.agentId.toString(),
+        agentAddress: sdkResult.valid ? sdkResult.agentAddress : undefined,
+        agentId: sdkResult.valid ? sdkResult.agentId.toString() : undefined,
         rateLimitRemaining: rateLimitResult.remaining,
       });
     }
