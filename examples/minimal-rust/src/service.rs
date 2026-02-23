@@ -1,7 +1,7 @@
 //! Minimal service: verify agent requests with Axum.
 
 use axum::{Router, routing::post, middleware, Json, Extension};
-use self_agent_sdk::{SelfAgentVerifier, VerifiedAgent, self_agent_auth};
+use self_agent_sdk::{SelfAgentVerifier, VerifiedAgent, NetworkName, self_agent_auth};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 async fn main() {
     let verifier = Arc::new(Mutex::new(
         SelfAgentVerifier::create()
-            .network("testnet")
+            .network(NetworkName::Testnet)
             .require_age(18)
             .require_ofac()
             .build(),
