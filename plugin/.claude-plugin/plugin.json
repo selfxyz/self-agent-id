@@ -1,0 +1,6 @@
+{
+  "name": "self-agent-id",
+  "version": "1.0.0",
+  "description": "Self Agent ID — Proof-of-human identity for AI agents. Register, authenticate, verify, and query agent identities backed by ZK passport proofs on Celo.",
+  "author": "Self Protocol"
+}

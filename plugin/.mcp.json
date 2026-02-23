@@ -1,0 +1,11 @@
+{
+  "self-agent-id": {
+    "command": "npx",
+    "args": ["-y", "@selfxyz/mcp-server"],
+    "env": {
+      "SELF_AGENT_PRIVATE_KEY": "${SELF_AGENT_PRIVATE_KEY}",
+      "SELF_NETWORK": "${SELF_NETWORK}",
+      "SELF_AGENT_API_BASE": "${SELF_AGENT_API_BASE}"
+    }
+  }
+}
