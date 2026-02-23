@@ -22,8 +22,8 @@ export function Card({
 }: CardProps) {
   return (
     <div
-      className={`rounded-xl border border-border bg-surface-1 p-6 ${
-        glow ? "card-glow transition-all" : ""
+      className={`rounded-xl border border-border bg-surface-1 p-6 shadow-sm ${
+        glow ? "hover:shadow-md hover:border-border-strong transition-all" : ""
       } ${variantBorder[variant]} ${className}`}
     >
       {children}

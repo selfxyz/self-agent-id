@@ -25,7 +25,7 @@ export function Navbar() {
   const sepoliaReady = isNetworkReady(getNetwork("celo-sepolia"));
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 h-[60px] backdrop-blur-md bg-background/80 border-b border-border">
+    <nav className="fixed top-0 left-0 right-0 z-50 h-[60px] backdrop-blur-md bg-white/80 border-b border-border">
       <div className="max-w-6xl mx-auto h-full px-6 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5">

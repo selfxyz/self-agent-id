@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import MatrixText from "@/components/MatrixText";
 import { ethers } from "ethers";
 import dynamic from "next/dynamic";
 import {
@@ -25,7 +24,6 @@ import {
   Shield,
   Rocket,
 } from "lucide-react";
-import MatrixRain from "@/components/MatrixRain";
 import { connectWallet } from "@/lib/wallet";
 import { REGISTRY_ABI, PROVIDER_ABI } from "@/lib/constants";
 import { useNetwork } from "@/lib/NetworkContext";
@@ -454,9 +452,7 @@ export default function RegisterPage() {
 
   return (
     <main className="min-h-screen max-w-xl mx-auto px-6 pt-24 pb-12">
-      <div className="flex justify-center mb-8">
-        <MatrixText text="Register Agent" fontSize={42} />
-      </div>
+      <h1 className="text-3xl font-bold text-center mb-8">Register Agent</h1>
 
       {/* Step 1: Choose mode */}
       {step === "mode" && (
@@ -569,12 +565,12 @@ export default function RegisterPage() {
             {mode === "simple" ? (
               <ul className="text-sm text-muted space-y-1.5 list-disc list-inside">
                 <li>
-                  Connect your <strong className="text-foreground">browser wallet</strong> (MetaMask, etc.) &mdash;
-                  that address becomes your on-chain identity.
+                  Connect your <strong className="text-foreground">browser wallet</strong> (MetaMask, etc.).
+                  That address becomes your on-chain identity.
                 </li>
                 <li>
-                  Scan your passport with the <strong className="text-foreground">Self app</strong> &mdash;
-                  a ZK proof binds your wallet to a unique human nullifier.
+                  Scan your passport with the <strong className="text-foreground">Self app</strong>.
+                  A ZK proof binds your wallet to a unique human nullifier.
                 </li>
                 <li>
                   Smart contracts can then check{" "}
@@ -589,7 +585,7 @@ export default function RegisterPage() {
             ) : mode === "advanced" ? (
               <ul className="text-sm text-muted space-y-1.5 list-disc list-inside">
                 <li>
-                  Connect your <strong className="text-foreground">browser wallet</strong> (MetaMask, etc.) &mdash;
+                  Connect your <strong className="text-foreground">browser wallet</strong> (MetaMask, etc.),
                   used only during registration to prove your identity.
                 </li>
                 <li>
@@ -597,31 +593,31 @@ export default function RegisterPage() {
                   The agent signs a challenge to prove key ownership.
                 </li>
                 <li>
-                  Scan your passport with the <strong className="text-foreground">Self app</strong> &mdash;
-                  the contract verifies both the ZK proof and the agent&apos;s signature in one step.
+                  Scan your passport with the <strong className="text-foreground">Self app</strong>.
+                  The contract verifies both the ZK proof and the agent&apos;s signature in one step.
                 </li>
                 <li>
-                  Your agent operates with <strong className="text-foreground">its own key</strong> &mdash;
-                  your wallet key is never exposed to agent software.
+                  Your agent operates with <strong className="text-foreground">its own key</strong>.
+                  Your wallet key is never exposed to agent software.
                 </li>
               </ul>
             ) : mode === "smartwallet" ? (
               <ul className="text-sm text-muted space-y-1.5 list-disc list-inside">
                 <li>
                   A <strong className="text-foreground">passkey</strong> (Face ID / fingerprint) creates a
-                  Kernel smart account &mdash; no MetaMask, no seed phrase.
+                  Kernel smart account. No MetaMask, no seed phrase.
                 </li>
                 <li>
                   A fresh <strong className="text-foreground">agent keypair</strong> is also generated.
                   The agent signs requests with its own ECDSA key.
                 </li>
                 <li>
-                  The smart wallet becomes the <strong className="text-foreground">guardian</strong> &mdash;
-                  you can revoke your agent anytime with your biometrics, gaslessly.
+                  The smart wallet becomes the <strong className="text-foreground">guardian</strong>.
+                  You can revoke your agent anytime with your biometrics, gaslessly.
                 </li>
                 <li>
                   The smart wallet <strong className="text-foreground">deploys on first use</strong> (counterfactual).
-                  All management transactions are sponsored &mdash; no gas needed.
+                  All management transactions are sponsored, no gas needed.
                 </li>
               </ul>
             ) : (
@@ -636,12 +632,12 @@ export default function RegisterPage() {
                     The agent owns its own on-chain identity NFT.
                   </li>
                   <li>
-                    Scan your passport with the <strong className="text-foreground">Self app</strong> &mdash;
-                    the contract verifies your identity and mints the NFT to the agent&apos;s address.
+                    Scan your passport with the <strong className="text-foreground">Self app</strong>.
+                    The contract verifies your identity and mints the NFT to the agent&apos;s address.
                   </li>
                   <li>
                     You can <strong className="text-foreground">deregister anytime</strong> by scanning your passport
-                    again &mdash; the ZK proof links back to your unique human identity.
+                    again. The ZK proof links back to your unique human identity.
                   </li>
                 </ul>
 
@@ -676,7 +672,7 @@ export default function RegisterPage() {
                         <p className="font-bold text-foreground text-xs">Prefer passkeys?</p>
                       </div>
                       <p className="text-xs text-muted">
-                        Try <strong className="text-foreground">Smart Wallet</strong> mode instead &mdash; uses
+                        Try <strong className="text-foreground">Smart Wallet</strong> mode instead. Uses
                         Face ID or fingerprint to create a smart account as guardian. No raw keys to manage.
                       </p>
                     </div>
@@ -707,8 +703,8 @@ export default function RegisterPage() {
               <div className="mt-3">
                 <p className="text-xs text-muted mb-2">
                   Choose what your agent can carry as verified claims. Your raw passport data
-                  is <strong className="text-foreground">never stored or shared</strong> &mdash;
-                  the Self app generates a <strong className="text-foreground">zero-knowledge proof</strong> on
+                  is <strong className="text-foreground">never stored or shared</strong>.
+                  The Self app generates a <strong className="text-foreground">zero-knowledge proof</strong> on
                   your phone, and only the attested result (e.g. &ldquo;nationality: GBR&rdquo; or
                   &ldquo;over 18&rdquo;) is stored on-chain. No personal documents ever leave your device.
                 </p>
@@ -787,7 +783,7 @@ export default function RegisterPage() {
             </Button>
           ) : (
             <Button onClick={() => setStep("connect")} variant="primary" size="lg">
-              {mode === "simple" ? "Continue with Verified Wallet" : "Continue with Agent Identity"}
+              {mode === "simple" ? "Connect Wallet" : "Connect & Generate Agent Key"}
             </Button>
           )}
 
@@ -924,7 +920,7 @@ export default function RegisterPage() {
             <p className="text-sm text-muted mb-3">
               Self uses <strong className="text-foreground">zero-knowledge cryptography</strong> to
               prove you&apos;re a real person without storing or sharing your personal data.
-              Your passport is scanned locally on your phone &mdash; only a mathematical
+              Your passport is scanned locally on your phone. Only a mathematical
               proof is sent, never your documents.
             </p>
             <div className="flex gap-2">
@@ -1000,7 +996,6 @@ export default function RegisterPage() {
       {/* Step 4: Success */}
       {step === "success" && (
         <div className="flex flex-col items-center gap-4 w-full">
-          <MatrixRain duration={2000} fadeOut={2000} speed={3} maxOpacity={0.3} />
           <CheckCircle2 size={48} className="text-accent-success" />
           <p className="text-lg font-medium text-accent-success">
             Agent registered successfully!
@@ -1136,7 +1131,7 @@ export default function RegisterPage() {
                     to gate access to verified humans only.
                   </li>
                   <li>
-                    <strong className="text-foreground">You transact directly</strong> &mdash; there is no separate agent.
+                    <strong className="text-foreground">You transact directly.</strong> There is no separate agent.
                     This is best for on-chain gating (DAOs, token access, DeFi).
                   </li>
                   <li>
@@ -1156,7 +1151,7 @@ export default function RegisterPage() {
                 </div>
                 <p className="text-sm text-muted mb-3">
                   A fresh Ethereum keypair was generated in your browser for your agent.
-                  Copy these credentials now &mdash; the private key cannot be recovered
+                  Copy these credentials now. The private key cannot be recovered
                   after you leave this page.
                 </p>
 
@@ -1164,7 +1159,7 @@ export default function RegisterPage() {
                   <div>
                     <p className="text-xs font-medium text-accent-warn mb-1">
                       Agent Address
-                      <span className="font-normal text-muted"> &mdash; your agent&apos;s public identity</span>
+                      <span className="font-normal text-muted"> (your agent&apos;s public identity)</span>
                     </p>
                     <div className="flex items-center gap-2">
                       <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1 text-sm flex-1">
@@ -1183,7 +1178,7 @@ export default function RegisterPage() {
                   <div>
                     <p className="text-xs font-medium text-accent-warn mb-1">
                       Agent Private Key
-                      <span className="font-normal text-muted"> &mdash; used by your agent to sign requests</span>
+                      <span className="font-normal text-muted"> (used by your agent to sign requests)</span>
                     </p>
                     <div className="flex items-center gap-2">
                       <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1 text-xs flex-1">
@@ -1294,7 +1289,7 @@ export default function RegisterPage() {
                       <div>
                         <p className="text-xs text-muted mb-1">
                           NFT Owner
-                          <span className="text-subtle"> &mdash; the agent&apos;s address (self-owned)</span>
+                          <span className="text-subtle"> (the agent&apos;s address, self-owned)</span>
                         </p>
                         <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1">
                           {agentWallet?.address}
@@ -1304,7 +1299,7 @@ export default function RegisterPage() {
                         <div>
                           <p className="text-xs text-muted mb-1">
                             Guardian (Smart Wallet)
-                            <span className="text-subtle"> &mdash; your passkey controls this address</span>
+                            <span className="text-subtle"> (your passkey controls this address)</span>
                           </p>
                           <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1">
                             {smartWalletAddress}
@@ -1316,7 +1311,7 @@ export default function RegisterPage() {
                     <div>
                       <p className="text-xs text-muted mb-1">
                         Registered by
-                        <span className="text-subtle"> &mdash; your wallet, the NFT owner who can deregister</span>
+                        <span className="text-subtle"> (your wallet, the NFT owner who can deregister)</span>
                       </p>
                       <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1">
                         {walletAddress}
@@ -1326,7 +1321,7 @@ export default function RegisterPage() {
                   <div>
                     <p className="text-xs text-muted mb-1">
                       Agent Key (bytes32)
-                      <span className="text-subtle"> &mdash; the on-chain identifier services use to verify</span>
+                      <span className="text-subtle"> (the on-chain identifier services use to verify)</span>
                     </p>
                     <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1 text-xs">
                       {agentWallet && ethers.zeroPadValue(agentWallet.address, 32)}
@@ -1355,8 +1350,8 @@ export default function RegisterPage() {
                   <p className="text-xs text-muted">
                     Since no wallet was used, you can deregister by visiting the{" "}
                     <strong className="text-foreground">Verify</strong> page, looking up your agent,
-                    and scanning your passport again. The ZK proof links to your unique identity &mdash;
-                    only you can deregister your agent.
+                    and scanning your passport again. The ZK proof links to your unique identity,
+                    so only you can deregister your agent.
                   </p>
                 </Card>
               )}

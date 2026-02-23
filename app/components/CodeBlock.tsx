@@ -42,15 +42,15 @@ export default function CodeBlock({ tabs }: CodeBlockProps) {
 
   return (
     <div className="w-full rounded-lg border border-border overflow-hidden">
-      <div className="flex border-b border-border" style={{ backgroundColor: "#12121c" }}>
+      <div className="flex border-b border-border" style={{ backgroundColor: "#1e1e2e" }}>
         {tabs.map((tab, i) => (
           <button
             key={tab.label}
             onClick={() => setActiveTab(i)}
             className={`px-4 py-2 text-sm font-medium transition-colors ${
               i === activeTab
-                ? "bg-surface-1 text-foreground border-b-2 border-accent"
-                : "text-muted hover:text-foreground"
+                ? "bg-[#282840] text-white border-b-2 border-accent"
+                : "text-gray-400 hover:text-gray-200"
             }`}
           >
             {tab.label}
@@ -59,7 +59,7 @@ export default function CodeBlock({ tabs }: CodeBlockProps) {
         <div className="ml-auto pr-2 flex items-center">
           <button
             onClick={handleCopy}
-            className="text-xs text-muted hover:text-foreground px-2 py-1 transition-colors"
+            className="text-xs text-gray-400 hover:text-gray-200 px-2 py-1 transition-colors"
           >
             {copied ? "Copied!" : "Copy"}
           </button>
@@ -73,7 +73,7 @@ export default function CodeBlock({ tabs }: CodeBlockProps) {
         {({ style, tokens, getLineProps, getTokenProps }) => (
           <pre
             className="p-4 overflow-x-auto text-sm leading-relaxed"
-            style={{ ...style, margin: 0, backgroundColor: "#0d0d14" }}
+            style={{ ...style, margin: 0, backgroundColor: "#1e1e2e" }}
           >
             {tokens.map((line, i) => (
               <div key={i} {...getLineProps({ line })}>

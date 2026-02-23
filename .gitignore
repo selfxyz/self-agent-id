@@ -21,3 +21,6 @@ build/
 *.egg
 .coverage
 htmlcov/
+
+.agents/
+.claude/
