@@ -14,7 +14,7 @@ info:
     url: https://opensource.org/licenses/MIT
 
 servers:
-  - url: https://selfagentid.xyz
+  - url: https://self-agent-id.vercel.app
     description: Production
 
 tags:
@@ -942,7 +942,7 @@ paths:
                 name: Self Agent ID
                 version: "1.0"
                 description: On-chain AI agent identity registry with proof-of-human verification
-                apiBase: https://selfagentid.xyz/api/agent
+                apiBase: https://self-agent-id.vercel.app/api/agent
                 networks: [mainnet, testnet]
                 registrationModes: [verified-wallet, agent-identity, wallet-free, smart-wallet]
                 capabilities: [register, deregister, verify, credentials, agent-card, a2a]

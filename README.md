@@ -8,7 +8,7 @@
 
 Proof-of-human identity for AI agents on Celo.
 
-- **Live**: [selfagentid.xyz](https://selfagentid.xyz) (also [self-agent-id.vercel.app](https://self-agent-id.vercel.app))
+- **Live**: [self-agent-id.vercel.app](https://self-agent-id.vercel.app)
 - **Standard**: [ERC-8004 Proof-of-Human extension](https://eips.ethereum.org/EIPS/eip-8004)
 - **SDKs**: TypeScript, Python, Rust — identical feature parity
 
@@ -768,7 +768,9 @@ Set `SELF_AGENT_PRIVATE_KEY` in `env` for full mode (register, sign, fetch). Omi
 
 ## 9. REST API
 
-Base URL: `https://selfagentid.xyz` (or your deployment)
+Base URL: `https://self-agent-id.vercel.app` (or your deployment)
+
+SDK default base URL can be overridden with env var `SELF_AGENT_API_BASE`.
 
 ### 9.1 Registration Endpoints
 

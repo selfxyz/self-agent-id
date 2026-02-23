@@ -209,6 +209,8 @@ build_wallet_free_register_user_data_ascii(
 
 Programmatic registration without the CLI:
 
+Set `SELF_AGENT_API_BASE` to override the default hosted API base.
+
 ```python
 from self_agent_sdk import SelfAgent
 

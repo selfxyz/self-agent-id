@@ -185,6 +185,8 @@ buildWalletFreeRegisterUserDataAscii({
 
 Programmatic registration without the CLI:
 
+Set `SELF_AGENT_API_BASE` to override the default hosted API base.
+
 ```typescript
 import { requestRegistration, requestDeregistration } from "@selfxyz/agent-sdk";
 

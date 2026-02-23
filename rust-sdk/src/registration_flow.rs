@@ -28,14 +28,27 @@ use reqwest::Client;
 use serde::Serialize;
 use std::time::{Duration, Instant};
 
-/// Default API base URL.
-pub const DEFAULT_API_BASE: &str = "https://selfagentid.xyz";
+/// Default API base URL (overridden by `SELF_AGENT_API_BASE` when set).
+pub const DEFAULT_API_BASE: &str = "https://self-agent-id.vercel.app";
 
 /// Default polling timeout (30 minutes).
 pub const DEFAULT_TIMEOUT_MS: u64 = 30 * 60 * 1000;
 
 /// Default polling interval (5 seconds).
 pub const DEFAULT_POLL_INTERVAL_MS: u64 = 5000;
+
+fn resolve_api_base(api_base: Option<&str>) -> String {
+    if let Some(base) = api_base {
+        return base.to_string();
+    }
+    if let Ok(base) = std::env::var("SELF_AGENT_API_BASE") {
+        let trimmed = base.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    DEFAULT_API_BASE.to_string()
+}
 
 /// Errors specific to the registration flow.
 #[derive(Debug, thiserror::Error)]
@@ -107,10 +120,10 @@ impl RegistrationSession {
         req: RegistrationRequest,
         api_base: Option<&str>,
     ) -> Result<Self, RegistrationError> {
-        let base = api_base.unwrap_or(DEFAULT_API_BASE);
+        let base = resolve_api_base(api_base);
         let http = Client::new();
         let resp = http
-            .post(format!("{base}/api/agent/register"))
+            .post(format!("{}/api/agent/register", base))
             .json(&req)
             .send()
             .await
@@ -137,7 +150,7 @@ impl RegistrationSession {
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0),
             human_instructions: json_str_array(&data, "humanInstructions"),
-            api_base: base.to_string(),
+            api_base: base,
             http,
         })
     }
@@ -251,10 +264,10 @@ impl DeregistrationSession {
         req: DeregistrationRequest,
         api_base: Option<&str>,
     ) -> Result<Self, RegistrationError> {
-        let base = api_base.unwrap_or(DEFAULT_API_BASE);
+        let base = resolve_api_base(api_base);
         let http = Client::new();
         let resp = http
-            .post(format!("{base}/api/agent/deregister"))
+            .post(format!("{}/api/agent/deregister", base))
             .json(&req)
             .send()
             .await
@@ -280,7 +293,7 @@ impl DeregistrationSession {
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0),
             human_instructions: json_str_array(&data, "humanInstructions"),
-            api_base: base.to_string(),
+            api_base: base,
             http,
         })
     }

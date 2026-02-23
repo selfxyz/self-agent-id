@@ -13,13 +13,15 @@ Usage:
 """
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Optional
 
 import httpx
 
-DEFAULT_API_BASE = "https://selfagentid.xyz"
+# Default API base URL (overridden by SELF_AGENT_API_BASE when set).
+DEFAULT_API_BASE = os.environ.get("SELF_AGENT_API_BASE", "https://self-agent-id.vercel.app")
 
 DEFAULT_TIMEOUT_MS = 30 * 60_000   # 30 minutes
 DEFAULT_POLL_INTERVAL_MS = 5_000   # 5 seconds

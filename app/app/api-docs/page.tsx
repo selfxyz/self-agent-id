@@ -421,7 +421,7 @@ const ENDPOINT_GROUPS: GroupDef[] = [
             status: 200,
             description: "Discovery document",
             example: `{
-  "api": "https://selfagentid.xyz/api/agent",
+  "api": "https://self-agent-id.vercel.app/api/agent",
   "networks": ["mainnet", "testnet"],
   "modes": ["verified-wallet", "agent-identity", "wallet-free"],
   "capabilities": ["register", "deregister", "query", "verify"]
@@ -678,7 +678,7 @@ export default function ApiDocsPage() {
             <p>
               <span className="text-foreground font-medium">Base URL:</span>{" "}
               <code className="bg-surface-2 px-1 rounded text-accent-2">
-                https://selfagentid.xyz/api/agent
+                https://self-agent-id.vercel.app/api/agent
               </code>
             </p>
             <p>
@@ -715,7 +715,7 @@ export default function ApiDocsPage() {
                 label: "curl",
                 language: "bash",
                 code: `# 1. Initiate registration
-curl -X POST https://selfagentid.xyz/api/agent/register \\
+curl -X POST https://self-agent-id.vercel.app/api/agent/register \\
   -H "Content-Type: application/json" \\
   -d '{
     "mode": "agent-identity",
@@ -728,11 +728,11 @@ curl -X POST https://selfagentid.xyz/api/agent/register \\
 #    User scans QR with Self app → passport proof submitted
 
 # 3. Poll for completion
-curl "https://selfagentid.xyz/api/agent/register/status?token=SESSION_TOKEN"
+curl "https://self-agent-id.vercel.app/api/agent/register/status?token=SESSION_TOKEN"
 # → { stage: "completed", agentId: 42, ... }
 
 # 4. (Optional) Export agent private key
-curl "https://selfagentid.xyz/api/agent/register/export?token=SESSION_TOKEN"
+curl "https://self-agent-id.vercel.app/api/agent/register/export?token=SESSION_TOKEN"
 # → { privateKey, agentAddress, agentId }`,
               },
             ]}
@@ -762,7 +762,7 @@ curl "https://selfagentid.xyz/api/agent/register/export?token=SESSION_TOKEN"
                 code: `import { SelfAgent } from "@selfxyz/agent-sdk";
 
 const agent = new SelfAgent({
-  endpoint: "https://selfagentid.xyz",
+  endpoint: "https://self-agent-id.vercel.app",
   network: "testnet",
 });
 
@@ -786,7 +786,7 @@ console.log(result.agentId); // on-chain agent ID`,
                 code: `from self_agent_sdk import SelfAgent
 
 agent = SelfAgent(
-    endpoint="https://selfagentid.xyz",
+    endpoint="https://self-agent-id.vercel.app",
     network="testnet",
 )
 
@@ -810,7 +810,7 @@ print(result.agent_id)  # on-chain agent ID`,
                 code: `use self_agent_sdk::SelfAgent;
 
 let agent = SelfAgent::new(
-    "https://selfagentid.xyz",
+    "https://self-agent-id.vercel.app",
     "testnet",
 );
 

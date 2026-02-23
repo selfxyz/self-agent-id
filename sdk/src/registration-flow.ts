@@ -1,15 +1,16 @@
 /**
  * Registration and deregistration flow management via the Self Agent ID REST API.
  *
- * These functions call the hosted API at selfagentid.xyz (or a custom base URL)
- * and return session objects with polling capabilities.
+ * These functions call the hosted API at self-agent-id.vercel.app by default
+ * (or SELF_AGENT_API_BASE / a custom base URL) and return session objects
+ * with polling capabilities.
  */
 
 import type { NetworkName } from "./constants";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const DEFAULT_API_BASE = "https://selfagentid.xyz";
+const DEFAULT_API_BASE = "https://self-agent-id.vercel.app";
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -37,7 +38,7 @@ export interface RegistrationRequest {
   agentName?: string;
   /** Agent description */
   agentDescription?: string;
-  /** Base URL of the Self Agent ID API (default: https://selfagentid.xyz) */
+  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://self-agent-id.vercel.app) */
   apiBase?: string;
 }
 
@@ -87,7 +88,7 @@ export interface DeregistrationRequest {
     ofac?: boolean;
     nationality?: boolean;
   };
-  /** Base URL of the Self Agent ID API (default: https://selfagentid.xyz) */
+  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://self-agent-id.vercel.app) */
   apiBase?: string;
 }
 
@@ -162,8 +163,15 @@ export class RegistrationError extends Error {
 
 // ── Internal Helpers ─────────────────────────────────────────────────────────
 
+function defaultApiBaseFromEnv(): string {
+  if (typeof process !== "undefined" && process?.env?.SELF_AGENT_API_BASE) {
+    return process.env.SELF_AGENT_API_BASE;
+  }
+  return DEFAULT_API_BASE;
+}
+
 function resolveApiBase(apiBase?: string): string {
-  return (apiBase ?? DEFAULT_API_BASE).replace(/\/+$/, "");
+  return (apiBase ?? defaultApiBaseFromEnv()).replace(/\/+$/, "");
 }
 
 function chainIdForNetwork(network: NetworkName): number {
