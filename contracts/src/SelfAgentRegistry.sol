@@ -27,31 +27,24 @@ import { IHumanProofProvider } from "./interfaces/IHumanProofProvider.sol";
 ///
 ///      Agent identity: agentPubKey = bytes32(uint256(uint160(humanAddress)))
 ///
-///      Action bytes:
-///        0x01 / "R" = register simple (mint NFT, agent key = wallet address)
-///        0x02 / "D" = deregister simple (revoke proof, burn NFT)
-///        0x03 / "K" = register advanced (agent signs challenge, ECDSA verified)
-///        0x04 / "X" = deregister advanced (by agent address)
-///        0x05 / "W" = register wallet-free (agent-owned NFT, optional guardian)
+///      Action bytes (ASCII, from Self SDK UTF-8 strings):
+///        'R' = register simple (mint NFT, agent key = wallet address)
+///        'D' = deregister simple (revoke proof, burn NFT)
+///        'K' = register advanced (agent signs challenge, ECDSA verified)
+///        'X' = deregister advanced (by agent address)
+///        'W' = register wallet-free (agent-owned NFT, optional guardian)
 contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004ProofOfHuman {
 
     // ====================================================
     // Constants
     // ====================================================
 
-    uint8 constant ACTION_REGISTER = 0x01;
-    uint8 constant ACTION_DEREGISTER = 0x02;
-
-    uint8 constant ACTION_REGISTER_ADVANCED = 0x03;
-    uint8 constant ACTION_DEREGISTER_ADVANCED = 0x04;
-    uint8 constant ACTION_REGISTER_WALLETFREE = 0x05;
-
-    // ASCII action prefixes used in userDefinedData (string-based encoding)
-    uint8 constant ASCII_R = 0x52; // 'R' = register
-    uint8 constant ASCII_D = 0x44; // 'D' = deregister
-    uint8 constant ASCII_K = 0x4B; // 'K' = advanced register
-    uint8 constant ASCII_X = 0x58; // 'X' = advanced deregister
-    uint8 constant ASCII_W = 0x57; // 'W' = wallet-free register
+    // Action bytes in userDefinedData (Self SDK sends UTF-8 strings)
+    uint8 constant ACTION_REGISTER = 0x52;           // 'R' = simple register
+    uint8 constant ACTION_DEREGISTER = 0x44;          // 'D' = simple deregister
+    uint8 constant ACTION_REGISTER_ADVANCED = 0x4B;   // 'K' = advanced register
+    uint8 constant ACTION_DEREGISTER_ADVANCED = 0x58;  // 'X' = advanced deregister
+    uint8 constant ACTION_REGISTER_WALLETFREE = 0x57;  // 'W' = wallet-free register
 
     // ====================================================
     // Storage
@@ -270,10 +263,10 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     /// @dev Called by SelfVerificationRoot after Hub V2 verification succeeds.
     ///      userData format: | 1B action | 1B configIndex | payload... |
     ///      Config index selects which of the 6 verification configs to use (see getConfigId).
-    ///      Action bytes:
-    ///        0x01/"R" = simple register, 0x02/"D" = simple deregister
-    ///        0x03/"K" = advanced register, 0x04/"X" = advanced deregister
-    ///        0x05/"W" = wallet-free register
+    ///      Action bytes (ASCII):
+    ///        'R' = simple register, 'D' = simple deregister
+    ///        'K' = advanced register, 'X' = advanced deregister
+    ///        'W' = wallet-free register
     /// @param output The verified disclosure output containing the nullifier
     /// @param userData The user-defined data containing the action byte/char
     function customVerificationHook(
@@ -286,40 +279,16 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
         address humanAddress = address(uint160(output.userIdentifier));
         uint8 actionByte = uint8(userData[0]);
 
-        if (actionByte == ACTION_REGISTER || actionByte == ASCII_R) {
+        if (actionByte == ACTION_REGISTER) {
             // Simple mode: agent key = human wallet address
             bytes32 agentPubKey = bytes32(uint256(uint160(humanAddress)));
             _registerAgent(nullifier, agentPubKey, humanAddress, output);
-        } else if (actionByte == ACTION_DEREGISTER || actionByte == ASCII_D) {
+        } else if (actionByte == ACTION_DEREGISTER) {
             // Simple deregister
             bytes32 agentPubKey = bytes32(uint256(uint160(humanAddress)));
             _deregisterAgent(nullifier, agentPubKey);
         } else if (actionByte == ACTION_REGISTER_ADVANCED) {
-            // Binary advanced register: 1B action + 1B config + 20B address + 32B r + 32B s + 1B v = 87 bytes
-            if (userData.length < 87) revert InvalidUserData();
-            address agentAddr;
-            bytes32 r;
-            bytes32 s;
-            uint8 v;
-            assembly {
-                agentAddr := shr(96, mload(add(userData, 34))) // offset 2, 20 bytes
-                r := mload(add(userData, 54)) // offset 22
-                s := mload(add(userData, 86)) // offset 54
-                v := byte(0, mload(add(userData, 118))) // offset 86
-            }
-            bytes32 agentPubKey = _verifyAgentSignature(agentAddr, humanAddress, v, r, s);
-            _registerAgent(nullifier, agentPubKey, humanAddress, output);
-        } else if (actionByte == ACTION_DEREGISTER_ADVANCED) {
-            // Binary advanced deregister: 1B action + 1B config + 20B address = 22 bytes
-            if (userData.length < 22) revert InvalidUserData();
-            address agentAddr;
-            assembly {
-                agentAddr := shr(96, mload(add(userData, 34))) // offset 2
-            }
-            bytes32 agentPubKey = bytes32(uint256(uint160(agentAddr)));
-            _deregisterAgent(nullifier, agentPubKey);
-        } else if (actionByte == ASCII_K) {
-            // String advanced register: "K" + config(1) + address(40) + r(64) + s(64) + v(2) = 172 chars
+            // Advanced register: "K" + config(1) + address(40) + r(64) + s(64) + v(2) = 172 chars
             if (userData.length < 172) revert InvalidUserData();
             address agentAddr = _hexStringToAddress(userData, 2);
             bytes32 r = _hexStringToBytes32(userData, 42);
@@ -327,31 +296,14 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
             uint8 v = _hexStringToUint8(userData, 170);
             bytes32 agentPubKey = _verifyAgentSignature(agentAddr, humanAddress, v, r, s);
             _registerAgent(nullifier, agentPubKey, humanAddress, output);
-        } else if (actionByte == ASCII_X) {
-            // String advanced deregister: "X" + config(1) + address(40) = 42 chars
+        } else if (actionByte == ACTION_DEREGISTER_ADVANCED) {
+            // Advanced deregister: "X" + config(1) + address(40) = 42 chars
             if (userData.length < 42) revert InvalidUserData();
             address agentAddr = _hexStringToAddress(userData, 2);
             bytes32 agentPubKey = bytes32(uint256(uint160(agentAddr)));
             _deregisterAgent(nullifier, agentPubKey);
         } else if (actionByte == ACTION_REGISTER_WALLETFREE) {
-            // Binary wallet-free: 1B action + 1B config + 20B agentAddr + 20B guardian + 32B r + 32B s + 1B v = 107 bytes
-            if (userData.length < 107) revert InvalidUserData();
-            address agentAddr;
-            address guardian;
-            bytes32 r;
-            bytes32 s;
-            uint8 v;
-            assembly {
-                agentAddr := shr(96, mload(add(userData, 34)))  // offset 2, 20 bytes
-                guardian := shr(96, mload(add(userData, 54)))    // offset 22, 20 bytes
-                r := mload(add(userData, 74))                    // offset 42
-                s := mload(add(userData, 106))                   // offset 74
-                v := byte(0, mload(add(userData, 138)))          // offset 106
-            }
-            bytes32 agentPubKey = _verifyAgentSignature(agentAddr, humanAddress, v, r, s);
-            _registerAgentWalletFree(nullifier, agentPubKey, agentAddr, guardian, output);
-        } else if (actionByte == ASCII_W) {
-            // String wallet-free: "W" + config(1) + agentAddr(40) + guardian(40) + r(64) + s(64) + v(2) = 212 chars
+            // Wallet-free: "W" + config(1) + agentAddr(40) + guardian(40) + r(64) + s(64) + v(2) = 212 chars
             if (userData.length < 212) revert InvalidUserData();
             address agentAddr = _hexStringToAddress(userData, 2);
             address guardian = _hexStringToAddress(userData, 42);
