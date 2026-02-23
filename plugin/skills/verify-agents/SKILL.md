@@ -40,7 +40,7 @@ Every verification flow MUST confirm that the agent's proof provider is the Self
 - **SDK:** Call `registry.getProofProvider(agentId)` and compare the returned address against the known Self Protocol provider address. The `SelfAgentVerifier` builder's `.requireSelfProvider()` method adds this check to the verification pipeline.
 - **On-chain (Solidity):** `require(registry.getProofProvider(agentId) == SELF_PROVIDER_ADDRESS, "Wrong provider");`
 
-**Security gap in SDK:** By default, `SelfAgentVerifier` does NOT check the proof provider. It only calls `isVerifiedAgent()`, which returns `true` for any whitelisted provider. Always add `.requireSelfProvider()` or manually check `getProofProvider()` when building a verifier. Omitting this check is the most common and most dangerous integration mistake.
+**SDK default behavior:** The `SelfAgentVerifier` checks the proof provider by default (`requireSelfProvider` defaults to `true`). Do not disable this check unless intentionally accepting agents verified by third-party providers. To explicitly disable: pass `requireSelfProvider: false` in the verifier config. Omitting the provider check is the most common and most dangerous integration mistake.
 
 ---
 
@@ -118,7 +118,7 @@ credentials        — object: { nationality, older_than, ofac_clear }
 The tool performs these checks in sequence:
 
 1. **Timestamp validation** — Reject if the timestamp is older than 5 minutes (replay protection).
-2. **Signature recovery** — Reconstruct the signed message as `{METHOD}:{path}:{timestamp}:{sha256(body)}`, recover the signer via ECDSA, and compare to the claimed `agent_address`.
+2. **Signature recovery** — Reconstruct the signed message by concatenating `timestamp + METHOD + path + keccak256(body)`, hash with Keccak-256, recover the signer via EIP-191 ECDSA, and compare to the claimed `agent_address`.
 3. **On-chain proof check** — Derive the agent key from the address and call `registry.isVerifiedAgent(agentKey)`.
 4. **Provider check** — Verify `registry.getProofProvider(agentId)` matches Self Protocol's provider address.
 5. **Credential retrieval** — Fetch ZK-attested credentials from the registry.

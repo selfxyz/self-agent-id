@@ -853,16 +853,16 @@ async function verifyAgentRequest(
   path: string,
   body: string
 ): Promise<{ valid: boolean; agentId?: number; error?: string }> {
-  // 1. Check timestamp freshness (5-minute window)
-  const now = Math.floor(Date.now() / 1000);
+  // 1. Check timestamp freshness (5-minute window, timestamps are milliseconds)
+  const now = Date.now();
   const ts = parseInt(headers.timestamp);
-  if (isNaN(ts) || Math.abs(now - ts) > 300) {
+  if (isNaN(ts) || Math.abs(now - ts) > 300_000) {
     return { valid: false, error: "Timestamp expired or invalid" };
   }
 
-  // 2. Reconstruct the signed message
-  const bodyHash = ethers.sha256(ethers.toUtf8Bytes(body || ""));
-  const message = `${method}:${path}:${headers.timestamp}:${bodyHash}`;
+  // 2. Reconstruct the signed message (concatenation, no separators)
+  const bodyHash = ethers.keccak256(ethers.toUtf8Bytes(body || ""));
+  const message = headers.timestamp + method.toUpperCase() + path + bodyHash;
   const messageHash = ethers.keccak256(ethers.toUtf8Bytes(message));
 
   // 3. Recover signer from signature

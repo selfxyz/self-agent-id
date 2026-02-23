@@ -158,10 +158,11 @@ const agent = new SelfAgent({
 - `getAgentId()` — Resolve agent key to agent ID
 
 **Auth header generation:**
-1. Compute body hash: `sha256(body || "")`
-2. Build message: `{METHOD}:{path}:{timestamp}:{bodyHash}`
-3. Sign with ECDSA: `sign(keccak256(message), privateKey)`
-4. Return headers: `{ x-self-agent-address, x-self-agent-signature, x-self-agent-timestamp }`
+1. Compute body hash: `keccak256(body || "")`
+2. Build message: concatenate `timestamp + METHOD + pathWithQuery + bodyHash` as a single string
+3. Compute signing message: `keccak256(message)`
+4. Sign with EIP-191: `personal_sign(signingMessage, privateKey)`
+5. Return headers: `{ x-self-agent-address, x-self-agent-signature, x-self-agent-timestamp }`
 
 ### SelfAgentVerifier (Service-Side)
 
@@ -219,14 +220,14 @@ The `@selfxyz/mcp-server` package implements the Model Context Protocol for AI c
 **Discovery (2):**
 | Tool | Description |
 |---|---|
-| `self_list_agents` | List all agents registered by an address |
-| `self_search_agents` | Search for verified agents with filters |
+| `self_lookup_agent` | Look up any agent by agent ID or address |
+| `self_list_agents_for_human` | List all agents registered by a human address |
 
 **Verification (2):**
 | Tool | Description |
 |---|---|
 | `self_verify_agent` | Verify agent's on-chain proof status |
-| `self_validate_agent` | Check agent freshness and reputation |
+| `self_verify_request` | Verify signed HTTP request authenticity |
 
 ### Resources (2)
 
@@ -335,16 +336,17 @@ Base URL: `https://self-agent-id.vercel.app` (override via `SELF_AGENT_API_BASE`
    └── SelfAgent.signRequest("POST", "/api/data", body)
 
 2. SDK computes auth headers
-   ├── bodyHash = sha256(JSON.stringify(body) || "")
-   ├── timestamp = Math.floor(Date.now() / 1000)
-   ├── message = "POST:/api/data:{timestamp}:{bodyHash}"
-   ├── signature = ecdsaSign(keccak256(message), privateKey)
+   ├── bodyHash = keccak256(body || "")
+   ├── timestamp = Date.now().toString()              // milliseconds
+   ├── message = timestamp + "POST" + "/api/data" + bodyHash  // concatenation
+   ├── signingMessage = keccak256(message)
+   ├── signature = personal_sign(signingMessage, privateKey)
    └── Returns 3 headers
 
 3. Agent sends request with headers
    ├── x-self-agent-address: 0xAgentAddress
    ├── x-self-agent-signature: 0xSignature
-   └── x-self-agent-timestamp: 1708704000
+   └── x-self-agent-timestamp: 1708704000000
 
 4. Service receives request
    └── SelfAgentVerifier.verify(request)
