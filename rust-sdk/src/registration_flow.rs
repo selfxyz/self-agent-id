@@ -2,20 +2,26 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```no_run
 //! use self_agent_sdk::registration_flow::*;
 //!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # tokio::runtime::Runtime::new()?.block_on(async {
 //! let session = RegistrationSession::request(RegistrationRequest {
 //!     mode: "agent-identity".into(),
 //!     network: "mainnet".into(),
 //!     ..Default::default()
-//! }).await?;
+//! }, None).await?;
 //!
 //! println!("QR: {}", session.qr_url);
 //! println!("Instructions: {:?}", session.human_instructions);
 //!
 //! let result = session.wait_for_completion(None, None).await?;
 //! println!("Agent ID: {}", result.agent_id);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! # })?;
+//! # Ok(())
+//! # }
 //! ```
 
 use reqwest::Client;

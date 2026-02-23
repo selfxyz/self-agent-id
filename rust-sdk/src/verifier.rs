@@ -232,7 +232,9 @@ impl RateLimiter {
 /// Chainable builder for creating a [`SelfAgentVerifier`].
 ///
 /// # Example
-/// ```ignore
+/// ```no_run
+/// use self_agent_sdk::{NetworkName, SelfAgentVerifier};
+///
 /// let verifier = SelfAgentVerifier::create()
 ///     .network(NetworkName::Testnet)
 ///     .require_age(18)
@@ -423,7 +425,11 @@ struct OnChainStatus {
 ///
 /// # Construction
 ///
-/// ```ignore
+/// ```no_run
+/// use self_agent_sdk::{
+///     NetworkName, SelfAgentVerifier, VerifierConfig, VerifierFromConfig,
+/// };
+///
 /// // Direct construction
 /// let verifier = SelfAgentVerifier::new(VerifierConfig::default());
 ///

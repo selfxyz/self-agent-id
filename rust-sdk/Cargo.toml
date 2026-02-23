@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2021"
 description = "Rust SDK for Self Agent ID — on-chain AI agent identity with proof-of-human"
 license = "MIT"
+repository = "https://github.com/selfxyz/self-agent-id/tree/main/rust-sdk"
+homepage = "https://github.com/selfxyz/self-agent-id"
+documentation = "https://docs.self.xyz/agent-id/sdk-integration"
+keywords = ["self", "agent", "identity", "proof-of-human", "blockchain"]
+categories = ["authentication", "cryptography", "web-programming"]
 
 [features]
 default = []

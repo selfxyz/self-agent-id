@@ -1,5 +1,11 @@
 # Self Agent ID
 
+[![npm](https://img.shields.io/npm/v/@selfxyz/agent-sdk?label=npm)](https://www.npmjs.com/package/@selfxyz/agent-sdk)
+[![PyPI](https://img.shields.io/pypi/v/selfxyz-agent-sdk?label=pypi)](https://pypi.org/project/selfxyz-agent-sdk/)
+[![crates.io](https://img.shields.io/crates/v/self-agent-sdk?label=crates.io)](https://crates.io/crates/self-agent-sdk)
+[![MCP](https://img.shields.io/npm/v/@selfxyz/mcp-server?label=mcp)](https://www.npmjs.com/package/@selfxyz/mcp-server)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Proof-of-human identity for AI agents on Celo.
 
 - **Live**: [selfagentid.xyz](https://selfagentid.xyz) (also [self-agent-id.vercel.app](https://self-agent-id.vercel.app))
@@ -52,6 +58,17 @@ npm install && npm run dev
 
 ---
 
+## Integration Guides
+
+| I want to... | Guide |
+|---|---|
+| Build an AI agent with identity | [Agent Builder Guide](https://docs.self.xyz/agent-id/guides/agent-builder) |
+| Verify agent requests in my API | [Service Operator Guide](https://docs.self.xyz/agent-id/guides/service-operator) |
+| Gate smart contracts by agent ID | [Contract Developer Guide](https://docs.self.xyz/agent-id/guides/contract-developer) |
+| Use MCP with Claude/Cursor | [MCP Guide](https://docs.self.xyz/agent-id/guides/mcp-user) |
+
+---
+
 ## 1. Overview
 
 Self Agent ID is an on-chain identity registry that binds AI agent identities to Self Protocol human proofs. Each agent receives a soulbound ERC-721 NFT backed by a ZK passport verification, enabling trustless proof-of-human for autonomous agents.
@@ -95,6 +112,12 @@ Self Agent ID is an on-chain identity registry that binds AI agent identities to
 │  │  Agent-side: SelfAgent (signing, fetch, status, cards)      │   │
 │  │  Service-side: SelfAgentVerifier (middleware, policy)        │   │
 │  │  CLI: register/deregister workflows                          │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │                    MCP Server (@selfxyz/mcp-server)          │   │
+│  │  10 tools: register, verify, sign, discover, fetch          │   │
+│  │  Works with Claude Code / Cursor / Windsurf / Codex         │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 │                                                                     │
 │  ┌─────────────────────────────────────────────────────────────┐   │
@@ -159,7 +182,7 @@ Dedicated generated agent keypair. The human proves ownership via Self, then the
 - **Agent key**: `bytes32(uint256(uint160(agentAddress)))`
 - **NFT owner**: Human wallet (creator)
 - **Guardian**: None
-- **Challenge**: Agent signs `keccak256("self-agent-id:register:" + humanAddress + chainId + registryAddress)`
+- **Challenge**: Agent signs `keccak256("self-agent-id:register:" + humanAddress + chainId + registryAddress + nonce)`
 - **Use case**: Autonomous AI agents, API bots, server-side agents
 
 ### 4.3 Wallet-Free (`wallet-free`)
@@ -203,11 +226,13 @@ The `userDefinedData[0]` byte encodes the action type:
 
 | Byte | Action |
 |:---:|--------|
-| `'R'` / `0x01` | Simple register |
-| `'D'` / `0x02` | Simple deregister |
-| `'K'` / `0x03` | Advanced register (agent keypair) |
-| `'X'` / `0x04` | Advanced deregister |
-| `'W'` / `0x05` | Wallet-free register |
+| `'R'` | Simple register |
+| `'D'` | Simple deregister |
+| `'K'` | Advanced register (agent keypair) |
+| `'X'` | Advanced deregister |
+| `'W'` | Wallet-free register |
+
+> **Warning — `userDefinedData` encoding**: The Self SDK passes `userDefinedData` as a **UTF-8 string**, not raw bytes. Each byte position uses the ASCII character (e.g., `'0'` not `0x00`). Use `bytes32(bytes1(uint8(x)))` for byte positioning in Solidity. This is the #1 integration mistake — see [Troubleshooting](https://docs.self.xyz/agent-id/troubleshooting) for details.
 
 ---
 
@@ -525,6 +550,15 @@ Agent cards follow a standardized format for agent-to-agent discovery:
 
 Cards are stored on-chain via `updateAgentMetadata()` and readable via `getAgentMetadata()`.
 
+### Examples
+
+| Example | Language | What it shows |
+|---------|----------|---------------|
+| [Minimal TypeScript](examples/minimal-ts/) | TypeScript | Agent signing + Express verifier middleware |
+| [Minimal Python](examples/minimal-python/) | Python | Agent signing + FastAPI verifier middleware |
+| [Minimal Rust](examples/minimal-rust/) | Rust | Agent signing + Axum verifier middleware |
+| [LangChain Agent](examples/langchain-agent/) | Python | AI agent with on-chain verification gate |
+
 ---
 
 ## 7. CLI
@@ -671,11 +705,72 @@ Session stages: `initialized` → `handoff_opened` → `callback_received` → `
 
 ---
 
-## 8. REST API
+## 8. MCP Server
+
+The [MCP server](https://github.com/selfxyz/self-agent-id-mcp) gives AI coding agents direct access to Self Agent ID through the [Model Context Protocol](https://modelcontextprotocol.io/). It works with Claude Code, Cursor, Windsurf, Codex, and any MCP-compatible client.
+
+### Install
+
+```bash
+npx @selfxyz/mcp-server
+```
+
+### Configuration
+
+**Claude Code** (`~/.claude.json` or project `.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "self-agent-id": {
+      "command": "npx",
+      "args": ["@selfxyz/mcp-server"],
+      "env": {
+        "SELF_NETWORK": "mainnet"
+      }
+    }
+  }
+}
+```
+
+**Cursor / Windsurf** — same JSON format in the respective MCP configuration file.
+
+Set `SELF_AGENT_PRIVATE_KEY` in `env` for full mode (register, sign, fetch). Omit it for query-only mode (lookup, verify).
+
+### Tools
+
+| Tool | Description | Key Required? |
+|------|-------------|:---:|
+| `self_register_agent` | Register agent with proof-of-human | No |
+| `self_check_registration` | Poll registration status | No |
+| `self_get_identity` | Get current agent's on-chain identity | Yes |
+| `self_deregister_agent` | Revoke agent identity | Yes |
+| `self_sign_request` | Generate auth headers for HTTP request | Yes |
+| `self_authenticated_fetch` | Make signed HTTP request | Yes |
+| `self_verify_agent` | Verify another agent's identity | No |
+| `self_verify_request` | Verify incoming request headers | No |
+| `self_lookup_agent` | Look up agent by on-chain ID | No |
+| `self_list_agents_for_human` | List agents for a human address | No |
+
+### Resources
+
+| URI | Description |
+|-----|-------------|
+| `self://networks` | Contract addresses, chain IDs, RPC URLs |
+| `self://identity` | Current agent's on-chain identity |
+
+### Links
+
+- **Repository**: [github.com/selfxyz/self-agent-id-mcp](https://github.com/selfxyz/self-agent-id-mcp)
+- **Guide**: [MCP User Guide](https://docs.self.xyz/agent-id/guides/mcp-user)
+
+---
+
+## 9. REST API
 
 Base URL: `https://selfagentid.xyz` (or your deployment)
 
-### 8.1 Registration Endpoints
+### 9.1 Registration Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -703,7 +798,7 @@ Base URL: `https://selfagentid.xyz` (or your deployment)
 
 **Registration status stages**: `qr-ready` → `proof-received` → `pending` → `completed` / `failed`
 
-### 8.2 Deregistration Endpoints
+### 9.2 Deregistration Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -711,7 +806,7 @@ Base URL: `https://selfagentid.xyz` (or your deployment)
 | GET | `/api/agent/deregister/status?token=` | Poll deregistration status |
 | POST | `/api/agent/deregister/callback?token=` | Receive Self app callback |
 
-### 8.3 Query Endpoints
+### 9.3 Query Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -743,7 +838,7 @@ Base URL: `https://selfagentid.xyz` (or your deployment)
 }
 ```
 
-### 8.4 Discovery Endpoints
+### 9.4 Discovery Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -751,7 +846,7 @@ Base URL: `https://selfagentid.xyz` (or your deployment)
 | GET | `/api/reputation/{chainId}/{agentId}` | Reputation score and proof type |
 | GET | `/api/verify-status/{chainId}/{agentId}` | Verification status summary |
 
-### 8.5 Demo Endpoints
+### 9.5 Demo Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -762,7 +857,7 @@ Base URL: `https://selfagentid.xyz` (or your deployment)
 | GET | `/api/demo/census` | Read aggregate census statistics |
 | POST | `/api/demo/chat` | Forward chat to LangChain with agent verification |
 
-### 8.6 Account Abstraction Proxy
+### 9.6 Account Abstraction Proxy
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -772,9 +867,9 @@ Base URL: `https://selfagentid.xyz` (or your deployment)
 
 ---
 
-## 9. Smart Contracts
+## 10. Smart Contracts
 
-### 9.1 SelfAgentRegistry
+### 10.1 SelfAgentRegistry
 
 Main ERC-721 registry. Soulbound NFTs binding agent identities to Self-verified humans.
 
@@ -787,8 +882,8 @@ function revokeHumanProof(uint256 agentId, address proofProvider, bytes proof, b
 function verifySelfProof(bytes proofPayload, bytes userContextData) // Hub V2 async
 
 // Query
-function isVerifiedAgent(bytes32 agentPubKey) view returns (bool)
-function getAgentId(bytes32 agentPubKey) view returns (uint256)
+function isVerifiedAgent(bytes32 agentKey) view returns (bool)
+function getAgentId(bytes32 agentKey) view returns (uint256)
 function hasHumanProof(uint256 agentId) view returns (bool)
 function getHumanNullifier(uint256 agentId) view returns (uint256)
 function getAgentCountForHuman(uint256 nullifier) view returns (uint256)
@@ -827,7 +922,7 @@ struct AgentCredentials {
 }
 ```
 
-### 9.2 SelfHumanProofProvider
+### 10.2 SelfHumanProofProvider
 
 Metadata wrapper describing Self Protocol as a proof-of-human provider.
 
@@ -835,7 +930,7 @@ Metadata wrapper describing Self Protocol as a proof-of-human provider.
 - `verificationStrength()` → `100` (passport/NFC + biometric)
 - `verifyHumanProof()` — Always reverts (Self uses async Hub V2 callback)
 
-### 9.3 AgentDemoVerifier
+### 10.3 AgentDemoVerifier
 
 Demo contract for EIP-712 meta-transaction verification. Relayer submits signed typed data on behalf of the agent.
 
@@ -846,7 +941,7 @@ function checkAccess(bytes32 agentKey) view returns (uint256 agentId)
 
 EIP-712 domain: `{name: "AgentDemoVerifier", version: "1", chainId, verifyingContract}`
 
-### 9.4 AgentGate
+### 10.4 AgentGate
 
 Demo contract gating access behind age-verified agent identity.
 
@@ -855,7 +950,7 @@ function checkAccess(bytes32 agentKey) view returns (uint256 agentId, uint256 ol
 function gatedAction(bytes32 agentKey) // Requires caller = agent address
 ```
 
-### 9.5 SelfReputationProvider
+### 10.5 SelfReputationProvider
 
 ERC-8004 compatible reputation scoring. Stateless view over registry.
 
@@ -865,7 +960,7 @@ function getReputation(uint256 agentId) view returns (uint8 score, string provid
 function getReputationBatch(uint256[] agentIds) view returns (uint8[])
 ```
 
-### 9.6 SelfValidationProvider
+### 10.6 SelfValidationProvider
 
 ERC-8004 compatible proof validation with freshness checks.
 
@@ -876,7 +971,7 @@ function setFreshnessThreshold(uint256 blocks) // Owner-only (default: ~1 year)
 function validateBatch(uint256[] agentIds) view returns (bool[])
 ```
 
-### 9.7 LocalRegistryHarness
+### 10.7 LocalRegistryHarness
 
 Test-only mock registry for CLI integration testing.
 
@@ -888,9 +983,9 @@ function getAgentId(bytes32 agentKey) view returns (uint256)
 
 ---
 
-## 10. Verification Patterns
+## 11. Verification Patterns
 
-### 10.1 Agent → Service (ECDSA Middleware)
+### 11.1 Agent → Service (ECDSA Middleware)
 
 The agent signs each HTTP request with ECDSA. The service middleware recovers the signer, checks `isVerifiedAgent()` on-chain, and enforces policy.
 
@@ -911,11 +1006,11 @@ Agent                          Service
   │◀──────────────────────────────│
 ```
 
-### 10.2 Agent → Agent (Peer Verification)
+### 11.2 Agent → Agent (Peer Verification)
 
 Both agents verify each other's signatures and on-chain status. Use `sameHuman()` to detect sybil attacks in multi-agent systems.
 
-### 10.3 Agent → Chain (Direct)
+### 11.3 Agent → Chain (Direct)
 
 The agent calls a smart contract directly. The contract derives the agent key from `msg.sender` and checks the registry:
 
@@ -927,7 +1022,7 @@ modifier onlyVerifiedAgent() {
 }
 ```
 
-### 10.4 Agent → Chain (EIP-712 Meta-Transaction)
+### 11.4 Agent → Chain (EIP-712 Meta-Transaction)
 
 For gasless verification, a relayer submits the agent's EIP-712 typed data signature on-chain:
 
@@ -946,7 +1041,7 @@ Agent                    Relayer                  Contract
 
 ---
 
-## 11. Security
+## 12. Security
 
 ### Sybil Resistance
 
@@ -994,7 +1089,7 @@ Agent                    Relayer                  Contract
 
 ---
 
-## 12. Credential System
+## 13. Credential System
 
 ### What's Stored
 
@@ -1045,7 +1140,7 @@ GET /api/agent/info/{chainId}/{agentId}
 
 ---
 
-## 13. Discovery & Lookup
+## 14. Discovery & Lookup
 
 ### On-Chain Queries
 

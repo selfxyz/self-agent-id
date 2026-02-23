@@ -1,0 +1,1368 @@
+openapi: 3.1.0
+info:
+  title: Self Agent ID API
+  version: 1.0.0
+  description: >
+    On-chain AI agent identity registry with proof-of-human verification.
+    Register, deregister, and query agents — no API keys required.
+    Sessions use encrypted tokens with a 30-minute TTL.
+  contact:
+    name: Self Protocol
+    url: https://github.com/selfxyz/self-agent-id
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://selfagentid.xyz
+    description: Production
+
+tags:
+  - name: Registration
+    description: Create and manage agent registration sessions
+  - name: Deregistration
+    description: Remove an agent from the on-chain registry
+  - name: Query
+    description: Read-only on-chain agent lookups (no auth required)
+  - name: Discovery
+    description: Service discovery and agent cards
+  - name: Demo
+    description: Demo endpoints requiring x-self-agent-* signed headers
+  - name: AA Proxy
+    description: Account-abstraction proxy for bundler/paymaster (internal use)
+
+# Default: no auth required. Endpoints that need auth declare their own security.
+security: []
+
+# ─── Security schemes ────────────────────────────────────────────────
+components:
+  securitySchemes:
+    selfAgentAuth:
+      type: apiKey
+      in: header
+      name: x-self-agent-signature
+      description: >
+        ECDSA signature produced by `SelfAgent.signRequest()`.
+        Must be accompanied by `x-self-agent-address` and
+        `x-self-agent-timestamp` headers.
+    aaProxyToken:
+      type: apiKey
+      in: header
+      name: x-aa-proxy-token
+      description: >
+        Short-lived token issued by POST /api/aa/token.
+        Required for bundler and paymaster proxy endpoints.
+
+  parameters:
+    chainIdPath:
+      name: chainId
+      in: path
+      required: true
+      schema:
+        type: integer
+        enum: [42220, 11142220]
+      description: "42220 (Celo Mainnet) or 11142220 (Celo Sepolia Testnet)"
+    agentIdPath:
+      name: agentId
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: On-chain agent token ID
+    sessionToken:
+      name: token
+      in: query
+      required: true
+      schema:
+        type: string
+      description: Encrypted session token returned by POST /register or /deregister
+    chainIdQuery:
+      name: chainId
+      in: query
+      required: true
+      schema:
+        type: string
+        enum: ["42220", "11142220"]
+      description: "42220 (mainnet) or 11142220 (testnet)"
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    Disclosures:
+      type: object
+      properties:
+        minimumAge:
+          type: integer
+          description: "Minimum age to verify (0, 18, or 21)"
+        ofac:
+          type: boolean
+          description: Whether to require OFAC screening
+        nationality:
+          type: boolean
+          description: Whether to disclose nationality
+        name:
+          type: boolean
+          description: Whether to disclose name
+
+    RegisterRequest:
+      type: object
+      required: [mode, network]
+      properties:
+        mode:
+          type: string
+          enum: [verified-wallet, agent-identity, wallet-free, smart-wallet]
+          description: Registration mode
+        network:
+          type: string
+          enum: [mainnet, testnet]
+        humanAddress:
+          type: string
+          description: "Human wallet address (required for verified-wallet and agent-identity modes)"
+        disclosures:
+          $ref: "#/components/schemas/Disclosures"
+        agentName:
+          type: string
+          description: Optional display name for the agent
+        agentDescription:
+          type: string
+          description: Optional agent description
+
+    RegisterResponse:
+      type: object
+      properties:
+        sessionToken:
+          type: string
+        deepLink:
+          type: string
+          description: selfapp:// deep link for the Self app
+        qrData:
+          type: string
+          description: QR code payload (same as deepLink)
+        agentAddress:
+          type: string
+          description: Generated agent address (for agent-identity / wallet-free)
+        mode:
+          type: string
+        network:
+          type: string
+
+    StatusResponse:
+      type: object
+      properties:
+        stage:
+          type: string
+          enum: [qr-ready, proof-received, pending, completed, failed]
+        agentId:
+          type: integer
+        agentAddress:
+          type: string
+        txHash:
+          type: string
+        sessionToken:
+          type: string
+          description: Refreshed session token — always use the latest one
+        error:
+          type: string
+
+    QrResponse:
+      type: object
+      properties:
+        qrData:
+          type: string
+        deepLink:
+          type: string
+
+    ExportResponse:
+      type: object
+      properties:
+        privateKey:
+          type: string
+        agentAddress:
+          type: string
+        agentId:
+          type: integer
+
+    DeregisterRequest:
+      type: object
+      required: [network, agentAddress]
+      properties:
+        network:
+          type: string
+          enum: [mainnet, testnet]
+        agentAddress:
+          type: string
+        disclosures:
+          $ref: "#/components/schemas/Disclosures"
+
+    DeregisterResponse:
+      type: object
+      properties:
+        sessionToken:
+          type: string
+        deepLink:
+          type: string
+        qrData:
+          type: string
+
+    DeregisterStatusResponse:
+      type: object
+      properties:
+        stage:
+          type: string
+          enum: [qr-ready, proof-received, completed, failed]
+        txHash:
+          type: string
+
+    Credentials:
+      type: object
+      properties:
+        nationality:
+          type: string
+          description: ISO 3166-1 alpha-3 country code
+        olderThan:
+          type: integer
+        ofac:
+          type: array
+          items:
+            type: boolean
+          description: "[isOnSdnList, isOnConsolidatedList, isOnOfacList]"
+
+    AgentInfoResponse:
+      type: object
+      properties:
+        agentId:
+          type: integer
+        chainId:
+          type: integer
+        agentAddress:
+          type: string
+        isVerified:
+          type: boolean
+        proofProvider:
+          type: string
+        verificationStrength:
+          type: integer
+        strengthLabel:
+          type: string
+        credentials:
+          $ref: "#/components/schemas/Credentials"
+        registeredAt:
+          type: integer
+          description: Unix timestamp
+        network:
+          type: string
+
+    AgentListResponse:
+      type: object
+      properties:
+        agents:
+          type: array
+          items:
+            type: integer
+        chainId:
+          type: integer
+        humanAddress:
+          type: string
+
+    VerifyResponse:
+      type: object
+      properties:
+        agentId:
+          type: integer
+        isVerified:
+          type: boolean
+        proofProvider:
+          type: string
+        strengthLabel:
+          type: string
+        humanAgentCount:
+          type: integer
+        maxAgentsPerHuman:
+          type: integer
+
+    AgentCardResponse:
+      type: object
+      description: A2A-compatible agent identity card (JSON-LD)
+      additionalProperties: true
+
+    ReputationResponse:
+      type: object
+      properties:
+        score:
+          type: integer
+        hasProof:
+          type: boolean
+        providerName:
+          type: string
+        proofType:
+          type: string
+
+    VerifyStatusResponse:
+      type: object
+      properties:
+        verified:
+          type: boolean
+        proofType:
+          type: string
+        registeredAtBlock:
+          type: string
+        providerAddress:
+          type: string
+
+    DiscoveryDocument:
+      type: object
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        apiBase:
+          type: string
+        networks:
+          type: array
+          items:
+            type: string
+        registrationModes:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        sessionTtlMs:
+          type: integer
+
+    DemoVerifyResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        agentAddress:
+          type: string
+        agentKey:
+          type: string
+        agentId:
+          type: string
+        agentCount:
+          type: string
+        verificationCount:
+          type: integer
+        credentials:
+          $ref: "#/components/schemas/Credentials"
+        error:
+          type: string
+
+    AgentToAgentResponse:
+      type: object
+      properties:
+        verified:
+          type: boolean
+        demoAgent:
+          type: object
+          properties:
+            address:
+              type: string
+            agentId:
+              type: string
+            verified:
+              type: boolean
+        callerAgent:
+          type: object
+          properties:
+            address:
+              type: string
+            agentId:
+              type: string
+            verified:
+              type: boolean
+        sameHuman:
+          type: boolean
+        verificationCount:
+          type: integer
+        uniqueAgents:
+          type: integer
+        message:
+          type: string
+
+    ChainVerifyRequest:
+      type: object
+      required: [agentKey, nonce, deadline, eip712Signature]
+      properties:
+        agentKey:
+          type: string
+          description: Agent's bytes32 public key
+        nonce:
+          type: string
+        deadline:
+          type: integer
+          description: Unix timestamp
+        eip712Signature:
+          type: string
+        networkId:
+          type: string
+          enum: [celo, celo-sepolia]
+
+    ChainVerifyResponse:
+      type: object
+      properties:
+        txHash:
+          type: string
+        blockNumber:
+          type: integer
+        explorerUrl:
+          type: string
+        agentAddress:
+          type: string
+        agentId:
+          type: string
+        credentials:
+          type: object
+          properties:
+            olderThan:
+              type: string
+            nationality:
+              type: string
+        verificationCount:
+          type: string
+        totalVerifications:
+          type: string
+        gasUsed:
+          type: string
+        rateLimitRemaining:
+          type: integer
+        pending:
+          type: boolean
+          description: "True if tx submitted but confirmation timed out"
+
+    CensusPostResponse:
+      type: object
+      properties:
+        recorded:
+          type: boolean
+        totalAgents:
+          type: integer
+        yourEntry:
+          type: object
+          properties:
+            agentAddress:
+              type: string
+            agentId:
+              type: string
+            nationality:
+              type: string
+            olderThan:
+              type: integer
+            ofac:
+              type: array
+              items:
+                type: boolean
+            timestamp:
+              type: integer
+
+    CensusGetResponse:
+      type: object
+      properties:
+        topCountries:
+          type: array
+          items:
+            type: object
+            properties:
+              country:
+                type: string
+              count:
+                type: integer
+        verifiedOver18:
+          type: integer
+        verifiedOver21:
+          type: integer
+        ofacClear:
+          type: integer
+        totalAgents:
+          type: integer
+
+    ChatRequest:
+      type: object
+      properties:
+        query:
+          type: string
+        session_id:
+          type: string
+
+    ChatResponse:
+      type: object
+      description: LangChain agent response (structure varies)
+      additionalProperties: true
+
+    AaTokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        expiresAt:
+          type: integer
+          description: Unix timestamp (ms)
+
+    JsonRpcRequest:
+      type: object
+      required: [jsonrpc, method]
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+        method:
+          type: string
+        params:
+          type: array
+          items: {}
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: "null"
+
+    JsonRpcResponse:
+      type: object
+      description: Standard JSON-RPC 2.0 response from upstream bundler/paymaster
+      additionalProperties: true
+
+# ─── Paths ───────────────────────────────────────────────────────────
+paths:
+  # ── Registration ─────────────────────────────────────────────────
+  /api/agent/register:
+    post:
+      tags: [Registration]
+      summary: Initiate agent registration
+      operationId: createRegistration
+      description: >
+        Creates a new registration session. Returns session token, QR code
+        data, deep link, and the generated agent address. The user must
+        scan the QR with the Self app to submit a passport proof.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+            example:
+              mode: agent-identity
+              network: testnet
+              humanAddress: "0xYourWalletAddress"
+              disclosures:
+                minimumAge: 18
+                ofac: true
+                nationality: false
+                name: false
+      responses:
+        "200":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterResponse"
+        "400":
+          description: Invalid parameters or missing fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/agent/register/qr:
+    get:
+      tags: [Registration]
+      summary: Get QR code and deep link
+      operationId: getRegistrationQr
+      description: >
+        Returns the QR code payload and deep link for the current session.
+        Use this if you need to re-render the QR.
+      parameters:
+        - $ref: "#/components/parameters/sessionToken"
+      responses:
+        "200":
+          description: QR data returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QrResponse"
+
+  /api/agent/register/status:
+    get:
+      tags: [Registration]
+      summary: Poll registration status
+      operationId: getRegistrationStatus
+      description: >
+        Returns current registration stage: "qr-ready", "proof-received",
+        "completed", or "failed". Once completed, includes on-chain agent
+        ID and transaction hash.
+      parameters:
+        - $ref: "#/components/parameters/sessionToken"
+      responses:
+        "200":
+          description: Current session status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "410":
+          description: Session expired (30-minute TTL)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/agent/register/callback:
+    post:
+      tags: [Registration]
+      summary: Receive Self app callback
+      operationId: registrationCallback
+      description: >
+        Webhook endpoint called by the Self app after the user scans the
+        QR and submits a passport proof. Updates session stage to
+        proof-received and triggers on-chain registration.
+      parameters:
+        - $ref: "#/components/parameters/sessionToken"
+      responses:
+        "200":
+          description: Callback processed
+        "401":
+          description: Invalid or tampered token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/agent/register/export:
+    get:
+      tags: [Registration]
+      summary: Export agent private key
+      operationId: exportAgentKey
+      description: >
+        After registration completes, export the agent's private key.
+        Only available for "agent-identity" and "wallet-free" modes.
+      parameters:
+        - $ref: "#/components/parameters/sessionToken"
+      responses:
+        "200":
+          description: Private key exported
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportResponse"
+        "409":
+          description: Session not in completed stage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Deregistration ───────────────────────────────────────────────
+  /api/agent/deregister:
+    post:
+      tags: [Deregistration]
+      summary: Initiate agent deregistration
+      operationId: createDeregistration
+      description: >
+        Verifies the agent exists on-chain, then creates a deregistration
+        session with QR data. The human must re-prove identity to burn
+        the agent NFT.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeregisterRequest"
+            example:
+              network: testnet
+              agentAddress: "0xAgentAddress"
+              disclosures:
+                minimumAge: 18
+                ofac: true
+      responses:
+        "200":
+          description: Deregistration session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeregisterResponse"
+        "404":
+          description: Agent not found on-chain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/agent/deregister/status:
+    get:
+      tags: [Deregistration]
+      summary: Poll deregistration status
+      operationId: getDeregistrationStatus
+      description: >
+        Returns current deregistration stage. Once completed, the agent
+        NFT has been burned.
+      parameters:
+        - $ref: "#/components/parameters/sessionToken"
+      responses:
+        "200":
+          description: Current deregistration status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeregisterStatusResponse"
+
+  /api/agent/deregister/callback:
+    post:
+      tags: [Deregistration]
+      summary: Receive deregistration callback
+      operationId: deregistrationCallback
+      description: >
+        Webhook endpoint for the Self app after the user confirms
+        deregistration via passport proof.
+      parameters:
+        - $ref: "#/components/parameters/sessionToken"
+      responses:
+        "200":
+          description: Callback processed
+        "401":
+          description: Invalid or tampered token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Query ────────────────────────────────────────────────────────
+  /api/agent/info/{chainId}/{agentId}:
+    get:
+      tags: [Query]
+      summary: Get agent details
+      operationId: getAgentInfo
+      description: >
+        Returns full agent information: address, verification status,
+        proof provider, credentials, and registration timestamp.
+      parameters:
+        - $ref: "#/components/parameters/chainIdPath"
+        - $ref: "#/components/parameters/agentIdPath"
+      responses:
+        "200":
+          description: Agent details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentInfoResponse"
+              example:
+                agentId: 5
+                chainId: 11142220
+                agentAddress: "0x83fa4380903fecb801F4e123835664973001ff00"
+                isVerified: true
+                proofProvider: "0x69Da18CF4Ac27121FD99cEB06e38c3DC78F363f4"
+                verificationStrength: 2
+                strengthLabel: Standard
+                credentials:
+                  nationality: GBR
+                  olderThan: 18
+                  ofac: [false, false, false]
+                registeredAt: 1740000000
+                network: testnet
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/agent/agents/{chainId}/{address}:
+    get:
+      tags: [Query]
+      summary: List agents by human address
+      operationId: listAgentsByHuman
+      description: >
+        Returns all agent IDs registered by a specific human wallet
+        address.
+      parameters:
+        - $ref: "#/components/parameters/chainIdPath"
+        - name: address
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Human wallet address (0x...)
+      responses:
+        "200":
+          description: List of agent IDs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentListResponse"
+              example:
+                agents: [5, 12, 37]
+                chainId: 11142220
+                humanAddress: "0xabc..."
+
+  /api/agent/verify/{chainId}/{agentId}:
+    get:
+      tags: [Query]
+      summary: Verify agent proof-of-human
+      operationId: verifyAgent
+      description: >
+        Checks whether an agent has valid proof-of-human verification,
+        the proof provider address, verification strength label, and
+        Sybil metrics.
+      parameters:
+        - $ref: "#/components/parameters/chainIdPath"
+        - $ref: "#/components/parameters/agentIdPath"
+      responses:
+        "200":
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyResponse"
+              example:
+                agentId: 5
+                isVerified: true
+                proofProvider: "0x69Da18CF4Ac27121FD99cEB06e38c3DC78F363f4"
+                strengthLabel: Standard
+                humanAgentCount: 1
+                maxAgentsPerHuman: 1
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Discovery ────────────────────────────────────────────────────
+  /api/cards/{chainId}/{agentId}:
+    get:
+      tags: [Discovery]
+      summary: Get agent A2A card
+      operationId: getAgentCard
+      description: >
+        Returns the A2A-compatible agent identity card stored on-chain
+        as JSON metadata.
+      parameters:
+        - $ref: "#/components/parameters/chainIdPath"
+        - $ref: "#/components/parameters/agentIdPath"
+      responses:
+        "200":
+          description: Agent card
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentCardResponse"
+        "404":
+          description: Agent not found or no card set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/reputation/{chainId}/{agentId}:
+    get:
+      tags: [Discovery]
+      summary: Get agent reputation score
+      operationId: getAgentReputation
+      description: >
+        Returns the agent's verification strength score from the proof
+        provider contract.
+      parameters:
+        - $ref: "#/components/parameters/chainIdPath"
+        - $ref: "#/components/parameters/agentIdPath"
+      responses:
+        "200":
+          description: Reputation score
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReputationResponse"
+              example:
+                score: 2
+                hasProof: true
+                providerName: Self Protocol
+                proofType: Standard
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/verify-status/{chainId}/{agentId}:
+    get:
+      tags: [Discovery]
+      summary: Get proof verification status
+      operationId: getVerifyStatus
+      description: >
+        Returns real-time proof status, proof type, registration block,
+        and provider address.
+      parameters:
+        - $ref: "#/components/parameters/chainIdPath"
+        - $ref: "#/components/parameters/agentIdPath"
+      responses:
+        "200":
+          description: Verification status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyStatusResponse"
+              example:
+                verified: true
+                proofType: Standard
+                registeredAtBlock: "12345678"
+                providerAddress: "0x69Da18CF4Ac27121FD99cEB06e38c3DC78F363f4"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /.well-known/self-agent-id.json:
+    get:
+      tags: [Discovery]
+      summary: Service discovery document
+      operationId: getDiscoveryDocument
+      description: >
+        Returns the service discovery document with API base URL,
+        supported networks, registration modes, and capabilities.
+      responses:
+        "200":
+          description: Discovery document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoveryDocument"
+              example:
+                name: Self Agent ID
+                version: "1.0"
+                description: On-chain AI agent identity registry with proof-of-human verification
+                apiBase: https://selfagentid.xyz/api/agent
+                networks: [mainnet, testnet]
+                registrationModes: [verified-wallet, agent-identity, wallet-free, smart-wallet]
+                capabilities: [register, deregister, verify, credentials, agent-card, a2a]
+                sessionTtlMs: 1800000
+
+  # ── Demo (require x-self-agent-* headers) ────────────────────────
+  /api/demo/verify:
+    post:
+      tags: [Demo]
+      summary: Verify agent identity (service pattern)
+      operationId: demoVerify
+      description: >
+        Accepts a signed agent request, verifies the ECDSA signature and
+        on-chain status, then returns agent info and credentials.
+      security:
+        - selfAgentAuth: []
+      parameters:
+        - name: network
+          in: query
+          schema:
+            type: string
+            enum: [celo, celo-sepolia]
+          description: Network override (defaults to celo-sepolia)
+      responses:
+        "200":
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DemoVerifyResponse"
+        "401":
+          description: Missing agent authentication headers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Replay detected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/demo/agent-to-agent:
+    post:
+      tags: [Demo]
+      summary: Agent-to-agent verification
+      operationId: demoAgentToAgent
+      description: >
+        Demo agent endpoint that verifies the caller, checks
+        `sameHuman()` on-chain, and signs its response so the caller
+        can verify it came from the demo agent.
+      security:
+        - selfAgentAuth: []
+      parameters:
+        - name: network
+          in: query
+          schema:
+            type: string
+            enum: [celo, celo-sepolia]
+      responses:
+        "200":
+          description: Mutual verification result (response headers include demo agent signature)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentToAgentResponse"
+        "401":
+          description: Missing agent authentication headers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Agent verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Replay detected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/demo/chain-verify:
+    post:
+      tags: [Demo]
+      summary: On-chain meta-transaction verification
+      operationId: demoChainVerify
+      description: >
+        Relayer endpoint that submits EIP-712 meta-transactions to the
+        `AgentDemoVerifier` contract. Rate limited to 3 per hour per
+        human nullifier.
+      security:
+        - selfAgentAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChainVerifyRequest"
+      responses:
+        "200":
+          description: Transaction submitted and confirmed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChainVerifyResponse"
+        "400":
+          description: Simulation failed or invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing agent authentication headers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Agent verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Replay detected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limited (3 per hour per human)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  rateLimitRemaining:
+                    type: integer
+                  retryAfterMs:
+                    type: integer
+
+  /api/demo/census:
+    post:
+      tags: [Demo]
+      summary: Contribute credentials to census
+      operationId: postCensus
+      description: >
+        Agent-gated data contribution. Verified agent credentials
+        (nationality, age, OFAC) are recorded in the census store.
+      security:
+        - selfAgentAuth: []
+      responses:
+        "200":
+          description: Credentials recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CensusPostResponse"
+        "403":
+          description: Agent verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      tags: [Demo]
+      summary: Read census aggregate stats
+      operationId: getCensus
+      description: >
+        Agent-gated read of aggregate census data. Returns top countries,
+        age distribution, and OFAC screening stats.
+      security:
+        - selfAgentAuth: []
+      responses:
+        "200":
+          description: Aggregate census stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CensusGetResponse"
+              example:
+                topCountries:
+                  - country: GBR
+                    count: 12
+                  - country: USA
+                    count: 8
+                  - country: DEU
+                    count: 5
+                verifiedOver18: 20
+                verifiedOver21: 15
+                ofacClear: 25
+                totalAgents: 25
+        "403":
+          description: Agent verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/demo/chat:
+    post:
+      tags: [Demo]
+      summary: AI agent chat
+      operationId: demoChat
+      description: >
+        AI chat endpoint backed by a LangChain agent. Signed requests
+        are verified on-chain; unsigned requests are treated as
+        anonymous (LangChain may refuse).
+      security:
+        - selfAgentAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatRequest"
+            example:
+              query: "What is Self Agent ID?"
+              session_id: "user-123"
+      responses:
+        "200":
+          description: Chat response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResponse"
+        "401":
+          description: Missing or incomplete agent headers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Agent verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: LangChain service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── AA Proxy ─────────────────────────────────────────────────────
+  /api/aa/token:
+    post:
+      tags: [AA Proxy]
+      summary: Issue AA proxy token
+      operationId: issueAaToken
+      description: >
+        Issues a short-lived token for accessing the bundler and
+        paymaster proxy endpoints. Origin-restricted and rate-limited
+        (30 req/min per IP).
+      parameters:
+        - $ref: "#/components/parameters/chainIdQuery"
+      responses:
+        "200":
+          description: Token issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AaTokenResponse"
+              example:
+                token: "eyJhbGciOi..."
+                expiresAt: 1740001800000
+        "400":
+          description: Unsupported or missing chain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Origin check failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  retryAfterMs:
+                    type: integer
+
+  /api/aa/bundler:
+    post:
+      tags: [AA Proxy]
+      summary: Bundler JSON-RPC proxy
+      operationId: bundlerProxy
+      description: >
+        Proxies ERC-4337 bundler JSON-RPC calls to Pimlico. Requires an
+        `x-aa-proxy-token` header. Allowed methods:
+        `eth_chainId`, `eth_supportedEntryPoints`,
+        `eth_estimateUserOperationGas`, `eth_sendUserOperation`,
+        `eth_getUserOperationReceipt`, `eth_getUserOperationByHash`,
+        `eth_gasPrice`, `eth_maxPriorityFeePerGas`.
+      security:
+        - aaProxyToken: []
+      parameters:
+        - $ref: "#/components/parameters/chainIdQuery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JsonRpcRequest"
+            example:
+              jsonrpc: "2.0"
+              method: eth_sendUserOperation
+              params: []
+              id: 1
+      responses:
+        "200":
+          description: Upstream bundler response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JsonRpcResponse"
+        "400":
+          description: Invalid JSON-RPC or method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid AA proxy token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: Request too large (200 KB limit)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  retryAfterMs:
+                    type: integer
+
+  /api/aa/paymaster:
+    post:
+      tags: [AA Proxy]
+      summary: Paymaster JSON-RPC proxy
+      operationId: paymasterProxy
+      description: >
+        Proxies ERC-4337 paymaster JSON-RPC calls to Pimlico. Requires
+        an `x-aa-proxy-token` header. Allowed methods:
+        `pm_sponsorUserOperation`, `pm_getPaymasterData`,
+        `pm_getPaymasterStubData`, `eth_chainId`.
+      security:
+        - aaProxyToken: []
+      parameters:
+        - $ref: "#/components/parameters/chainIdQuery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JsonRpcRequest"
+            example:
+              jsonrpc: "2.0"
+              method: pm_sponsorUserOperation
+              params: []
+              id: 1
+      responses:
+        "200":
+          description: Upstream paymaster response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JsonRpcResponse"
+        "400":
+          description: Invalid JSON-RPC or method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid AA proxy token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: Request too large (200 KB limit)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  retryAfterMs:
+                    type: integer

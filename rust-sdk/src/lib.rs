@@ -4,9 +4,11 @@
 //!
 //! ## Agent side (signing requests)
 //!
-//! ```ignore
+//! ```no_run
 //! use self_agent_sdk::{SelfAgent, SelfAgentConfig, NetworkName};
 //!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # tokio::runtime::Runtime::new()?.block_on(async {
 //! let agent = SelfAgent::new(SelfAgentConfig {
 //!     private_key: "0x...".to_string(),
 //!     network: Some(NetworkName::Testnet),
@@ -19,18 +21,32 @@
 //!
 //! // Auto-signed HTTP request
 //! let response = agent.fetch("https://api.example.com/data", None, None).await?;
+//! # let _ = (registered, response);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! # })?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ## Service side (verifying requests)
 //!
-//! ```ignore
+//! ```no_run
 //! use self_agent_sdk::{SelfAgentVerifier, VerifierConfig};
 //!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # tokio::runtime::Runtime::new()?.block_on(async {
 //! let mut verifier = SelfAgentVerifier::new(VerifierConfig::default());
+//! let signature = "0x...";
+//! let timestamp = "1700000000000";
+//! let body = r#"{"test":true}"#;
 //! let result = verifier.verify(signature, timestamp, "POST", "/api/data", Some(body)).await;
 //! if result.valid {
 //!     println!("Verified agent: {:?}", result.agent_address);
 //! }
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! # })?;
+//! # Ok(())
+//! # }
 //! ```
 
 pub mod agent;

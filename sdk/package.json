@@ -14,9 +14,21 @@
     "test": "node --test dist/**/*.test.js",
     "cli": "node dist/cli.js"
   },
-  "keywords": ["self", "agent", "identity", "proof-of-human", "erc-8004"],
+  "keywords": ["self", "agent", "identity", "proof-of-human", "erc-8004", "blockchain", "celo", "ai-agent", "verification", "sybil-resistance", "zk-proof"],
   "author": "Self Protocol",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/selfxyz/self-agent-id.git",
+    "directory": "sdk"
+  },
+  "homepage": "https://github.com/selfxyz/self-agent-id#readme",
+  "bugs": {
+    "url": "https://github.com/selfxyz/self-agent-id/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "ethers": "^6.16.0"
   },
