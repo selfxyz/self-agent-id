@@ -35,6 +35,26 @@ export function Footer() {
             <ExternalLink size={10} />
           </a>
         </div>
+        <div className="flex items-center gap-4">
+          <a
+            href="https://github.com/selfxyz/self-agent-id"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 hover:text-foreground transition-colors"
+          >
+            <span>GitHub</span>
+            <ExternalLink size={10} />
+          </a>
+          <a
+            href="https://www.npmjs.com/package/@selfxyz/mcp-server"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 hover:text-foreground transition-colors"
+          >
+            <span>MCP Server</span>
+            <ExternalLink size={10} />
+          </a>
+        </div>
         <a
           href={blockscoutUrl}
           target="_blank"

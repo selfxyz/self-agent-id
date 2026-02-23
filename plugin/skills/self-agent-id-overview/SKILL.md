@@ -125,8 +125,8 @@ Services verify agent HTTP requests using three headers:
 | Header | Content |
 |---|---|
 | `x-self-agent-address` | Agent's Ethereum address (hex) |
-| `x-self-agent-signature` | ECDSA signature over `{method}:{path}:{timestamp}:{bodyHash}` |
-| `x-self-agent-timestamp` | Unix timestamp (seconds), must be within 5-minute window |
+| `x-self-agent-signature` | ECDSA signature over `timestamp + METHOD + pathWithQuery + keccak256(body)` |
+| `x-self-agent-timestamp` | Unix timestamp in milliseconds (string), must be within 5-minute window |
 
 ### SDKs
 

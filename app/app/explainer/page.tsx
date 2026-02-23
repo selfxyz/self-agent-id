@@ -191,6 +191,40 @@ export default function ExplainerPage() {
 
           {/* Four modes — 2x2 grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+            {/* Agent Identity */}
+            <Card>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="w-8 h-8 rounded-full bg-accent-2/20 flex items-center justify-center">
+                  <Key size={16} className="text-accent-2" />
+                </span>
+                <h3 className="font-bold text-lg">Agent Identity</h3>
+                <Badge variant="success">recommended</Badge>
+              </div>
+              <p className="text-sm font-medium mb-2">
+                Independent Agent Key
+              </p>
+              <p className="text-sm text-muted mb-4">
+                The agent generates its own keypair. During registration, the agent
+                signs a challenge proving it controls the key. The human proves humanity
+                via Self, and the agent proves key ownership via ECDSA &mdash; both in
+                a single QR scan.
+              </p>
+              <div className="space-y-2 text-sm text-muted">
+                <p className="font-bold text-foreground">How it&apos;s secured:</p>
+                <ul className="list-disc list-inside space-y-1">
+                  <li>ECDSA signature in registration proves agent key ownership</li>
+                  <li>ZK proof binds human identity to nullifier</li>
+                  <li>Agent signs requests with its <em>own</em> key &mdash; human wallet never exposed</li>
+                </ul>
+              </div>
+              <div className="mt-4 pt-4 border-t border-border">
+                <p className="text-xs text-muted">
+                  <strong className="text-foreground">Best for:</strong> Multiple agents per user, key rotation,
+                  delegation, autonomous agents that operate independently.
+                </p>
+              </div>
+            </Card>
+
             {/* Verified Wallet */}
             <Card>
               <div className="flex items-center gap-2 mb-4">
@@ -220,39 +254,6 @@ export default function ExplainerPage() {
                   <strong className="text-foreground">Best for:</strong> Single agent per user, quick setup, on-chain
                   gating where <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">msg.sender</code> is
                   the agent.
-                </p>
-              </div>
-            </Card>
-
-            {/* Agent Identity */}
-            <Card>
-              <div className="flex items-center gap-2 mb-4">
-                <span className="w-8 h-8 rounded-full bg-accent-2/20 flex items-center justify-center">
-                  <Key size={16} className="text-accent-2" />
-                </span>
-                <h3 className="font-bold text-lg">Agent Identity</h3>
-              </div>
-              <p className="text-sm font-medium mb-2">
-                Independent Agent Key
-              </p>
-              <p className="text-sm text-muted mb-4">
-                The agent generates its own keypair. During registration, the agent
-                signs a challenge proving it controls the key. The human proves humanity
-                via Self, and the agent proves key ownership via ECDSA &mdash; both in
-                a single QR scan.
-              </p>
-              <div className="space-y-2 text-sm text-muted">
-                <p className="font-bold text-foreground">How it&apos;s secured:</p>
-                <ul className="list-disc list-inside space-y-1">
-                  <li>ECDSA signature in registration proves agent key ownership</li>
-                  <li>ZK proof binds human identity to nullifier</li>
-                  <li>Agent signs requests with its <em>own</em> key &mdash; human wallet never exposed</li>
-                </ul>
-              </div>
-              <div className="mt-4 pt-4 border-t border-border">
-                <p className="text-xs text-muted">
-                  <strong className="text-foreground">Best for:</strong> Multiple agents per user, key rotation,
-                  delegation, autonomous agents that operate independently.
                 </p>
               </div>
             </Card>

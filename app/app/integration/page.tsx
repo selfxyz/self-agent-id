@@ -7,6 +7,8 @@ import {
   Code2,
   Cpu,
   Terminal,
+  Bot,
+  ExternalLink,
 } from "lucide-react";
 import CodeBlock from "@/components/CodeBlock";
 import { getServiceSnippets, getAgentSnippets, SERVICE_FEATURES, AGENT_FEATURES } from "@/lib/snippets";
@@ -273,6 +275,164 @@ self-agent register export --session .self/session.json`,
               <Link href="/api-docs">
                 <Button variant="ghost" size="sm">API Reference</Button>
               </Link>
+            </div>
+          </Card>
+        </div>
+      </section>
+
+      {/* MCP Server & Plugin */}
+      <section id="mcp" className="px-6 py-20">
+        <div className="max-w-4xl mx-auto space-y-6">
+          <div className="flex items-center gap-2">
+            <Bot size={20} className="text-purple-400" />
+            <h2 className="text-3xl font-bold">MCP Server &amp; Claude Code Plugin</h2>
+          </div>
+          <p className="text-sm text-muted">
+            Use Self Agent ID directly from your AI coding assistant. The{" "}
+            <a
+              href="https://www.npmjs.com/package/@selfxyz/mcp-server"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent hover:text-accent-2 underline underline-offset-2"
+            >
+              MCP server
+            </a>{" "}
+            exposes 10 tools for identity management &mdash; register, sign, verify, and query agents
+            without leaving your editor.
+          </p>
+
+          {/* MCP Install */}
+          <Card>
+            <p className="font-bold text-sm mb-3">MCP Server (any MCP-compatible IDE)</p>
+            <p className="text-xs text-muted mb-3">
+              Add this to your project&apos;s <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">.mcp.json</code> or
+              IDE MCP settings:
+            </p>
+            <CodeBlock
+              tabs={[
+                {
+                  label: "MCP Config",
+                  language: "json",
+                  code: `{
+  "self-agent-id": {
+    "command": "npx",
+    "args": ["-y", "@selfxyz/mcp-server"],
+    "env": {
+      "SELF_AGENT_PRIVATE_KEY": "0x...",
+      "SELF_NETWORK": "${network.isTestnet ? "testnet" : "mainnet"}",
+      "SELF_AGENT_API_BASE": "https://self-agent-id.vercel.app"
+    }
+  }
+}`,
+                },
+              ]}
+            />
+          </Card>
+
+          {/* Claude Code Plugin */}
+          <Card>
+            <p className="font-bold text-sm mb-3">Claude Code Plugin (guided workflows)</p>
+            <p className="text-xs text-muted mb-3">
+              The plugin adds 6 skills that guide Claude through registration, signing, verification,
+              and integration &mdash; with full protocol context loaded automatically.
+            </p>
+            <CodeBlock
+              tabs={[
+                {
+                  label: "Install",
+                  language: "bash",
+                  code: `# Clone the repo and install the plugin
+git clone https://github.com/selfxyz/self-agent-id.git
+claude plugin add ./self-agent-id/plugin
+
+# Or point to a local checkout
+claude plugin add /path/to/self-agent-id/plugin`,
+                },
+              ]}
+            />
+          </Card>
+
+          {/* MCP Tools */}
+          <Card>
+            <p className="font-bold text-sm mb-3">10 MCP Tools</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-xs">
+              {[
+                ["self_register_agent", "Start agent registration (QR URL)"],
+                ["self_check_registration", "Poll registration status"],
+                ["self_get_identity", "Get current agent identity"],
+                ["self_deregister_agent", "Initiate deregistration"],
+                ["self_sign_request", "Generate auth headers"],
+                ["self_authenticated_fetch", "Make a signed HTTP request"],
+                ["self_lookup_agent", "Look up agent by ID or address"],
+                ["self_list_agents_for_human", "List agents for a human"],
+                ["self_verify_agent", "Verify on-chain proof status"],
+                ["self_verify_request", "Verify signed request headers"],
+              ].map(([tool, desc]) => (
+                <div key={tool} className="flex items-start gap-2 py-1">
+                  <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded whitespace-nowrap">{tool}</code>
+                  <span className="text-muted">{desc}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* 6 Plugin Skills */}
+          <Card>
+            <p className="font-bold text-sm mb-2">6 Plugin Skills</p>
+            <p className="text-xs text-muted mb-3">
+              Each skill is a self-contained knowledge module with decision trees, code examples,
+              and reference docs. They load automatically in Claude Code when triggered by your request.
+            </p>
+            <div className="space-y-2 text-xs">
+              {[
+                ["self-agent-id-overview", "Architecture, contracts, trust model, ERC-8004 standard, provider system"],
+                ["register-agent", "Step-by-step registration in all 4 modes (wallet, agent-identity, wallet-free, smart-wallet)"],
+                ["sign-requests", "ECDSA request signing, 3-header auth system, signed fetch patterns"],
+                ["verify-agents", "On-chain verification, SelfAgentVerifier middleware, reputation, freshness, sybil detection"],
+                ["query-credentials", "ZK-attested credentials, agent cards (A2A format), reputation scores"],
+                ["integrate-self-id", "End-to-end integration: agent-side, service-side, on-chain gating, MCP setup"],
+              ].map(([skill, desc]) => (
+                <div key={skill} className="flex items-start gap-2 py-1">
+                  <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded whitespace-nowrap">{skill}</code>
+                  <span className="text-muted">{desc}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* System Prompts for non-MCP agents */}
+          <Card className="border border-accent/30 bg-accent/5">
+            <p className="font-bold text-sm mb-2">Building a custom agent? Use our system prompts</p>
+            <p className="text-xs text-muted mb-3">
+              For agents that don&apos;t support MCP (LangChain, AutoGPT, custom frameworks), paste one of these
+              self-contained system prompts. No tools required &mdash; the agent gets full protocol knowledge
+              and uses the REST API directly.
+            </p>
+            <div className="flex gap-3 flex-wrap">
+              <a
+                href="https://github.com/selfxyz/self-agent-id/blob/main/docs/system-prompts/self-agent-id-full.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-2 underline underline-offset-2"
+              >
+                Full protocol <ExternalLink size={10} />
+              </a>
+              <a
+                href="https://github.com/selfxyz/self-agent-id/blob/main/docs/system-prompts/self-agent-id-register.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-2 underline underline-offset-2"
+              >
+                Registration only <ExternalLink size={10} />
+              </a>
+              <a
+                href="https://github.com/selfxyz/self-agent-id/blob/main/docs/system-prompts/self-agent-id-verify.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-2 underline underline-offset-2"
+              >
+                Verification only <ExternalLink size={10} />
+              </a>
             </div>
           </Card>
         </div>

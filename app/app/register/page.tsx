@@ -25,6 +25,8 @@ import {
   Loader2,
   Shield,
   Rocket,
+  Terminal,
+  Bot,
 } from "lucide-react";
 import MatrixRain from "@/components/MatrixRain";
 import { connectWallet } from "@/lib/wallet";
@@ -797,14 +799,31 @@ export default function RegisterPage() {
 
           {/* CLI / Agent-guided registration */}
           <Card className="w-full border border-accent/30 bg-accent/5">
-            <p className="text-sm text-muted">
-              Prefer terminal workflows? Use the{" "}
-              <Link href="/cli" className="text-accent hover:text-accent-2 underline underline-offset-2 font-medium">
-                CLI
-              </Link>{" "}
-              to register from your terminal, or let your backend orchestrate registration via the{" "}
-              <strong className="text-foreground">agent-guided flow</strong> (recommended for automated onboarding).
-            </p>
+            <div className="flex items-start gap-3">
+              <Terminal size={18} className="text-accent mt-0.5 shrink-0" />
+              <p className="text-sm text-muted">
+                Prefer terminal workflows? Use the{" "}
+                <Link href="/cli" className="text-accent hover:text-accent-2 underline underline-offset-2 font-medium">
+                  CLI
+                </Link>{" "}
+                to register from your terminal, or let your backend orchestrate registration via the{" "}
+                <strong className="text-foreground">agent-guided flow</strong> (recommended for automated onboarding).
+              </p>
+            </div>
+          </Card>
+
+          {/* MCP / Plugin registration */}
+          <Card className="w-full border border-purple-500/30 bg-purple-500/5">
+            <div className="flex items-start gap-3">
+              <Bot size={18} className="text-purple-400 mt-0.5 shrink-0" />
+              <p className="text-sm text-muted">
+                Using an AI coding assistant? The{" "}
+                <Link href="/integration#mcp" className="text-accent hover:text-accent-2 underline underline-offset-2 font-medium">
+                  MCP server &amp; plugin
+                </Link>{" "}
+                can register and manage agents directly from your editor.
+              </p>
+            </div>
           </Card>
 
           {errorMessage && (

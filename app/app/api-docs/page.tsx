@@ -6,6 +6,7 @@ import MatrixText from "@/components/MatrixText";
 import { Card } from "@/components/Card";
 import CodeBlock from "@/components/CodeBlock";
 import { Badge } from "@/components/Badge";
+import { Bot } from "lucide-react";
 
 /* ── Endpoint data ─────────────────────────────────────────────────── */
 
@@ -700,6 +701,34 @@ export default function ApiDocsPage() {
               <span className="text-accent-success">completed</span>
             </p>
             <p>GET /register/export?token= → retrieve agent private key</p>
+          </div>
+        </Card>
+
+        {/* MCP Callout */}
+        <Card className="border border-purple-500/30 bg-purple-500/5">
+          <div className="flex items-start gap-3">
+            <Bot size={18} className="text-purple-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm text-muted">
+                <strong className="text-foreground">Using an AI coding assistant?</strong>{" "}
+                The{" "}
+                <a
+                  href="https://www.npmjs.com/package/@selfxyz/mcp-server"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent hover:text-accent-2 underline underline-offset-2"
+                >
+                  MCP server
+                </a>{" "}
+                wraps these REST APIs into 10 tools — no manual HTTP needed.{" "}
+                <Link
+                  href="/integration#mcp"
+                  className="text-accent hover:text-accent-2 underline underline-offset-2"
+                >
+                  Set up MCP &rarr;
+                </Link>
+              </p>
+            </div>
           </div>
         </Card>
 

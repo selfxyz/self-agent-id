@@ -1,6 +1,7 @@
 import Link from "next/link";
 import MatrixText from "@/components/MatrixText";
 import { Card } from "@/components/Card";
+import { Bot } from "lucide-react";
 
 export default function CliQuickstartPage() {
   return (
@@ -58,6 +59,32 @@ export default function CliQuickstartPage() {
             <li>Python: <code className="bg-surface-2 px-1 rounded text-accent-2">python -m self_agent_sdk.cli ...</code></li>
             <li>Rust: <code className="bg-surface-2 px-1 rounded text-accent-2">self-agent-cli ...</code></li>
           </ul>
+        </Card>
+
+        <Card className="border border-purple-500/30 bg-purple-500/5">
+          <div className="flex items-start gap-3">
+            <Bot size={18} className="text-purple-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm text-muted">
+                <strong className="text-foreground">Using an AI coding assistant?</strong>{" "}
+                Install the{" "}
+                <Link
+                  href="/integration#mcp"
+                  className="text-accent hover:text-accent-2 underline underline-offset-2"
+                >
+                  MCP server
+                </Link>{" "}
+                or{" "}
+                <Link
+                  href="/integration#mcp"
+                  className="text-accent hover:text-accent-2 underline underline-offset-2"
+                >
+                  Claude Code plugin
+                </Link>{" "}
+                to register, sign, and verify agents directly from your editor — no CLI needed.
+              </p>
+            </div>
+          </div>
         </Card>
 
         <Card>

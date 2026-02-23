@@ -15,6 +15,7 @@ import {
   Cpu,
   Handshake,
   FileCheck,
+  Bot,
 } from "lucide-react";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
@@ -69,6 +70,22 @@ export default function Home() {
                 How It Works
               </Button>
             </Link>
+          </div>
+
+          {/* Package badges */}
+          <div className="flex gap-2 flex-wrap justify-center mt-6">
+            <code className="bg-surface-2 font-mono text-emerald-400 px-2.5 py-0.5 rounded text-xs">
+              npm · @selfxyz/agent-sdk
+            </code>
+            <code className="bg-surface-2 font-mono text-blue-400 px-2.5 py-0.5 rounded text-xs">
+              pip · selfxyz-agent-sdk
+            </code>
+            <code className="bg-surface-2 font-mono text-orange-400 px-2.5 py-0.5 rounded text-xs">
+              cargo · self-agent-sdk
+            </code>
+            <code className="bg-surface-2 font-mono text-purple-400 px-2.5 py-0.5 rounded text-xs">
+              mcp · @selfxyz/mcp-server
+            </code>
           </div>
         </div>
 
@@ -148,7 +165,7 @@ export default function Home() {
       <section className="bg-surface-1 px-6 py-16">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-3xl font-bold text-center mb-10">Who Is It For</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card>
               <div className="flex items-center gap-2 mb-3">
                 <span className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
@@ -187,6 +204,26 @@ export default function Home() {
                 <Button variant="secondary" size="sm">
                   <Code2 size={14} />
                   Integration Guide
+                </Button>
+              </Link>
+            </Card>
+
+            <Card>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                  <Bot size={16} className="text-purple-400" />
+                </span>
+                <h3 className="font-bold text-lg">AI Coding Assistants</h3>
+              </div>
+              <p className="text-sm text-muted mb-4">
+                Use the MCP server or Claude Code plugin to manage agent identity directly
+                from your IDE. Register, sign requests, verify agents, and query credentials
+                &mdash; 10 tools that work in any MCP-compatible IDE (Claude Code, Cursor, Windsurf, Copilot, and more).
+              </p>
+              <Link href="/integration#mcp">
+                <Button variant="secondary" size="sm">
+                  <Bot size={14} />
+                  MCP &amp; Plugin
                 </Button>
               </Link>
             </Card>
