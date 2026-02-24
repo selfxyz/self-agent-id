@@ -28,3 +28,10 @@ docs
 
 .agents/
 .claude/
+
+# OS
+.DS_Store
+
+# Yarn PnP
+.pnp.cjs
+.pnp.loader.mjs

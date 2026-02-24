@@ -94,12 +94,24 @@ input:focus, select:focus, textarea:focus {
   .hero-glow::before {
     content: "";
     position: absolute;
-    top: -20%;
-    left: 50%;
+    top: -10%;
+    left: 30%;
     transform: translateX(-50%);
-    width: 600px;
-    height: 600px;
+    width: 700px;
+    height: 700px;
     background: radial-gradient(circle, rgba(99, 102, 241, 0.06) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .hero-glow::after {
+    content: "";
+    position: absolute;
+    top: 10%;
+    right: -5%;
+    width: 500px;
+    height: 500px;
+    background: radial-gradient(circle, rgba(14, 165, 233, 0.04) 0%, transparent 70%);
     pointer-events: none;
     z-index: 0;
   }

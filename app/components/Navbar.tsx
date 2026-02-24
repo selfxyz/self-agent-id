@@ -1,31 +1,63 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X } from "lucide-react";
+import { Menu, X, ChevronDown } from "lucide-react";
 import { useNetwork } from "@/lib/NetworkContext";
 import { getNetwork, isNetworkReady } from "@/lib/network";
 
-const links = [
-  { href: "/register", label: "Register" },
-  { href: "/cli", label: "CLI" },
-  { href: "/api-docs", label: "API" },
-  { href: "/my-agents", label: "My Agents" },
-  { href: "/verify", label: "Verify" },
+const directLinks = [
+  { href: "/agents", label: "Manage Agents", match: "/agents" },
   { href: "/demo", label: "Demo" },
+];
+
+const developerLinks = [
+  { href: "/cli", label: "CLI" },
+  { href: "/api-docs", label: "API Docs" },
   { href: "/integration", label: "Integrate" },
+];
+
+const learnLinks = [
   { href: "/explainer", label: "How It Works" },
   { href: "/erc8004", label: "ERC-8004" },
 ];
 
 export function Navbar() {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [devOpen, setDevOpen] = useState(false);
+  const devRef = useRef<HTMLDivElement>(null);
+  const devTimeout = useRef<ReturnType<typeof setTimeout>>();
   const { networkId, setNetworkId } = useNetwork();
 
   const mainnetReady = isNetworkReady(getNetwork("celo-mainnet"));
   const sepoliaReady = isNetworkReady(getNetwork("celo-sepolia"));
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (devRef.current && !devRef.current.contains(e.target as Node)) {
+        setDevOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const isActive = (href: string, match?: string) => {
+    if (match) return pathname.startsWith(match);
+    return pathname === href;
+  };
+
+  const linkClass = (href: string, match?: string) =>
+    `px-3 py-1.5 rounded-lg text-sm transition-colors ${
+      isActive(href, match)
+        ? "text-foreground bg-surface-2"
+        : "text-muted hover:text-foreground hover:bg-surface-1"
+    }`;
+
+  const isDevActive = developerLinks.some((l) => pathname === l.href);
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 h-[60px] backdrop-blur-md bg-white/80 border-b border-border">
@@ -47,19 +79,61 @@ export function Navbar() {
 
         {/* Desktop nav */}
         <div className="hidden md:flex items-center gap-1">
-          {links.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                pathname === link.href
+          {directLinks.map((link) => (
+            <Link key={link.href} href={link.href} className={linkClass(link.href, link.match)}>
+              {link.label}
+            </Link>
+          ))}
+
+          {learnLinks.map((link) => (
+            <Link key={link.href} href={link.href} className={linkClass(link.href)}>
+              {link.label}
+            </Link>
+          ))}
+
+          {/* Developers dropdown — last in the block */}
+          <div
+            ref={devRef}
+            className="relative"
+            onMouseEnter={() => {
+              clearTimeout(devTimeout.current);
+              setDevOpen(true);
+            }}
+            onMouseLeave={() => {
+              devTimeout.current = setTimeout(() => setDevOpen(false), 150);
+            }}
+          >
+            <button
+              onClick={() => setDevOpen(!devOpen)}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                isDevActive
                   ? "text-foreground bg-surface-2"
                   : "text-muted hover:text-foreground hover:bg-surface-1"
               }`}
             >
-              {link.label}
-            </Link>
-          ))}
+              Developers
+              <ChevronDown size={14} className={`transition-transform ${devOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {devOpen && (
+              <div className="absolute top-full left-0 mt-1 py-1 min-w-[160px] bg-white border border-border rounded-lg shadow-lg">
+                {developerLinks.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setDevOpen(false)}
+                    className={`block px-4 py-2 text-sm transition-colors ${
+                      pathname === link.href
+                        ? "text-foreground bg-surface-2"
+                        : "text-muted hover:text-foreground hover:bg-surface-1"
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Network toggle + Mobile hamburger */}
@@ -103,23 +177,56 @@ export function Navbar() {
           </div>
 
           <button
-            onClick={() => setOpen(!open)}
+            onClick={() => setMobileOpen(!mobileOpen)}
             className="md:hidden text-muted hover:text-foreground p-1"
             aria-label="Toggle menu"
           >
-            {open ? <X size={20} /> : <Menu size={20} />}
+            {mobileOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
         </div>
       </div>
 
       {/* Mobile dropdown */}
-      {open && (
+      {mobileOpen && (
         <div className="md:hidden border-b border-border bg-surface-1/95 backdrop-blur-md">
-          {links.map((link) => (
+          {directLinks.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              onClick={() => setOpen(false)}
+              onClick={() => setMobileOpen(false)}
+              className={`block px-6 py-3 text-sm transition-colors ${
+                isActive(link.href, link.match)
+                  ? "text-foreground bg-surface-2"
+                  : "text-muted hover:text-foreground"
+              }`}
+            >
+              {link.label}
+            </Link>
+          ))}
+
+          <div className="px-6 py-2">
+            <span className="text-xs font-medium text-subtle uppercase tracking-wider">Developers</span>
+          </div>
+          {developerLinks.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              onClick={() => setMobileOpen(false)}
+              className={`block px-6 py-3 pl-8 text-sm transition-colors ${
+                pathname === link.href
+                  ? "text-foreground bg-surface-2"
+                  : "text-muted hover:text-foreground"
+              }`}
+            >
+              {link.label}
+            </Link>
+          ))}
+
+          {learnLinks.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              onClick={() => setMobileOpen(false)}
               className={`block px-6 py-3 text-sm transition-colors ${
                 pathname === link.href
                   ? "text-foreground bg-surface-2"

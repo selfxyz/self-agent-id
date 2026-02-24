@@ -1,6 +1,8 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import {
   Key,
   ArrowRight,
@@ -20,98 +22,201 @@ import {
   BadgeCheck,
   Fingerprint,
   Layers,
+  MessageCircle,
+  Repeat2,
+  Heart,
+  Bookmark,
 } from "lucide-react";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 
+const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
+
+import { useState, useEffect } from "react";
+
 export default function Home() {
+  const [animationData, setAnimationData] = useState<object | null>(null);
+
+  useEffect(() => {
+    fetch("/lottie_agents.json")
+      .then((res) => res.json())
+      .then(setAnimationData);
+  }, []);
+
   return (
     <main className="min-h-screen">
       {/* ────────────── Hero ────────────── */}
       <section className="relative overflow-hidden hero-glow bg-grid">
-        <div className="relative z-10 flex flex-col items-center justify-center text-center px-6 pt-32 pb-12 md:pb-16">
-          <Badge variant="info" className="mb-4">
-            Trusted Identity for AI Agents
-          </Badge>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/self-icon.png"
-            alt="Self"
-            width={64}
-            height={64}
-            className="rounded-xl mb-4"
-          />
-          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-foreground mb-6">
-            Give Your AI Agent a{" "}
-            <span className="text-gradient">Verified Identity</span>
-          </h1>
-          <p className="text-lg text-muted max-w-2xl mb-10">
-            Your agents book travel, manage finances, and negotiate on your
-            behalf. But how does anyone know there&apos;s a real person behind
-            them? Self Agent ID lets agents prove they&apos;re human-backed,
-            privately and instantly. No personal data shared. Ever.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Link href="/register">
-              <Button variant="primary" size="lg">
-                Register Your Agent
-              </Button>
-            </Link>
-            <Link href="/explainer">
-              <Button variant="secondary" size="lg">
-                How It Works
-              </Button>
-            </Link>
-            <a
-              href="https://github.com/selfxyz/self-agent-id"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Button variant="ghost" size="lg">
-                GitHub <ExternalLink size={14} />
-              </Button>
-            </a>
-          </div>
+        <div className="relative z-10 max-w-6xl mx-auto px-6 pt-28 pb-16 md:pt-36 md:pb-20">
+          <div className="flex flex-col md:flex-row items-center gap-10 md:gap-16">
+            {/* Left: text content */}
+            <div className="flex-1 flex flex-col items-start text-left">
+              <Badge variant="info" className="mb-5">
+                Trusted Identity for AI Agents
+              </Badge>
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-foreground mb-6 leading-[1.1]">
+                Give Your AI Agent a{" "}
+                <span className="text-gradient">Verified Identity</span>
+              </h1>
+              <div className="flex flex-col gap-4 max-w-xl mb-8">
+                <div className="flex items-start gap-3">
+                  <span className="w-8 h-8 rounded-full bg-accent-2/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Bot size={16} className="text-accent-2" />
+                  </span>
+                  <p className="text-base text-muted leading-relaxed">
+                    Your agents book travel, manage finances, and negotiate on your behalf.
+                  </p>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="w-8 h-8 rounded-full bg-accent-warn/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Shield size={16} className="text-accent-warn" />
+                  </span>
+                  <p className="text-base text-foreground font-medium leading-relaxed">
+                    But how does anyone know there&apos;s a real person behind them?
+                  </p>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="w-8 h-8 rounded-full bg-accent-success/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Fingerprint size={16} className="text-accent-success" />
+                  </span>
+                  <p className="text-base text-muted leading-relaxed">
+                    Self Agent ID lets agents prove they&apos;re human-backed, privately and instantly. <strong className="text-foreground">No personal data shared. Ever.</strong>
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 mb-8">
+                <Link href="/agents/register">
+                  <Button variant="primary" size="lg">
+                    Register Your Agent
+                  </Button>
+                </Link>
+                <Link href="/explainer">
+                  <Button variant="secondary" size="lg">
+                    How It Works
+                  </Button>
+                </Link>
+                <a
+                  href="https://github.com/selfxyz/self-agent-id"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Button variant="ghost" size="lg">
+                    GitHub <ExternalLink size={14} />
+                  </Button>
+                </a>
+              </div>
 
-          {/* Package badges */}
-          <div className="flex gap-2 flex-wrap justify-center mt-6">
-            <code className="bg-surface-2 font-mono text-emerald-400 px-2.5 py-0.5 rounded text-xs">
-              npm · @selfxyz/agent-sdk
-            </code>
-            <code className="bg-surface-2 font-mono text-blue-400 px-2.5 py-0.5 rounded text-xs">
-              pip · selfxyz-agent-sdk
-            </code>
-            <code className="bg-surface-2 font-mono text-orange-400 px-2.5 py-0.5 rounded text-xs">
-              cargo · self-agent-sdk
-            </code>
-            <code className="bg-surface-2 font-mono text-purple-400 px-2.5 py-0.5 rounded text-xs">
-              mcp · @selfxyz/mcp-server
-            </code>
+            </div>
+
+            {/* Right: Lottie animation */}
+            <div className="flex-1 relative max-w-2xl md:max-w-3xl w-full">
+              <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-accent-2/5 to-transparent rounded-3xl -m-4" />
+              {animationData ? (
+                <div className="relative pointer-events-none origin-center scale-[2]" style={{ maskImage: "radial-gradient(ellipse 85% 85% at 50% 50%, black 60%, transparent 100%)", WebkitMaskImage: "radial-gradient(ellipse 85% 85% at 50% 50%, black 60%, transparent 100%)" }}>
+                  <Lottie animationData={animationData} loop autoplay />
+                </div>
+              ) : (
+                /* Fallback: show the icon while animation loads */
+                <div className="flex items-center justify-center py-16">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="/self-icon.png"
+                    alt="Self"
+                    width={80}
+                    height={80}
+                    className="rounded-2xl opacity-60"
+                  />
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </section>
 
       {/* ────────────── The Trust Gap ────────────── */}
       <section className="bg-surface-1 px-6 py-20">
-        <div className="max-w-3xl mx-auto text-center">
-          <h2 className="text-3xl font-bold mb-6">The Trust Gap</h2>
-          <div className="text-lg text-muted leading-relaxed space-y-4">
-            <p>
-              AI agents are becoming autonomous participants: booking flights,
-              managing money, accessing services on your behalf. But every
-              platform they interact with faces the same question:{" "}
-              <strong className="text-foreground">
-                &ldquo;Is there a real person behind this agent?&rdquo;
-              </strong>
-            </p>
-            <p>
-              Without a universal answer, every service builds its own
-              verification. Fragmented. Expensive. Easy to game. Self Agent ID
-              gives agents a portable, verified identity that any service can
-              check instantly, without knowing who the human is.
-            </p>
-          </div>
+        <div className="max-w-2xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-10">The Trust Gap</h2>
+
+          {/* Tweet quote card */}
+          <a
+            href="https://x.com/galnagli/status/2017585025475092585"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block"
+          >
+            <Card glow className="relative border-accent-warn/20 bg-white hover:border-accent-warn/40 transition-colors">
+              <div className="absolute top-4 right-4 text-subtle">
+                <ExternalLink size={14} />
+              </div>
+
+              {/* Author */}
+              <div className="flex items-center gap-3 mb-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/profile_picture.jpg"
+                  alt="Gal Nagli"
+                  width={44}
+                  height={44}
+                  className="rounded-full"
+                />
+                <div>
+                  <p className="text-sm font-bold text-foreground">Gal Nagli</p>
+                  <p className="text-xs text-subtle">@galnagli</p>
+                </div>
+              </div>
+
+              {/* Tweet text */}
+              <blockquote className="text-lg text-foreground leading-relaxed mb-4">
+                The number of registered AI agents is also fake, there is no rate limiting on account creation, my <a href="https://x.com/openclaw" target="_blank" rel="noopener noreferrer" className="text-accent-2 hover:underline" onClick={(e) => e.stopPropagation()}>@openclaw</a> agent just registered <strong className="text-accent-warn">500,000 users</strong> on <a href="https://x.com/moltbook" target="_blank" rel="noopener noreferrer" className="text-accent-2 hover:underline" onClick={(e) => e.stopPropagation()}>@moltbook</a> - don&apos;t trust all the media hype 🙂
+              </blockquote>
+
+              {/* Embedded media */}
+              <div className="grid grid-cols-2 gap-1 rounded-xl overflow-hidden mb-4" onClick={(e) => e.stopPropagation()}>
+                {/* Video */}
+                <video
+                  src="/video.mp4"
+                  controls
+                  muted
+                  playsInline
+                  preload="metadata"
+                  className="w-full h-full object-cover aspect-square"
+                />
+                {/* Screenshot */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/screen.jpeg"
+                  alt="Moltbook showing 634,737 AI agents registered"
+                  className="w-full h-full object-cover aspect-square"
+                />
+              </div>
+
+              {/* Engagement stats */}
+              <div className="flex items-center gap-8 text-subtle text-sm font-medium">
+                <span className="flex items-center gap-2">
+                  <MessageCircle size={20} />
+                  368
+                </span>
+                <span className="flex items-center gap-2">
+                  <Repeat2 size={20} />
+                  830
+                </span>
+                <span className="flex items-center gap-2 text-red-500">
+                  <Heart size={20} className="fill-red-500" />
+                  5.4K
+                </span>
+                <span className="flex items-center gap-2">
+                  <Bookmark size={20} />
+                  1.1K
+                </span>
+              </div>
+            </Card>
+          </a>
+
+          <p className="text-center text-muted mt-8 max-w-lg mx-auto leading-relaxed">
+            Self Agent ID makes this impossible. One identity per person. Verified on-chain. <strong className="text-foreground">Sybil-resistant by design.</strong>
+          </p>
         </div>
       </section>
 
@@ -122,7 +227,7 @@ export default function Home() {
             How It Works
           </h2>
 
-          <div className="flex flex-col md:flex-row items-center justify-center gap-3 md:gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1fr] items-stretch gap-4 md:gap-0">
             {[
               {
                 icon: ScanLine,
@@ -140,29 +245,27 @@ export default function Home() {
                 desc: "Any service can check your agent's identity with a single API call. No extra setup needed.",
               },
             ].map((step, i) => (
-              <div key={i} className="flex flex-col md:flex-row items-center gap-3 md:gap-6">
+              <React.Fragment key={i}>
                 {i > 0 && (
-                  <ArrowRight
-                    size={20}
-                    className="text-subtle hidden md:block flex-shrink-0"
-                  />
+                  <div className="hidden md:flex items-center justify-center px-2">
+                    <ArrowRight size={20} className="text-subtle flex-shrink-0" />
+                  </div>
                 )}
                 {i > 0 && (
-                  <ArrowRight
-                    size={20}
-                    className="text-subtle md:hidden rotate-90 flex-shrink-0"
-                  />
+                  <div className="flex md:hidden items-center justify-center">
+                    <ArrowRight size={20} className="text-subtle rotate-90" />
+                  </div>
                 )}
-                <Card glow className="flex flex-col items-center text-center max-w-xs">
-                  <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center mb-4">
-                    <step.icon size={24} className="text-accent" />
+                <Card glow className="flex flex-col items-center text-center h-full">
+                  <div className="w-20 h-20 rounded-full bg-accent/10 flex items-center justify-center mb-4">
+                    <step.icon size={40} className="text-accent" />
                   </div>
                   <h3 className="font-bold mb-2">{step.title}</h3>
                   <p className="text-sm text-muted leading-relaxed">
                     {step.desc}
                   </p>
                 </Card>
-              </div>
+              </React.Fragment>
             ))}
           </div>
         </div>
@@ -173,67 +276,59 @@ export default function Home() {
         <div className="max-w-4xl mx-auto">
           <h2 className="text-3xl font-bold text-center mb-10">Who Is It For</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
-                  <Cpu size={16} className="text-accent" />
-                </span>
-                <h3 className="font-bold text-lg">Agent Operators</h3>
-              </div>
-              <p className="text-sm text-muted mb-4">
-                Register your AI agent with a passport scan. Choose from four modes &mdash;
-                wallet-based, agent keypair, wallet-free, or passkey smart wallet.
-                Your agent gets a soulbound NFT and an A2A-compatible identity card
-                that any service can verify instantly.
-              </p>
-              <Link href="/register">
-                <Button variant="primary" size="sm">
-                  <Key size={14} />
-                  Register Agent
-                </Button>
-              </Link>
-            </Card>
-
-            <Card>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="w-8 h-8 rounded-full bg-accent-2/20 flex items-center justify-center">
-                  <Code2 size={16} className="text-accent-2" />
-                </span>
-                <h3 className="font-bold text-lg">Service Developers</h3>
-              </div>
-              <p className="text-sm text-muted mb-4">
-                Add one line of middleware to verify agents are human-backed.
-                The SDK recovers the signer from ECDSA signatures and checks the on-chain
-                registry &mdash; with configurable sybil limits, credential checks,
-                and reputation-based access control.
-              </p>
-              <Link href="/integration">
-                <Button variant="secondary" size="sm">
-                  <Code2 size={14} />
-                  Integration Guide
-                </Button>
-              </Link>
-            </Card>
-
-            <Card>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
-                  <Bot size={16} className="text-purple-400" />
-                </span>
-                <h3 className="font-bold text-lg">AI Coding Assistants</h3>
-              </div>
-              <p className="text-sm text-muted mb-4">
-                Use the MCP server or Claude Code plugin to manage agent identity directly
-                from your IDE. Register, sign requests, verify agents, and query credentials
-                &mdash; 10 tools that work in any MCP-compatible IDE (Claude Code, Cursor, Windsurf, Copilot, and more).
-              </p>
-              <Link href="/integration#mcp">
-                <Button variant="secondary" size="sm">
-                  <Bot size={14} />
-                  MCP &amp; Plugin
-                </Button>
-              </Link>
-            </Card>
+            {[
+              {
+                icon: Cpu,
+                iconColor: "text-accent",
+                bgColor: "bg-accent/20",
+                title: "Agent Operators",
+                desc: "Register your AI agent with a passport scan. Choose from four modes \u2014 wallet-based, agent keypair, wallet-free, or passkey smart wallet. Your agent gets a soulbound NFT and an A2A-compatible identity card that any service can verify instantly.",
+                btnIcon: Key,
+                btnLabel: "Register Agent",
+                btnVariant: "primary" as const,
+                href: "/agents/register",
+              },
+              {
+                icon: Code2,
+                iconColor: "text-accent-2",
+                bgColor: "bg-accent-2/20",
+                title: "Service Developers",
+                desc: "Add one line of middleware to verify agents are human-backed. The SDK recovers the signer from ECDSA signatures and checks the on-chain registry \u2014 with configurable sybil limits, credential checks, and reputation-based access control.",
+                btnIcon: Code2,
+                btnLabel: "Integration Guide",
+                btnVariant: "secondary" as const,
+                href: "/integration",
+              },
+              {
+                icon: Bot,
+                iconColor: "text-purple-400",
+                bgColor: "bg-purple-500/20",
+                title: "AI Coding Assistants",
+                desc: "Use the MCP server or Claude Code plugin to manage agent identity directly from your IDE. Register, sign requests, verify agents, and query credentials \u2014 10 tools that work in any MCP-compatible IDE (Claude Code, Cursor, Windsurf, Copilot, and more).",
+                btnIcon: Bot,
+                btnLabel: "MCP & Plugin",
+                btnVariant: "secondary" as const,
+                href: "/integration#mcp",
+              },
+            ].map((item) => (
+              <Card key={item.title} className="flex flex-col h-full">
+                <div className="flex items-center gap-3 mb-4">
+                  <span className={`w-12 h-12 rounded-full ${item.bgColor} flex items-center justify-center flex-shrink-0`}>
+                    <item.icon size={24} className={item.iconColor} />
+                  </span>
+                  <h3 className="font-bold text-lg">{item.title}</h3>
+                </div>
+                <p className="text-sm text-muted mb-6 flex-1">
+                  {item.desc}
+                </p>
+                <Link href={item.href}>
+                  <Button variant={item.btnVariant} size="sm">
+                    <item.btnIcon size={14} />
+                    {item.btnLabel}
+                  </Button>
+                </Link>
+              </Card>
+            ))}
           </div>
         </div>
       </section>
@@ -377,10 +472,26 @@ export default function Home() {
             <Code2 size={20} className="text-accent" />
             <h2 className="text-3xl font-bold">Integrate in Minutes</h2>
           </div>
-          <p className="text-center text-muted mb-10 max-w-xl mx-auto">
+          <p className="text-center text-muted mb-6 max-w-xl mx-auto">
             Add agent verification to your service with a few lines of code.
             SDKs available for TypeScript, Python, and Rust.
           </p>
+
+          {/* Package badges */}
+          <div className="flex gap-2 flex-wrap justify-center mb-10">
+            <code className="bg-surface-2 font-mono text-emerald-400 px-2.5 py-0.5 rounded text-xs">
+              npm · @selfxyz/agent-sdk
+            </code>
+            <code className="bg-surface-2 font-mono text-blue-400 px-2.5 py-0.5 rounded text-xs">
+              pip · selfxyz-agent-sdk
+            </code>
+            <code className="bg-surface-2 font-mono text-orange-400 px-2.5 py-0.5 rounded text-xs">
+              cargo · self-agent-sdk
+            </code>
+            <code className="bg-surface-2 font-mono text-purple-400 px-2.5 py-0.5 rounded text-xs">
+              mcp · @selfxyz/mcp-server
+            </code>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card>
@@ -439,7 +550,7 @@ const res = await agent.fetch(url);`}
             Register your first agent in minutes. No personal data required.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-3">
-            <Link href="/register">
+            <Link href="/agents/register">
               <Button variant="primary" size="lg">
                 Register Your Agent
               </Button>
