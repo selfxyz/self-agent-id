@@ -2,7 +2,6 @@
 
 import React, { Suspense, useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import MatrixText from "@/components/MatrixText";
 import { ethers } from "ethers";
 import dynamic from "next/dynamic";
 import {
@@ -817,11 +816,9 @@ export default function VerifyPage() {
   return (
     <main className="min-h-screen max-w-2xl mx-auto px-6 pt-24 pb-12 space-y-6">
       <div className="text-center">
-        <div className="flex justify-center mb-2">
-          <MatrixText text="Verify Agent" fontSize={42} />
-        </div>
+        <h1 className="text-3xl font-bold mb-2">Verify Agent</h1>
         <p className="text-muted max-w-md mx-auto">
-          Check if an AI agent is registered and backed by a verified human.
+          Look up any agent to check its on-chain registration and human verification status.
         </p>
       </div>
 

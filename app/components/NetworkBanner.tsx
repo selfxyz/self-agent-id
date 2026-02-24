@@ -11,14 +11,14 @@ export function NetworkBanner() {
   if (!network.isTestnet || dismissed) return null;
 
   return (
-    <div className="fixed top-[60px] left-0 right-0 z-40 bg-amber-500/10 border-b border-amber-500/20 px-4 py-1.5">
+    <div className="fixed top-[60px] left-0 right-0 z-40 bg-amber-50 border-b border-amber-200 px-4 py-1.5">
       <div className="max-w-6xl mx-auto flex items-center justify-between">
-        <p className="text-xs text-amber-400">
+        <p className="text-xs text-amber-700">
           You&apos;re on Celo Sepolia (testnet). Contracts and verification are on the test network.
         </p>
         <button
           onClick={() => setDismissed(true)}
-          className="text-amber-400/60 hover:text-amber-400 transition-colors ml-4 shrink-0"
+          className="text-amber-500 hover:text-amber-700 transition-colors ml-4 shrink-0"
           aria-label="Dismiss"
         >
           <X size={14} />

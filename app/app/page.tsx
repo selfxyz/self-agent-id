@@ -1,288 +1,370 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import MatrixRain from "@/components/MatrixRain";
-import MatrixText from "@/components/MatrixText";
 import Link from "next/link";
 import {
-  Search,
-  FileCode2,
-  Key,
-  ShieldCheck,
-  CheckCircle2,
   ArrowRight,
-  Cpu,
+  Shield,
+  Fingerprint,
+  Layers,
+  BookOpen,
+  ScanLine,
+  Bot,
+  Zap,
+  UserCheck,
+  CalendarCheck,
+  ShieldOff,
+  Users,
+  Globe,
+  BadgeCheck,
+  ExternalLink,
+  Code2,
 } from "lucide-react";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
-
-function StepNumber({ n }: { n: number }) {
-  return (
-    <span className="flex-shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-accent to-accent-2 text-white text-sm font-bold flex items-center justify-center">
-      {n}
-    </span>
-  );
-}
+import { Button } from "@/components/Button";
 
 export default function Home() {
-  const [showIntro, setShowIntro] = useState(false);
-
-  useEffect(() => {
-    if (!sessionStorage.getItem("matrix-intro-shown")) {
-      setShowIntro(true);
-      sessionStorage.setItem("matrix-intro-shown", "1");
-    }
-  }, []);
-
   return (
     <main className="min-h-screen">
-      {showIntro && <MatrixRain duration={2000} fadeOut={2000} speed={1} maxOpacity={1} />}
-      {/* Hero */}
+      {/* ────────────── Hero ────────────── */}
       <section className="relative overflow-hidden hero-glow bg-grid">
-        <div className="relative z-10 max-w-4xl mx-auto px-6 pt-28 pb-10 text-center">
-          <Badge variant="info" className="mb-6">
-            Proof-of-Human for AI Agents
+        <div className="relative z-10 flex flex-col items-center justify-center text-center px-6 pt-32 pb-20 md:pb-28">
+          <Badge variant="info" className="mb-4">
+            Trusted Identity for AI Agents
           </Badge>
-          <div className="flex items-center justify-center mb-4">
-            <MatrixText text="Self Agent ID" fontSize={110} />
-          </div>
-          <p className="text-lg text-muted max-w-xl mx-auto mb-10">
-            Register AI agents with on-chain proof-of-human verification via{" "}
-            <a href="https://self.xyz" target="_blank" rel="noopener noreferrer" className="text-foreground hover:text-accent transition-colors underline underline-offset-2 whitespace-nowrap">Self Protocol</a>.
-            {" "}Prove your agent is backed by a real, unique human. A2A-compatible Agent Cards with trust scoring included.
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/self-icon.png"
+            alt="Self"
+            width={64}
+            height={64}
+            className="rounded-xl mb-4"
+          />
+          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-foreground mb-6">
+            Give Your AI Agent a{" "}
+            <span className="text-gradient">Verified Identity</span>
+          </h1>
+          <p className="text-lg text-muted max-w-2xl mb-10">
+            Your agents book travel, manage finances, and negotiate on your
+            behalf. But how does anyone know there&apos;s a real person behind
+            them? Self Agent ID lets agents prove they&apos;re human-backed,
+            privately and instantly. No personal data shared. Ever.
           </p>
-
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Link
-              href="/register"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium bg-gradient-to-r from-accent to-accent-2 text-white hover:opacity-90 transition-all"
-            >
-              <Key size={18} />
-              Register Agent
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Link href="/register">
+              <Button variant="primary" size="lg">
+                Register Your Agent
+              </Button>
             </Link>
-            <Link
-              href="/my-agents"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium bg-surface-2 border border-border text-foreground hover:border-border-strong transition-all"
-            >
-              <Cpu size={18} />
-              My Agents
+            <Link href="/explainer">
+              <Button variant="secondary" size="lg">
+                How It Works
+              </Button>
             </Link>
-            <Link
-              href="/verify"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium bg-surface-2 border border-border text-foreground hover:border-border-strong transition-all"
+            <a
+              href="https://github.com/selfxyz/self-agent-id"
+              target="_blank"
+              rel="noopener noreferrer"
             >
-              <Search size={18} />
-              Verify Agent
-            </Link>
-            <Link
-              href="/explainer"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium bg-surface-1 border border-border text-muted hover:text-foreground hover:border-border-strong transition-all"
-            >
-              <FileCode2 size={18} />
-              How It Works
-            </Link>
-            <Link
-              href="/erc8004"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium bg-surface-1 border border-border text-muted hover:text-foreground hover:border-border-strong transition-all"
-            >
-              ERC-8004 Proposal
-            </Link>
-          </div>
-        </div>
-
-        {/* Orbital illustration (md+) */}
-        <div className="hidden lg:block absolute top-1/2 right-[5%] -translate-y-1/2 w-[340px] h-[340px]">
-          {/* Rings */}
-          <div className="absolute inset-0 rounded-full border border-border opacity-40" />
-          <div className="absolute inset-[25%] rounded-full border border-accent/30" />
-          <div className="absolute inset-[45%] rounded-full border border-accent-2/30" />
-          {/* Dots */}
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1">
-            <span className="w-3 h-3 rounded-full bg-accent-success" />
-            <span className="text-[10px] text-muted">Human</span>
-          </div>
-          <div className="absolute top-1/2 right-0 translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1">
-            <span className="w-3 h-3 rounded-full bg-accent" />
-            <span className="text-[10px] text-muted">ZK Proof</span>
-          </div>
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 flex flex-col items-center gap-1">
-            <span className="w-3 h-3 rounded-full bg-accent-2" />
-            <span className="text-[10px] text-muted">On-Chain</span>
+              <Button variant="ghost" size="lg">
+                GitHub <ExternalLink size={14} />
+              </Button>
+            </a>
           </div>
         </div>
       </section>
 
-      {/* How It Works */}
-      <section className="max-w-4xl mx-auto px-6 py-8">
-        <div className="flex justify-center mb-8">
-          <h2 className="text-3xl font-bold text-foreground">How It Works</h2>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Agent Operators */}
-          <Card>
-            <h3 className="text-lg font-bold mb-1">For Agent Operators</h3>
-            <p className="text-sm text-muted mb-5">
-              Register your AI agent so services trust it
+      {/* ────────────── The Trust Gap ────────────── */}
+      <section className="bg-surface-1 px-6 py-20">
+        <div className="max-w-3xl mx-auto text-center">
+          <h2 className="text-3xl font-bold mb-6">The Trust Gap</h2>
+          <div className="text-lg text-muted leading-relaxed space-y-4">
+            <p>
+              AI agents are becoming autonomous participants: booking flights,
+              managing money, accessing services on your behalf. But every
+              platform they interact with faces the same question:{" "}
+              <strong className="text-foreground">
+                &ldquo;Is there a real person behind this agent?&rdquo;
+              </strong>
             </p>
-
-            <ol className="space-y-4">
-              {[
-                {
-                  title: "Choose your mode",
-                  desc: "Pick from four options: wallet-based, agent keypair, wallet-free, or passkey smart wallet. Non-crypto users can skip wallet setup entirely.",
-                },
-                {
-                  title: "Set up your identity",
-                  desc: "Connect a wallet, create a passkey, or go straight to scanning — depending on the mode you chose.",
-                },
-                {
-                  title: "Scan with Self app",
-                  desc: "Scan the QR code with the Self app. A ZK proof of your passport is generated — no personal data is shared.",
-                },
-                {
-                  title: "Agent registered + A2A Card set",
-                  desc: "An NFT is minted binding your agent key to a verified human. An A2A Agent Card with your trust score is auto-generated.",
-                },
-                {
-                  title: "Agent signs requests via SDK",
-                  desc: "Your agent uses the SDK to sign every outgoing request. Services verify the signature against the on-chain registry.",
-                },
-              ].map((step, i) => (
-                <li key={i} className="flex gap-3">
-                  <StepNumber n={i + 1} />
-                  <div>
-                    <p className="font-medium text-sm">{step.title}</p>
-                    <p className="text-xs text-muted">{step.desc}</p>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          </Card>
-
-          {/* Integration Partners */}
-          <Card>
-            <h3 className="text-lg font-bold mb-1">For Integration Partners</h3>
-            <p className="text-sm text-muted mb-5">
-              Verify agents are human-backed with reputation-based access control via API or SDK
+            <p>
+              Without a universal answer, every service builds its own
+              verification. Fragmented. Expensive. Easy to game. Self Agent ID
+              gives agents a portable, verified identity that any service can
+              check instantly, without knowing who the human is.
             </p>
-            <ol className="space-y-4">
-              {[
-                {
-                  title: "Install the SDK",
-                  desc: (
-                    <>
-                      <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">
-                        npm install @selfxyz/agent-sdk
-                      </code>{" "}
-                      or{" "}
-                      <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">
-                        pip install selfxyz-agent-sdk
-                      </code>{" "}
-                      or{" "}
-                      <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">
-                        cargo add self-agent-sdk
-                      </code>{" "}
-                      — or use the on-chain registry directly.
-                    </>
-                  ),
-                },
-                {
-                  title: "Add middleware",
-                  desc: (
-                    <>
-                      One line for Express:{" "}
-                      <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">
-                        app.use(verifier.auth())
-                      </code>
-                    </>
-                  ),
-                },
-                {
-                  title: "Requests are verified",
-                  desc: (
-                    <>
-                      The SDK recovers the signer, derives the agent key, and checks{" "}
-                      <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">
-                        isVerifiedAgent()
-                      </code>
-                    </>
-                  ),
-                },
-                {
-                  title: "Sybil resistant by default",
-                  desc: "One agent per human enforced automatically. Each passport generates a unique nullifier.",
-                },
-                {
-                  title: "On-chain gating (optional)",
-                  desc: (
-                    <>
-                      Smart contracts verify via{" "}
-                      <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">
-                        msg.sender
-                      </code>
-                      {" "}— add an{" "}
-                      <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">
-                        onlyVerifiedAgent
-                      </code>{" "}
-                      modifier.
-                    </>
-                  ),
-                },
-              ].map((step, i) => (
-                <li key={i} className="flex gap-3">
-                  <StepNumber n={i + 1} />
-                  <div>
-                    <p className="font-medium text-sm">{step.title}</p>
-                    <p className="text-xs text-muted">{step.desc}</p>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          </Card>
+          </div>
         </div>
+      </section>
 
-        {/* Verification Flow */}
-        <Card className="mt-8">
-          <h3 className="text-xs font-bold text-center mb-4 text-muted uppercase tracking-widest">
-            Verification Flow
-          </h3>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 text-sm">
+      {/* ────────────── How It Works ────────────── */}
+      <section className="px-6 py-20">
+        <div className="max-w-4xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-12">
+            How It Works
+          </h2>
+
+          <div className="flex flex-col md:flex-row items-center justify-center gap-3 md:gap-6">
             {[
-              { icon: Key, label: "Agent signs request", variant: "default" as const },
-              { icon: ShieldCheck, label: "Service recovers signer", variant: "default" as const },
-              { icon: Search, label: "Checks on-chain registry", variant: "default" as const },
-              { icon: CheckCircle2, label: "Verified human-backed", variant: "success" as const },
+              {
+                icon: ScanLine,
+                title: "Scan an Identity Document",
+                desc: "Open the Self app and scan the QR code. A cryptographic proof is generated on your phone. No personal data leaves your device.",
+              },
+              {
+                icon: Bot,
+                title: "Your Agent Gets an Identity",
+                desc: "A verified identity is created that links your agent to a real human. You stay completely anonymous. You choose exactly which credentials your agent can carry.",
+              },
+              {
+                icon: Zap,
+                title: "Services Verify Instantly",
+                desc: "Any service can check your agent's identity with a single API call. No extra setup needed.",
+              },
             ].map((step, i) => (
-              <div key={i} className="flex items-center gap-3">
+              <div key={i} className="flex flex-col md:flex-row items-center gap-3 md:gap-6">
                 {i > 0 && (
                   <ArrowRight
-                    size={16}
-                    className="text-subtle hidden sm:block"
+                    size={20}
+                    className="text-subtle hidden md:block flex-shrink-0"
                   />
                 )}
                 {i > 0 && (
                   <ArrowRight
-                    size={16}
-                    className="text-subtle sm:hidden rotate-90"
+                    size={20}
+                    className="text-subtle md:hidden rotate-90 flex-shrink-0"
                   />
                 )}
-                <div
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg border font-medium ${
-                    step.variant === "success"
-                      ? "border-accent-success/30 bg-accent-success/5 text-accent-success"
-                      : "border-border bg-surface-2 text-foreground"
-                  }`}
-                >
-                  <step.icon size={16} />
-                  {step.label}
-                </div>
+                <Card glow className="flex flex-col items-center text-center max-w-xs">
+                  <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center mb-4">
+                    <step.icon size={24} className="text-accent" />
+                  </div>
+                  <h3 className="font-bold mb-2">{step.title}</h3>
+                  <p className="text-sm text-muted leading-relaxed">
+                    {step.desc}
+                  </p>
+                </Card>
               </div>
             ))}
           </div>
-        </Card>
+        </div>
       </section>
 
+      {/* ────────────── What Your Agent Can Prove ────────────── */}
+      <section className="bg-surface-1 px-6 py-20">
+        <div className="max-w-4xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-4">
+            What Your Agent Can Prove
+          </h2>
+          <p className="text-center text-muted max-w-2xl mx-auto mb-12">
+            You decide what your agent can share. Nothing more. Even if your
+            agent is compromised, only the credentials you explicitly granted
+            can ever be accessed.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[
+              {
+                icon: UserCheck,
+                title: "Backed by a Real Human",
+                desc: "Prove your agent is operated by a verified person, not a bot or script.",
+                variant: "success" as const,
+              },
+              {
+                icon: CalendarCheck,
+                title: "Operator is Over 18",
+                desc: "Age-gated services can verify your agent's operator meets the requirement.",
+                variant: "info" as const,
+              },
+              {
+                icon: ShieldOff,
+                title: "Not on Sanctions Lists",
+                desc: "Services can check OFAC compliance without accessing your personal data.",
+                variant: "info" as const,
+              },
+              {
+                icon: Users,
+                title: "One Human, One Agent",
+                desc: "Prevent one person from registering unlimited agents. Sybil resistance built in.",
+                variant: "info" as const,
+              },
+              {
+                icon: Globe,
+                title: "Nationality Verified",
+                desc: "Optionally prove your nationality without revealing your name or identity.",
+                variant: "muted" as const,
+              },
+              {
+                icon: BadgeCheck,
+                title: "Name Verified",
+                desc: "Optionally share your verified name when services require it.",
+                variant: "muted" as const,
+              },
+            ].map((cred) => (
+              <Card key={cred.title} glow>
+                <div className="flex items-center gap-3 mb-3">
+                  <div
+                    className={`w-9 h-9 rounded-full flex items-center justify-center ${
+                      cred.variant === "success"
+                        ? "bg-accent-success/10"
+                        : cred.variant === "info"
+                          ? "bg-accent-2/10"
+                          : "bg-surface-2"
+                    }`}
+                  >
+                    <cred.icon
+                      size={18}
+                      className={
+                        cred.variant === "success"
+                          ? "text-accent-success"
+                          : cred.variant === "info"
+                            ? "text-accent-2"
+                            : "text-muted"
+                      }
+                    />
+                  </div>
+                  <h3 className="font-bold text-sm">{cred.title}</h3>
+                </div>
+                <p className="text-sm text-muted leading-relaxed">
+                  {cred.desc}
+                </p>
+              </Card>
+            ))}
+          </div>
+
+          <p className="text-center text-sm text-muted mt-8 max-w-xl mx-auto">
+            All credentials are generated from a zero-knowledge proof. Your
+            identity document data never leaves your phone. Your agent only
+            knows what you allow it to know.
+          </p>
+        </div>
+      </section>
+
+      {/* ────────────── Properties ────────────── */}
+      <section className="px-6 py-20">
+        <div className="max-w-4xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-12">
+            Built for Trust at Scale
+          </h2>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              {
+                icon: Shield,
+                title: "Private",
+                desc: "Zero-knowledge proofs reveal nothing about your identity. Only a proof of verification is stored.",
+              },
+              {
+                icon: Fingerprint,
+                title: "Sybil-Resistant",
+                desc: "Each identity document maps to a unique identifier. One person can't register unlimited agents.",
+              },
+              {
+                icon: Layers,
+                title: "Composable",
+                desc: "A single API call integrates into any backend, service, or agent framework.",
+              },
+              {
+                icon: BookOpen,
+                title: "Open Standard",
+                desc: "Built as an extension to ERC-8004, the emerging standard for agent registries.",
+              },
+            ].map((prop) => (
+              <Card key={prop.title} glow>
+                <prop.icon size={20} className="text-accent mb-3" />
+                <h3 className="font-bold mb-2">{prop.title}</h3>
+                <p className="text-sm text-muted leading-relaxed">
+                  {prop.desc}
+                </p>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ────────────── For Developers ────────────── */}
+      {/* ── Dark-mode developer section ── */}
+      <section className="dark-section px-6 py-20">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-center gap-2 mb-4">
+            <Code2 size={20} className="text-accent" />
+            <h2 className="text-3xl font-bold">Integrate in Minutes</h2>
+          </div>
+          <p className="text-center text-muted mb-10 max-w-xl mx-auto">
+            Add agent verification to your service with a few lines of code.
+            SDKs available for TypeScript, Python, and Rust.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <h3 className="font-bold text-sm mb-1">Verify Agents</h3>
+              <p className="text-xs text-muted mb-4">
+                Add middleware to verify incoming agent requests
+              </p>
+              <pre className="bg-surface-2 border border-border rounded-lg p-4 text-xs overflow-auto font-mono">
+{`import { SelfAgentVerifier } from
+  "@selfxyz/agent-sdk";
+
+const verifier = new SelfAgentVerifier({
+  rpcUrl: "https://forno.celo.org",
+});
+
+// One line of middleware
+app.use(verifier.auth());`}
+              </pre>
+            </Card>
+            <Card>
+              <h3 className="font-bold text-sm mb-1">Sign Requests</h3>
+              <p className="text-xs text-muted mb-4">
+                Authenticate your agent with any service
+              </p>
+              <pre className="bg-surface-2 border border-border rounded-lg p-4 text-xs overflow-auto font-mono">
+{`import { SelfAgentClient } from
+  "@selfxyz/agent-sdk";
+
+const agent = new SelfAgentClient({
+  privateKey: process.env.AGENT_KEY,
+});
+
+// Requests are signed automatically
+const res = await agent.fetch(url);`}
+              </pre>
+            </Card>
+          </div>
+
+          <div className="flex justify-center mt-8">
+            <Link href="/explainer">
+              <Button variant="primary">
+                See the full integration guide <ArrowRight size={14} />
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ────────────── Bottom CTA ────────────── */}
+      <section className="px-6 py-20">
+        <div className="max-w-2xl mx-auto text-center">
+          <h2 className="text-3xl font-bold mb-4">
+            Ready to Give Your Agent an Identity?
+          </h2>
+          <p className="text-muted mb-8">
+            Register your first agent in minutes. No personal data required.
+          </p>
+          <div className="flex flex-col sm:flex-row justify-center gap-3">
+            <Link href="/register">
+              <Button variant="primary" size="lg">
+                Register Your Agent
+              </Button>
+            </Link>
+            <Link href="/explainer">
+              <Button variant="secondary" size="lg">
+                Read the Docs
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </section>
     </main>
   );
 }
