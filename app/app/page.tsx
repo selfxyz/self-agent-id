@@ -3,15 +3,11 @@
 import Link from "next/link";
 import {
   Key,
-  ShieldCheck,
   ArrowRight,
   Shield,
-  Ban,
   Code2,
   BookOpen,
   Cpu,
-  Handshake,
-  FileCheck,
   Bot,
   ExternalLink,
   ScanLine,

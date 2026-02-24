@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import MatrixText from "@/components/MatrixText";
 import {
   Users,
   Lock,
