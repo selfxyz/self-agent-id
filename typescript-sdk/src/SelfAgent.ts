@@ -202,7 +202,11 @@ export class SelfAgent {
 
     try {
       const parsed = JSON.parse(raw);
-      if (parsed.a2aVersion) return parsed as A2AAgentCard;
+      if (
+        parsed.type === "https://eips.ethereum.org/EIPS/eip-8004#registration-v1" ||
+        parsed.a2aVersion
+      )
+        return parsed as A2AAgentCard;
     } catch (err) {
       console.warn("[SelfAgent] Failed to parse agent card metadata:", err);
     }

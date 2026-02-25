@@ -1,10 +1,18 @@
 ---
 name: integrate-self-id
 description: >
-  This skill should be used when the user asks to "add self agent id",
-  "integrate self id", "setup self agent", "add agent verification to my project",
-  "self agent id sdk", "install agent sdk", "integrate proof of human",
-  or wants to add Self Agent ID to an existing project from scratch.
+  End-to-end integration guide for adding Self Agent ID to a project. Covers
+  agent-side setup (SelfAgent class), service-side verification (SelfAgentVerifier),
+  MCP server configuration, on-chain Solidity integration, and quick starts for
+  TypeScript, Python, Rust, Express, FastAPI, Axum, and Hono. Use when the user
+  asks to "add self agent id", "integrate self id", "setup self agent", "add agent
+  verification to my project", "self agent id sdk", "install agent sdk", or
+  "integrate proof of human".
+license: MIT
+metadata:
+  author: Self Protocol
+  version: 1.0.0
+  mcp-server: self-agent-id
 ---
 
 # Integrate Self Agent ID
@@ -378,7 +386,7 @@ The `--evm-version cancun` flag is required because Hub V2 uses the PUSH0 opcode
 
 ---
 
-## Common Gotchas
+## Troubleshooting
 
 These are the most frequently encountered issues during integration. Read through all of them before starting.
 

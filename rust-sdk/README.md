@@ -6,17 +6,14 @@ Sign requests in Rust, verify in TypeScript or Python, or vice versa. The signin
 
 ## Install
 
-Add to `Cargo.toml`:
-
-```toml
-[dependencies]
-self-agent-sdk = { git = "https://github.com/selfxyz/self-agent-id", path = "rust-sdk" }
+```bash
+cargo add self-agent-sdk
 ```
 
 With Axum middleware support:
 
-```toml
-self-agent-sdk = { git = "...", path = "rust-sdk", features = ["axum"] }
+```bash
+cargo add self-agent-sdk --features axum
 ```
 
 ## Agent Side — Sign Requests

@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import { Test } from "forge-std/Test.sol";
-import { SelfReputationProvider } from "../src/SelfReputationProvider.sol";
+import { SelfReputationSignal } from "../src/SelfReputationSignal.sol";
 import { IHumanProofProvider } from "../src/interfaces/IHumanProofProvider.sol";
 
 /// @notice Minimal mock registry for testing
@@ -53,8 +53,8 @@ contract MockProvider is IHumanProofProvider {
     }
 }
 
-contract SelfReputationProviderTest is Test {
-    SelfReputationProvider rep;
+contract SelfReputationSignalTest is Test {
+    SelfReputationSignal rep;
     MockRegistry registry;
     MockProvider selfProvider; // strength = 100
     MockProvider kycProvider; // strength = 80
@@ -63,7 +63,7 @@ contract SelfReputationProviderTest is Test {
         registry = new MockRegistry();
         selfProvider = new MockProvider(100, "self");
         kycProvider = new MockProvider(80, "kyc-provider");
-        rep = new SelfReputationProvider(address(registry));
+        rep = new SelfReputationSignal(address(registry));
 
         // Agent 1: verified by Self (strength 100)
         registry.setAgent(1, true, address(selfProvider), 100);

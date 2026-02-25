@@ -1,16 +1,32 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.28;
+pragma solidity ^0.8.20;
+
+import { IERC165 } from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 /// @title IERC8004ProofOfHuman
-/// @notice Extension to ERC-8004 Identity Registry adding proof-of-human verification
-/// @dev Adds the ability to register agents with verifiable proof that they are
-///      backed by a unique human. The proof is verified on-chain by a whitelisted
-///      IHumanProofProvider (e.g. Self Protocol, Worldcoin).
+/// @notice Optional extension for ERC-8004 Identity Registries that bind agent
+///         identities to verified unique humans via privacy-preserving proofs.
+/// @dev Implementations MUST also implement ERC-8004 and ERC-165.
+///      The human is identified by a nullifier — a scoped, opaque identifier that
+///      is unique per (human, service) pair. The nullifier is derived by the proof
+///      provider; raw biometric data is never stored on-chain.
 ///
-///      This makes proof-of-human a first-class, trustless property of agent identity,
-///      rather than relying on a validator's attestation in the Validation Registry.
-interface IERC8004ProofOfHuman {
-    /// @notice Emitted when an agent is registered with proof-of-human
+///      Verification strength (0-100 scale):
+///        100 = Government-issued ID with NFC chip + biometric verification
+///         60 = Government-issued ID without chip
+///         40 = Video liveness check
+///          0 = No verification
+interface IERC8004ProofOfHuman is IERC165 {
+
+    // ---- Events ----
+
+    /// @notice Emitted when an agent is registered (ERC-8004 required)
+    event Registered(uint256 indexed agentId, string agentURI, address indexed owner);
+
+    /// @notice Emitted when an agent URI is updated
+    event URIUpdated(uint256 indexed agentId, string newURI, address indexed updatedBy);
+
+    /// @notice Emitted when an agent's human proof is registered
     event AgentRegisteredWithHumanProof(
         uint256 indexed agentId,
         address indexed proofProvider,
@@ -21,18 +37,54 @@ interface IERC8004ProofOfHuman {
     /// @notice Emitted when an agent's human proof is revoked
     event HumanProofRevoked(uint256 indexed agentId, uint256 nullifier);
 
-    /// @notice Emitted when a new proof provider is added to the whitelist
+    /// @notice Emitted when a proof provider is added to the approved list
     event ProofProviderAdded(address indexed provider, string name);
 
-    /// @notice Emitted when a proof provider is removed from the whitelist
+    /// @notice Emitted when a proof provider is removed from the approved list
     event ProofProviderRemoved(address indexed provider);
 
-    /// @notice Register an agent with verifiable proof-of-human
-    /// @param agentURI Standard ERC-8004 agent metadata URI
-    /// @param proofProvider Address of the IHumanProofProvider contract
-    /// @param proof The proof data (passed to provider's verifyHumanProof)
-    /// @param providerData Provider-specific context data
-    /// @return agentId The ERC-8004 agent token ID
+    /// @notice Emitted when on-chain metadata is set for an agent
+    /// @dev `indexedMetadataKey` is keccak256(metadataKey) stored as a topic (for log filtering).
+    ///      `metadataKey` contains the original string (for log reading).
+    ///      Off-chain subscribers MUST read `metadataKey` to recover the original key string.
+    event MetadataSet(
+        uint256 indexed agentId,
+        string indexed indexedMetadataKey,
+        string metadataKey,
+        bytes metadataValue
+    );
+
+    /// @notice Emitted when the maximum proof age is updated
+    event MaxProofAgeUpdated(uint256 newMaxProofAge);
+
+    /// @notice Emitted when the per-human agent cap is updated
+    event MaxAgentsPerHumanUpdated(uint256 newMax);
+
+    // ---- ERC-8004 Base Registration (required for interface compliance) ----
+
+    /// @notice Register an agent with no URI or metadata (base ERC-8004 minimum)
+    /// @dev Implementations with requireHumanProof=true MUST revert with ProofRequired()
+    function register() external returns (uint256 agentId);
+
+    /// @notice Register an agent with a URI
+    function register(string calldata agentURI) external returns (uint256 agentId);
+
+    /// @notice Register an agent with a URI and initial metadata
+    /// @dev MUST revert if metadataKeys.length != metadataValues.length
+    function register(
+        string calldata agentURI,
+        string[] calldata metadataKeys,
+        bytes[] calldata metadataValues
+    ) external returns (uint256 agentId);
+
+    // ---- Proof-of-Human Registration ----
+
+    /// @notice Register an agent with a human proof from an approved provider
+    /// @param agentURI The ERC-8004 registration file URI
+    /// @param proofProvider Address of the approved IHumanProofProvider
+    /// @param proof The proof payload for the provider to verify
+    /// @param providerData Additional data required by the provider
+    /// @return agentId The newly registered agent ID
     function registerWithHumanProof(
         string calldata agentURI,
         address proofProvider,
@@ -40,12 +92,7 @@ interface IERC8004ProofOfHuman {
         bytes calldata providerData
     ) external returns (uint256 agentId);
 
-    /// @notice Revoke an agent's human proof (deregistration)
-    /// @dev Only callable by the human who registered the agent (same nullifier)
-    /// @param agentId The agent to deregister
-    /// @param proofProvider Address of the IHumanProofProvider contract
-    /// @param proof Proof that the caller is the same human (produces same nullifier)
-    /// @param providerData Provider-specific context data
+    /// @notice Revoke an agent's human proof (requires re-proving same human)
     function revokeHumanProof(
         uint256 agentId,
         address proofProvider,
@@ -53,34 +100,58 @@ interface IERC8004ProofOfHuman {
         bytes calldata providerData
     ) external;
 
-    /// @notice Check if an agent has verified proof-of-human
-    /// @param agentId The agent to check
-    /// @return True if the agent has an active proof-of-human
+    // ---- Agent URI ----
+
+    /// @notice Update the agentURI for an agent
+    function setAgentURI(uint256 agentId, string calldata newURI) external;
+
+    // ---- Metadata ----
+
+    /// @notice Get a metadata value for an agent
+    function getMetadata(uint256 agentId, string memory key) external view returns (bytes memory);
+
+    /// @notice Set a metadata value for an agent (caller must own the NFT)
+    function setMetadata(uint256 agentId, string calldata key, bytes calldata value) external;
+
+    // ---- Agent Wallet ----
+
+    /// @notice Set a payment wallet address for an agent (requires EIP-712 signature from newWallet)
+    function setAgentWallet(
+        uint256 agentId,
+        address newWallet,
+        uint256 deadline,
+        bytes calldata signature
+    ) external;
+
+    /// @notice Get the payment wallet address for an agent (returns address(0) if unset)
+    function getAgentWallet(uint256 agentId) external view returns (address);
+
+    /// @notice Clear the payment wallet address for an agent
+    function unsetAgentWallet(uint256 agentId) external;
+
+    // ---- Proof View Functions ----
+
+    /// @notice Returns true if the agent has ever had a human proof registered (ignores expiry)
     function hasHumanProof(uint256 agentId) external view returns (bool);
 
-    /// @notice Get the nullifier (sybil-resistant human identifier) for an agent
-    /// @param agentId The agent to query
-    /// @return The nullifier (0 if no human proof)
+    /// @notice Returns the unix timestamp after which reauthentication is required (0 = no expiry)
+    function proofExpiresAt(uint256 agentId) external view returns (uint256);
+
+    /// @notice Returns true if the proof is active and within its validity window
+    function isProofFresh(uint256 agentId) external view returns (bool);
+
+    /// @notice Returns the nullifier for the human who owns this agent
     function getHumanNullifier(uint256 agentId) external view returns (uint256);
 
-    /// @notice Get the proof provider that verified an agent
-    /// @param agentId The agent to query
-    /// @return The provider address (address(0) if no human proof)
+    /// @notice Returns the proof provider address used to verify this agent
     function getProofProvider(uint256 agentId) external view returns (address);
 
-    /// @notice Get the number of active agents for a human (by nullifier)
-    /// @param nullifier The human's nullifier
-    /// @return The count of active agents
+    /// @notice Returns the number of active agents registered by the same human
     function getAgentCountForHuman(uint256 nullifier) external view returns (uint256);
 
-    /// @notice Check if two agents are backed by the same human
-    /// @param agentIdA First agent
-    /// @param agentIdB Second agent
-    /// @return True if both agents share the same non-zero nullifier
+    /// @notice Returns true if two agents belong to the same human (same nullifier)
     function sameHuman(uint256 agentIdA, uint256 agentIdB) external view returns (bool);
 
-    /// @notice Check if a proof provider is whitelisted
-    /// @param provider The provider address to check
-    /// @return True if the provider is whitelisted
+    /// @notice Returns true if the given address is an approved proof provider
     function isApprovedProvider(address provider) external view returns (bool);
 }

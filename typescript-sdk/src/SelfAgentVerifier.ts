@@ -6,9 +6,11 @@ import {
   DEFAULT_CACHE_TTL_MS,
   NETWORKS,
   DEFAULT_NETWORK,
+  REAUTH_BASE_URL,
 } from "./constants";
 import type { NetworkName } from "./constants";
 import { canonicalizeSigningUrl, computeSigningMessage } from "./signing";
+import type { VerifyResult } from "./types";
 
 export interface VerifierConfig {
   /** Network to use: "mainnet" (default) or "testnet" */
@@ -825,4 +827,110 @@ export class SelfAgentVerifier {
   expressMiddleware() {
     return this.auth();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Standalone verifyAgent() — lightweight proof-expiry-aware check
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a re-authentication URL that the agent operator can visit to renew
+ * their expired (or soon-to-expire) human proof.
+ */
+function buildReauthUrl(
+  agentId: bigint,
+  options: { chainId: number; registryAddress: string; reauthBaseUrl?: string }
+): string {
+  const base = options.reauthBaseUrl ?? REAUTH_BASE_URL;
+  return `${base}/reauth?agentId=${agentId}&chainId=${options.chainId}&registry=${options.registryAddress}`;
+}
+
+/**
+ * Standalone proof-expiry-aware agent verification.
+ *
+ * Unlike `SelfAgentVerifier.verify()` (which validates ECDSA request
+ * signatures), this function performs a direct on-chain lookup to answer
+ * the question: "does this agent currently hold a valid, non-expired
+ * human proof?"
+ *
+ * It is the recommended entry point for ERC-8004 compliance checks when
+ * you already trust the agent's identity (e.g., during off-chain enrollment
+ * or administrative tooling).
+ *
+ * @param agentKey - The agent's bytes32 on-chain key (zero-padded address)
+ * @param options  - `chainId` (used in reauth URL) and `registryAddress`
+ * @param rpcUrl   - RPC endpoint to use (default: Celo mainnet)
+ *
+ * @returns A {@link VerifyResult} discriminated union:
+ *   - `{ verified: true, agentId, expiresAt }` — active proof
+ *   - `{ verified: false, reason: 'NOT_REGISTERED' }` — unknown key
+ *   - `{ verified: false, reason: 'NO_HUMAN_PROOF' }` — key registered but no proof
+ *   - `{ verified: false, reason: 'PROOF_EXPIRED', expiredAt, reauthUrl }` — proof lapsed
+ *
+ * @example
+ * ```ts
+ * import { verifyAgent, isProofExpiringSoon } from "@selfxyz/agent-sdk";
+ *
+ * const result = await verifyAgent(agentKey, { chainId: 42220, registryAddress: "0x..." });
+ * if (!result.verified) {
+ *   if (result.reason === "PROOF_EXPIRED") {
+ *     console.warn("Re-auth at:", result.reauthUrl);
+ *   }
+ *   return;
+ * }
+ * if (isProofExpiringSoon(result.expiresAt)) {
+ *   console.warn("Proof expiring in < 30 days — prompt for renewal");
+ * }
+ * ```
+ */
+export async function verifyAgent(
+  agentKey: string,
+  options: { chainId: number; registryAddress: string; reauthBaseUrl?: string },
+  rpcUrl?: string
+): Promise<VerifyResult> {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(agentKey)) {
+    throw new TypeError(
+      `agentKey must be a 0x-prefixed 32-byte hex string; received "${agentKey}"`
+    );
+  }
+
+  // Resolve the RPC URL: use the provided override, or fall back to the
+  // network whose registry address matches, or finally to Celo mainnet.
+  const resolvedRpcUrl =
+    rpcUrl ??
+    (Object.values(NETWORKS).find((n) => n.registryAddress.toLowerCase() === options.registryAddress.toLowerCase())
+      ?.rpcUrl ?? NETWORKS[DEFAULT_NETWORK].rpcUrl);
+
+  const provider = new ethers.JsonRpcProvider(resolvedRpcUrl);
+  const registry = new ethers.Contract(options.registryAddress, REGISTRY_ABI, provider);
+
+  // Step 1: resolve agent key → agentId
+  const agentId = (await registry.getAgentId(agentKey)) as bigint;
+  if (agentId === 0n) {
+    return { verified: false, reason: "NOT_REGISTERED" };
+  }
+
+  // Step 2: check whether the agent has a human proof at all
+  const hasProof = (await registry.hasHumanProof(agentId)) as boolean;
+  if (!hasProof) {
+    return { verified: false, reason: "NO_HUMAN_PROOF" };
+  }
+
+  // Step 3: check expiry (proofExpiresAt returns 0 if the proof never expires)
+  const expiresAtSecs = (await registry.proofExpiresAt(agentId)) as bigint;
+  const nowSecs = BigInt(Math.floor(Date.now() / 1000));
+  if (expiresAtSecs > 0n && nowSecs >= expiresAtSecs) {
+    return {
+      verified: false,
+      reason: "PROOF_EXPIRED",
+      expiredAt: new Date(Number(expiresAtSecs) * 1000),
+      reauthUrl: buildReauthUrl(agentId, options),
+    };
+  }
+
+  return {
+    verified: true,
+    agentId,
+    expiresAt: expiresAtSecs > 0n ? new Date(Number(expiresAtSecs) * 1000) : null,
+  };
 }

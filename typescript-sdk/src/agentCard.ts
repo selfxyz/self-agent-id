@@ -37,15 +37,72 @@ export interface SelfProtocolExtension {
   credentials?: CardCredentials;
 }
 
-export interface A2AAgentCard {
-  a2aVersion: "0.1";
-  name: string;
-  description?: string;
-  url?: string;
-  capabilities?: string[];
-  skills?: AgentSkill[];
-  selfProtocol: SelfProtocolExtension;
+// ─── A2A Agent Card sub-types ────────────────────────────────────────────────
+
+export interface A2ACapabilities {
+  streaming: boolean;
+  pushNotifications: boolean;
 }
+
+export interface A2AProvider {
+  name: string;
+  url?: string;
+  email?: string;
+}
+
+export interface A2ASecurityScheme {
+  type: "bearer" | "apiKey" | "oauth2" | "none";
+  description?: string;
+}
+
+// ─── ERC-8004 service entry ───────────────────────────────────────────────────
+
+export interface ERC8004Service {
+  name: "web" | "A2A" | "MCP" | "OASF" | "ENS" | "DID" | "email" | string;
+  endpoint: string;
+  version?: string;
+}
+
+// ─── Cross-chain registration reference (CAIP-10) ────────────────────────────
+
+export interface ERC8004Registration {
+  agentId: number;
+  agentRegistry: string; // CAIP-10: eip155:<chainId>:<address>
+}
+
+// ─── The combined ERC-8004 + A2A document ────────────────────────────────────
+
+export interface ERC8004AgentDocument {
+  // ── ERC-8004 required ──
+  type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1";
+  name: string;
+  description: string;
+  image: string;
+  services: ERC8004Service[];
+
+  // ── ERC-8004 optional ──
+  active?: boolean;
+  registrations?: ERC8004Registration[];
+  supportedTrust?: ("reputation" | "crypto-economic" | "tee-attestation")[];
+
+  // ── A2A optional (when present, makes this a valid A2A Agent Card) ──
+  version?: string; // agent software version, e.g. "0.1.0"
+  url?: string; // A2A primary endpoint — MUST equal services[name="A2A"].endpoint
+  provider?: A2AProvider;
+  capabilities?: A2ACapabilities;
+  securitySchemes?: A2ASecurityScheme[];
+  defaultInputModes?: string[]; // MIME types, e.g. ["text/plain", "application/json"]
+  defaultOutputModes?: string[]; // MIME types
+
+  // ── Self Protocol extension (on-chain proof metadata) ──
+  selfProtocol?: SelfProtocolExtension;
+
+  // ── A2A skills ──
+  skills?: AgentSkill[];
+}
+
+// Backward-compat alias
+export type A2AAgentCard = ERC8004AgentDocument;
 
 // ─── Provider Scoring ────────────────────────────────────────────────────────
 
@@ -82,10 +139,16 @@ export async function buildAgentCard(
   userFields: {
     name: string;
     description?: string;
+    image?: string;
     url?: string;
+    services?: ERC8004Service[];
     skills?: AgentSkill[];
+    version?: string;
+    agentProvider?: A2AProvider;
+    capabilities?: A2ACapabilities;
+    securitySchemes?: A2ASecurityScheme[];
   }
-): Promise<A2AAgentCard> {
+): Promise<ERC8004AgentDocument> {
   const [
     providerName,
     verificationStrength,
@@ -138,10 +201,20 @@ export async function buildAgentCard(
   }
 
   return {
-    a2aVersion: "0.1",
+    type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
     name: userFields.name,
-    description: userFields.description,
+    description: userFields.description ?? "",
+    image: userFields.image ?? "",
+    services:
+      userFields.services ??
+      (userFields.url
+        ? [{ name: "A2A", endpoint: userFields.url, version: "1.0" }]
+        : []),
     url: userFields.url,
+    version: userFields.version,
+    provider: userFields.agentProvider,
+    capabilities: userFields.capabilities,
+    securitySchemes: userFields.securitySchemes,
     skills: userFields.skills,
     selfProtocol: {
       agentId,
@@ -153,5 +226,60 @@ export async function buildAgentCard(
       trustModel,
       credentials: cardCredentials,
     },
+  };
+}
+
+// ─── Synchronous Registration JSON Builder ───────────────────────────────────
+
+export interface GenerateRegistrationJSONOptions {
+  // ERC-8004 required
+  name: string;
+  description: string;
+  image: string;
+  services: ERC8004Service[];
+
+  // ERC-8004 optional
+  active?: boolean;
+  registrations?: ERC8004Registration[];
+  supportedTrust?: ERC8004AgentDocument["supportedTrust"];
+
+  // A2A optional — include to make the document also a valid A2A Agent Card
+  a2a?: {
+    version: string;
+    url: string; // MUST match services[name="A2A"].endpoint
+    provider: A2AProvider;
+    capabilities?: A2ACapabilities;
+    securitySchemes?: A2ASecurityScheme[];
+    defaultInputModes?: string[];
+    defaultOutputModes?: string[];
+    skills?: AgentSkill[];
+  };
+}
+
+export function generateRegistrationJSON(
+  options: GenerateRegistrationJSONOptions
+): ERC8004AgentDocument {
+  return {
+    type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+    name: options.name,
+    description: options.description,
+    image: options.image,
+    services: options.services,
+    active: options.active,
+    registrations: options.registrations,
+    supportedTrust: options.supportedTrust,
+    ...(options.a2a && {
+      version: options.a2a.version,
+      url: options.a2a.url,
+      provider: options.a2a.provider,
+      capabilities: options.a2a.capabilities ?? {
+        streaming: false,
+        pushNotifications: false,
+      },
+      securitySchemes: options.a2a.securitySchemes ?? [{ type: "none" }],
+      defaultInputModes: options.a2a.defaultInputModes,
+      defaultOutputModes: options.a2a.defaultOutputModes,
+      skills: options.a2a.skills,
+    }),
   };
 }

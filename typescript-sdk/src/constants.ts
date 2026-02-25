@@ -14,6 +14,8 @@ export const REGISTRY_ABI = [
   "function getAgentMetadata(uint256 agentId) view returns (string)",
   "function updateAgentMetadata(uint256 agentId, string metadata)",
   "function agentRegisteredAt(uint256 agentId) view returns (uint256)",
+  // ERC-8004: proof expiry
+  "function proofExpiresAt(uint256 agentId) view returns (uint256)",
 ] as const;
 
 /** ABI for IHumanProofProvider — used to query provider metadata */
@@ -51,6 +53,9 @@ export const DEFAULT_MAX_AGE_MS = 5 * 60 * 1000;
 
 /** Default cache TTL for on-chain status (1 minute) */
 export const DEFAULT_CACHE_TTL_MS = 60_000;
+
+/** Base URL for the human proof re-authentication portal. */
+export const REAUTH_BASE_URL = "https://self-agent-id.vercel.app";
 
 /** Request headers used by the signing protocol */
 export const HEADERS = {

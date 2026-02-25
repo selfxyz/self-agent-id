@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import { Test } from "forge-std/Test.sol";
-import { SelfValidationProvider } from "../src/SelfValidationProvider.sol";
+import { SelfFreshnessChecker } from "../src/SelfFreshnessChecker.sol";
 
 /// @notice Minimal mock registry for validation testing
 contract MockRegistryValidation {
@@ -29,14 +29,14 @@ contract MockRegistryValidation {
     }
 }
 
-contract SelfValidationProviderTest is Test {
-    SelfValidationProvider val;
+contract SelfFreshnessCheckerTest is Test {
+    SelfFreshnessChecker val;
     MockRegistryValidation registry;
     address fakeProvider = makeAddr("provider");
 
     function setUp() public {
         registry = new MockRegistryValidation();
-        val = new SelfValidationProvider(address(registry));
+        val = new SelfFreshnessChecker(address(registry));
 
         // Agent 1: verified, registered at block 10
         registry.setAgent(1, true, fakeProvider, 10);

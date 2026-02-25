@@ -1,6 +1,6 @@
 {
   "name": "@selfxyz/agent-sdk",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "description": "TypeScript SDK for Self Agent ID — agent signing + service verification",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -10,9 +10,14 @@
     "self-agent-cli": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
-    "test": "node --test dist/**/*.test.js",
+    "build": "tsc -p tsconfig.build.json",
+    "build:all": "tsc",
+    "test": "tsc && node --test dist/**/*.test.js",
+    "prepublishOnly": "rm -rf dist && tsc -p tsconfig.build.json",
     "cli": "node dist/cli.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "keywords": ["self", "agent", "identity", "proof-of-human", "erc-8004", "blockchain", "celo", "ai-agent", "verification", "sybil-resistance", "zk-proof"],
   "author": "Self Protocol",

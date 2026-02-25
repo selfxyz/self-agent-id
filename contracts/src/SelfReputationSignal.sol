@@ -4,11 +4,11 @@ pragma solidity 0.8.28;
 import { IHumanProofProvider } from "./interfaces/IHumanProofProvider.sol";
 import { ISelfAgentRegistryReader } from "./interfaces/ISelfAgentRegistryReader.sol";
 
-/// @title SelfReputationProvider
+/// @title SelfReputationSignal
 /// @notice ERC-8004 compatible reputation scoring — reads verification strength from proof providers.
 /// @dev Stateless view-only wrapper over SelfAgentRegistry + IHumanProofProvider.
 ///      Score comes from the provider that verified the agent, not computed here.
-contract SelfReputationProvider {
+contract SelfReputationSignal {
     ISelfAgentRegistryReader public immutable registry;
 
     /// @param _registry Address of the deployed SelfAgentRegistry

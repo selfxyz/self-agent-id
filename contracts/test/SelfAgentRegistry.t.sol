@@ -1817,4 +1817,643 @@ contract SelfAgentRegistryTest is Test {
         vm.expectRevert();
         registry.setMaxAgentsPerHuman(5);
     }
+
+    // ====================================================
+    // ERC-8004: agentURI storage + Registered event (Task 1)
+    // ====================================================
+
+    function test_registeredEventEmittedOnSimpleRegister() public {
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        bytes memory userData = _buildUserData(0x52);
+
+        // also verifies agentURI is empty string ""
+        vm.expectEmit(true, true, false, true);
+        emit IERC8004ProofOfHuman.Registered(1, "", human1);
+
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    function test_registeredEventEmittedOnAdvancedRegister() public {
+        address agentAddr = vm.addr(advAgentPrivKey1);
+        (uint8 v, bytes32 r, bytes32 s) = _signRegistration(advAgentPrivKey1, human1);
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        bytes memory userData = _buildAdvancedUserData(agentAddr, v, r, s);
+
+        // Advanced mode: NFT minted to humanAddress (human1), agentId = 1; also verifies agentURI is empty string ""
+        vm.expectEmit(true, true, false, true);
+        emit IERC8004ProofOfHuman.Registered(1, "", human1);
+
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    function test_registeredEventEmittedOnWalletFreeRegister() public {
+        address agentAddr = vm.addr(advAgentPrivKey1);
+        (uint8 v, bytes32 r, bytes32 s) = _signRegistration(advAgentPrivKey1, human1);
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        bytes memory userData = _buildWalletFreeUserData(agentAddr, human1, v, r, s);
+
+        // Wallet-free: NFT minted to agentAddr, agentId = 1; also verifies agentURI is empty string ""
+        vm.expectEmit(true, true, false, true);
+        emit IERC8004ProofOfHuman.Registered(1, "", agentAddr);
+
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    function test_registerWithHumanProofStoresURI() public {
+        string memory uri = "ipfs://QmTestAgentRegistrationFile";
+        bytes memory providerData = abi.encodePacked(agentKey1);
+
+        mockProvider.setNextNullifier(nullifier1);
+        vm.prank(human1);
+        uint256 agentId = registry.registerWithHumanProof(uri, address(mockProvider), "", providerData);
+
+        assertEq(registry.tokenURI(agentId), uri);
+    }
+
+    function test_registerWithHumanProofEmitsRegisteredEvent() public {
+        string memory uri = "ipfs://QmTestAgentRegistrationFile";
+        bytes memory providerData = abi.encodePacked(agentKey1);
+
+        mockProvider.setNextNullifier(nullifier1);
+
+        vm.expectEmit(true, true, false, true);
+        emit IERC8004ProofOfHuman.Registered(1, uri, human1);
+
+        vm.prank(human1);
+        registry.registerWithHumanProof(uri, address(mockProvider), "", providerData);
+    }
+
+    function test_tokenURIRevertsForNonexistentToken() public {
+        vm.expectRevert();
+        registry.tokenURI(999);
+    }
+
+    function test_agentURIClearedOnRevoke() public {
+        // Register with a URI via mock provider
+        string memory uri = "ipfs://QmTestAgentRegistrationFile";
+        bytes memory providerData = abi.encodePacked(agentKey1);
+
+        mockProvider.setNextNullifier(nullifier1);
+        vm.prank(human1);
+        uint256 agentId = registry.registerWithHumanProof(uri, address(mockProvider), "", providerData);
+        assertEq(registry.tokenURI(agentId), uri, "URI should be stored after registration");
+
+        // Self-deregister burns the NFT and clears storage
+        vm.prank(human1);
+        registry.selfDeregister(agentId);
+
+        // tokenURI should revert because the token no longer exists
+        vm.expectRevert();
+        registry.tokenURI(agentId);
+    }
+
+    function test_tokenURIEmptyAfterHubRegister() public {
+        // Hub V2 path passes "" for URI — tokenURI should return ""
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+        assertEq(registry.tokenURI(agentId), "");
+    }
+
+    // ====================================================
+    // V5: setAgentURI — Tests
+    // ====================================================
+
+    function test_setAgentURIUpdatesURI() public {
+        // Register an agent via Hub then set URI as the NFT owner
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        string memory newURI = "ipfs://QmNewAgentRegistrationFile";
+
+        vm.prank(human1);
+        registry.setAgentURI(agentId, newURI);
+
+        assertEq(registry.tokenURI(agentId), newURI);
+    }
+
+    function test_setAgentURIEmitsURIUpdated() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        string memory newURI = "ipfs://QmURIUpdatedEvent";
+
+        vm.expectEmit(true, false, true, true);
+        emit IERC8004ProofOfHuman.URIUpdated(agentId, newURI, human1);
+
+        vm.prank(human1);
+        registry.setAgentURI(agentId, newURI);
+    }
+
+    function test_setAgentURIRevertsIfNotOwner() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        vm.prank(human2);
+        vm.expectRevert(abi.encodeWithSelector(SelfAgentRegistry.NotNftOwner.selector, agentId));
+        registry.setAgentURI(agentId, "ipfs://QmShouldNotUpdate");
+    }
+
+    function test_setAgentURICanClearURI() public {
+        // Register with a URI via mock provider
+        string memory initialURI = "ipfs://QmInitialAgentURI";
+        bytes memory providerData = abi.encodePacked(agentKey1);
+        mockProvider.setNextNullifier(nullifier1);
+
+        vm.prank(human1);
+        uint256 agentId = registry.registerWithHumanProof(initialURI, address(mockProvider), "", providerData);
+        assertEq(registry.tokenURI(agentId), initialURI, "URI should be set after registration");
+
+        // Clear the URI by setting it to empty string
+        vm.prank(human1);
+        registry.setAgentURI(agentId, "");
+
+        assertEq(registry.tokenURI(agentId), "");
+    }
+
+    // ====================================================
+    // Task 3: ERC-8004 register() overloads + requireHumanProof
+    // ====================================================
+
+    // --- Revert when requireHumanProof = true (default) ---
+
+    function test_registerRevertsWhenProofRequired() public {
+        // Default: requireHumanProof = true; bare register() should revert
+        vm.prank(human1);
+        vm.expectRevert(SelfAgentRegistry.ProofRequired.selector);
+        registry.register();
+    }
+
+    function test_registerWithURIRevertsWhenProofRequired() public {
+        vm.prank(human1);
+        vm.expectRevert(SelfAgentRegistry.ProofRequired.selector);
+        registry.register("ipfs://QmAgentURI");
+    }
+
+    function test_registerWithURIAndMetadataRevertsWhenProofRequired() public {
+        SelfAgentRegistry.MetadataEntry[] memory meta = new SelfAgentRegistry.MetadataEntry[](1);
+        meta[0] = SelfAgentRegistry.MetadataEntry({ metadataKey: "type", metadataValue: bytes("agent") });
+
+        vm.prank(human1);
+        vm.expectRevert(SelfAgentRegistry.ProofRequired.selector);
+        registry.register("ipfs://QmAgentURI", meta);
+    }
+
+    // --- Work when requireHumanProof = false ---
+
+    function test_registerWorksWhenProofNotRequired() public {
+        vm.prank(owner);
+        registry.setRequireHumanProof(false);
+
+        vm.prank(human1);
+        uint256 agentId = registry.register();
+
+        // NFT minted to human1
+        assertEq(registry.ownerOf(agentId), human1);
+        // No human proof
+        assertFalse(registry.hasHumanProof(agentId));
+        // URI is empty
+        assertEq(registry.tokenURI(agentId), "");
+    }
+
+    function test_registerWithURIWorksWhenProofNotRequired() public {
+        vm.prank(owner);
+        registry.setRequireHumanProof(false);
+
+        string memory uri = "ipfs://QmBaseRegisterWithURI";
+        vm.prank(human1);
+        uint256 agentId = registry.register(uri);
+
+        assertEq(registry.ownerOf(agentId), human1);
+        assertEq(registry.tokenURI(agentId), uri);
+        assertFalse(registry.hasHumanProof(agentId));
+    }
+
+    function test_registerWithURIAndMetadataWorksAndSetsMetadata() public {
+        vm.prank(owner);
+        registry.setRequireHumanProof(false);
+
+        string memory uri = "ipfs://QmTest";
+        SelfAgentRegistry.MetadataEntry[] memory meta = new SelfAgentRegistry.MetadataEntry[](1);
+        meta[0] = SelfAgentRegistry.MetadataEntry({
+            metadataKey: "type",
+            metadataValue: bytes("text-agent")
+        });
+
+        vm.prank(human1);
+        uint256 agentId = registry.register(uri, meta);
+
+        assertEq(registry.ownerOf(agentId), human1);
+        assertEq(registry.tokenURI(agentId), uri);
+        // Task 4: assert the metadata was actually stored
+        assertEq(registry.getMetadata(agentId, "type"), bytes("text-agent"));
+    }
+
+    // --- Admin ---
+
+    function test_setRequireHumanProofUpdatesFlag() public {
+        assertTrue(registry.requireHumanProof(), "Should be true by default");
+
+        vm.prank(owner);
+        registry.setRequireHumanProof(false);
+        assertFalse(registry.requireHumanProof());
+
+        vm.prank(owner);
+        registry.setRequireHumanProof(true);
+        assertTrue(registry.requireHumanProof());
+    }
+
+    function test_setRequireHumanProofRevertsIfNotOwner() public {
+        vm.prank(human1);
+        vm.expectRevert();
+        registry.setRequireHumanProof(false);
+    }
+
+    // ====================================================
+    // Task 4: Key-value metadata store + MetadataSet event
+    // ====================================================
+
+    function test_setAndGetMetadata() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        bytes memory value = bytes("gpt-4o");
+
+        vm.prank(human1);
+        registry.setMetadata(agentId, "model", value);
+
+        assertEq(registry.getMetadata(agentId, "model"), value);
+    }
+
+    function test_setMetadataEmitsMetadataSet() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        bytes memory value = bytes("gpt-4o");
+
+        vm.expectEmit(true, true, false, true);
+        emit IERC8004ProofOfHuman.MetadataSet(agentId, "model", "model", value);
+
+        vm.prank(human1);
+        registry.setMetadata(agentId, "model", value);
+    }
+
+    function test_setMetadataRevertsForReservedAgentWalletKey() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        vm.prank(human1);
+        vm.expectRevert(SelfAgentRegistry.ReservedMetadataKey.selector);
+        registry.setMetadata(agentId, "agentWallet", bytes("0xdeadbeef"));
+    }
+
+    function test_setMetadataRevertsIfNotOwner() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        vm.prank(human2);
+        vm.expectRevert(abi.encodeWithSelector(SelfAgentRegistry.NotNftOwner.selector, agentId));
+        registry.setMetadata(agentId, "model", bytes("gpt-4o"));
+    }
+
+    function test_getMetadataReturnsEmptyForUnsetKey() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        bytes memory result = registry.getMetadata(agentId, "nonexistent-key");
+        assertEq(result.length, 0);
+    }
+
+    function test_registerWithMetadataBatchNowStoresMetadata() public {
+        vm.prank(owner);
+        registry.setRequireHumanProof(false);
+
+        string memory uri = "ipfs://QmBatchMetadataTest";
+        SelfAgentRegistry.MetadataEntry[] memory meta = new SelfAgentRegistry.MetadataEntry[](2);
+        meta[0] = SelfAgentRegistry.MetadataEntry({ metadataKey: "model", metadataValue: bytes("claude-3") });
+        meta[1] = SelfAgentRegistry.MetadataEntry({ metadataKey: "version", metadataValue: bytes("1.0.0") });
+
+        vm.prank(human1);
+        uint256 agentId = registry.register(uri, meta);
+
+        assertEq(registry.getMetadata(agentId, "model"), bytes("claude-3"));
+        assertEq(registry.getMetadata(agentId, "version"), bytes("1.0.0"));
+    }
+
+    // ====================================================
+    // Task 5: Agent Wallet (setAgentWallet / getAgentWallet / unsetAgentWallet)
+    // ====================================================
+
+    /// @dev Helper: build a valid EIP-712 signature for setAgentWallet.
+    ///      The typehash and domain must match exactly what the contract uses.
+    function _signAgentWalletSet(
+        uint256 walletPrivKey,
+        uint256 agentId,
+        address ownerAddr,
+        uint256 deadline
+    ) internal view returns (bytes memory sig) {
+        address walletAddr = vm.addr(walletPrivKey);
+        bytes32 structHash = keccak256(abi.encode(
+            registry.AGENT_WALLET_SET_TYPEHASH(),
+            agentId,
+            walletAddr,
+            ownerAddr,
+            deadline
+        ));
+        bytes32 digest = keccak256(abi.encodePacked(
+            "\x19\x01",
+            registry.domainSeparator(),
+            structHash
+        ));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(walletPrivKey, digest);
+        sig = abi.encodePacked(r, s, v);
+    }
+
+    function test_setAgentWalletStoresWallet() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        uint256 walletPrivKey = 0xB0B;
+        address walletAddr = vm.addr(walletPrivKey);
+        uint256 deadline = block.timestamp + 1 hours;
+
+        bytes memory sig = _signAgentWalletSet(walletPrivKey, agentId, human1, deadline);
+
+        vm.prank(human1);
+        registry.setAgentWallet(agentId, walletAddr, deadline, sig);
+
+        assertEq(registry.getAgentWallet(agentId), walletAddr);
+    }
+
+    function test_setAgentWalletEmitsMetadataSet() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        uint256 walletPrivKey = 0xB0B;
+        address walletAddr = vm.addr(walletPrivKey);
+        uint256 deadline = block.timestamp + 1 hours;
+
+        bytes memory sig = _signAgentWalletSet(walletPrivKey, agentId, human1, deadline);
+
+        vm.expectEmit(true, true, false, true);
+        emit IERC8004ProofOfHuman.MetadataSet(agentId, "agentWallet", "agentWallet", abi.encode(walletAddr));
+
+        vm.prank(human1);
+        registry.setAgentWallet(agentId, walletAddr, deadline, sig);
+    }
+
+    function test_setAgentWalletRevertsOnExpiredDeadline() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        uint256 walletPrivKey = 0xB0B;
+        address walletAddr = vm.addr(walletPrivKey);
+        uint256 deadline = block.timestamp - 1; // already expired
+
+        bytes memory sig = _signAgentWalletSet(walletPrivKey, agentId, human1, deadline);
+
+        vm.prank(human1);
+        vm.expectRevert(SelfAgentRegistry.DeadlineExpired.selector);
+        registry.setAgentWallet(agentId, walletAddr, deadline, sig);
+    }
+
+    function test_setAgentWalletRevertsOnBadSignature() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        uint256 walletPrivKey = 0xB0B;
+        address walletAddr = vm.addr(walletPrivKey);
+        uint256 deadline = block.timestamp + 1 hours;
+
+        // Sign with wrong private key (0xDEAD instead of 0xB0B)
+        uint256 wrongPrivKey = 0xDEAD;
+        bytes memory badSig = _signAgentWalletSet(wrongPrivKey, agentId, human1, deadline);
+
+        vm.prank(human1);
+        vm.expectRevert(SelfAgentRegistry.InvalidWalletSignature.selector);
+        registry.setAgentWallet(agentId, walletAddr, deadline, badSig);
+    }
+
+    function test_setAgentWalletRevertsIfNotNFTOwner() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        uint256 walletPrivKey = 0xB0B;
+        address walletAddr = vm.addr(walletPrivKey);
+        uint256 deadline = block.timestamp + 1 hours;
+
+        // Sign as if human2 is the owner (but human2 does not own the NFT)
+        bytes memory sig = _signAgentWalletSet(walletPrivKey, agentId, human2, deadline);
+
+        vm.prank(human2); // not the NFT owner
+        vm.expectRevert(abi.encodeWithSelector(SelfAgentRegistry.NotNftOwner.selector, agentId));
+        registry.setAgentWallet(agentId, walletAddr, deadline, sig);
+    }
+
+    function test_getAgentWalletReturnsZeroWhenUnset() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        assertEq(registry.getAgentWallet(agentId), address(0));
+    }
+
+    function test_unsetAgentWalletClearsWallet() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        // First set a wallet
+        uint256 walletPrivKey = 0xB0B;
+        address walletAddr = vm.addr(walletPrivKey);
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes memory sig = _signAgentWalletSet(walletPrivKey, agentId, human1, deadline);
+
+        vm.prank(human1);
+        registry.setAgentWallet(agentId, walletAddr, deadline, sig);
+        assertEq(registry.getAgentWallet(agentId), walletAddr);
+
+        // Now unset it
+        vm.prank(human1);
+        registry.unsetAgentWallet(agentId);
+
+        assertEq(registry.getAgentWallet(agentId), address(0));
+    }
+
+    function test_unsetAgentWalletEmitsMetadataSet() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        // First set a wallet
+        uint256 walletPrivKey = 0xB0B;
+        address walletAddr = vm.addr(walletPrivKey);
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes memory sig = _signAgentWalletSet(walletPrivKey, agentId, human1, deadline);
+
+        vm.prank(human1);
+        registry.setAgentWallet(agentId, walletAddr, deadline, sig);
+
+        // Expect MetadataSet event with empty data on unset
+        vm.expectEmit(true, true, false, true);
+        emit IERC8004ProofOfHuman.MetadataSet(agentId, "agentWallet", "agentWallet", bytes(""));
+
+        vm.prank(human1);
+        registry.unsetAgentWallet(agentId);
+    }
+
+    function test_unsetAgentWalletRevertsIfNotNFTOwner() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        vm.prank(address(0xBAD));
+        vm.expectRevert(abi.encodeWithSelector(SelfAgentRegistry.NotNftOwner.selector, agentId));
+        registry.unsetAgentWallet(agentId);
+    }
+
+    function test_cannotSetAgentWalletViaSetMetadata() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        vm.prank(human1);
+        vm.expectRevert(SelfAgentRegistry.ReservedMetadataKey.selector);
+        registry.setMetadata(agentId, "agentWallet", abi.encode(human2));
+    }
+
+    // ====================================================
+    // ERC-165 supportsInterface
+    // ====================================================
+
+    function test_supportsERC165() public view {
+        assertTrue(registry.supportsInterface(0x01ffc9a7)); // ERC-165 itself
+    }
+
+    function test_supportsERC721() public view {
+        assertTrue(registry.supportsInterface(0x80ac58cd)); // ERC-721
+    }
+
+    function test_supportsERC8004ProofOfHuman() public view {
+        bytes4 id = type(IERC8004ProofOfHuman).interfaceId;
+        assertTrue(registry.supportsInterface(id));
+    }
+
+    function test_doesNotSupportRandomInterface() public view {
+        assertFalse(registry.supportsInterface(0xdeadbeef));
+    }
+
+    // ====================================================
+    // Task 7: proofExpiresAt + maxProofAge
+    // ====================================================
+
+    /// @dev Build encoded output with a custom document expiry date string (YYMMDD format).
+    ///      Used by tests that need to exercise document-expiry capping logic.
+    function _buildEncodedOutputWithDocExpiry(
+        address humanAddr,
+        uint256 nullifier,
+        string memory docExpiryDate
+    ) internal pure returns (bytes memory) {
+        string[] memory names = new string[](3);
+        names[0] = "ALICE";
+        names[1] = "";
+        names[2] = "SMITH";
+
+        ISelfVerificationRoot.GenericDiscloseOutputV2 memory output = ISelfVerificationRoot
+            .GenericDiscloseOutputV2({
+                attestationId: bytes32(uint256(1)),
+                userIdentifier: uint256(uint160(humanAddr)),
+                nullifier: nullifier,
+                forbiddenCountriesListPacked: [uint256(0), uint256(0), uint256(0), uint256(0)],
+                issuingState: "GBR",
+                name: names,
+                idNumber: "123456789",
+                nationality: "GBR",
+                dateOfBirth: "950101",
+                gender: "F",
+                expiryDate: docExpiryDate,
+                olderThan: 0,
+                ofac: [false, false, false]
+            });
+
+        return abi.encode(output);
+    }
+
+    /// @dev Register via hub with a custom document expiry date string.
+    function _registerViaHubWithDocExpiry(
+        address humanAddr,
+        uint256 nullifier,
+        string memory docExpiryDate
+    ) internal {
+        bytes memory encodedOutput = _buildEncodedOutputWithDocExpiry(humanAddr, nullifier, docExpiryDate);
+        bytes memory userData = _buildUserData(0x52); // 'R'
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    function test_proofExpiresAtSetOnRegistration() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 expiry = registry.proofExpiresAt(registry.getAgentId(agentKey1));
+        // Default expiryDate in test output is "300101" (2030-01-01), which is far in the future.
+        // So proofExpiresAt should be capped by maxProofAge (365 days default).
+        assertApproxEqAbs(expiry, block.timestamp + 365 days, 60);
+    }
+
+    function test_hasHumanProofStillTrueAfterExpiry() public {
+        // hasHumanProof() does NOT check expiry — it only checks whether a proof was ever
+        // submitted and the agent still exists. Use isProofFresh() for freshness checks.
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+        assertTrue(registry.hasHumanProof(agentId));
+        vm.warp(block.timestamp + 366 days);
+        // Still true after expiry — proof exists, just not fresh
+        assertTrue(registry.hasHumanProof(agentId));
+    }
+
+    function test_isProofFreshReturnsFalseAfterExpiry() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+        assertTrue(registry.isProofFresh(agentId));
+        vm.warp(block.timestamp + 366 days);
+        assertFalse(registry.isProofFresh(agentId));
+    }
+
+    function test_setMaxProofAgeUpdatesValue() public {
+        vm.expectEmit(false, false, false, true);
+        emit IERC8004ProofOfHuman.MaxProofAgeUpdated(180 days);
+        vm.prank(registry.owner());
+        registry.setMaxProofAge(180 days);
+        assertEq(registry.maxProofAge(), 180 days);
+    }
+
+    function test_setMaxProofAgeRevertsOnZero() public {
+        vm.prank(registry.owner());
+        vm.expectRevert(SelfAgentRegistry.InvalidMaxProofAge.selector);
+        registry.setMaxProofAge(0);
+    }
+
+    function test_proofExpiresAtCappedByDocumentExpiry() public {
+        // Foundry's default block.timestamp is 1. Set it to a realistic value so
+        // we can construct a doc expiry that lies BETWEEN now and now+maxProofAge.
+        vm.warp(1_700_000_000); // ~Nov 2023 — a stable, known timestamp
+
+        // Document expires 2024-06-01 ("240601") — within the 365-day maxProofAge window.
+        // Exact unix timestamp for 2024-06-01 00:00:00 UTC = 1_717_200_000.
+        // The formula: (2024-1970)*365 + (2024-1969)/4 + daysInMonths(2024,6) + 0
+        //   = 54*365 + 55/4 + 152 = 19710 + 13 + 152 = 19875 days * 86400 = 1_717_200_000
+        uint256 expectedDocExpiry = 1_717_200_000; // 2024-06-01 00:00:00 UTC
+        uint256 ageExpiry = 1_700_000_000 + 365 days;
+
+        // doc expiry < ageExpiry → proofExpiresAt should equal docExpiry
+        assertTrue(expectedDocExpiry < ageExpiry, "precondition: doc expiry must be before age cap");
+
+        _registerViaHubWithDocExpiry(human1, nullifier1, "240601");
+
+        uint256 agentId = registry.getAgentId(agentKey1);
+        uint256 actualExpiry = registry.proofExpiresAt(agentId);
+
+        // Tightened to 1-hour tolerance: formula is exact for 2000-2049 range (2000 is div-by-400
+        // leap year and 2100 is out of range), so no multi-day error is expected here.
+        assertApproxEqAbs(actualExpiry, expectedDocExpiry, 1 hours);
+
+        // Also confirm the expiry is strictly less than the age-based cap
+        assertLt(actualExpiry, ageExpiry);
+    }
 }
