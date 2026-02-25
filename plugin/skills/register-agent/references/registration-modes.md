@@ -307,10 +307,10 @@ The config digit at `userDefinedData[1]` selects one of 6 verification configs r
 | Digit | Age Requirement | OFAC Check | Description |
 |---|---|---|---|
 | `'0'` | None | No | Minimum verification — data disclosures only |
-| `'1'` | None | Yes | OFAC sanctions screening, no age gate |
-| `'2'` | 18+ | No | Age-gated (18+), no sanctions check |
-| `'3'` | 18+ | Yes | Age 18+ with OFAC — most common for production |
-| `'4'` | 21+ | No | Age-gated (21+), no sanctions check |
+| `'1'` | 18+ | No | Age-gated (18+), no sanctions check |
+| `'2'` | 21+ | No | Age-gated (21+), no sanctions check |
+| `'3'` | None | Yes | OFAC sanctions screening, no age gate |
+| `'4'` | 18+ | Yes | Age 18+ with OFAC — most common for production |
 | `'5'` | 21+ | Yes | Strictest — age 21+ with OFAC sanctions screening |
 
 The digit is an ASCII character (`'0'` = 0x30, `'5'` = 0x35), not a raw byte value. The registry's `_parseConfigIndex()` function accepts both ASCII (`0x30-0x35`) and raw (`0x00-0x05`) encodings, but the Self SDK always sends ASCII.
@@ -318,9 +318,9 @@ The digit is an ASCII character (`'0'` = 0x30, `'5'` = 0x35), not a raw byte val
 ### Config Selection Guidance
 
 - **Development/testing:** Use config `'0'` to avoid age and OFAC requirements during development.
-- **General production:** Use config `'3'` (age 18+ with OFAC) as the baseline for most services.
-- **US-regulated services:** Use config `'4'` or `'5'` for 21+ age requirements (alcohol, gambling).
-- **Global non-age-gated:** Use config `'1'` for OFAC compliance without age restrictions.
+- **General production:** Use config `'4'` (age 18+ with OFAC) as the baseline for most services.
+- **US-regulated services:** Use config `'5'` for 21+ age requirements with OFAC (alcohol, gambling).
+- **Global non-age-gated:** Use config `'3'` for OFAC compliance without age restrictions.
 
 ---
 
@@ -394,6 +394,6 @@ Override by setting the `SELF_AGENT_API_BASE` environment variable. The previous
 
 | Contract | Mainnet (42220) | Testnet (11142220) |
 |---|---|---|
-| SelfAgentRegistry | `0x62E37d0f6c5f67784b8828B3dF68BCDbB2e55095` | `0x29d941856134b1D053AfFF57fa560324510C79fa` |
+| SelfAgentRegistry | `0x60651482a3033A72128f874623Fc790061cc46D4` | `0x29d941856134b1D053AfFF57fa560324510C79fa` |
 | SelfHumanProofProvider | `0xb0F718Bad279e51A9447D36EAa457418dBd4D95b` | `0x8e248DEB0F18B0A4b1c608F2d80dBCeB1B868F81` |
 | Hub V2 | `0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF` | `0x16ECBA51e18a4a7e61fdC417f0d47AFEeDfbed74` |

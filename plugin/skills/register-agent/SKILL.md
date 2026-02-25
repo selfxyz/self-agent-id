@@ -1,10 +1,17 @@
 ---
 name: register-agent
 description: >
-  This skill should be used when the user asks to "register an agent",
-  "create agent identity", "get verified", "self agent registration",
-  "proof of human", "register with self", "onboard agent", or wants to
-  create a new Self Agent ID identity for an AI agent.
+  Step-by-step guide for registering AI agents with proof-of-human identity
+  on the Self Agent ID registry. Covers all 4 registration modes (verified-wallet,
+  agent-identity, wallet-free, smart-wallet), 6 verification configs, MCP tools,
+  and SDK usage. Use when the user asks to "register an agent", "create agent
+  identity", "get verified", "self agent registration", "proof of human",
+  "register with self", or "onboard agent".
+license: MIT
+metadata:
+  author: Self Protocol
+  version: 1.0.0
+  mcp-server: self-agent-id
 ---
 
 # Register an Agent
@@ -57,13 +64,13 @@ At registration time, select one of 6 verification configs. The config digit is 
 | Config | Age Requirement | OFAC Check | Use Case |
 |---|---|---|---|
 | `'0'` | None | No | Development, testing, minimum verification |
-| `'1'` | None | Yes | Basic compliance without age gate |
-| `'2'` | 18+ | No | Age-gated services without sanctions screening |
-| `'3'` | 18+ | Yes | Most common for production services |
-| `'4'` | 21+ | No | US alcohol/gambling age requirements |
+| `'1'` | 18+ | No | Age-gated (18+), no sanctions screening |
+| `'2'` | 21+ | No | Age-gated (21+), no sanctions screening |
+| `'3'` | None | Yes | OFAC sanctions screening only |
+| `'4'` | 18+ | Yes | Most common for production services |
 | `'5'` | 21+ | Yes | Strictest compliance (age 21+ and OFAC) |
 
-**Recommendation:** Use config `'3'` (age 18+ with OFAC) for most production deployments. Use config `'0'` for development and testing.
+**Recommendation:** Use config `'4'` (age 18+ with OFAC) for most production deployments. Use config `'0'` for development and testing.
 
 ## Step-by-Step Registration Using MCP
 

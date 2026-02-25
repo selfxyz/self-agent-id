@@ -1,10 +1,18 @@
 ---
 name: self-agent-id-overview
 description: >
-  This skill should be used when the user asks "what is self agent id",
+  Conceptual overview of the Self Agent ID system — on-chain identity registry,
+  ERC-8004 standard, ZK proof-of-human, provider system, trust model, and
+  soulbound NFTs on Celo. Use when the user asks "what is self agent id",
   "explain self agent id", "how does agent identity work", "self protocol agents",
-  "ERC-8004", "proof of human for agents", or needs a conceptual understanding
-  of the Self Agent ID system before diving into specific workflows.
+  "ERC-8004", or "proof of human for agents". Do NOT use for specific workflows
+  like registration, signing, verification, or integration — use the dedicated
+  skills for those.
+license: MIT
+metadata:
+  author: Self Protocol
+  version: 1.0.0
+  mcp-server: self-agent-id
 ---
 
 # Self Agent ID — Overview
