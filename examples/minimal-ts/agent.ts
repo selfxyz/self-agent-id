@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { SelfAgent } from "@selfxyz/agent-sdk";
 
 // Create an agent from a private key

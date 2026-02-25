@@ -292,4 +292,4 @@ This SDK is 100% compatible with the Rust SDK (`self-agent-sdk`) and Python SDK 
 
 ## License
 
-MIT
+Business Source License 1.1 (`BUSL-1.1`). See [../LICENSE](../LICENSE).

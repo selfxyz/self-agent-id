@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Minimal service: verify agent requests with Axum.
 
 use axum::{Router, routing::post, middleware, Json, Extension};

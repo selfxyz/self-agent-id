@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { SelfAgentVerifier } from "@selfxyz/agent-sdk";
 import express from "express";
 

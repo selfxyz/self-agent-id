@@ -329,4 +329,4 @@ pytest -q
 
 ## License
 
-MIT
+Business Source License 1.1 (`BUSL-1.1`). See [../LICENSE](../LICENSE).

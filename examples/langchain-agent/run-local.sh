@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: MIT
+
 set -euo pipefail
 
 # Run LangChain agent locally — auth disabled (Next.js proxy handles it).

@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: MIT
+
 set -euo pipefail
 
 # Deploy LangChain demo to Cloud Run with isolated service account.

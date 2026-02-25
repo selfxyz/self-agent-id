@@ -1,5 +1,23 @@
 .worktrees/
+.claude/
+
+# OS/editor noise
+.DS_Store
+*.log
+
+# Local environment files (keep .env.example tracked)
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+**/node_modules/
 /functions/node_modules/
+/functions/dist/
+/functions/*.tgz
+
+# Next.js build outputs
+**/.next/
 
 # Node (test vector generation in python-sdk/)
 python-sdk/node_modules/

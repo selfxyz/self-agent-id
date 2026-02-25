@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+
 pragma solidity 0.8.28;
 
 /// @notice Local integration harness for CLI tests.

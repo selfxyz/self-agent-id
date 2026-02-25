@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """LangChain ReAct agent with Self Agent ID tools."""
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_openai import ChatOpenAI

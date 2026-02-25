@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """LangChain tools for verifying Self Agent IDs on-chain.
 
 Reference implementation showing how to check the SelfAgentRegistry

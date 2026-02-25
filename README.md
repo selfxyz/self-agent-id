@@ -4,7 +4,7 @@
 [![PyPI](https://img.shields.io/pypi/v/selfxyz-agent-sdk?label=pypi)](https://pypi.org/project/selfxyz-agent-sdk/)
 [![crates.io](https://img.shields.io/crates/v/self-agent-sdk?label=crates.io)](https://crates.io/crates/self-agent-sdk)
 [![MCP](https://img.shields.io/npm/v/@selfxyz/mcp-server?label=mcp)](https://www.npmjs.com/package/@selfxyz/mcp-server)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: BUSL--1.1](https://img.shields.io/badge/license-BUSL--1.1-blue.svg)](LICENSE)
 
 Proof-of-human identity for AI agents on Celo.
 
@@ -1290,4 +1290,18 @@ See the [`examples/`](examples/) directory:
 
 ## License
 
-MIT
+Business Source License 1.1 (`BUSL-1.1`).
+
+- Source-available with a non-commercial additional use grant.
+- Commercial use requires a separate written license from Social Connect Labs, Inc.
+- Converts to Apache-2.0 on 2029-06-11 (see [LICENSE](LICENSE)).
+- Path override: `contracts/**` uses `MIT` (via SPDX headers).
+- Path override: `examples/**` uses `MIT` (via SPDX headers).
+
+### License Header Tooling
+
+- Check duplicate headers: `python3 scripts/check-duplicate-headers.py`
+- Check formatting/presence: `python3 scripts/check-license-headers.py`
+- Auto-fix headers: `python3 scripts/check-license-headers.py --fix`
+- Run both checks: `python3 scripts/lint-headers.py`
+- Install git pre-commit hook: `./scripts/install-git-hooks.sh`

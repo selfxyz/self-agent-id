@@ -1,0 +1,66 @@
+{
+  "default_template": "busl",
+  "header_templates": {
+    "busl": {
+      "copyright": "2025-2026 Social Connect Labs, Inc.",
+      "license": "BUSL-1.1",
+      "note": "Converts to Apache-2.0 on 2029-06-11 per LICENSE."
+    },
+    "mit": {
+      "license": "MIT"
+    }
+  },
+  "path_overrides": [
+    {
+      "prefix": "contracts/",
+      "template": "mit"
+    },
+    {
+      "prefix": "examples/",
+      "template": "mit"
+    }
+  ],
+  "include_dirs": [
+    "app",
+    "contracts",
+    "functions",
+    "python-sdk",
+    "rust-sdk",
+    "typescript-sdk",
+    "examples",
+    "scripts"
+  ],
+  "exclude_dir_names": [
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    ".next",
+    ".turbo",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "target",
+    "vendor",
+    "out",
+    "tmp",
+    "Pods",
+    "DerivedData"
+  ],
+  "exclude_path_prefixes": [
+    "contracts/lib"
+  ],
+  "extension_comment_style": {
+    ".ts": "slash",
+    ".tsx": "slash",
+    ".js": "slash",
+    ".jsx": "slash",
+    ".mjs": "slash",
+    ".cjs": "slash",
+    ".sol": "slash",
+    ".rs": "slash",
+    ".py": "hash",
+    ".sh": "hash"
+  }
+}

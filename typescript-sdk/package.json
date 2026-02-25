@@ -16,7 +16,7 @@
   },
   "keywords": ["self", "agent", "identity", "proof-of-human", "erc-8004", "blockchain", "celo", "ai-agent", "verification", "sybil-resistance", "zk-proof"],
   "author": "Self Protocol",
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "repository": {
     "type": "git",
     "url": "https://github.com/selfxyz/self-agent-id.git",

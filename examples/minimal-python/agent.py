@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Minimal agent: sign and send a verified request."""
 import os
 from self_agent_sdk import SelfAgent

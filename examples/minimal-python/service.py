@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """Minimal service: verify agent requests with FastAPI."""
 from fastapi import FastAPI, Depends
 from self_agent_sdk import SelfAgentVerifier

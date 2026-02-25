@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 """FastAPI app wrapping a LangChain agent with Self Agent ID verification.
 
 The AI agent verifies callers ON-CHAIN before engaging in conversation.

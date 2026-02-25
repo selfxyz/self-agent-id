@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Minimal agent: sign and send a verified request.
 
 use self_agent_sdk::{SelfAgent, SelfAgentConfig, NetworkName};
