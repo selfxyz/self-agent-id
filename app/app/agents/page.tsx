@@ -83,7 +83,8 @@ async function fetchVerificationStrength(
 /**
  * Paginated queryFilter to avoid eth_getLogs block-range limits on
  * RPC providers like Alchemy (free tier caps at 10-block ranges).
- * Scans backwards from latest block in 50 000-block windows.
+ * Scans backwards from latest block with adaptive window sizing —
+ * starts at 50 000 blocks and halves on RPC block-range errors.
  */
 async function paginatedQueryFilter(
   registry: ethers.Contract,
@@ -91,17 +92,85 @@ async function paginatedQueryFilter(
   provider: ethers.JsonRpcProvider,
 ): Promise<(ethers.EventLog | ethers.Log)[]> {
   const latestBlock = await provider.getBlockNumber();
-  const blockWindow = 50_000;
+  // Start from a reasonable deployment block to avoid scanning genesis.
+  // SelfAgentRegistry was deployed well after block 30M on Celo mainnet.
+  const deployBlock = latestBlock > 1_000_000 ? latestBlock - 1_000_000 : 0;
+  let blockWindow = 50_000;
+  const MIN_WINDOW = 10;
   const allEvents: (ethers.EventLog | ethers.Log)[] = [];
 
-  for (let toBlock = latestBlock; toBlock >= 0; toBlock -= blockWindow) {
-    const fromBlock = Math.max(0, toBlock - blockWindow + 1);
-    const events = await registry.queryFilter(filter, fromBlock, toBlock);
-    allEvents.push(...events);
-    if (fromBlock === 0) break;
+  let toBlock = latestBlock;
+  while (toBlock >= deployBlock) {
+    const fromBlock = Math.max(deployBlock, toBlock - blockWindow + 1);
+    try {
+      const events = await registry.queryFilter(filter, fromBlock, toBlock);
+      allEvents.push(...events);
+      toBlock = fromBlock - 1;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Detect RPC block-range limit errors and halve the window
+      if (
+        (msg.includes("block range") || msg.includes("10 block range") ||
+         msg.includes("Log response size exceeded") || msg.includes("query returned more than")) &&
+        blockWindow > MIN_WINDOW
+      ) {
+        blockWindow = Math.max(MIN_WINDOW, Math.floor(blockWindow / 2));
+        continue; // retry same toBlock with smaller window
+      }
+      throw err;
+    }
   }
 
   return allEvents;
+}
+
+async function buildAgentEntry(
+  registry: ethers.Contract,
+  provider: ethers.JsonRpcProvider,
+  agentId: bigint,
+  agentKey: string,
+  ownerAddress: string,
+): Promise<AgentEntry | null> {
+  try {
+    const isVerified: boolean = await registry.isVerifiedAgent(agentKey);
+    const registeredAt: bigint = await registry.agentRegisteredAt(agentId);
+
+    let guardian = ethers.ZeroAddress;
+    let hasMetadata = false;
+    try {
+      guardian = await registry.agentGuardian(agentId);
+      const metadata: string = await registry.getAgentMetadata(agentId);
+      hasMetadata = metadata.length > 0;
+    } catch {
+      // V3 contract without guardian/metadata — ignore
+    }
+
+    const agentAddress = "0x" + agentKey.slice(26);
+
+    let mode: "simple" | "advanced" | "walletfree" = "advanced";
+    if (agentAddress.toLowerCase() === ownerAddress.toLowerCase()) {
+      mode = guardian !== ethers.ZeroAddress ? "walletfree" : "simple";
+    }
+
+    const credentials = await fetchCredentials(registry, agentId);
+    const { strength, hasA2ACard } = await fetchVerificationStrength(registry, agentId, provider);
+
+    return {
+      agentId,
+      agentKey,
+      agentAddress,
+      isVerified,
+      registeredAt,
+      mode,
+      guardian,
+      hasMetadata,
+      hasA2ACard,
+      verificationStrength: strength,
+      credentials,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function buildDisclosureBadges(creds: AgentCredentials): string[] {
@@ -328,63 +397,49 @@ export default function MyAgentsPage() {
         provider
       );
 
-      // Query Transfer events where `to` is the connected wallet (mints)
-      const mintFilter = registry.filters.Transfer(null, ownerAddress);
-      const mintEvents = await paginatedQueryFilter(registry, mintFilter, provider);
-
       const results: AgentEntry[] = [];
 
-      for (const event of mintEvents) {
-        const log = event as ethers.EventLog;
-        const agentId = log.args[2] as bigint;
-
+      // ── Fast path: check if this wallet has a simple-mode agent ──
+      // Simple registration uses zeroPadValue(address, 32) as the agent key.
+      // This avoids eth_getLogs entirely for the most common case.
+      const simpleKey = ethers.zeroPadValue(ownerAddress, 32);
+      const simpleAgentId: bigint = await registry.getAgentId(simpleKey);
+      if (simpleAgentId !== 0n) {
         try {
-          // Check if this agent is still owned by the wallet (not burned/transferred)
-          const currentOwner: string = await registry.ownerOf(agentId);
-          if (currentOwner.toLowerCase() !== ownerAddress.toLowerCase()) continue;
-
-          const agentKey: string = await registry.agentIdToAgentKey(agentId);
-          const isVerified: boolean = await registry.isVerifiedAgent(agentKey);
-          const registeredAt: bigint = await registry.agentRegisteredAt(agentId);
-
-          // Fetch V4 fields (guardian, metadata)
-          let guardian = ethers.ZeroAddress;
-          let hasMetadata = false;
-          try {
-            guardian = await registry.agentGuardian(agentId);
-            const metadata: string = await registry.getAgentMetadata(agentId);
-            hasMetadata = metadata.length > 0;
-          } catch {
-            // V3 contract without guardian/metadata — ignore
+          const currentOwner: string = await registry.ownerOf(simpleAgentId);
+          if (currentOwner.toLowerCase() === ownerAddress.toLowerCase()) {
+            const entry = await buildAgentEntry(registry, provider, simpleAgentId, simpleKey, ownerAddress);
+            if (entry) results.push(entry);
           }
-
-          // Extract address from bytes32 key (last 20 bytes)
-          const agentAddress = "0x" + agentKey.slice(26);
-
-          // Detect mode
-          let mode: "simple" | "advanced" | "walletfree" = "advanced";
-          if (agentAddress.toLowerCase() === ownerAddress.toLowerCase()) {
-            mode = guardian !== ethers.ZeroAddress ? "walletfree" : "simple";
-          }
-
-          const credentials = await fetchCredentials(registry, agentId);
-          const { strength, hasA2ACard } = await fetchVerificationStrength(registry, agentId, provider);
-
-          results.push({
-            agentId,
-            agentKey,
-            agentAddress,
-            isVerified,
-            registeredAt,
-            mode,
-            guardian,
-            hasMetadata,
-            hasA2ACard,
-            verificationStrength: strength,
-            credentials,
-          });
         } catch {
-          // Token was burned — skip
+          // burned or invalid — skip
+        }
+      }
+
+      // ── Slow path: scan Transfer events for advanced-mode agents ──
+      // Only needed if the wallet owns more tokens than we found above.
+      const balance: bigint = await registry.balanceOf(ownerAddress);
+      if (balance > BigInt(results.length)) {
+        const mintFilter = registry.filters.Transfer(null, ownerAddress);
+        const mintEvents = await paginatedQueryFilter(registry, mintFilter, provider);
+
+        const foundIds = new Set(results.map((r) => r.agentId));
+
+        for (const event of mintEvents) {
+          const log = event as ethers.EventLog;
+          const agentId = log.args[2] as bigint;
+          if (foundIds.has(agentId)) continue;
+
+          try {
+            const currentOwner: string = await registry.ownerOf(agentId);
+            if (currentOwner.toLowerCase() !== ownerAddress.toLowerCase()) continue;
+
+            const agentKey: string = await registry.agentIdToAgentKey(agentId);
+            const entry = await buildAgentEntry(registry, provider, agentId, agentKey, ownerAddress);
+            if (entry) results.push(entry);
+          } catch {
+            // Token was burned — skip
+          }
         }
       }
 
