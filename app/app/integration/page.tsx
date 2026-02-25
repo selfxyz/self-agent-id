@@ -6,7 +6,6 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import MatrixText from "@/components/MatrixText";
 import {
   Code2,
   Cpu,
@@ -59,9 +58,7 @@ export default function IntegrationPage() {
       {/* Hero */}
       <section className="px-6 pt-32 pb-16">
         <div className="max-w-4xl mx-auto text-center">
-          <div className="flex justify-center mb-6">
-            <MatrixText text="Integration Guide" fontSize={48} />
-          </div>
+          <h1 className="text-5xl font-bold mb-6">Integration Guide</h1>
           <p className="text-lg text-muted max-w-2xl mx-auto mb-6">
             Everything you need to verify agents in your service, authenticate your agent
             with other services, or register agents from the terminal.
