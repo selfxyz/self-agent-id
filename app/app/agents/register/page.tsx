@@ -42,11 +42,13 @@ import { saveAgentPrivateKey } from "@/lib/agentKeyVault";
 // Dynamic import to avoid SSR issues with Self QR SDK
 const SelfQRcodeWrapper = dynamic(
   () => import("@selfxyz/qrcode").then((mod) => mod.SelfQRcodeWrapper),
-  { ssr: false }
+  { ssr: false },
 );
 
 // SelfAppBuilder loaded lazily on client side
-let SelfAppBuilderClass: typeof import("@selfxyz/qrcode").SelfAppBuilder | null = null;
+let SelfAppBuilderClass:
+  | typeof import("@selfxyz/qrcode").SelfAppBuilder
+  | null = null;
 
 type Mode = "simple" | "advanced" | "walletfree" | "smartwallet";
 type Step = "mode" | "connect" | "scan" | "success";
@@ -74,7 +76,9 @@ export default function RegisterPage() {
   const [errorMessage, setErrorMessage] = useState("");
 
   // Smart wallet mode state
-  const [smartWalletAddress, setSmartWalletAddress] = useState<string | null>(null);
+  const [smartWalletAddress, setSmartWalletAddress] = useState<string | null>(
+    null,
+  );
   const [passkeySupported, setPasskeySupported] = useState(true);
   const [loading, setLoading] = useState(false);
 
@@ -95,26 +99,39 @@ export default function RegisterPage() {
   });
 
   // Advanced + wallet-free + smart-wallet mode state (all generate a keypair)
-  const [agentWallet, setAgentWallet] = useState<ethers.HDNodeWallet | null>(null);
+  const [agentWallet, setAgentWallet] = useState<ethers.HDNodeWallet | null>(
+    null,
+  );
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [showKeyInfo, setShowKeyInfo] = useState(false);
   const [activeAgentSnippet, setActiveAgentSnippet] = useState(0);
-  const [activeAgentFeatures, setActiveAgentFeatures] = useState<Set<string>>(new Set());
+  const [activeAgentFeatures, setActiveAgentFeatures] = useState<Set<string>>(
+    new Set(),
+  );
 
   // Guard against double-triggering handleSuccess (websocket + on-chain poll race)
   const successTriggeredRef = useRef(false);
 
   // Agent Card flow state
-  const [cardStep, setCardStep] = useState<"pending" | "writing" | "done" | "skipped">("pending");
-  const [verificationStrength, setVerificationStrength] = useState<number | null>(null);
+  const [cardStep, setCardStep] = useState<
+    "pending" | "writing" | "done" | "skipped"
+  >("pending");
+  const [verificationStrength, setVerificationStrength] = useState<
+    number | null
+  >(null);
   const [showCardJson, setShowCardJson] = useState(false);
   const [cardJson, setCardJson] = useState<string>("");
   const [agentIdResult, setAgentIdResult] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const agentSnippets = useMemo(
-    () => getAgentSnippets(network.registryAddress, network.rpcUrl, activeAgentFeatures),
-    [network.registryAddress, network.rpcUrl, activeAgentFeatures]
+    () =>
+      getAgentSnippets(
+        network.registryAddress,
+        network.rpcUrl,
+        activeAgentFeatures,
+      ),
+    [network.registryAddress, network.rpcUrl, activeAgentFeatures],
   );
 
   // On-chain polling fallback: if websocket misses "proof_verified",
@@ -122,14 +139,17 @@ export default function RegisterPage() {
   useEffect(() => {
     if (step !== "scan") return;
 
-    const addressToCheck = mode === "simple" ? walletAddress : agentWallet?.address;
+    const addressToCheck =
+      mode === "simple" ? walletAddress : agentWallet?.address;
     if (!addressToCheck) return;
 
     const interval = setInterval(async () => {
       try {
         const registered = await checkIfRegistered(addressToCheck);
         if (registered) {
-          console.log("[on-chain poll] Agent registered on-chain, triggering success");
+          console.log(
+            "[on-chain poll] Agent registered on-chain, triggering success",
+          );
           clearInterval(interval);
           handleSuccess();
         }
@@ -165,7 +185,11 @@ export default function RegisterPage() {
   const checkIfRegistered = async (address: string): Promise<boolean> => {
     try {
       const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-      const registry = new ethers.Contract(network.registryAddress, REGISTRY_ABI, provider);
+      const registry = new ethers.Contract(
+        network.registryAddress,
+        REGISTRY_ABI,
+        provider,
+      );
       const agentKey = ethers.zeroPadValue(address, 32);
       const isVerified = await registry.isVerifiedAgent(agentKey);
       return isVerified;
@@ -201,7 +225,7 @@ export default function RegisterPage() {
 
   const signAgentChallenge = async (
     newWallet: ethers.Wallet | ethers.HDNodeWallet,
-    humanIdentifier: string
+    humanIdentifier: string,
   ) => {
     // Read per-agent nonce from registry to prevent signature replay attacks.
     // New agents have nonce = 0; nonce increments on each successful registration.
@@ -266,7 +290,7 @@ export default function RegisterPage() {
     } else {
       // Advanced mode: generate keypair, sign challenge
       const newWallet = ethers.Wallet.createRandom();
-      setAgentWallet(newWallet as ethers.HDNodeWallet);
+      setAgentWallet(newWallet);
 
       const sig = await signAgentChallenge(newWallet, address);
       const agentAddrHex = newWallet.address.slice(2).toLowerCase();
@@ -290,7 +314,7 @@ export default function RegisterPage() {
 
     // Generate agent keypair (no wallet needed)
     const newWallet = ethers.Wallet.createRandom();
-    setAgentWallet(newWallet as ethers.HDNodeWallet);
+    setAgentWallet(newWallet);
 
     // Use checksummed address for userId to ensure ethers.solidityPacked
     // treats it as a proper address (ethers v6 normalizes, but be explicit)
@@ -307,7 +331,8 @@ export default function RegisterPage() {
     const rHex = sig.r.slice(2);
     const sHex = sig.s.slice(2);
     const vHex = sig.v.toString(16).padStart(2, "0");
-    const userDefinedData = "W" + cfgIdx + agentAddrHex + guardianHex + rHex + sHex + vHex;
+    const userDefinedData =
+      "W" + cfgIdx + agentAddrHex + guardianHex + rHex + sHex + vHex;
 
     // Pass lowercase address with 0x to buildSelfApp (SDK strips 0x for userId)
     setSelfApp(buildSelfApp(agentAddress.toLowerCase(), userDefinedData));
@@ -326,7 +351,8 @@ export default function RegisterPage() {
 
     try {
       // 1. Create passkey → Kernel smart wallet (counterfactual)
-      const passkeySuffix = crypto.getRandomValues(new Uint8Array(2))
+      const passkeySuffix = crypto
+        .getRandomValues(new Uint8Array(2))
         .reduce((s, b) => s + b.toString(16).padStart(2, "0"), "");
       const { credentialId, walletAddress: swAddress } =
         await createPasskeyWallet(`Self Agent ID (${passkeySuffix})`, network);
@@ -334,7 +360,7 @@ export default function RegisterPage() {
 
       // 2. Generate agent keypair
       const newWallet = ethers.Wallet.createRandom();
-      setAgentWallet(newWallet as ethers.HDNodeWallet);
+      setAgentWallet(newWallet);
       saveAgentPrivateKey({
         agentAddress: newWallet.address,
         privateKey: newWallet.privateKey,
@@ -352,7 +378,8 @@ export default function RegisterPage() {
       const rHex = sig.r.slice(2);
       const sHex = sig.s.slice(2);
       const vHex = sig.v.toString(16).padStart(2, "0");
-      const userDefinedData = "W" + cfgIdx + agentAddrHex + guardianHex + rHex + sHex + vHex;
+      const userDefinedData =
+        "W" + cfgIdx + agentAddrHex + guardianHex + rHex + sHex + vHex;
 
       // 5. Save passkey for later sign-in
       savePasskey({
@@ -373,14 +400,22 @@ export default function RegisterPage() {
 
   const writeAgentCard = async () => {
     try {
-      const agentAddress = mode === "simple" ? walletAddress! : agentWallet!.address;
+      const agentAddress =
+        mode === "simple" ? walletAddress! : agentWallet!.address;
       const agentKey = ethers.zeroPadValue(agentAddress, 32);
 
       const provider = new ethers.BrowserProvider(window.ethereum!);
-      const registry = new ethers.Contract(network.registryAddress, REGISTRY_ABI, provider);
+      const registry = new ethers.Contract(
+        network.registryAddress,
+        REGISTRY_ABI,
+        provider,
+      );
 
       const agentId: bigint = await registry.getAgentId(agentKey);
-      if (agentId === 0n) { setCardStep("skipped"); return; }
+      if (agentId === 0n) {
+        setCardStep("skipped");
+        return;
+      }
       setAgentIdResult(agentId.toString());
 
       // Read provider strength
@@ -395,7 +430,11 @@ export default function RegisterPage() {
 
       // Read credentials for card
       let credentials = null;
-      try { credentials = await registry.getAgentCredentials(agentId); } catch { /* no creds */ }
+      try {
+        credentials = await registry.getAgentCredentials(agentId);
+      } catch {
+        /* no creds */
+      }
 
       // Build card JSON
       const card = {
@@ -407,7 +446,8 @@ export default function RegisterPage() {
           registry: network.registryAddress,
           chainId: network.chainId,
           proofProvider: providerAddr,
-          providerName: providerAddr !== ethers.ZeroAddress ? "self" : "unknown",
+          providerName:
+            providerAddr !== ethers.ZeroAddress ? "self" : "unknown",
           verificationStrength: resolvedVerificationStrength ?? 100,
           trustModel: {
             proofType: "passport",
@@ -415,18 +455,20 @@ export default function RegisterPage() {
             ofacScreened: disclosures.ofac,
             minimumAgeVerified: disclosures.minimumAge,
           },
-          ...(credentials ? {
-            credentials: {
-              nationality: credentials.nationality || undefined,
-              issuingState: credentials.issuingState || undefined,
-              olderThan: Number(credentials.olderThan) || undefined,
-              ofacClean: credentials.ofac?.[0] ?? undefined,
-              hasName: credentials.name?.length > 0 ? true : undefined,
-              hasDateOfBirth: credentials.dateOfBirth ? true : undefined,
-              hasGender: credentials.gender ? true : undefined,
-              documentExpiry: credentials.expiryDate || undefined,
-            },
-          } : {}),
+          ...(credentials
+            ? {
+                credentials: {
+                  nationality: credentials.nationality || undefined,
+                  issuingState: credentials.issuingState || undefined,
+                  olderThan: Number(credentials.olderThan) || undefined,
+                  ofacClean: credentials.ofac?.[0] ?? undefined,
+                  hasName: credentials.name?.length > 0 ? true : undefined,
+                  hasDateOfBirth: credentials.dateOfBirth ? true : undefined,
+                  hasGender: credentials.gender ? true : undefined,
+                  documentExpiry: credentials.expiryDate || undefined,
+                },
+              }
+            : {}),
         },
       };
 
@@ -436,8 +478,15 @@ export default function RegisterPage() {
 
       // Write on-chain
       const signer = await provider.getSigner();
-      const registryWrite = new ethers.Contract(network.registryAddress, REGISTRY_ABI, signer);
-      const tx = await registryWrite.updateAgentMetadata(agentId, JSON.stringify(card));
+      const registryWrite = new ethers.Contract(
+        network.registryAddress,
+        REGISTRY_ABI,
+        signer,
+      );
+      const tx = await registryWrite.updateAgentMetadata(
+        agentId,
+        JSON.stringify(card),
+      );
       await tx.wait();
       setCardStep("done");
     } catch (err) {
@@ -490,7 +539,8 @@ export default function RegisterPage() {
       {step === "mode" && (
         <div className="flex flex-col items-center gap-6 w-full">
           <p className="text-muted text-center max-w-md">
-            Choose how you want to register on-chain: wallet identity for direct human use, or a dedicated agent identity for autonomous software.
+            Choose how you want to register on-chain: wallet identity for direct
+            human use, or a dedicated agent identity for autonomous software.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
@@ -511,7 +561,8 @@ export default function RegisterPage() {
               </div>
               <Badge variant="success">recommended</Badge>
               <p className="text-xs text-muted mt-2">
-                Agent gets its own independent keypair. Your wallet key stays safe.
+                Agent gets its own independent keypair. Your wallet key stays
+                safe.
               </p>
             </button>
 
@@ -531,7 +582,8 @@ export default function RegisterPage() {
                 <span className="font-bold text-sm">Verified Wallet</span>
               </div>
               <p className="text-xs text-muted mt-2">
-                Your wallet address is the verified identity. Best for human-operated, on-chain actions.
+                Your wallet address is the verified identity. Best for
+                human-operated, on-chain actions.
               </p>
             </button>
 
@@ -597,60 +649,82 @@ export default function RegisterPage() {
             {mode === "simple" ? (
               <ul className="text-sm text-muted space-y-1.5 list-disc list-inside">
                 <li>
-                  Connect your <strong className="text-foreground">browser wallet</strong> (MetaMask, etc.).
-                  That address becomes your on-chain identity.
+                  Connect your{" "}
+                  <strong className="text-foreground">browser wallet</strong>{" "}
+                  (MetaMask, etc.). That address becomes your on-chain identity.
                 </li>
                 <li>
-                  Scan your passport with the <strong className="text-foreground">Self app</strong>.
-                  A ZK proof binds your wallet to a unique human nullifier.
+                  Scan your passport with the{" "}
+                  <strong className="text-foreground">Self app</strong>. A ZK
+                  proof binds your wallet to a unique human nullifier.
                 </li>
                 <li>
                   Smart contracts can then check{" "}
-                  <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">isVerifiedAgent(your_address)</code>{" "}
+                  <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">
+                    isVerifiedAgent(your_address)
+                  </code>{" "}
                   to gate access to verified humans.
                 </li>
                 <li>
-                  Best for <strong className="text-foreground">on-chain gating</strong> where you transact directly
-                  (DAOs, token access). For autonomous agents, choose Agent Identity.
+                  Best for{" "}
+                  <strong className="text-foreground">on-chain gating</strong>{" "}
+                  where you transact directly (DAOs, token access). For
+                  autonomous agents, choose Agent Identity.
                 </li>
               </ul>
             ) : mode === "advanced" ? (
               <ul className="text-sm text-muted space-y-1.5 list-disc list-inside">
                 <li>
-                  Connect your <strong className="text-foreground">browser wallet</strong> (MetaMask, etc.),
-                  used only during registration to prove your identity.
+                  Connect your{" "}
+                  <strong className="text-foreground">browser wallet</strong>{" "}
+                  (MetaMask, etc.), used only during registration to prove your
+                  identity.
                 </li>
                 <li>
-                  A fresh <strong className="text-foreground">agent keypair</strong> is generated in your browser.
-                  Your browser signs a challenge with that key to prove key ownership during registration.
+                  A fresh{" "}
+                  <strong className="text-foreground">agent keypair</strong> is
+                  generated in your browser. Your browser signs a challenge with
+                  that key to prove key ownership during registration.
                 </li>
                 <li>
-                  Scan your passport with the <strong className="text-foreground">Self app</strong> &mdash;
-                  the contract verifies both the ZK proof and the registration signature in one step.
+                  Scan your passport with the{" "}
+                  <strong className="text-foreground">Self app</strong> &mdash;
+                  the contract verifies both the ZK proof and the registration
+                  signature in one step.
                 </li>
                 <li>
-                  Your agent operates with <strong className="text-foreground">its own key</strong>.
-                  Your wallet key is never exposed to agent software.
+                  Your agent operates with{" "}
+                  <strong className="text-foreground">its own key</strong>. Your
+                  wallet key is never exposed to agent software.
                 </li>
               </ul>
             ) : mode === "smartwallet" ? (
               <ul className="text-sm text-muted space-y-1.5 list-disc list-inside">
                 <li>
-                  A <strong className="text-foreground">passkey</strong> (Face ID / fingerprint) creates a
-                  Kernel smart account. No MetaMask, no seed phrase.
+                  A <strong className="text-foreground">passkey</strong> (Face
+                  ID / fingerprint) creates a Kernel smart account. No MetaMask,
+                  no seed phrase.
                 </li>
                 <li>
-                  A fresh <strong className="text-foreground">agent keypair</strong> is also generated.
-                  That key is used later by your agent software to sign API requests.
+                  A fresh{" "}
+                  <strong className="text-foreground">agent keypair</strong> is
+                  also generated. That key is used later by your agent software
+                  to sign API requests.
                 </li>
                 <li>
-                  The smart wallet becomes the <strong className="text-foreground">guardian</strong>.
-                  You can revoke your agent anytime with your biometrics, gaslessly.
+                  The smart wallet becomes the{" "}
+                  <strong className="text-foreground">guardian</strong>. You can
+                  revoke your agent anytime with your biometrics, gaslessly.
                 </li>
                 <li>
-                  Powered by <strong className="text-foreground">ZeroDev Kernel accounts</strong> with
-                  passkey auth and <strong className="text-foreground">Pimlico</strong> sponsored ops on Celo mainnet.
-                  The smart wallet deploys on first use (counterfactual) &mdash; see{" "}
+                  Powered by{" "}
+                  <strong className="text-foreground">
+                    ZeroDev Kernel accounts
+                  </strong>{" "}
+                  with passkey auth and{" "}
+                  <strong className="text-foreground">Pimlico</strong> sponsored
+                  ops on Celo mainnet. The smart wallet deploys on first use
+                  (counterfactual) &mdash; see{" "}
                   <a
                     href="https://docs.zerodev.app/sdk/advanced/counterfactual-address"
                     target="_blank"
@@ -658,27 +732,39 @@ export default function RegisterPage() {
                     className="text-accent hover:text-accent-2 underline"
                   >
                     counterfactual address docs
-                  </a>.
+                  </a>
+                  .
                 </li>
               </ul>
             ) : (
               <>
                 <ul className="text-sm text-muted space-y-1.5 list-disc list-inside">
                   <li>
-                    <strong className="text-foreground">No crypto wallet required.</strong> You only need
-                    the Self app on your phone and a valid passport.
+                    <strong className="text-foreground">
+                      No crypto wallet required.
+                    </strong>{" "}
+                    You only need the Self app on your phone and a valid
+                    passport.
                   </li>
                   <li>
-                    A fresh <strong className="text-foreground">agent keypair</strong> is generated in your browser.
-                    The agent owns its own on-chain identity NFT.
+                    A fresh{" "}
+                    <strong className="text-foreground">agent keypair</strong>{" "}
+                    is generated in your browser. The agent owns its own
+                    on-chain identity NFT.
                   </li>
                   <li>
-                    Scan your passport with the <strong className="text-foreground">Self app</strong>.
-                    The contract verifies your identity and mints the NFT to the agent&apos;s address.
+                    Scan your passport with the{" "}
+                    <strong className="text-foreground">Self app</strong>. The
+                    contract verifies your identity and mints the NFT to the
+                    agent&apos;s address.
                   </li>
                   <li>
-                    You can <strong className="text-foreground">deregister anytime</strong> by scanning your passport
-                    again. The ZK proof links back to your unique human identity.
+                    You can{" "}
+                    <strong className="text-foreground">
+                      deregister anytime
+                    </strong>{" "}
+                    by scanning your passport again. The ZK proof links back to
+                    your unique human identity.
                   </li>
                 </ul>
 
@@ -687,34 +773,60 @@ export default function RegisterPage() {
                   onClick={() => setShowKeyInfo(!showKeyInfo)}
                   className="flex items-center gap-2 mt-4 pt-3 border-t border-border text-sm font-medium text-accent hover:text-accent-2 transition-colors w-full"
                 >
-                  {showKeyInfo ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  {showKeyInfo ? (
+                    <ChevronUp size={14} />
+                  ) : (
+                    <ChevronDown size={14} />
+                  )}
                   How do I manage my agent&apos;s key?
                 </button>
 
                 {showKeyInfo && (
                   <div className="mt-3 space-y-3 text-sm text-muted">
                     <p>
-                      When you register, a <strong className="text-foreground">private key</strong> is generated
-                      in your browser. This key controls your agent&apos;s on-chain identity. You must save it securely.
+                      When you register, a{" "}
+                      <strong className="text-foreground">private key</strong>{" "}
+                      is generated in your browser. This key controls your
+                      agent&apos;s on-chain identity. You must save it securely.
                     </p>
                     <div className="bg-surface-2 rounded-lg p-3 space-y-2">
-                      <p className="font-bold text-foreground text-xs">Key management tips:</p>
+                      <p className="font-bold text-foreground text-xs">
+                        Key management tips:
+                      </p>
                       <ul className="text-xs space-y-1 list-disc list-inside">
-                        <li>Copy the private key and store it in a password manager (1Password, Bitwarden, etc.)</li>
+                        <li>
+                          Copy the private key and store it in a password
+                          manager (1Password, Bitwarden, etc.)
+                        </li>
                         <li>Never share the private key with anyone</li>
-                        <li>Your agent software uses this key to sign requests and prove its identity</li>
-                        <li>If the key is lost, you can deregister by scanning your passport and create a new agent</li>
+                        <li>
+                          Your agent software uses this key to sign requests and
+                          prove its identity
+                        </li>
+                        <li>
+                          If the key is lost, you can deregister by scanning
+                          your passport and create a new agent
+                        </li>
                       </ul>
                     </div>
 
                     <div className="bg-accent-success/5 border border-accent-success/20 rounded-lg p-3">
                       <div className="flex items-center gap-2 mb-1">
-                        <Fingerprint size={14} className="text-accent-success" />
-                        <p className="font-bold text-foreground text-xs">Prefer passkeys?</p>
+                        <Fingerprint
+                          size={14}
+                          className="text-accent-success"
+                        />
+                        <p className="font-bold text-foreground text-xs">
+                          Prefer passkeys?
+                        </p>
                       </div>
                       <p className="text-xs text-muted">
-                        Try <strong className="text-foreground">Smart Wallet</strong> mode instead. Uses
-                        Face ID or fingerprint to create a smart account as guardian. No raw keys to manage.
+                        Try{" "}
+                        <strong className="text-foreground">
+                          Smart Wallet
+                        </strong>{" "}
+                        mode instead. Uses Face ID or fingerprint to create a
+                        smart account as guardian. No raw keys to manage.
                       </p>
                     </div>
                   </div>
@@ -743,25 +855,35 @@ export default function RegisterPage() {
             {showDisclosures && (
               <div className="mt-3">
                 <p className="text-xs text-muted mb-2">
-                  Choose what your agent can carry as verified claims. Your raw passport data
-                  is <strong className="text-foreground">never stored or shared</strong>.
-                  The Self app generates a <strong className="text-foreground">zero-knowledge proof</strong> on
-                  your phone, and only the attested result (e.g. &ldquo;nationality: GBR&rdquo; or
-                  &ldquo;over 18&rdquo;) is stored on-chain. No personal documents ever leave your device.
+                  Choose what your agent can carry as verified claims. Your raw
+                  passport data is{" "}
+                  <strong className="text-foreground">
+                    never stored or shared
+                  </strong>
+                  . The Self app generates a{" "}
+                  <strong className="text-foreground">
+                    zero-knowledge proof
+                  </strong>{" "}
+                  on your phone, and only the attested result (e.g.
+                  &ldquo;nationality: GBR&rdquo; or &ldquo;over 18&rdquo;) is
+                  stored on-chain. No personal documents ever leave your device.
                 </p>
                 <p className="text-xs text-muted mb-4">
-                  All disclosures are optional. Unselected fields are not included.
+                  All disclosures are optional. Unselected fields are not
+                  included.
                 </p>
 
                 <div className="grid grid-cols-2 gap-2 mb-4">
-                  {([
-                    ["nationality", "Nationality", false],
-                    ["name", "Full Name", false],
-                    ["date_of_birth", "Date of Birth", false],
-                    ["gender", "Gender", false],
-                    ["issuing_state", "Issuing State", false],
-                    ["ofac", "Not on OFAC List", false],
-                  ] as const).map(([key, label, disabled]) => (
+                  {(
+                    [
+                      ["nationality", "Nationality", false],
+                      ["name", "Full Name", false],
+                      ["date_of_birth", "Date of Birth", false],
+                      ["gender", "Gender", false],
+                      ["issuing_state", "Issuing State", false],
+                      ["ofac", "Not on OFAC List", false],
+                    ] as const
+                  ).map(([key, label, disabled]) => (
                     <label
                       key={key}
                       className={`flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-2 border border-border transition-colors text-sm ${
@@ -772,15 +894,22 @@ export default function RegisterPage() {
                     >
                       <input
                         type="checkbox"
-                        checked={disclosures[key] as boolean}
+                        checked={disclosures[key]}
                         disabled={disabled}
                         onChange={(e) =>
-                          setDisclosures((d) => ({ ...d, [key]: e.target.checked }))
+                          setDisclosures((d) => ({
+                            ...d,
+                            [key]: e.target.checked,
+                          }))
                         }
                         className="rounded border-border text-accent focus:ring-accent"
                       />
                       {label}
-                      {disabled && <span className="text-xs text-subtle ml-auto">coming soon</span>}
+                      {disabled && (
+                        <span className="text-xs text-subtle ml-auto">
+                          coming soon
+                        </span>
+                      )}
                     </label>
                   ))}
                 </div>
@@ -790,7 +919,10 @@ export default function RegisterPage() {
                   <select
                     value={disclosures.minimumAge}
                     onChange={(e) =>
-                      setDisclosures((d) => ({ ...d, minimumAge: Number(e.target.value) }))
+                      setDisclosures((d) => ({
+                        ...d,
+                        minimumAge: Number(e.target.value),
+                      }))
                     }
                     className="bg-surface-2 border border-border rounded-lg px-3 py-1.5 text-sm focus:border-accent focus:outline-none"
                   >
@@ -809,7 +941,12 @@ export default function RegisterPage() {
               Generate Agent &amp; Scan Passport
             </Button>
           ) : mode === "smartwallet" ? (
-            <Button onClick={handleSmartWalletStart} variant="primary" size="lg" disabled={loading}>
+            <Button
+              onClick={handleSmartWalletStart}
+              variant="primary"
+              size="lg"
+              disabled={loading}
+            >
               {loading ? (
                 <>
                   <Loader2 size={18} className="animate-spin" />
@@ -829,7 +966,11 @@ export default function RegisterPage() {
                   ? "Next step: connect your wallet. That same address will be your verified on-chain identity."
                   : "Next step: connect your wallet to prove the human. A separate agent keypair is generated in-browser for your agent."}
               </p>
-              <Button onClick={() => setStep("connect")} variant="primary" size="lg">
+              <Button
+                onClick={() => setStep("connect")}
+                variant="primary"
+                size="lg"
+              >
                 {mode === "simple"
                   ? "Continue: Connect Verified Wallet"
                   : "Continue: Connect Wallet for Agent Identity"}
@@ -843,11 +984,16 @@ export default function RegisterPage() {
               <Terminal size={18} className="text-accent mt-0.5 shrink-0" />
               <p className="text-sm text-muted">
                 Prefer terminal workflows? Use the{" "}
-                <Link href="/cli" className="text-accent hover:text-accent-2 underline underline-offset-2 font-medium">
+                <Link
+                  href="/cli"
+                  className="text-accent hover:text-accent-2 underline underline-offset-2 font-medium"
+                >
                   CLI
                 </Link>{" "}
-                to register from your terminal, or let your backend orchestrate registration via the{" "}
-                <strong className="text-foreground">agent-guided flow</strong> (recommended for automated onboarding).
+                to register from your terminal, or let your backend orchestrate
+                registration via the{" "}
+                <strong className="text-foreground">agent-guided flow</strong>{" "}
+                (recommended for automated onboarding).
               </p>
             </div>
           </Card>
@@ -858,7 +1004,10 @@ export default function RegisterPage() {
               <Bot size={18} className="text-purple-400 mt-0.5 shrink-0" />
               <p className="text-sm text-muted">
                 Using an AI coding assistant? The{" "}
-                <Link href="/integration#mcp" className="text-accent hover:text-accent-2 underline underline-offset-2 font-medium">
+                <Link
+                  href="/integration#mcp"
+                  className="text-accent hover:text-accent-2 underline underline-offset-2 font-medium"
+                >
                   MCP server &amp; plugin
                 </Link>{" "}
                 can register and manage agents directly from your editor.
@@ -867,7 +1016,9 @@ export default function RegisterPage() {
           </Card>
 
           {errorMessage && (
-            <p className="text-sm text-accent-error text-center">{errorMessage}</p>
+            <p className="text-sm text-accent-error text-center">
+              {errorMessage}
+            </p>
           )}
         </div>
       )}
@@ -892,7 +1043,9 @@ export default function RegisterPage() {
               <Card variant="warn" className="w-full text-center">
                 <div className="flex items-center justify-center gap-2 mb-2">
                   <AlertTriangle size={18} className="text-accent-warn" />
-                  <p className="font-bold text-accent-warn">Already Registered</p>
+                  <p className="font-bold text-accent-warn">
+                    Already Registered
+                  </p>
                 </div>
                 <p className="text-sm text-muted">
                   Wallet{" "}
@@ -905,7 +1058,9 @@ export default function RegisterPage() {
               <Button
                 onClick={() => {
                   const agentKey = ethers.zeroPadValue(walletAddress, 32);
-                  router.push("/agents/verify?key=" + encodeURIComponent(agentKey));
+                  router.push(
+                    "/agents/verify?key=" + encodeURIComponent(agentKey),
+                  );
                 }}
                 variant="primary"
                 size="lg"
@@ -948,7 +1103,9 @@ export default function RegisterPage() {
           <Card className="w-full text-center">
             {mode === "simple" ? (
               <>
-                <p className="text-xs text-muted mb-1">Registering wallet as agent</p>
+                <p className="text-xs text-muted mb-1">
+                  Registering wallet as agent
+                </p>
                 <p className="font-mono text-sm">{walletAddress}</p>
               </>
             ) : mode === "advanced" ? (
@@ -956,7 +1113,8 @@ export default function RegisterPage() {
                 <p className="text-xs text-muted mb-1">
                   Registering agent{" "}
                   <span className="font-mono text-foreground">
-                    {agentWallet?.address.slice(0, 6)}...{agentWallet?.address.slice(-4)}
+                    {agentWallet?.address.slice(0, 6)}...
+                    {agentWallet?.address.slice(-4)}
                   </span>{" "}
                   under wallet
                 </p>
@@ -966,14 +1124,17 @@ export default function RegisterPage() {
               <>
                 <div className="flex items-center justify-center gap-2 mb-1">
                   <Fingerprint size={14} className="text-accent-success" />
-                  <p className="text-xs text-muted">Smart Wallet registration</p>
+                  <p className="text-xs text-muted">
+                    Smart Wallet registration
+                  </p>
                 </div>
                 <p className="text-xs text-muted mb-1">Agent address</p>
                 <p className="font-mono text-sm">{agentWallet?.address}</p>
                 <p className="text-xs text-muted mt-2">
                   Guardian (smart wallet):{" "}
                   <span className="font-mono text-foreground">
-                    {smartWalletAddress?.slice(0, 6)}...{smartWalletAddress?.slice(-4)}
+                    {smartWalletAddress?.slice(0, 6)}...
+                    {smartWalletAddress?.slice(-4)}
                   </span>
                 </p>
               </>
@@ -992,15 +1153,23 @@ export default function RegisterPage() {
           </Card>
           <Card className="w-full max-w-md">
             <div className="flex items-center gap-2 mb-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/self-icon.png" alt="Self" width={28} height={28} className="rounded" />
+              <img
+                src="/self-icon.png"
+                alt="Self"
+                width={28}
+                height={28}
+                className="rounded"
+              />
               <p className="font-bold text-sm">Scan with the Self App</p>
             </div>
             <p className="text-sm text-muted mb-3">
-              Self uses <strong className="text-foreground">zero-knowledge cryptography</strong> to
-              prove you&apos;re a real person without storing or sharing your personal data.
-              Your passport is scanned locally on your phone. Only a mathematical
-              proof is sent, never your documents.
+              Self uses{" "}
+              <strong className="text-foreground">
+                zero-knowledge cryptography
+              </strong>{" "}
+              to prove you&apos;re a real person without storing or sharing your
+              personal data. Your passport is scanned locally on your phone.
+              Only a mathematical proof is sent, never your documents.
             </p>
             <div className="flex gap-2">
               <a
@@ -1010,7 +1179,14 @@ export default function RegisterPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-2 border border-border rounded-lg text-xs font-medium hover:border-border-strong transition-colors"
               >
                 {/* Apple icon */}
-                <svg viewBox="0 0 384 512" width="14" height="14" fill="currentColor"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5c0 26.2 4.8 53.3 14.4 81.2 12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>
+                <svg
+                  viewBox="0 0 384 512"
+                  width="14"
+                  height="14"
+                  fill="currentColor"
+                >
+                  <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5c0 26.2 4.8 53.3 14.4 81.2 12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z" />
+                </svg>
                 App Store
               </a>
               <a
@@ -1020,17 +1196,28 @@ export default function RegisterPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-2 border border-border rounded-lg text-xs font-medium hover:border-border-strong transition-colors"
               >
                 {/* Play Store icon */}
-                <svg viewBox="0 0 512 512" width="14" height="14" fill="currentColor"><path d="M325.3 234.3L104.6 13l280.8 161.2-60.1 60.1zM47 0C34 6.8 25.3 19.2 25.3 35.3v441.3c0 16.1 8.7 28.5 21.7 35.3l256.6-256L47 0zm425.2 225.6l-58.9-34.1-65.7 64.5 65.7 64.5 60.1-34.1c18-14.3 18-46.5-1.2-60.8zM104.6 499l280.8-161.2-60.1-60.1L104.6 499z"/></svg>
+                <svg
+                  viewBox="0 0 512 512"
+                  width="14"
+                  height="14"
+                  fill="currentColor"
+                >
+                  <path d="M325.3 234.3L104.6 13l280.8 161.2-60.1 60.1zM47 0C34 6.8 25.3 19.2 25.3 35.3v441.3c0 16.1 8.7 28.5 21.7 35.3l256.6-256L47 0zm425.2 225.6l-58.9-34.1-65.7 64.5 65.7 64.5 60.1-34.1c18-14.3 18-46.5-1.2-60.8zM104.6 499l280.8-161.2-60.1-60.1L104.6 499z" />
+                </svg>
                 Google Play
               </a>
             </div>
           </Card>
-          {mode === "smartwallet" && smartWalletAddress && network.isTestnet && (
-            <div className="bg-accent/5 border border-accent/20 rounded-lg px-4 py-3 text-xs text-muted w-full max-w-md">
-              <strong className="text-foreground">Testnet:</strong> On {network.label}, the smart wallet is computed
-              but not deployed. Gasless passkey operations are available on Celo Mainnet (Pimlico + ZeroDev).
-            </div>
-          )}
+          {mode === "smartwallet" &&
+            smartWalletAddress &&
+            network.isTestnet && (
+              <div className="bg-accent/5 border border-accent/20 rounded-lg px-4 py-3 text-xs text-muted w-full max-w-md">
+                <strong className="text-foreground">Testnet:</strong> On{" "}
+                {network.label}, the smart wallet is computed but not deployed.
+                Gasless passkey operations are available on Celo Mainnet
+                (Pimlico + ZeroDev).
+              </div>
+            )}
           {selfApp ? (
             <div className="rounded-xl p-4 bg-white">
               <SelfQRcodeWrapper
@@ -1084,24 +1271,36 @@ export default function RegisterPage() {
           {/* Agent Card progress */}
           <Card className="w-full">
             <div className="flex items-center gap-3 text-sm">
-              <CheckCircle2 size={16} className="text-accent-success shrink-0" />
+              <CheckCircle2
+                size={16}
+                className="text-accent-success shrink-0"
+              />
               <span>Step 1/2: Agent Registered</span>
             </div>
             <div className="flex items-center gap-3 text-sm mt-2">
               {cardStep === "writing" ? (
-                <Loader2 size={16} className="text-accent animate-spin shrink-0" />
+                <Loader2
+                  size={16}
+                  className="text-accent animate-spin shrink-0"
+                />
               ) : cardStep === "done" ? (
-                <CheckCircle2 size={16} className="text-accent-success shrink-0" />
+                <CheckCircle2
+                  size={16}
+                  className="text-accent-success shrink-0"
+                />
               ) : cardStep === "skipped" ? (
                 <XCircle size={16} className="text-muted shrink-0" />
               ) : (
                 <Bot size={16} className="text-muted shrink-0" />
               )}
               <span>
-                {cardStep === "writing" ? "Step 2/2: Setting Agent Card (confirm in wallet)..." :
-                 cardStep === "done" ? "Step 2/2: Agent Card Set" :
-                 cardStep === "skipped" ? "Step 2/2: Agent Card skipped — set it later via updateAgentMetadata()" :
-                 "Step 2/2: Set Agent Card"}
+                {cardStep === "writing"
+                  ? "Step 2/2: Setting Agent Card (confirm in wallet)..."
+                  : cardStep === "done"
+                    ? "Step 2/2: Agent Card Set"
+                    : cardStep === "skipped"
+                      ? "Step 2/2: Agent Card skipped — set it later via updateAgentMetadata()"
+                      : "Step 2/2: Set Agent Card"}
               </span>
             </div>
             {cardStep === "pending" && (
@@ -1114,18 +1313,29 @@ export default function RegisterPage() {
           {/* Verification Strength Badge */}
           {verificationStrength !== null && (
             <div className="flex items-center gap-2">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white ${
-                verificationStrength >= 80 ? "bg-green-500" :
-                verificationStrength >= 60 ? "bg-blue-500" :
-                verificationStrength >= 40 ? "bg-amber-500" : "bg-gray-500"
-              }`}>
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white ${
+                  verificationStrength >= 80
+                    ? "bg-green-500"
+                    : verificationStrength >= 60
+                      ? "bg-blue-500"
+                      : verificationStrength >= 40
+                        ? "bg-amber-500"
+                        : "bg-gray-500"
+                }`}
+              >
                 {verificationStrength}
               </div>
               <span className="text-sm">
-                Verification Strength: <strong>
-                  {verificationStrength >= 100 ? "Passport" :
-                   verificationStrength >= 80 ? "KYC" :
-                   verificationStrength >= 60 ? "Govt ID" : "Liveness"}
+                Verification Strength:{" "}
+                <strong>
+                  {verificationStrength >= 100
+                    ? "Passport"
+                    : verificationStrength >= 80
+                      ? "KYC"
+                      : verificationStrength >= 60
+                        ? "Govt ID"
+                        : "Liveness"}
                 </strong>
               </span>
             </div>
@@ -1143,13 +1353,19 @@ export default function RegisterPage() {
                       /api/cards/{network.chainId}/{agentIdResult}
                     </code>
                     <button
-                      onClick={() => copyToClipboard(
-                        `${window.location.origin}/api/cards/${network.chainId}/${agentIdResult}`,
-                        "cardUrl"
-                      )}
+                      onClick={() =>
+                        copyToClipboard(
+                          `${window.location.origin}/api/cards/${network.chainId}/${agentIdResult}`,
+                          "cardUrl",
+                        )
+                      }
                       className="p-2 text-muted hover:text-foreground bg-surface-2 hover:bg-surface-1 rounded border border-border transition-colors shrink-0"
                     >
-                      {copiedField === "cardUrl" ? <Check size={14} className="text-accent-success" /> : <Copy size={14} />}
+                      {copiedField === "cardUrl" ? (
+                        <Check size={14} className="text-accent-success" />
+                      ) : (
+                        <Copy size={14} />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -1160,13 +1376,19 @@ export default function RegisterPage() {
                       /api/reputation/{network.chainId}/{agentIdResult}
                     </code>
                     <button
-                      onClick={() => copyToClipboard(
-                        `${window.location.origin}/api/reputation/${network.chainId}/${agentIdResult}`,
-                        "repUrl"
-                      )}
+                      onClick={() =>
+                        copyToClipboard(
+                          `${window.location.origin}/api/reputation/${network.chainId}/${agentIdResult}`,
+                          "repUrl",
+                        )
+                      }
                       className="p-2 text-muted hover:text-foreground bg-surface-2 hover:bg-surface-1 rounded border border-border transition-colors shrink-0"
                     >
-                      {copiedField === "repUrl" ? <Check size={14} className="text-accent-success" /> : <Copy size={14} />}
+                      {copiedField === "repUrl" ? (
+                        <Check size={14} className="text-accent-success" />
+                      ) : (
+                        <Copy size={14} />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -1176,7 +1398,11 @@ export default function RegisterPage() {
                 onClick={() => setShowCardJson(!showCardJson)}
                 className="text-xs text-accent hover:text-accent-2 mt-3 flex items-center gap-1"
               >
-                {showCardJson ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                {showCardJson ? (
+                  <ChevronUp size={14} />
+                ) : (
+                  <ChevronDown size={14} />
+                )}
                 {showCardJson ? "Hide" : "Show"} Agent Card JSON
               </button>
               {showCardJson && cardJson && (
@@ -1193,13 +1419,17 @@ export default function RegisterPage() {
                 <p className="font-bold text-sm mb-3">Verified Wallet</p>
                 <div className="space-y-3 text-sm">
                   <div>
-                    <p className="text-xs text-muted mb-1">Your Wallet Address</p>
+                    <p className="text-xs text-muted mb-1">
+                      Your Wallet Address
+                    </p>
                     <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1">
                       {walletAddress}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-muted mb-1">On-chain Agent Key (bytes32)</p>
+                    <p className="text-xs text-muted mb-1">
+                      On-chain Agent Key (bytes32)
+                    </p>
                     <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1 text-xs">
                       {walletAddress && ethers.zeroPadValue(walletAddress, 32)}
                     </p>
@@ -1210,20 +1440,28 @@ export default function RegisterPage() {
                 <p className="font-bold text-sm mb-2">How this works</p>
                 <ul className="text-xs text-muted space-y-1.5 list-disc list-inside">
                   <li>
-                    Your wallet address is now registered as a <strong className="text-foreground">verified human</strong> on-chain.
+                    Your wallet address is now registered as a{" "}
+                    <strong className="text-foreground">verified human</strong>{" "}
+                    on-chain.
                   </li>
                   <li>
                     Smart contracts can check{" "}
-                    <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">isVerifiedAgent(bytes32(your_address))</code>{" "}
+                    <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">
+                      isVerifiedAgent(bytes32(your_address))
+                    </code>{" "}
                     to gate access to verified humans only.
                   </li>
                   <li>
-                    <strong className="text-foreground">You transact directly.</strong> There is no separate agent.
-                    This is best for on-chain gating (DAOs, token access, DeFi).
+                    <strong className="text-foreground">
+                      You transact directly.
+                    </strong>{" "}
+                    There is no separate agent. This is best for on-chain gating
+                    (DAOs, token access, DeFi).
                   </li>
                   <li>
-                    For autonomous agents that sign requests to services,
-                    use <strong className="text-foreground">Agent Identity</strong> mode instead.
+                    For autonomous agents that sign requests to services, use{" "}
+                    <strong className="text-foreground">Agent Identity</strong>{" "}
+                    mode instead.
                   </li>
                 </ul>
               </Card>
@@ -1234,11 +1472,14 @@ export default function RegisterPage() {
               <Card variant="warn" className="w-full">
                 <div className="flex items-center gap-2 mb-1">
                   <AlertTriangle size={16} className="text-accent-warn" />
-                  <p className="font-bold text-sm text-accent-warn">Agent Credentials</p>
+                  <p className="font-bold text-sm text-accent-warn">
+                    Agent Credentials
+                  </p>
                 </div>
                 <p className="text-sm text-muted mb-3">
-                  A fresh Ethereum keypair was generated in your browser for your agent.
-                  Copy these credentials now &mdash; this is the only place we display the private key.
+                  A fresh Ethereum keypair was generated in your browser for
+                  your agent. Copy these credentials now &mdash; this is the
+                  only place we display the private key.
                   {mode === "smartwallet"
                     ? " For demo convenience, this browser keeps a local copy linked to your passkey wallet."
                     : " If you leave without saving it, it cannot be recovered."}
@@ -1248,18 +1489,27 @@ export default function RegisterPage() {
                   <div>
                     <p className="text-xs font-medium text-accent-warn mb-1">
                       Agent Address
-                      <span className="font-normal text-muted"> (your agent&apos;s public identity)</span>
+                      <span className="font-normal text-muted">
+                        {" "}
+                        (your agent&apos;s public identity)
+                      </span>
                     </p>
                     <div className="flex items-center gap-2">
                       <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1 text-sm flex-1">
                         {agentWallet?.address}
                       </p>
                       <button
-                        onClick={() => copyToClipboard(agentWallet?.address || "", "address")}
+                        onClick={() =>
+                          copyToClipboard(agentWallet?.address || "", "address")
+                        }
                         className="p-2 text-muted hover:text-foreground bg-surface-2 hover:bg-surface-1 rounded border border-border transition-colors shrink-0"
                         title="Copy"
                       >
-                        {copiedField === "address" ? <Check size={14} className="text-accent-success" /> : <Copy size={14} />}
+                        {copiedField === "address" ? (
+                          <Check size={14} className="text-accent-success" />
+                        ) : (
+                          <Copy size={14} />
+                        )}
                       </button>
                     </div>
                   </div>
@@ -1267,7 +1517,10 @@ export default function RegisterPage() {
                   <div>
                     <p className="text-xs font-medium text-accent-warn mb-1">
                       Agent Private Key
-                      <span className="font-normal text-muted"> (used by your agent to sign requests)</span>
+                      <span className="font-normal text-muted">
+                        {" "}
+                        (used by your agent to sign requests)
+                      </span>
                     </p>
                     <div className="flex items-center gap-2">
                       <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1 text-xs flex-1">
@@ -1280,14 +1533,27 @@ export default function RegisterPage() {
                         className="p-2 text-muted hover:text-foreground bg-surface-2 hover:bg-surface-1 rounded border border-border transition-colors shrink-0"
                         title={showPrivateKey ? "Hide" : "Show"}
                       >
-                        {showPrivateKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                        {showPrivateKey ? (
+                          <EyeOff size={14} />
+                        ) : (
+                          <Eye size={14} />
+                        )}
                       </button>
                       <button
-                        onClick={() => copyToClipboard(agentWallet?.privateKey || "", "privateKey")}
+                        onClick={() =>
+                          copyToClipboard(
+                            agentWallet?.privateKey || "",
+                            "privateKey",
+                          )
+                        }
                         className="p-2 text-muted hover:text-foreground bg-surface-2 hover:bg-surface-1 rounded border border-border transition-colors shrink-0"
                         title="Copy"
                       >
-                        {copiedField === "privateKey" ? <Check size={14} className="text-accent-success" /> : <Copy size={14} />}
+                        {copiedField === "privateKey" ? (
+                          <Check size={14} className="text-accent-success" />
+                        ) : (
+                          <Copy size={14} />
+                        )}
                       </button>
                     </div>
                   </div>
@@ -1298,10 +1564,16 @@ export default function RegisterPage() {
               <div className="w-full space-y-3">
                 <p className="font-bold text-sm">How to use your agent</p>
                 <p className="text-xs text-muted">
-                  Set <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">AGENT_PRIVATE_KEY</code> in
-                  your agent&apos;s environment, then use one of these patterns.
-                  If the key is <strong className="text-foreground">lost</strong>, deregister and create a new agent.
-                  If <strong className="text-foreground">leaked</strong>, deregister immediately.
+                  Set{" "}
+                  <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">
+                    AGENT_PRIVATE_KEY
+                  </code>{" "}
+                  in your agent&apos;s environment, then use one of these
+                  patterns. If the key is{" "}
+                  <strong className="text-foreground">lost</strong>, deregister
+                  and create a new agent. If{" "}
+                  <strong className="text-foreground">leaked</strong>,
+                  deregister immediately.
                 </p>
 
                 <div className="flex gap-2 flex-wrap">
@@ -1340,7 +1612,9 @@ export default function RegisterPage() {
                   })}
                 </div>
 
-                <p className="text-xs text-muted">{agentSnippets[activeAgentSnippet].description}</p>
+                <p className="text-xs text-muted">
+                  {agentSnippets[activeAgentSnippet].description}
+                </p>
                 <CodeBlock tabs={agentSnippets[activeAgentSnippet].snippets} />
               </div>
 
@@ -1358,12 +1632,16 @@ export default function RegisterPage() {
                           {mode === "smartwallet" ? (
                             <>
                               <Badge variant="success">Smart Wallet</Badge>
-                              <span className="text-xs text-muted">Passkey guardian, gasless management</span>
+                              <span className="text-xs text-muted">
+                                Passkey guardian, gasless management
+                              </span>
                             </>
                           ) : (
                             <>
                               <Badge variant="info">Wallet-Free</Badge>
-                              <span className="text-xs text-muted">Agent owns its own NFT</span>
+                              <span className="text-xs text-muted">
+                                Agent owns its own NFT
+                              </span>
                             </>
                           )}
                         </div>
@@ -1371,7 +1649,10 @@ export default function RegisterPage() {
                       <div>
                         <p className="text-xs text-muted mb-1">
                           NFT Owner
-                          <span className="text-subtle"> (the agent&apos;s address, self-owned)</span>
+                          <span className="text-subtle">
+                            {" "}
+                            (the agent&apos;s address, self-owned)
+                          </span>
                         </p>
                         <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1">
                           {agentWallet?.address}
@@ -1381,7 +1662,10 @@ export default function RegisterPage() {
                         <div>
                           <p className="text-xs text-muted mb-1">
                             Guardian (Smart Wallet)
-                            <span className="text-subtle"> (your passkey controls this address)</span>
+                            <span className="text-subtle">
+                              {" "}
+                              (your passkey controls this address)
+                            </span>
                           </p>
                           <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1">
                             {smartWalletAddress}
@@ -1393,7 +1677,10 @@ export default function RegisterPage() {
                     <div>
                       <p className="text-xs text-muted mb-1">
                         Registered by
-                        <span className="text-subtle"> (your wallet, the NFT owner who can deregister)</span>
+                        <span className="text-subtle">
+                          {" "}
+                          (your wallet, the NFT owner who can deregister)
+                        </span>
                       </p>
                       <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1">
                         {walletAddress}
@@ -1403,10 +1690,14 @@ export default function RegisterPage() {
                   <div>
                     <p className="text-xs text-muted mb-1">
                       Agent Key (bytes32)
-                      <span className="text-subtle"> (the on-chain identifier services use to verify)</span>
+                      <span className="text-subtle">
+                        {" "}
+                        (the on-chain identifier services use to verify)
+                      </span>
                     </p>
                     <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1 text-xs">
-                      {agentWallet && ethers.zeroPadValue(agentWallet.address, 32)}
+                      {agentWallet &&
+                        ethers.zeroPadValue(agentWallet.address, 32)}
                     </p>
                   </div>
                 </div>
@@ -1419,9 +1710,11 @@ export default function RegisterPage() {
                     <p className="font-bold text-sm">Passkey Management</p>
                   </div>
                   <p className="text-xs text-muted">
-                    Your passkey can revoke this agent anytime via Face ID / fingerprint.
-                    Visit <strong className="text-foreground">My Agents</strong> and sign in with your passkey
-                    to manage your agent gaslessly. The smart wallet deploys on first management action.
+                    Your passkey can revoke this agent anytime via Face ID /
+                    fingerprint. Visit{" "}
+                    <strong className="text-foreground">My Agents</strong> and
+                    sign in with your passkey to manage your agent gaslessly.
+                    The smart wallet deploys on first management action.
                   </p>
                 </Card>
               )}
@@ -1431,9 +1724,10 @@ export default function RegisterPage() {
                   <p className="font-bold text-sm mb-2">How to deregister</p>
                   <p className="text-xs text-muted">
                     Since no wallet was used, you can deregister by visiting the{" "}
-                    <strong className="text-foreground">Verify</strong> page, looking up your agent,
-                    and scanning your passport again. The ZK proof links to your unique identity,
-                    so only you can deregister your agent.
+                    <strong className="text-foreground">Verify</strong> page,
+                    looking up your agent, and scanning your passport again. The
+                    ZK proof links to your unique identity, so only you can
+                    deregister your agent.
                   </p>
                 </Card>
               )}
@@ -1443,9 +1737,10 @@ export default function RegisterPage() {
           <div className="flex gap-3">
             <Button
               onClick={() => {
-                const key = mode === "simple"
-                  ? ethers.zeroPadValue(walletAddress!, 32)
-                  : ethers.zeroPadValue(agentWallet!.address, 32);
+                const key =
+                  mode === "simple"
+                    ? ethers.zeroPadValue(walletAddress!, 32)
+                    : ethers.zeroPadValue(agentWallet!.address, 32);
                 router.push("/agents/verify?key=" + encodeURIComponent(key));
               }}
               variant="primary"

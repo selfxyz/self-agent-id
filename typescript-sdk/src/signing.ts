@@ -63,11 +63,13 @@ export function computeSigningMessage(
   timestamp: string,
   method: string,
   url: string,
-  body?: string
+  body?: string,
 ): string {
   const canonicalUrl = canonicalizeSigningUrl(url);
   const bodyHash = computeBodyHash(body);
   return ethers.keccak256(
-    ethers.toUtf8Bytes(timestamp + method.toUpperCase() + canonicalUrl + bodyHash)
+    ethers.toUtf8Bytes(
+      timestamp + method.toUpperCase() + canonicalUrl + bodyHash,
+    ),
   );
 }

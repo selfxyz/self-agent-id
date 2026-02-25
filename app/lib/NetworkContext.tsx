@@ -4,8 +4,20 @@
 
 "use client";
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
-import { type NetworkId, type NetworkConfig, getNetwork, isNetworkReady, DEFAULT_NETWORK } from "./network";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  type ReactNode,
+} from "react";
+import {
+  type NetworkId,
+  type NetworkConfig,
+  getNetwork,
+  isNetworkReady,
+  DEFAULT_NETWORK,
+} from "./network";
 
 interface NetworkContextValue {
   network: NetworkConfig;
@@ -27,7 +39,9 @@ function resolveNetworkId(candidate: string | null): NetworkId {
 }
 
 export function NetworkProvider({ children }: { children: ReactNode }) {
-  const [networkId, setNetworkIdState] = useState<NetworkId>(() => resolveNetworkId(null));
+  const [networkId, setNetworkIdState] = useState<NetworkId>(() =>
+    resolveNetworkId(null),
+  );
   const [hydrated, setHydrated] = useState(false);
 
   // Hydrate from URL query param on mount
@@ -37,7 +51,9 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
     setNetworkIdState(resolved);
 
     // Clean up any old localStorage entry
-    try { localStorage.removeItem("self-agent-id:network"); } catch {}
+    try {
+      localStorage.removeItem("self-agent-id:network");
+    } catch {}
 
     setHydrated(true);
   }, []);
@@ -58,7 +74,11 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
     const safeDefault = resolveNetworkId(null);
     return (
       <NetworkContext.Provider
-        value={{ network: getNetwork(safeDefault), networkId: safeDefault, setNetworkId }}
+        value={{
+          network: getNetwork(safeDefault),
+          networkId: safeDefault,
+          setNetworkId,
+        }}
       >
         {children}
       </NetworkContext.Provider>

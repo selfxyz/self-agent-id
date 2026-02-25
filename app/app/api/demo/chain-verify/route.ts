@@ -2,13 +2,10 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { HEADERS } from "@selfxyz/agent-sdk";
-import {
-  AGENT_DEMO_VERIFIER_ABI,
-  REGISTRY_ABI,
-} from "@/lib/constants";
+import { AGENT_DEMO_VERIFIER_ABI, REGISTRY_ABI } from "@/lib/constants";
 import { getNetwork, NETWORKS, type NetworkId } from "@/lib/network";
 import { getCachedVerifier } from "@/lib/selfVerifier";
 import { checkAndRecordReplay } from "@/lib/replayGuard";
@@ -86,15 +83,19 @@ export async function POST(req: NextRequest) {
     nonce = parsed.nonce;
     deadline = parsed.deadline;
     eip712Signature = parsed.eip712Signature;
-    networkId = parsed.networkId && parsed.networkId in NETWORKS
-      ? parsed.networkId
-      : "celo-sepolia";
+    networkId =
+      parsed.networkId && parsed.networkId in NETWORKS
+        ? parsed.networkId
+        : "celo-sepolia";
     if (!agentKey || nonce == null || !deadline || !eip712Signature) {
       throw new Error("Missing fields");
     }
   } catch {
     return NextResponse.json(
-      { error: "Invalid request body — expected { agentKey, nonce, deadline, eip712Signature, networkId? }" },
+      {
+        error:
+          "Invalid request body — expected { agentKey, nonce, deadline, eip712Signature, networkId? }",
+      },
       { status: 400 },
     );
   }
@@ -137,13 +138,15 @@ export async function POST(req: NextRequest) {
     if (simErr instanceof Error) {
       const msg = simErr.message;
       if (msg.includes("NotVerifiedAgent")) {
-        reason = "Contract rejected: agent not verified in registry (isVerifiedAgent returned false)";
+        reason =
+          "Contract rejected: agent not verified in registry (isVerifiedAgent returned false)";
       } else if (msg.includes("MetaTxExpired")) {
         reason = "Contract rejected: meta-transaction deadline expired";
       } else if (msg.includes("MetaTxInvalidNonce")) {
         reason = "Contract rejected: invalid nonce (replay or out of order)";
       } else if (msg.includes("MetaTxInvalidSignature")) {
-        reason = "Contract rejected: EIP-712 signature invalid — signer does not match agent key";
+        reason =
+          "Contract rejected: EIP-712 signature invalid — signer does not match agent key";
       } else {
         reason = `Contract rejected: ${msg.slice(0, 200)}`;
       }
@@ -168,7 +171,11 @@ export async function POST(req: NextRequest) {
   }
 
   // 8. Rate limit by human nullifier (only reachable if agent is verified)
-  let rateLimitResult: { allowed: boolean; remaining: number; retryAfterMs?: number };
+  let rateLimitResult: {
+    allowed: boolean;
+    remaining: number;
+    retryAfterMs?: number;
+  };
   try {
     const agentId = await registryContract.getAgentId(agentKey);
     const nullifier = await registryContract.getHumanNullifier(agentId);
@@ -236,12 +243,13 @@ export async function POST(req: NextRequest) {
       explorerUrl: `${network.blockExplorer}/tx/${receipt.hash}`,
       agentAddress: sdkResult.valid ? sdkResult.agentAddress : undefined,
       agentId: sdkResult.valid ? sdkResult.agentId.toString() : undefined,
-      credentials: sdkResult.valid && sdkResult.credentials
-        ? {
-            olderThan: sdkResult.credentials.olderThan.toString(),
-            nationality: sdkResult.credentials.nationality,
-          }
-        : undefined,
+      credentials:
+        sdkResult.valid && sdkResult.credentials
+          ? {
+              olderThan: sdkResult.credentials.olderThan.toString(),
+              nationality: sdkResult.credentials.nationality,
+            }
+          : undefined,
       verificationCount: verCount.toString(),
       totalVerifications: totalCount.toString(),
       gasUsed: receipt.gasUsed?.toString(),

@@ -26,11 +26,11 @@ describe("SelfAgent signer support", () => {
     const message = computeSigningMessage(
       headers["x-self-agent-timestamp"],
       "GET",
-      "/test"
+      "/test",
     );
     const recovered = ethers.verifyMessage(
       ethers.getBytes(message),
-      headers["x-self-agent-signature"]
+      headers["x-self-agent-signature"],
     );
     assert.strictEqual(recovered, wallet.address);
   });
@@ -38,7 +38,7 @@ describe("SelfAgent signer support", () => {
   it("throws if neither privateKey nor signer provided", () => {
     assert.throws(
       () => new SelfAgent({ network: "testnet" } as any),
-      /Either privateKey or signer must be provided/
+      /Either privateKey or signer must be provided/,
     );
   });
 });

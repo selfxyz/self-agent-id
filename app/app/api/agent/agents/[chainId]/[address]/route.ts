@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { REGISTRY_ABI } from "@selfxyz/agent-sdk";
 import { CHAIN_CONFIG } from "@/lib/chain-config";
@@ -10,7 +10,7 @@ import { CORS_HEADERS, corsResponse, errorResponse } from "@/lib/api-helpers";
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ chainId: string; address: string }> }
+  { params }: { params: Promise<{ chainId: string; address: string }> },
 ) {
   const { chainId, address } = await params;
   const config = CHAIN_CONFIG[chainId];
@@ -42,7 +42,7 @@ export async function GET(
           agents: [],
           totalCount: 0,
         },
-        { headers: CORS_HEADERS }
+        { headers: CORS_HEADERS },
       );
     }
 
@@ -73,11 +73,14 @@ export async function GET(
         ],
         totalCount: agentCount,
       },
-      { headers: CORS_HEADERS }
+      { headers: CORS_HEADERS },
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    if (message.includes("could not coalesce") || message.includes("BAD_DATA")) {
+    if (
+      message.includes("could not coalesce") ||
+      message.includes("BAD_DATA")
+    ) {
       return errorResponse("Agent not found", 404);
     }
     return errorResponse("RPC error", 502);

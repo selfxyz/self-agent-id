@@ -6,15 +6,14 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import {
-  Code2,
-  Cpu,
-  Terminal,
-  Bot,
-  ExternalLink,
-} from "lucide-react";
+import { Code2, Cpu, Terminal, Bot, ExternalLink } from "lucide-react";
 import CodeBlock from "@/components/CodeBlock";
-import { getServiceSnippets, getAgentSnippets, SERVICE_FEATURES, AGENT_FEATURES } from "@/lib/snippets";
+import {
+  getServiceSnippets,
+  getAgentSnippets,
+  SERVICE_FEATURES,
+  AGENT_FEATURES,
+} from "@/lib/snippets";
 import { useNetwork } from "@/lib/NetworkContext";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
@@ -23,8 +22,12 @@ export default function IntegrationPage() {
   const { network } = useNetwork();
   const [activeUseCase, setActiveUseCase] = useState(0);
   const [activeAgentSnippet, setActiveAgentSnippet] = useState(0);
-  const [activeServiceFeatures, setActiveServiceFeatures] = useState<Set<string>>(new Set());
-  const [activeAgentFeatures, setActiveAgentFeatures] = useState<Set<string>>(new Set());
+  const [activeServiceFeatures, setActiveServiceFeatures] = useState<
+    Set<string>
+  >(new Set());
+  const [activeAgentFeatures, setActiveAgentFeatures] = useState<Set<string>>(
+    new Set(),
+  );
 
   const toggleServiceFeature = (id: string) => {
     setActiveServiceFeatures((prev) => {
@@ -45,12 +48,22 @@ export default function IntegrationPage() {
   };
 
   const snippets = useMemo(
-    () => getServiceSnippets(network.registryAddress, network.rpcUrl, activeServiceFeatures),
-    [network.registryAddress, network.rpcUrl, activeServiceFeatures]
+    () =>
+      getServiceSnippets(
+        network.registryAddress,
+        network.rpcUrl,
+        activeServiceFeatures,
+      ),
+    [network.registryAddress, network.rpcUrl, activeServiceFeatures],
   );
   const agentSnippets = useMemo(
-    () => getAgentSnippets(network.registryAddress, network.rpcUrl, activeAgentFeatures),
-    [network.registryAddress, network.rpcUrl, activeAgentFeatures]
+    () =>
+      getAgentSnippets(
+        network.registryAddress,
+        network.rpcUrl,
+        activeAgentFeatures,
+      ),
+    [network.registryAddress, network.rpcUrl, activeAgentFeatures],
   );
 
   return (
@@ -60,8 +73,9 @@ export default function IntegrationPage() {
         <div className="max-w-4xl mx-auto text-center">
           <h1 className="text-5xl font-bold mb-6">Integration Guide</h1>
           <p className="text-lg text-muted max-w-2xl mx-auto mb-6">
-            Everything you need to verify agents in your service, authenticate your agent
-            with other services, or register agents from the terminal.
+            Everything you need to verify agents in your service, authenticate
+            your agent with other services, or register agents from the
+            terminal.
           </p>
           <div className="flex gap-3 flex-wrap justify-center">
             <code className="bg-surface-2 font-mono text-accent-2 px-3 py-1.5 rounded text-xs">
@@ -88,16 +102,21 @@ export default function IntegrationPage() {
         <div className="max-w-4xl mx-auto space-y-4">
           <div className="flex items-center gap-2">
             <Code2 size={20} className="text-accent" />
-            <h2 className="text-3xl font-bold">Verify Agents in Your Service</h2>
+            <h2 className="text-3xl font-bold">
+              Verify Agents in Your Service
+            </h2>
           </div>
           <p className="text-sm text-muted">
-            These code snippets are for <strong className="text-foreground">service developers</strong> who want to verify
-            agents in their applications. Pre-filled with the deployed contract address for{" "}
+            These code snippets are for{" "}
+            <strong className="text-foreground">service developers</strong> who
+            want to verify agents in their applications. Pre-filled with the
+            deployed contract address for{" "}
             <strong className="text-foreground">{network.label}</strong>.
           </p>
           <p className="text-xs text-muted">
-            Smart contracts are currently deployed on <strong className="text-foreground">Celo</strong> (mainnet &amp; Sepolia testnet).
-            Multichain support is coming soon.
+            Smart contracts are currently deployed on{" "}
+            <strong className="text-foreground">Celo</strong> (mainnet &amp;
+            Sepolia testnet). Multichain support is coming soon.
           </p>
 
           <div className="flex gap-2 flex-wrap">
@@ -140,8 +159,12 @@ export default function IntegrationPage() {
             {snippets[activeUseCase].description}
           </p>
           <p className="text-xs text-muted">
-            Security default: <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">requireSelfProvider: true</code>.
-            Turning this off accepts any approved proof provider, not only Self.
+            Security default:{" "}
+            <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">
+              requireSelfProvider: true
+            </code>
+            . Turning this off accepts any approved proof provider, not only
+            Self.
           </p>
           <p className="text-xs text-subtle font-mono">
             {snippets[activeUseCase].flow}
@@ -158,10 +181,14 @@ export default function IntegrationPage() {
             <h2 className="text-3xl font-bold">How to Use Your Agent</h2>
           </div>
           <p className="text-sm text-muted">
-            If you are the <strong className="text-foreground">agent operator</strong>, use these snippets to
-            authenticate your agent with services or submit on-chain transactions.
-            Set <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">AGENT_PRIVATE_KEY</code> in
-            your agent&apos;s environment first.
+            If you are the{" "}
+            <strong className="text-foreground">agent operator</strong>, use
+            these snippets to authenticate your agent with services or submit
+            on-chain transactions. Set{" "}
+            <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">
+              AGENT_PRIVATE_KEY
+            </code>{" "}
+            in your agent&apos;s environment first.
           </p>
 
           <div className="flex gap-2 flex-wrap">
@@ -212,11 +239,14 @@ export default function IntegrationPage() {
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center gap-2 mb-4">
             <Terminal size={20} className="text-accent" />
-            <h2 className="text-3xl font-bold">CLI &amp; Agent-Guided Registration</h2>
+            <h2 className="text-3xl font-bold">
+              CLI &amp; Agent-Guided Registration
+            </h2>
           </div>
           <p className="text-sm text-muted mb-6">
-            Register agents from your terminal or let your backend orchestrate the registration flow programmatically.
-            The CLI creates a session, generates a browser handoff URL, and polls for completion.
+            Register agents from your terminal or let your backend orchestrate
+            the registration flow programmatically. The CLI creates a session,
+            generates a browser handoff URL, and polls for completion.
           </p>
 
           <Card className="mb-6">
@@ -273,18 +303,30 @@ self-agent register export --session .self/session.json`,
 
           <Card className="border border-accent/30 bg-accent/5">
             <p className="text-sm text-muted">
-              <strong className="text-foreground">Agent-guided flow (recommended):</strong> Your backend calls{" "}
-              <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">register init</code>,
-              forwards the handoff URL to the user, and polls{" "}
-              <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">register wait</code> for completion.
-              This is the recommended pattern for services that onboard users programmatically.
+              <strong className="text-foreground">
+                Agent-guided flow (recommended):
+              </strong>{" "}
+              Your backend calls{" "}
+              <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">
+                register init
+              </code>
+              , forwards the handoff URL to the user, and polls{" "}
+              <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">
+                register wait
+              </code>{" "}
+              for completion. This is the recommended pattern for services that
+              onboard users programmatically.
             </p>
             <div className="mt-3 flex gap-3">
               <Link href="/cli">
-                <Button variant="secondary" size="sm">CLI Quickstart</Button>
+                <Button variant="secondary" size="sm">
+                  CLI Quickstart
+                </Button>
               </Link>
               <Link href="/api-docs">
-                <Button variant="ghost" size="sm">API Reference</Button>
+                <Button variant="ghost" size="sm">
+                  API Reference
+                </Button>
               </Link>
             </div>
           </Card>
@@ -296,7 +338,9 @@ self-agent register export --session .self/session.json`,
         <div className="max-w-4xl mx-auto space-y-6">
           <div className="flex items-center gap-2">
             <Bot size={20} className="text-purple-400" />
-            <h2 className="text-3xl font-bold">MCP Server &amp; Claude Code Plugin</h2>
+            <h2 className="text-3xl font-bold">
+              MCP Server &amp; Claude Code Plugin
+            </h2>
           </div>
           <p className="text-sm text-muted">
             Use Self Agent ID directly from your AI coding assistant. The{" "}
@@ -308,16 +352,21 @@ self-agent register export --session .self/session.json`,
             >
               MCP server
             </a>{" "}
-            exposes 10 tools for identity management &mdash; register, sign, verify, and query agents
-            without leaving your editor.
+            exposes 10 tools for identity management &mdash; register, sign,
+            verify, and query agents without leaving your editor.
           </p>
 
           {/* MCP Install */}
           <Card>
-            <p className="font-bold text-sm mb-3">MCP Server (any MCP-compatible IDE)</p>
+            <p className="font-bold text-sm mb-3">
+              MCP Server (any MCP-compatible IDE)
+            </p>
             <p className="text-xs text-muted mb-3">
-              Add this to your project&apos;s <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">.mcp.json</code> or
-              IDE MCP settings:
+              Add this to your project&apos;s{" "}
+              <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">
+                .mcp.json
+              </code>{" "}
+              or IDE MCP settings:
             </p>
             <CodeBlock
               tabs={[
@@ -342,10 +391,13 @@ self-agent register export --session .self/session.json`,
 
           {/* Claude Code Plugin */}
           <Card>
-            <p className="font-bold text-sm mb-3">Claude Code Plugin (guided workflows)</p>
+            <p className="font-bold text-sm mb-3">
+              Claude Code Plugin (guided workflows)
+            </p>
             <p className="text-xs text-muted mb-3">
-              The plugin adds 6 skills that guide Claude through registration, signing, verification,
-              and integration &mdash; with full protocol context loaded automatically.
+              The plugin adds 6 skills that guide Claude through registration,
+              signing, verification, and integration &mdash; with full protocol
+              context loaded automatically.
             </p>
             <CodeBlock
               tabs={[
@@ -380,7 +432,9 @@ claude plugin add /path/to/self-agent-id/plugin`,
                 ["self_verify_request", "Verify signed request headers"],
               ].map(([tool, desc]) => (
                 <div key={tool} className="flex items-start gap-2 py-1">
-                  <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded whitespace-nowrap">{tool}</code>
+                  <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded whitespace-nowrap">
+                    {tool}
+                  </code>
                   <span className="text-muted">{desc}</span>
                 </div>
               ))}
@@ -391,20 +445,41 @@ claude plugin add /path/to/self-agent-id/plugin`,
           <Card>
             <p className="font-bold text-sm mb-2">6 Plugin Skills</p>
             <p className="text-xs text-muted mb-3">
-              Each skill is a self-contained knowledge module with decision trees, code examples,
-              and reference docs. They load automatically in Claude Code when triggered by your request.
+              Each skill is a self-contained knowledge module with decision
+              trees, code examples, and reference docs. They load automatically
+              in Claude Code when triggered by your request.
             </p>
             <div className="space-y-2 text-xs">
               {[
-                ["self-agent-id-overview", "Architecture, contracts, trust model, ERC-8004 standard, provider system"],
-                ["register-agent", "Step-by-step registration in all 4 modes (wallet, agent-identity, wallet-free, smart-wallet)"],
-                ["sign-requests", "ECDSA request signing, 3-header auth system, signed fetch patterns"],
-                ["verify-agents", "On-chain verification, SelfAgentVerifier middleware, reputation, freshness, sybil detection"],
-                ["query-credentials", "ZK-attested credentials, agent cards (A2A format), reputation scores"],
-                ["integrate-self-id", "End-to-end integration: agent-side, service-side, on-chain gating, MCP setup"],
+                [
+                  "self-agent-id-overview",
+                  "Architecture, contracts, trust model, ERC-8004 standard, provider system",
+                ],
+                [
+                  "register-agent",
+                  "Step-by-step registration in all 4 modes (wallet, agent-identity, wallet-free, smart-wallet)",
+                ],
+                [
+                  "sign-requests",
+                  "ECDSA request signing, 3-header auth system, signed fetch patterns",
+                ],
+                [
+                  "verify-agents",
+                  "On-chain verification, SelfAgentVerifier middleware, reputation, freshness, sybil detection",
+                ],
+                [
+                  "query-credentials",
+                  "ZK-attested credentials, agent cards (A2A format), reputation scores",
+                ],
+                [
+                  "integrate-self-id",
+                  "End-to-end integration: agent-side, service-side, on-chain gating, MCP setup",
+                ],
               ].map(([skill, desc]) => (
                 <div key={skill} className="flex items-start gap-2 py-1">
-                  <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded whitespace-nowrap">{skill}</code>
+                  <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded whitespace-nowrap">
+                    {skill}
+                  </code>
                   <span className="text-muted">{desc}</span>
                 </div>
               ))}
@@ -413,11 +488,14 @@ claude plugin add /path/to/self-agent-id/plugin`,
 
           {/* System Prompts for non-MCP agents */}
           <Card className="border border-accent/30 bg-accent/5">
-            <p className="font-bold text-sm mb-2">Building a custom agent? Use our system prompts</p>
+            <p className="font-bold text-sm mb-2">
+              Building a custom agent? Use our system prompts
+            </p>
             <p className="text-xs text-muted mb-3">
-              For agents that don&apos;t support MCP (LangChain, AutoGPT, custom frameworks), paste one of these
-              self-contained system prompts. No tools required &mdash; the agent gets full protocol knowledge
-              and uses the REST API directly.
+              For agents that don&apos;t support MCP (LangChain, AutoGPT, custom
+              frameworks), paste one of these self-contained system prompts. No
+              tools required &mdash; the agent gets full protocol knowledge and
+              uses the REST API directly.
             </p>
             <div className="flex gap-3 flex-wrap">
               <a
@@ -448,7 +526,6 @@ claude plugin add /path/to/self-agent-id/plugin`,
           </Card>
         </div>
       </section>
-
     </main>
   );
 }

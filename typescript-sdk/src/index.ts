@@ -5,7 +5,11 @@
 export { SelfAgent } from "./SelfAgent";
 export type { SelfAgentConfig, AgentInfo } from "./SelfAgent";
 
-export { SelfAgentVerifier, VerifierBuilder, verifyAgent } from "./SelfAgentVerifier";
+export {
+  SelfAgentVerifier,
+  VerifierBuilder,
+  verifyAgent,
+} from "./SelfAgentVerifier";
 export type {
   VerifierConfig,
   VerificationResult,

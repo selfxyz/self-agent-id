@@ -11,8 +11,8 @@ const USE_UPSTASH = Boolean(UPSTASH_URL && UPSTASH_TOKEN);
 if (!USE_UPSTASH && typeof process !== "undefined") {
   console.warn(
     "[securityStore] UPSTASH_REDIS_REST_URL/TOKEN not set — " +
-    "rate limiting and replay protection will use in-memory fallback. " +
-    "This does not persist across serverless invocations or scale across instances."
+      "rate limiting and replay protection will use in-memory fallback. " +
+      "This does not persist across serverless invocations or scale across instances.",
   );
 }
 
@@ -23,7 +23,8 @@ type GlobalState = typeof globalThis & {
 
 const g = globalThis as GlobalState;
 const memorySet = g.__selfMemorySet || new Map<string, number>();
-const memoryCounters = g.__selfMemoryCounters || new Map<string, CounterEntry>();
+const memoryCounters =
+  g.__selfMemoryCounters || new Map<string, CounterEntry>();
 g.__selfMemorySet = memorySet;
 g.__selfMemoryCounters = memoryCounters;
 
@@ -40,7 +41,9 @@ function cleanupMemory(now: number): void {
   }
 }
 
-async function runUpstashCommand(command: (string | number)[]): Promise<unknown> {
+async function runUpstashCommand(
+  command: (string | number)[],
+): Promise<unknown> {
   const res = await fetch(UPSTASH_URL, {
     method: "POST",
     headers: {
@@ -55,7 +58,7 @@ async function runUpstashCommand(command: (string | number)[]): Promise<unknown>
     throw new Error(`Upstash command failed (${res.status})`);
   }
 
-  const data = await res.json() as { result?: unknown; error?: string };
+  const data = (await res.json()) as { result?: unknown; error?: string };
   if (data.error) throw new Error(data.error);
   return data.result;
 }
@@ -68,7 +71,10 @@ export function securityStoreMode(): "upstash" | "memory" {
  * Atomic-ish set-if-absent with TTL.
  * Returns true if key was inserted, false if it already existed.
  */
-export async function setIfAbsentWithTtl(key: string, ttlMs: number): Promise<boolean> {
+export async function setIfAbsentWithTtl(
+  key: string,
+  ttlMs: number,
+): Promise<boolean> {
   const ttl = Math.max(1, Math.floor(ttlMs));
 
   if (USE_UPSTASH) {
@@ -130,6 +136,8 @@ export async function incrementWithWindow(
 
   existing.count += 1;
   memoryCounters.set(key, existing);
-  return { count: existing.count, ttlMs: Math.max(0, existing.expiresAt - now) };
+  return {
+    count: existing.count,
+    ttlMs: Math.max(0, existing.expiresAt - now),
+  };
 }
-

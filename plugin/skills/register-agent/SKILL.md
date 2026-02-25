@@ -46,12 +46,12 @@ The entire flow typically takes 30-90 seconds from QR scan to NFT mint. The regi
 
 Select the registration mode that best fits the use case:
 
-| Mode | When to Use | Agent Key | Trade-off |
-|---|---|---|---|
-| verified-wallet | Single agent, human IS the agent | `zeroPadded(humanAddress)` | Simplest, but human wallet exposed |
-| agent-identity (recommended) | Production agents, dedicated keypair | Agent generates own ECDSA keypair | Most flexible, agent has own wallet |
-| wallet-free | No human wallet needed | Agent-generated, guardian = Self app | Managed entirely via Self app |
-| smart-wallet | Best UX, passkey-based | ZeroDev Kernel + Pimlico | Gasless on mainnet, most complex setup |
+| Mode                         | When to Use                          | Agent Key                            | Trade-off                              |
+| ---------------------------- | ------------------------------------ | ------------------------------------ | -------------------------------------- |
+| verified-wallet              | Single agent, human IS the agent     | `zeroPadded(humanAddress)`           | Simplest, but human wallet exposed     |
+| agent-identity (recommended) | Production agents, dedicated keypair | Agent generates own ECDSA keypair    | Most flexible, agent has own wallet    |
+| wallet-free                  | No human wallet needed               | Agent-generated, guardian = Self app | Managed entirely via Self app          |
+| smart-wallet                 | Best UX, passkey-based               | ZeroDev Kernel + Pimlico             | Gasless on mainnet, most complex setup |
 
 For most production use cases, choose **agent-identity** mode. It provides the strongest separation between human identity and agent operations, and gives the agent its own wallet for signing requests independently.
 
@@ -61,14 +61,14 @@ For a detailed technical comparison of all four modes, including userDefinedData
 
 At registration time, select one of 6 verification configs. The config digit is placed at position `[1]` in the `userDefinedData` field, encoded as a UTF-8 ASCII character (`'0'` through `'5'`).
 
-| Config | Age Requirement | OFAC Check | Use Case |
-|---|---|---|---|
-| `'0'` | None | No | Development, testing, minimum verification |
-| `'1'` | 18+ | No | Age-gated (18+), no sanctions screening |
-| `'2'` | 21+ | No | Age-gated (21+), no sanctions screening |
-| `'3'` | None | Yes | OFAC sanctions screening only |
-| `'4'` | 18+ | Yes | Most common for production services |
-| `'5'` | 21+ | Yes | Strictest compliance (age 21+ and OFAC) |
+| Config | Age Requirement | OFAC Check | Use Case                                   |
+| ------ | --------------- | ---------- | ------------------------------------------ |
+| `'0'`  | None            | No         | Development, testing, minimum verification |
+| `'1'`  | 18+             | No         | Age-gated (18+), no sanctions screening    |
+| `'2'`  | 21+             | No         | Age-gated (21+), no sanctions screening    |
+| `'3'`  | None            | Yes        | OFAC sanctions screening only              |
+| `'4'`  | 18+             | Yes        | Most common for production services        |
+| `'5'`  | 21+             | Yes        | Strictest compliance (age 21+ and OFAC)    |
 
 **Recommendation:** Use config `'4'` (age 18+ with OFAC) for most production deployments. Use config `'0'` for development and testing.
 
@@ -79,11 +79,13 @@ When registering through an AI coding assistant (Claude Code, Cursor, etc.) with
 ### Step 1: Initiate Registration
 
 Call the `self_register_agent` tool with:
+
 - `minimum_age`: `0`, `18`, or `21`
 - `ofac`: `true` or `false`
 - `network`: `"testnet"` or `"mainnet"`
 
 The tool returns:
+
 ```
 session_id     — Unique identifier for this registration session
 agent_address  — The agent's Ethereum address
@@ -102,9 +104,11 @@ For mobile contexts, provide the `deep_link` instead, which opens the Self app d
 ### Step 3: Poll Registration Status
 
 Call the `self_check_registration` tool with:
+
 - `session_id`: The session ID from Step 1
 
 Poll every 5-10 seconds. The tool returns:
+
 ```
 status: "pending" | "verified" | "expired" | "failed"
 agent_id: (present when status is "verified") — the on-chain agent ID (uint256)
@@ -117,6 +121,7 @@ Continue polling until the status changes from `"pending"`. The session expires 
 Save the `private_key_hex` returned in Step 1 immediately. This is the agent's ECDSA signing key — it is generated once and **cannot be recovered** if lost.
 
 Store as an environment variable:
+
 ```
 SELF_AGENT_PRIVATE_KEY=0x...
 ```
@@ -126,6 +131,7 @@ Add to `.env` and ensure `.env` is listed in `.gitignore`. See the Private Key S
 ### Step 5: Verify the Identity
 
 Call the `self_get_identity` tool to confirm registration:
+
 - Input: the chain ID and agent ID from Step 3
 - Output: registered status, verification details, credentials, proof provider
 
@@ -173,6 +179,7 @@ if (status.status === "verified") {
 ```
 
 Python and Rust SDKs expose the same API surface. Replace `SelfAgent` import with the equivalent package:
+
 - Python: `from selfxyz_agent_sdk import SelfAgent`
 - Rust: `use self_agent_sdk::SelfAgent;`
 
@@ -181,17 +188,20 @@ Python and Rust SDKs expose the same API surface. Replace `SelfAgent` import wit
 The agent's private key is the sole credential for signing authenticated requests. Compromise of this key allows impersonation of the agent.
 
 **Development:**
+
 - Store in a `.env` file: `SELF_AGENT_PRIVATE_KEY=0x...`
 - Add `.env` to `.gitignore` immediately
 - Never log or print the private key in application output
 
 **Production:**
+
 - Use a secrets manager: AWS Secrets Manager, GCP Secret Manager, HashiCorp Vault, or Doppler
 - Rotate keys by deregistering and re-registering with a new keypair
 - Restrict access to the secret to only the agent's runtime environment
 - Enable audit logging on the secrets manager to detect unauthorized access
 
 **Critical rules:**
+
 - NEVER commit private keys to version control
 - NEVER share private keys in chat, email, or documentation
 - NEVER embed private keys in client-side code or mobile apps
@@ -214,6 +224,7 @@ After successful registration, verify the agent identity is correctly recorded o
 Human proofs are **not permanent**. Each registration sets a `proofExpiresAt` timestamp equal to `min(passport_document_expiry, now + maxProofAge)`, where `maxProofAge` defaults to **365 days**.
 
 After expiry:
+
 - `isProofFresh(agentId)` returns `false` — services using freshness checks will reject the agent.
 - `hasHumanProof(agentId)` still returns `true` — the historical proof record is preserved.
 - The soulbound NFT remains, but the agent is functionally inactive for freshness-gated operations.
@@ -233,15 +244,15 @@ SDKs include a 30-day warning threshold. Check `proofExpiresAt` and prompt the h
 
 ## Troubleshooting
 
-| Symptom | Cause | Resolution |
-|---|---|---|
-| QR code not scanning | Self app outdated | Update the Self app to the latest version |
-| NFC scan fails | Phone NFC disabled or passport not supported | Enable NFC in phone settings; ensure passport has an NFC chip (look for the chip icon on the bio page) |
-| Status stays "pending" | Human has not completed the Self app flow | Wait for the human to scan passport; check Self app for errors |
-| Status is "expired" | 30-minute session timeout elapsed | Start a new registration session |
-| Status is "failed" | ZK proof verification failed on-chain | Check the verification config matches the passport capabilities; retry with a fresh session |
-| `TooManyAgentsForHuman` error | Sybil limit reached | The same human has already registered the maximum number of agents (default: 1). Deregister an existing agent first. |
-| `AgentAlreadyRegistered` error | Agent key already has a registration | The agent address is already registered. Use a different keypair or deregister the existing agent. |
+| Symptom                        | Cause                                        | Resolution                                                                                                           |
+| ------------------------------ | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| QR code not scanning           | Self app outdated                            | Update the Self app to the latest version                                                                            |
+| NFC scan fails                 | Phone NFC disabled or passport not supported | Enable NFC in phone settings; ensure passport has an NFC chip (look for the chip icon on the bio page)               |
+| Status stays "pending"         | Human has not completed the Self app flow    | Wait for the human to scan passport; check Self app for errors                                                       |
+| Status is "expired"            | 30-minute session timeout elapsed            | Start a new registration session                                                                                     |
+| Status is "failed"             | ZK proof verification failed on-chain        | Check the verification config matches the passport capabilities; retry with a fresh session                          |
+| `TooManyAgentsForHuman` error  | Sybil limit reached                          | The same human has already registered the maximum number of agents (default: 1). Deregister an existing agent first. |
+| `AgentAlreadyRegistered` error | Agent key already has a registration         | The agent address is already registered. Use a different keypair or deregister the existing agent.                   |
 
 ## Reference Documentation
 

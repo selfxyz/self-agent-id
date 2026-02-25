@@ -7,7 +7,7 @@
 // Poll registration status. Checks on-chain whether the agent is verified,
 // and returns updated session state.
 
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import {
   decryptAndValidateSession,
   getNetworkConfig,
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
     return sessionResponse(session, secret, {
       agentAddress: session.agentAddress,
       agentId: session.agentId,
-      humanInstructions: humanInstructions(session.stage as "completed" | "failed"),
+      humanInstructions: humanInstructions(session.stage),
     });
   }
 
@@ -105,7 +105,9 @@ export async function GET(req: NextRequest) {
     // Not yet verified — return current stage
     return sessionResponse(session, secret, {
       agentAddress,
-      humanInstructions: humanInstructions(session.stage as "qr-ready" | "proof-received" | "pending"),
+      humanInstructions: humanInstructions(
+        session.stage as "qr-ready" | "proof-received" | "pending",
+      ),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

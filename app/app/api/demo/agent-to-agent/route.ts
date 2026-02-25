@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { SelfAgent, HEADERS } from "@selfxyz/agent-sdk";
 import { getNetwork, NETWORKS, type NetworkId } from "@/lib/network";
@@ -31,8 +31,10 @@ export async function POST(req: NextRequest) {
 
   if (!demoAgentPk) {
     return NextResponse.json(
-      { error: `Demo agent not configured for ${network.label} (missing DEMO_AGENT_PRIVATE_KEY_${network.isTestnet ? "SEPOLIA" : "MAINNET"})` },
-      { status: 500 }
+      {
+        error: `Demo agent not configured for ${network.label} (missing DEMO_AGENT_PRIVATE_KEY_${network.isTestnet ? "SEPOLIA" : "MAINNET"})`,
+      },
+      { status: 500 },
     );
   }
 
@@ -43,7 +45,7 @@ export async function POST(req: NextRequest) {
   if (!signature || !timestamp) {
     return NextResponse.json(
       { error: "Missing agent authentication headers" },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -70,7 +72,7 @@ export async function POST(req: NextRequest) {
         verified: false,
         error: verifyResult.error || "Agent verification failed",
       },
-      { status: 403 }
+      { status: 403 },
     );
   }
 
@@ -107,11 +109,11 @@ export async function POST(req: NextRequest) {
       "function sameHuman(uint256, uint256) view returns (bool)",
       "function isVerifiedAgent(bytes32) view returns (bool)",
     ],
-    provider
+    provider,
   );
 
   const demoKey = ethers.zeroPadValue(demoAgent.address, 32);
-  const callerKey = verifyResult.agentKey!;
+  const callerKey = verifyResult.agentKey;
 
   const [demoVerified, demoId, callerId, callerVerified] = await Promise.all([
     registry.isVerifiedAgent(demoKey),
@@ -159,7 +161,7 @@ export async function POST(req: NextRequest) {
   const responseHeaders = await demoAgent.signRequest(
     "POST",
     req.url,
-    responseBody
+    responseBody,
   );
 
   return new NextResponse(responseBody, {

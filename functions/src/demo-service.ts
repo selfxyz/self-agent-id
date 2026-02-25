@@ -37,9 +37,14 @@ const census = new Map<string, CensusEntry>();
 // Helpers
 // ---------------------------------------------------------------------------
 
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "").split(",").filter(Boolean);
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .filter(Boolean);
 
-function setCors(req: Parameters<Parameters<typeof http>[1]>[0], res: Parameters<Parameters<typeof http>[1]>[1]) {
+function setCors(
+  req: Parameters<Parameters<typeof http>[1]>[0],
+  res: Parameters<Parameters<typeof http>[1]>[1],
+) {
   const origin = req.headers.origin || "";
   if (ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGINS.includes("*")) {
     res.set("Access-Control-Allow-Origin", origin);

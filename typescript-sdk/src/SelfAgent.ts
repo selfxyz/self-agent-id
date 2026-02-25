@@ -86,7 +86,7 @@ export class SelfAgent {
     const provider = new ethers.JsonRpcProvider(config.rpcUrl ?? net.rpcUrl);
 
     if (config.signer) {
-      this.wallet = config.signer as ethers.Signer & { address: string };
+      this.wallet = config.signer;
     } else {
       this.wallet = new ethers.Wallet(config.privateKey!, provider);
     }
@@ -94,7 +94,7 @@ export class SelfAgent {
     this.registry = new ethers.Contract(
       config.registryAddress ?? net.registryAddress,
       REGISTRY_ABI,
-      provider
+      provider,
     );
     // Agent key = address zero-padded to 32 bytes (matches on-chain derivation)
     this._agentKey = ethers.zeroPadValue(this.wallet.address, 32);
@@ -134,7 +134,8 @@ export class SelfAgent {
       this.registry.getHumanNullifier(agentId) as Promise<bigint>,
     ]);
 
-    const agentCount: bigint = await this.registry.getAgentCountForHuman(nullifier);
+    const agentCount: bigint =
+      await this.registry.getAgentCountForHuman(nullifier);
 
     return {
       address: this.wallet.address,
@@ -157,7 +158,7 @@ export class SelfAgent {
   async signRequest(
     method: string,
     url: string,
-    body?: string
+    body?: string,
   ): Promise<Record<string, string>> {
     const timestamp = Date.now().toString();
     const message = computeSigningMessage(timestamp, method, url, body);
@@ -174,10 +175,7 @@ export class SelfAgent {
   /**
    * Wrapper around global fetch that automatically adds agent signature headers.
    */
-  async fetch(
-    url: string,
-    options: RequestInit = {}
-  ): Promise<Response> {
+  async fetch(url: string, options: RequestInit = {}): Promise<Response> {
     const method = (options.method || "GET").toUpperCase();
     const body = typeof options.body === "string" ? options.body : undefined;
     const headers = await this.signRequest(method, url, body);
@@ -186,9 +184,7 @@ export class SelfAgent {
       ...options,
       method,
       headers: {
-        ...Object.fromEntries(
-          Object.entries(options.headers || {})
-        ),
+        ...Object.fromEntries(Object.entries(options.headers || {})),
         ...headers,
       },
     });
@@ -207,7 +203,8 @@ export class SelfAgent {
     try {
       const parsed = JSON.parse(raw);
       if (
-        parsed.type === "https://eips.ethereum.org/EIPS/eip-8004#registration-v1" ||
+        parsed.type ===
+          "https://eips.ethereum.org/EIPS/eip-8004#registration-v1" ||
         parsed.a2aVersion
       )
         return parsed as A2AAgentCard;
@@ -238,20 +235,22 @@ export class SelfAgent {
     const provider = new ethers.Contract(
       providerAddr,
       PROVIDER_ABI,
-      this.registry.runner
+      this.registry.runner,
     );
 
     const card = await buildAgentCard(
       Number(agentId),
       this.registry,
       provider,
-      fields
+      fields,
     );
 
-    const registryWithSigner = this.registry.connect(this.wallet) as ethers.Contract;
+    const registryWithSigner = this.registry.connect(
+      this.wallet,
+    ) as ethers.Contract;
     const tx = await registryWithSigner.updateAgentMetadata(
       agentId,
-      JSON.stringify(card)
+      JSON.stringify(card),
     );
     await tx.wait();
     return tx.hash;
@@ -289,7 +288,7 @@ export class SelfAgent {
     const provider = new ethers.Contract(
       providerAddr,
       PROVIDER_ABI,
-      this.registry.runner
+      this.registry.runner,
     );
     const strength: number = await provider.verificationStrength();
     return Number(strength);
@@ -319,7 +318,7 @@ export class SelfAgent {
    * ```
    */
   static async requestRegistration(
-    opts: RegistrationRequest
+    opts: RegistrationRequest,
   ): Promise<RegistrationSession> {
     return _requestRegistration(opts);
   }
@@ -329,7 +328,7 @@ export class SelfAgent {
    */
   static async getAgentInfo(
     agentId: number,
-    opts?: { network?: NetworkName; apiBase?: string }
+    opts?: { network?: NetworkName; apiBase?: string },
   ): Promise<ApiAgentInfo> {
     return _getAgentInfo(agentId, opts);
   }
@@ -339,7 +338,7 @@ export class SelfAgent {
    */
   static async getAgentsForHuman(
     address: string,
-    opts?: { network?: NetworkName; apiBase?: string }
+    opts?: { network?: NetworkName; apiBase?: string },
   ): Promise<ApiAgentsForHuman> {
     return _getAgentsForHuman(address, opts);
   }
@@ -356,9 +355,9 @@ export class SelfAgent {
    * await session.waitForCompletion();
    * ```
    */
-  async requestDeregistration(
-    opts?: { apiBase?: string }
-  ): Promise<DeregistrationSession> {
+  async requestDeregistration(opts?: {
+    apiBase?: string;
+  }): Promise<DeregistrationSession> {
     const network = this.networkName();
     return _requestDeregistration({
       network,
@@ -371,9 +370,9 @@ export class SelfAgent {
    * Fetch this agent's credentials from the public REST API.
    * Returns null if the agent is not registered or has no credentials.
    */
-  async getCredentialsFromApi(
-    opts?: { apiBase?: string }
-  ): Promise<Record<string, unknown> | null> {
+  async getCredentialsFromApi(opts?: {
+    apiBase?: string;
+  }): Promise<Record<string, unknown> | null> {
     try {
       const info = await this.getInfo();
       if (info.agentId === 0n) return null;

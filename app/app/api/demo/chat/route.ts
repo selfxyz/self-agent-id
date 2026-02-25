@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { HEADERS } from "@selfxyz/agent-sdk";
 import { NETWORKS, type NetworkId } from "@/lib/network";
 import { getCachedVerifier } from "@/lib/selfVerifier";
@@ -98,8 +98,13 @@ export async function POST(req: NextRequest) {
       try {
         const errJson = JSON.parse(errText);
         detail = errJson.detail || errText;
-      } catch { /* plain text */ }
-      return NextResponse.json({ error: detail }, { status: langchainRes.status });
+      } catch {
+        /* plain text */
+      }
+      return NextResponse.json(
+        { error: detail },
+        { status: langchainRes.status },
+      );
     }
 
     const data = await langchainRes.json();

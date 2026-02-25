@@ -42,7 +42,9 @@ describe("agent-api-helpers (pure)", () => {
       // Need to delete it since stubEnv sets it to empty string
       delete process.env.SESSION_SECRET;
       const fresh = await import("@/lib/agent-api-helpers");
-      expect(() => fresh.getSessionSecret()).toThrow("SESSION_SECRET environment variable is not set");
+      expect(() => fresh.getSessionSecret()).toThrow(
+        "SESSION_SECRET environment variable is not set",
+      );
     });
   });
 
@@ -74,7 +76,6 @@ describe("agent-api-helpers (pure)", () => {
     });
 
     it("returns empty array for unknown stage", () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = mod.humanInstructions("unknown" as any);
       expect(result).toEqual([]);
     });
@@ -94,8 +95,9 @@ describe("agent-api-helpers (pure)", () => {
     });
 
     it("throws for unknown network", () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect(() => mod.getNetworkConfig("badnet" as any)).toThrow("Unknown network");
+      expect(() => mod.getNetworkConfig("badnet" as any)).toThrow(
+        "Unknown network",
+      );
     });
   });
 
@@ -154,11 +156,15 @@ describe("isValidAddress", () => {
   });
 
   it("returns true for valid checksummed address", () => {
-    expect(isValidAddress("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed")).toBe(true);
+    expect(isValidAddress("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed")).toBe(
+      true,
+    );
   });
 
   it("returns true for valid lowercase address", () => {
-    expect(isValidAddress("0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed")).toBe(true);
+    expect(isValidAddress("0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed")).toBe(
+      true,
+    );
   });
 
   it("returns false for invalid address", () => {
@@ -204,9 +210,13 @@ describe("decryptAndValidateSession + sessionResponse", () => {
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
     };
 
-    const res = mod.sessionResponse(sessionData, "test-decrypt-secret-long-enough!", {
-      extra: "data",
-    });
+    const res = mod.sessionResponse(
+      sessionData,
+      "test-decrypt-secret-long-enough!",
+      {
+        extra: "data",
+      },
+    );
 
     expect(res.status).toBe(200);
   });

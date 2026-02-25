@@ -25,9 +25,14 @@ const uniqueHumans = new Set<string>();
 // Helpers
 // ---------------------------------------------------------------------------
 
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "").split(",").filter(Boolean);
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .filter(Boolean);
 
-function setCors(req: Parameters<Parameters<typeof http>[1]>[0], res: Parameters<Parameters<typeof http>[1]>[1]) {
+function setCors(
+  req: Parameters<Parameters<typeof http>[1]>[0],
+  res: Parameters<Parameters<typeof http>[1]>[1],
+) {
   const origin = req.headers.origin || "";
   if (ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGINS.includes("*")) {
     res.set("Access-Control-Allow-Origin", origin);
@@ -67,9 +72,9 @@ http("demoAgent", async (req, res) => {
   }
 
   if (!DEMO_AGENT_PK) {
-    res
-      .status(500)
-      .json({ error: "Demo agent not configured (missing DEMO_AGENT_PRIVATE_KEY)" });
+    res.status(500).json({
+      error: "Demo agent not configured (missing DEMO_AGENT_PRIVATE_KEY)",
+    });
     return;
   }
 
@@ -170,7 +175,11 @@ http("demoAgent", async (req, res) => {
   const responseBody = JSON.stringify(responsePayload);
 
   // 5. Demo agent signs the response so caller can verify it came from us
-  const responseHeaders = await demoAgent.signRequest("POST", fullUrl, responseBody);
+  const responseHeaders = await demoAgent.signRequest(
+    "POST",
+    fullUrl,
+    responseBody,
+  );
 
   res.status(200);
   res.set("Content-Type", "application/json");

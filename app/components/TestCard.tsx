@@ -4,8 +4,15 @@
 
 "use client";
 
-import { ReactNode, useState } from "react";
-import { ChevronDown, ChevronUp, Check, X, Loader2, LucideIcon } from "lucide-react";
+import { type ReactNode, useState } from "react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Check,
+  X,
+  Loader2,
+  type LucideIcon,
+} from "lucide-react";
 import CodeBlock from "./CodeBlock";
 import CardMatrixOverlay from "./CardMatrixReveal";
 
@@ -33,7 +40,9 @@ interface TestCardProps {
 function StepIcon({ status }: { status: StepStatus }) {
   switch (status) {
     case "pending":
-      return <span className="w-4 h-4 rounded-full border border-gray-600 inline-block" />;
+      return (
+        <span className="w-4 h-4 rounded-full border border-gray-600 inline-block" />
+      );
     case "active":
       return <Loader2 size={16} className="text-accent-success animate-spin" />;
     case "done":
@@ -58,17 +67,25 @@ export default function TestCard({
 
   return (
     <div className="relative rounded-xl border border-border bg-surface-1 overflow-hidden">
-      <CardMatrixOverlay active={status === "success"} duration={1800} fadeOut={600} />
+      <CardMatrixOverlay
+        active={status === "success"}
+        duration={1800}
+        fadeOut={600}
+      />
       {/* Header */}
       <div className="p-4 border-b border-border">
         <div className="flex items-center gap-2 mb-1">
           <Icon size={18} className="text-accent" />
           <h3 className="font-semibold text-sm">{title}</h3>
           {status === "success" && (
-            <span className="ml-auto text-xs text-accent-success font-medium">PASS</span>
+            <span className="ml-auto text-xs text-accent-success font-medium">
+              PASS
+            </span>
           )}
           {status === "error" && (
-            <span className="ml-auto text-xs text-accent-error font-medium">FAIL</span>
+            <span className="ml-auto text-xs text-accent-error font-medium">
+              FAIL
+            </span>
           )}
         </div>
         <p className="text-xs text-muted">{description}</p>
@@ -112,9 +129,7 @@ export default function TestCard({
 
         {/* Result shown inline below steps on success */}
         {status === "success" && result && (
-          <div className="mt-3 pt-3 border-t border-gray-800">
-            {result}
-          </div>
+          <div className="mt-3 pt-3 border-t border-gray-800">{result}</div>
         )}
       </div>
 
@@ -131,7 +146,13 @@ export default function TestCard({
           {showCode && (
             <div className="px-2 pb-2">
               <CodeBlock
-                tabs={[{ label: codeLanguage, language: codeLanguage, code: codeSnippet }]}
+                tabs={[
+                  {
+                    label: codeLanguage,
+                    language: codeLanguage,
+                    code: codeSnippet,
+                  },
+                ]}
               />
             </div>
           )}

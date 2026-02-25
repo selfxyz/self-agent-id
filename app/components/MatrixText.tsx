@@ -12,10 +12,15 @@ interface MatrixTextProps {
   fontSize?: number;
 }
 
-const CHARS = "01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン";
+const CHARS =
+  "01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン";
 const RAIN_SIZE = 11;
 
-export default function MatrixText({ text, className = "", fontSize = 90 }: MatrixTextProps) {
+export default function MatrixText({
+  text,
+  className = "",
+  fontSize = 90,
+}: MatrixTextProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const glowRef = useRef<HTMLCanvasElement>(null);
 
@@ -75,8 +80,14 @@ export default function MatrixText({ text, className = "", fontSize = 90 }: Matr
 
       // Rain state
       const cols = Math.ceil(totalW / RAIN_SIZE);
-      const drops: number[] = Array.from({ length: cols }, () => Math.random() * -20);
-      const speeds: number[] = Array.from({ length: cols }, () => 0.08 + Math.random() * 0.08);
+      const drops: number[] = Array.from(
+        { length: cols },
+        () => Math.random() * -20,
+      );
+      const speeds: number[] = Array.from(
+        { length: cols },
+        () => 0.08 + Math.random() * 0.08,
+      );
 
       // --- Static glow (drawn once) ---
       glowCtx.font = font;
@@ -135,11 +146,31 @@ export default function MatrixText({ text, className = "", fontSize = 90 }: Matr
         ctx.clearRect(0, 0, totalW, totalH);
 
         // Draw text mask
-        ctx.drawImage(maskCanvas, 0, 0, totalW * dpr, totalH * dpr, 0, 0, totalW, totalH);
+        ctx.drawImage(
+          maskCanvas,
+          0,
+          0,
+          totalW * dpr,
+          totalH * dpr,
+          0,
+          0,
+          totalW,
+          totalH,
+        );
 
         // Draw rain clipped to text
         ctx.globalCompositeOperation = "source-in";
-        ctx.drawImage(rainCanvas, 0, 0, totalW * dpr, totalH * dpr, 0, 0, totalW, totalH);
+        ctx.drawImage(
+          rainCanvas,
+          0,
+          0,
+          totalW * dpr,
+          totalH * dpr,
+          0,
+          0,
+          totalW,
+          totalH,
+        );
 
         ctx.globalCompositeOperation = "source-over";
 

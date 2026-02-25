@@ -68,7 +68,6 @@ export function Navbar() {
       <div className="max-w-6xl mx-auto h-full px-6 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/self-icon.png"
             alt="Self"
@@ -84,13 +83,21 @@ export function Navbar() {
         {/* Desktop nav */}
         <div className="hidden md:flex items-center gap-1">
           {directLinks.map((link) => (
-            <Link key={link.href} href={link.href} className={linkClass(link.href, link.match)}>
+            <Link
+              key={link.href}
+              href={link.href}
+              className={linkClass(link.href, link.match)}
+            >
               {link.label}
             </Link>
           ))}
 
           {learnLinks.map((link) => (
-            <Link key={link.href} href={link.href} className={linkClass(link.href)}>
+            <Link
+              key={link.href}
+              href={link.href}
+              className={linkClass(link.href)}
+            >
               {link.label}
             </Link>
           ))}
@@ -116,7 +123,10 @@ export function Navbar() {
               }`}
             >
               Developers
-              <ChevronDown size={14} className={`transition-transform ${devOpen ? "rotate-180" : ""}`} />
+              <ChevronDown
+                size={14}
+                className={`transition-transform ${devOpen ? "rotate-180" : ""}`}
+              />
             </button>
 
             {devOpen && (
@@ -154,11 +164,19 @@ export function Navbar() {
                     ? "text-muted hover:text-foreground hover:bg-surface-2/50"
                     : "text-muted/40 cursor-not-allowed"
               }`}
-              title={mainnetReady ? "Switch to Celo mainnet" : "Celo mainnet coming soon"}
+              title={
+                mainnetReady
+                  ? "Switch to Celo mainnet"
+                  : "Celo mainnet coming soon"
+              }
             >
-              <span className={`w-1.5 h-1.5 rounded-full ${
-                networkId === "celo-mainnet" ? "bg-emerald-400" : "bg-emerald-400/30"
-              }`} />
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  networkId === "celo-mainnet"
+                    ? "bg-emerald-400"
+                    : "bg-emerald-400/30"
+                }`}
+              />
               Celo
             </button>
             <button
@@ -173,9 +191,13 @@ export function Navbar() {
               }`}
               title="Switch to Celo Sepolia testnet"
             >
-              <span className={`w-1.5 h-1.5 rounded-full ${
-                networkId === "celo-sepolia" ? "bg-amber-400" : "bg-amber-400/30"
-              }`} />
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  networkId === "celo-sepolia"
+                    ? "bg-amber-400"
+                    : "bg-amber-400/30"
+                }`}
+              />
               Sepolia
             </button>
           </div>
@@ -209,7 +231,9 @@ export function Navbar() {
           ))}
 
           <div className="px-6 py-2">
-            <span className="text-xs font-medium text-subtle uppercase tracking-wider">Developers</span>
+            <span className="text-xs font-medium text-subtle uppercase tracking-wider">
+              Developers
+            </span>
           </div>
           {developerLinks.map((link) => (
             <Link

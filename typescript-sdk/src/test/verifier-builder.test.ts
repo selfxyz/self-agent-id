@@ -8,9 +8,7 @@ import { SelfAgentVerifier } from "../SelfAgentVerifier";
 
 describe("SelfAgentVerifier chainable builder", () => {
   it("creates a verifier with .create().build()", () => {
-    const v = SelfAgentVerifier.create()
-      .network("testnet")
-      .build();
+    const v = SelfAgentVerifier.create().network("testnet").build();
     assert.ok(v);
     assert.ok(v.verify);
   });

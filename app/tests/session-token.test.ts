@@ -3,7 +3,12 @@
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
 import { describe, expect, it } from "vitest";
-import { encryptSession, decryptSession, createSessionToken, rotateSessionToken } from "../lib/session-token";
+import {
+  encryptSession,
+  decryptSession,
+  createSessionToken,
+  rotateSessionToken,
+} from "../lib/session-token";
 
 describe("session token encryption", () => {
   const secret = "test-secret-key-that-is-32-bytes!";
@@ -41,7 +46,9 @@ describe("session token encryption", () => {
   it("rejects wrong secret", () => {
     const data = { id: "test", type: "register" as const };
     const token = encryptSession(data, secret);
-    expect(() => decryptSession(token, "wrong-secret-key-that-is-32byte")).toThrow();
+    expect(() =>
+      decryptSession(token, "wrong-secret-key-that-is-32byte"),
+    ).toThrow();
   });
 
   it("rejects expired tokens", () => {
@@ -62,11 +69,14 @@ describe("session token encryption", () => {
   });
 
   it("createSessionToken generates valid token with ID and timestamps", () => {
-    const { token, data } = createSessionToken({
-      type: "register",
-      mode: "agent-identity",
-      network: "testnet",
-    }, secret);
+    const { token, data } = createSessionToken(
+      {
+        type: "register",
+        mode: "agent-identity",
+        network: "testnet",
+      },
+      secret,
+    );
     expect(token.length).toBeGreaterThan(0);
     expect(data.id.length).toBeGreaterThan(0);
     expect(data.createdAt).toBeTruthy();
@@ -79,12 +89,19 @@ describe("session token encryption", () => {
   });
 
   it("rotateSessionToken updates fields and re-encrypts", () => {
-    const { data } = createSessionToken({
-      type: "register",
-      network: "testnet",
-    }, secret);
+    const { data } = createSessionToken(
+      {
+        type: "register",
+        network: "testnet",
+      },
+      secret,
+    );
 
-    const newToken = rotateSessionToken(data, { stage: "completed", agentId: 42 }, secret);
+    const newToken = rotateSessionToken(
+      data,
+      { stage: "completed", agentId: 42 },
+      secret,
+    );
     const decoded = decryptSession(newToken, secret);
     expect(decoded.stage).toBe("completed");
     expect(decoded.agentId).toBe(42);

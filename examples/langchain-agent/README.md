@@ -22,9 +22,9 @@ Client → Signed Auth → FastAPI → On-chain verification → LangChain agent
 
 Callers must provide two headers:
 
-| Header | Value |
-|--------|-------|
-| `x-self-agent-address` | The caller's agent Ethereum address (`0x...`) |
+| Header                   | Value                                                                   |
+| ------------------------ | ----------------------------------------------------------------------- |
+| `x-self-agent-address`   | The caller's agent Ethereum address (`0x...`)                           |
 | `x-self-agent-signature` | EIP-191 signature of `SHA-256(request_body)` by the agent's private key |
 
 The server recovers the signer from the signature and verifies it matches the claimed address. This prevents identity impersonation — you must control the agent's private key to authenticate.
@@ -79,11 +79,11 @@ See `deploy.sh` for the full `gcloud run deploy` command with security settings.
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `main.py` | FastAPI app with on-chain verification gate |
-| `agent.py` | LangChain agent executor with tools |
-| `tools.py` | Agent tools (web search, URL validator) |
-| `Dockerfile` | Container image |
-| `deploy.sh` | Cloud Run deployment script |
-| `run-local.sh` | Local development script |
+| File           | Purpose                                     |
+| -------------- | ------------------------------------------- |
+| `main.py`      | FastAPI app with on-chain verification gate |
+| `agent.py`     | LangChain agent executor with tools         |
+| `tools.py`     | Agent tools (web search, URL validator)     |
+| `Dockerfile`   | Container image                             |
+| `deploy.sh`    | Cloud Run deployment script                 |
+| `run-local.sh` | Local development script                    |

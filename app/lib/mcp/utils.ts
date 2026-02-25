@@ -39,12 +39,16 @@ export function formatCredentialsSummary(
   const parts: string[] = ["Verified human"];
   const age = Number(credentials.olderThan ?? 0);
   if (age > 0) parts.push(`${age}+`);
-  if (credentials.ofac && credentials.ofac[0] === true) parts.push("OFAC clear");
-  if (credentials.nationality) parts.push(`nationality: ${credentials.nationality}`);
+  if (credentials.ofac && credentials.ofac[0] === true)
+    parts.push("OFAC clear");
+  if (credentials.nationality)
+    parts.push(`nationality: ${credentials.nationality}`);
   return parts.join(", ");
 }
 
-export function formatAgentInfo(info: Record<string, unknown>): Record<string, unknown> {
+export function formatAgentInfo(
+  info: Record<string, unknown>,
+): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(info)) {
     result[key] = typeof value === "bigint" ? Number(value) : value;
@@ -64,7 +68,9 @@ export function truncateBody(
   const decoder = new TextDecoder();
   const truncated = decoder.decode(encoded.slice(0, maxBytes));
   return {
-    body: truncated + `\n\n[Truncated — original was ${encoded.byteLength} bytes, limit is ${maxBytes} bytes]`,
+    body:
+      truncated +
+      `\n\n[Truncated — original was ${encoded.byteLength} bytes, limit is ${maxBytes} bytes]`,
     truncated: true,
   };
 }

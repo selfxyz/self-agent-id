@@ -19,7 +19,7 @@ function cacheKey(networkId: NetworkId, profile: VerifierProfile): string {
     networkId,
     profile.maxAgentsPerHuman,
     profile.includeCredentials ? "creds" : "no-creds",
-    profile.enableReplayProtection ?? true ? "replay-on" : "replay-off",
+    (profile.enableReplayProtection ?? true) ? "replay-on" : "replay-off",
     profile.replayCacheMaxEntries ?? 10_000,
   ].join(":");
 }
@@ -51,4 +51,3 @@ export function getCachedVerifier(
   verifierCache.set(key, verifier);
   return verifier;
 }
-

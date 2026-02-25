@@ -66,12 +66,12 @@ npm install && npm run dev
 
 ## Integration Guides
 
-| I want to... | Guide |
-|---|---|
-| Build an AI agent with identity | [Agent Builder Guide](https://docs.self.xyz/agent-id/guides/agent-builder) |
-| Verify agent requests in my API | [Service Operator Guide](https://docs.self.xyz/agent-id/guides/service-operator) |
+| I want to...                     | Guide                                                                                |
+| -------------------------------- | ------------------------------------------------------------------------------------ |
+| Build an AI agent with identity  | [Agent Builder Guide](https://docs.self.xyz/agent-id/guides/agent-builder)           |
+| Verify agent requests in my API  | [Service Operator Guide](https://docs.self.xyz/agent-id/guides/service-operator)     |
 | Gate smart contracts by agent ID | [Contract Developer Guide](https://docs.self.xyz/agent-id/guides/contract-developer) |
-| Use MCP with Claude/Cursor | [MCP Guide](https://docs.self.xyz/agent-id/guides/mcp-user) |
+| Use MCP with Claude/Cursor       | [MCP Guide](https://docs.self.xyz/agent-id/guides/mcp-user)                          |
 
 ---
 
@@ -140,13 +140,13 @@ Self Agent ID is an on-chain identity registry that binds AI agent identities to
 
 ### Celo Mainnet (Chain ID: 42220)
 
-| Contract | Address |
-|----------|---------|
-| SelfAgentRegistry | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` |
+| Contract               | Address                                      |
+| ---------------------- | -------------------------------------------- |
+| SelfAgentRegistry      | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` |
 | SelfHumanProofProvider | `0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d` |
-| AgentDemoVerifier | `0xD8ec054FD869A762bC977AC328385142303c7def` |
-| AgentGate | `0x26e05bF632fb5bACB665ab014240EAC1413dAE35` |
-| Hub V2 | `0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF` |
+| AgentDemoVerifier      | `0xD8ec054FD869A762bC977AC328385142303c7def` |
+| AgentGate              | `0x26e05bF632fb5bACB665ab014240EAC1413dAE35` |
+| Hub V2                 | `0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF` |
 
 - RPC: `https://forno.celo.org`
 - Block Explorer: `https://celoscan.io`
@@ -154,13 +154,13 @@ Self Agent ID is an on-chain identity registry that binds AI agent identities to
 
 ### Celo Sepolia Testnet (Chain ID: 11142220)
 
-| Contract | Address |
-|----------|---------|
-| SelfAgentRegistry | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` |
+| Contract               | Address                                      |
+| ---------------------- | -------------------------------------------- |
+| SelfAgentRegistry      | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` |
 | SelfHumanProofProvider | `0x5E61c3051Bf4115F90AacEAE6212bc419f8aBB6c` |
-| AgentDemoVerifier | `0xc31BAe8f2d7FCd19f737876892f05d9bDB294241` |
-| AgentGate | `0x86Af07e30Aa42367cbcA7f2B1764Be346598bbc2` |
-| Hub V2 | `0x16ECBA51e18a4a7e61fdC417f0d47AFEeDfbed74` |
+| AgentDemoVerifier      | `0xc31BAe8f2d7FCd19f737876892f05d9bDB294241` |
+| AgentGate              | `0x86Af07e30Aa42367cbcA7f2B1764Be346598bbc2` |
+| Hub V2                 | `0x16ECBA51e18a4a7e61fdC417f0d47AFEeDfbed74` |
 
 - RPC: `https://forno.celo-sepolia.celo-testnet.org`
 - Block Explorer: `https://celo-sepolia.blockscout.com`
@@ -220,23 +220,23 @@ Passkey-based smart wallet as guardian + dedicated agent keypair. Uses ZeroDev K
 Six verification configurations combine age requirements with OFAC sanctions screening. The config is selected at registration time via the `userDefinedData[1]` byte.
 
 | Config Index | Minimum Age | OFAC Screening | `userDefinedData[1]` |
-|:---:|:---:|:---:|:---:|
-| 0 | None | Off | `'0'` |
-| 1 | 18 | Off | `'1'` |
-| 2 | 21 | Off | `'2'` |
-| 3 | None | On | `'3'` |
-| 4 | 18 | On | `'4'` |
-| 5 | 21 | On | `'5'` |
+| :----------: | :---------: | :------------: | :------------------: |
+|      0       |    None     |      Off       |        `'0'`         |
+|      1       |     18      |      Off       |        `'1'`         |
+|      2       |     21      |      Off       |        `'2'`         |
+|      3       |    None     |       On       |        `'3'`         |
+|      4       |     18      |       On       |        `'4'`         |
+|      5       |     21      |       On       |        `'5'`         |
 
 The `userDefinedData[0]` byte encodes the action type:
 
-| Byte | Action |
-|:---:|--------|
-| `'R'` | Simple register |
-| `'D'` | Simple deregister |
+| Byte  | Action                            |
+| :---: | --------------------------------- |
+| `'R'` | Simple register                   |
+| `'D'` | Simple deregister                 |
 | `'K'` | Advanced register (agent keypair) |
-| `'X'` | Advanced deregister |
-| `'W'` | Wallet-free register |
+| `'X'` | Advanced deregister               |
+| `'W'` | Wallet-free register              |
 
 > **Warning — `userDefinedData` encoding**: The Self SDK passes `userDefinedData` as a **UTF-8 string**, not raw bytes. Each byte position uses the ASCII character (e.g., `'0'` not `0x00`). Use `bytes32(bytes1(uint8(x)))` for byte positioning in Solidity. This is the #1 integration mistake — see [Troubleshooting](https://docs.self.xyz/agent-id/troubleshooting) for details.
 
@@ -246,11 +246,11 @@ The `userDefinedData[0]` byte encodes the action type:
 
 ### Package Names
 
-| Language | Package | Install |
-|----------|---------|---------|
+| Language   | Package              | Install                          |
+| ---------- | -------------------- | -------------------------------- |
 | TypeScript | `@selfxyz/agent-sdk` | `npm install @selfxyz/agent-sdk` |
-| Python | `selfxyz-agent-sdk` | `pip install selfxyz-agent-sdk` |
-| Rust | `self-agent-sdk` | `cargo add self-agent-sdk` |
+| Python     | `selfxyz-agent-sdk`  | `pip install selfxyz-agent-sdk`  |
+| Rust       | `self-agent-sdk`     | `cargo add self-agent-sdk`       |
 
 All three SDKs export the same core classes with language-idiomatic naming.
 
@@ -334,31 +334,31 @@ let registered = agent.is_registered().await.unwrap();
 
 #### SelfAgent Methods (All SDKs)
 
-| Method | Description |
-|--------|-------------|
-| `isRegistered()` | Check if agent is verified on-chain |
-| `getInfo()` | Full agent info: ID, nullifier, sybil count |
-| `signRequest(method, url, body?)` | Generate auth headers (3 headers) |
-| `fetch(url, options)` | Auto-signed HTTP request |
-| `getCredentials()` | Read ZK-attested credentials from on-chain |
-| `getVerificationStrength()` | Provider verification strength (0-100) |
-| `getAgentCard()` | Read A2A agent card from on-chain metadata |
-| `setAgentCard(fields)` | Write agent card to on-chain metadata |
-| `toAgentCardDataURI()` | Generate base64 data URI for card |
-| `requestRegistration(opts)` | Initiate registration via REST API (static) |
-| `requestDeregistration(opts?)` | Initiate deregistration via REST API |
-| `getAgentInfo(agentId, opts?)` | Query agent info by ID (static) |
-| `getAgentsForHuman(address, opts?)` | Get all agents for a human (static) |
+| Method                              | Description                                 |
+| ----------------------------------- | ------------------------------------------- |
+| `isRegistered()`                    | Check if agent is verified on-chain         |
+| `getInfo()`                         | Full agent info: ID, nullifier, sybil count |
+| `signRequest(method, url, body?)`   | Generate auth headers (3 headers)           |
+| `fetch(url, options)`               | Auto-signed HTTP request                    |
+| `getCredentials()`                  | Read ZK-attested credentials from on-chain  |
+| `getVerificationStrength()`         | Provider verification strength (0-100)      |
+| `getAgentCard()`                    | Read A2A agent card from on-chain metadata  |
+| `setAgentCard(fields)`              | Write agent card to on-chain metadata       |
+| `toAgentCardDataURI()`              | Generate base64 data URI for card           |
+| `requestRegistration(opts)`         | Initiate registration via REST API (static) |
+| `requestDeregistration(opts?)`      | Initiate deregistration via REST API        |
+| `getAgentInfo(agentId, opts?)`      | Query agent info by ID (static)             |
+| `getAgentsForHuman(address, opts?)` | Get all agents for a human (static)         |
 
 #### Auth Headers
 
 Every signed request includes three headers:
 
-| Header | Value |
-|--------|-------|
-| `x-self-agent-address` | Agent's Ethereum address |
+| Header                   | Value                                                                |
+| ------------------------ | -------------------------------------------------------------------- |
+| `x-self-agent-address`   | Agent's Ethereum address                                             |
 | `x-self-agent-signature` | ECDSA signature of `keccak256(timestamp + METHOD + path + bodyHash)` |
-| `x-self-agent-timestamp` | Unix timestamp in milliseconds |
+| `x-self-agent-timestamp` | Unix timestamp in milliseconds                                       |
 
 > **Critical integration note**: verify against the exact request bytes received by your server. If middleware rewrites or reserializes JSON before verification, signatures can fail even when the client is correct.
 
@@ -461,24 +461,24 @@ async fn handle(Extension(agent): Extension<VerifiedAgent>) -> Json<serde_json::
 
 #### VerifierBuilder Methods (All SDKs)
 
-| Method | Description |
-|--------|-------------|
-| `create()` | Factory — returns chainable builder |
-| `fromConfig(cfg)` | Create from flat config object |
-| `.network(name)` | Set network (`"mainnet"` / `"testnet"`) |
-| `.registry(addr)` | Custom registry address |
-| `.rpc(url)` | Custom RPC URL |
-| `.requireAge(n)` | Minimum age requirement (18 or 21) |
-| `.requireOFAC()` | Require OFAC sanctions pass |
-| `.requireNationality(...codes)` | Allowed ISO country codes |
-| `.requireSelfProvider()` | Require Self Protocol as proof provider |
-| `.sybilLimit(n)` | Max agents per human (0 = unlimited) |
-| `.rateLimit(config)` | Per-agent rate limiting |
-| `.replayProtection(enabled?)` | Toggle replay detection |
-| `.includeCredentials()` | Include credentials in verification result |
-| `.maxAge(ms)` | Max timestamp age (default: 5 min) |
-| `.cacheTtl(ms)` | On-chain cache TTL (default: 1 min) |
-| `.build()` | Build the verifier instance |
+| Method                          | Description                                |
+| ------------------------------- | ------------------------------------------ |
+| `create()`                      | Factory — returns chainable builder        |
+| `fromConfig(cfg)`               | Create from flat config object             |
+| `.network(name)`                | Set network (`"mainnet"` / `"testnet"`)    |
+| `.registry(addr)`               | Custom registry address                    |
+| `.rpc(url)`                     | Custom RPC URL                             |
+| `.requireAge(n)`                | Minimum age requirement (18 or 21)         |
+| `.requireOFAC()`                | Require OFAC sanctions pass                |
+| `.requireNationality(...codes)` | Allowed ISO country codes                  |
+| `.requireSelfProvider()`        | Require Self Protocol as proof provider    |
+| `.sybilLimit(n)`                | Max agents per human (0 = unlimited)       |
+| `.rateLimit(config)`            | Per-agent rate limiting                    |
+| `.replayProtection(enabled?)`   | Toggle replay detection                    |
+| `.includeCredentials()`         | Include credentials in verification result |
+| `.maxAge(ms)`                   | Max timestamp age (default: 5 min)         |
+| `.cacheTtl(ms)`                 | On-chain cache TTL (default: 1 min)        |
+| `.build()`                      | Build the verifier instance                |
 
 #### Verification Security Chain
 
@@ -499,29 +499,29 @@ The verifier performs these checks in order:
 
 #### Verifier Defaults
 
-| Setting | Default |
-|---------|---------|
-| `requireSelfProvider` | `true` |
-| `maxAgentsPerHuman` | `1` |
-| `replayProtection` | `true` |
-| `maxAgeMs` | `300000` (5 min) |
-| `cacheTtlMs` | `60000` (1 min) |
-| `includeCredentials` | `false` |
+| Setting               | Default          |
+| --------------------- | ---------------- |
+| `requireSelfProvider` | `true`           |
+| `maxAgentsPerHuman`   | `1`              |
+| `replayProtection`    | `true`           |
+| `maxAgeMs`            | `300000` (5 min) |
+| `cacheTtlMs`          | `60000` (1 min)  |
+| `includeCredentials`  | `false`          |
 
 ### 6.3 Registration Utilities
 
 All SDKs export registration helper functions:
 
-| Function | Description |
-|----------|-------------|
-| `getRegistrationConfigIndex(disclosures?)` | Maps age/OFAC flags to config digit (0-5) |
-| `computeRegistrationChallengeHash(input)` | Keccak256 of challenge material |
-| `signRegistrationChallenge(privateKey, input)` | Sign challenge, return r/s/v components |
-| `buildSimpleRegisterUserDataAscii(disclosures?)` | Returns `"R" + configDigit` |
-| `buildSimpleDeregisterUserDataAscii(disclosures?)` | Returns `"D" + configDigit` |
-| `buildAdvancedRegisterUserDataAscii(params)` | Returns `"K" + config + address + r + s + v` |
-| `buildAdvancedDeregisterUserDataAscii(params)` | Returns `"X" + config + address` |
-| `buildWalletFreeRegisterUserDataAscii(params)` | Returns `"W" + config + agent + guardian + r + s + v` |
+| Function                                           | Description                                           |
+| -------------------------------------------------- | ----------------------------------------------------- |
+| `getRegistrationConfigIndex(disclosures?)`         | Maps age/OFAC flags to config digit (0-5)             |
+| `computeRegistrationChallengeHash(input)`          | Keccak256 of challenge material                       |
+| `signRegistrationChallenge(privateKey, input)`     | Sign challenge, return r/s/v components               |
+| `buildSimpleRegisterUserDataAscii(disclosures?)`   | Returns `"R" + configDigit`                           |
+| `buildSimpleDeregisterUserDataAscii(disclosures?)` | Returns `"D" + configDigit`                           |
+| `buildAdvancedRegisterUserDataAscii(params)`       | Returns `"K" + config + address + r + s + v`          |
+| `buildAdvancedDeregisterUserDataAscii(params)`     | Returns `"X" + config + address`                      |
+| `buildWalletFreeRegisterUserDataAscii(params)`     | Returns `"W" + config + agent + guardian + r + s + v` |
 
 ### 6.4 Agent Card (A2A Format)
 
@@ -560,12 +560,12 @@ Cards are stored on-chain via `updateAgentMetadata()` and readable via `getAgent
 
 ### Examples
 
-| Example | Language | What it shows |
-|---------|----------|---------------|
-| [Minimal TypeScript](examples/minimal-ts/) | TypeScript | Agent signing + Express verifier middleware |
-| [Minimal Python](examples/minimal-python/) | Python | Agent signing + FastAPI verifier middleware |
-| [Minimal Rust](examples/minimal-rust/) | Rust | Agent signing + Axum verifier middleware |
-| [LangChain Agent](examples/langchain-agent/) | Python | AI agent with on-chain verification gate |
+| Example                                      | Language   | What it shows                               |
+| -------------------------------------------- | ---------- | ------------------------------------------- |
+| [Minimal TypeScript](examples/minimal-ts/)   | TypeScript | Agent signing + Express verifier middleware |
+| [Minimal Python](examples/minimal-python/)   | Python     | Agent signing + FastAPI verifier middleware |
+| [Minimal Rust](examples/minimal-rust/)       | Rust       | Agent signing + Axum verifier middleware    |
+| [LangChain Agent](examples/langchain-agent/) | Python     | AI agent with on-chain verification gate    |
 
 ---
 
@@ -573,11 +573,11 @@ Cards are stored on-chain via `updateAgentMetadata()` and readable via `getAgent
 
 All three SDKs ship a CLI binary with identical command surface.
 
-| SDK | Binary Names |
-|-----|-------------|
+| SDK        | Binary Names                   |
+| ---------- | ------------------------------ |
 | TypeScript | `self-agent`, `self-agent-cli` |
-| Python | `self-agent` (via entry point) |
-| Rust | `self-agent-cli` |
+| Python     | `self-agent` (via entry point) |
+| Rust       | `self-agent-cli`               |
 
 ### Registration Commands
 
@@ -621,47 +621,47 @@ self-agent deregister status --session .self/session-abc123.json
 
 **`register init` / `deregister init`:**
 
-| Flag | Description | Required |
-|------|-------------|----------|
-| `--mode` | `verified-wallet`, `agent-identity`, `wallet-free`, `smart-wallet` | Yes |
-| `--human-address` | Human's wallet address | For verified-wallet, agent-identity |
-| `--agent-address` | Agent's wallet address | For deregister (non-verified-wallet) |
-| `--network` | `mainnet` or `testnet` (default: `testnet`) | No |
-| `--chain` | Custom chain ID | No |
-| `--registry` | Custom registry address | No |
-| `--rpc` | Custom RPC URL | No |
-| `--minimum-age` | 0, 18, or 21 | No |
-| `--ofac` | Request OFAC screening | No |
-| `--nationality` | Request nationality disclosure | No |
-| `--name` | Request name disclosure | No |
-| `--date-of-birth` | Request DOB disclosure | No |
-| `--gender` | Request gender disclosure | No |
-| `--issuing-state` | Request issuing state disclosure | No |
-| `--out` | Session file output path | No |
-| `--callback-port` | Local callback port | No |
-| `--ttl-minutes` | Session TTL (default: 30) | No |
-| `--app-url` | Self app URL override | No |
-| `--app-name` | Self app name override | No |
-| `--scope` | Self scope override | No |
+| Flag              | Description                                                        | Required                             |
+| ----------------- | ------------------------------------------------------------------ | ------------------------------------ |
+| `--mode`          | `verified-wallet`, `agent-identity`, `wallet-free`, `smart-wallet` | Yes                                  |
+| `--human-address` | Human's wallet address                                             | For verified-wallet, agent-identity  |
+| `--agent-address` | Agent's wallet address                                             | For deregister (non-verified-wallet) |
+| `--network`       | `mainnet` or `testnet` (default: `testnet`)                        | No                                   |
+| `--chain`         | Custom chain ID                                                    | No                                   |
+| `--registry`      | Custom registry address                                            | No                                   |
+| `--rpc`           | Custom RPC URL                                                     | No                                   |
+| `--minimum-age`   | 0, 18, or 21                                                       | No                                   |
+| `--ofac`          | Request OFAC screening                                             | No                                   |
+| `--nationality`   | Request nationality disclosure                                     | No                                   |
+| `--name`          | Request name disclosure                                            | No                                   |
+| `--date-of-birth` | Request DOB disclosure                                             | No                                   |
+| `--gender`        | Request gender disclosure                                          | No                                   |
+| `--issuing-state` | Request issuing state disclosure                                   | No                                   |
+| `--out`           | Session file output path                                           | No                                   |
+| `--callback-port` | Local callback port                                                | No                                   |
+| `--ttl-minutes`   | Session TTL (default: 30)                                          | No                                   |
+| `--app-url`       | Self app URL override                                              | No                                   |
+| `--app-name`      | Self app name override                                             | No                                   |
+| `--scope`         | Self scope override                                                | No                                   |
 
 **`register wait` / `deregister wait`:**
 
-| Flag | Description |
-|------|-------------|
-| `--session` | Path to session JSON file (required) |
-| `--timeout-seconds` | Max wait time (default: 1800) |
-| `--poll-ms` | Poll interval (default: 4000) |
-| `--open` | Print handoff URL before waiting |
-| `--no-listener` | Disable local callback server |
+| Flag                | Description                          |
+| ------------------- | ------------------------------------ |
+| `--session`         | Path to session JSON file (required) |
+| `--timeout-seconds` | Max wait time (default: 1800)        |
+| `--poll-ms`         | Poll interval (default: 4000)        |
+| `--open`            | Print handoff URL before waiting     |
+| `--no-listener`     | Disable local callback server        |
 
 **`register export`:**
 
-| Flag | Description |
-|------|-------------|
-| `--session` | Path to session JSON file (required) |
-| `--unsafe` | Required to confirm key export |
-| `--out-key` | Write key to file |
-| `--print-private-key` | Print key to stdout |
+| Flag                  | Description                          |
+| --------------------- | ------------------------------------ |
+| `--session`           | Path to session JSON file (required) |
+| `--unsafe`            | Required to confirm key export       |
+| `--out-key`           | Write key to file                    |
+| `--print-private-key` | Print key to stdout                  |
 
 ### Session Schema (v1)
 
@@ -763,25 +763,25 @@ Set `SELF_AGENT_PRIVATE_KEY` in `env` for full mode (register, sign, fetch). Omi
 
 ### Tools
 
-| Tool | Description | Key Required? |
-|------|-------------|:---:|
-| `self_register_agent` | Register agent with proof-of-human | No |
-| `self_check_registration` | Poll registration status | No |
-| `self_get_identity` | Get current agent's on-chain identity | Yes |
-| `self_deregister_agent` | Revoke agent identity | Yes |
-| `self_sign_request` | Generate auth headers for HTTP request | Yes |
-| `self_authenticated_fetch` | Make signed HTTP request | Yes |
-| `self_verify_agent` | Verify another agent's identity | No |
-| `self_verify_request` | Verify incoming request headers | No |
-| `self_lookup_agent` | Look up agent by on-chain ID | No |
-| `self_list_agents_for_human` | List agents for a human address | No |
+| Tool                         | Description                            | Key Required? |
+| ---------------------------- | -------------------------------------- | :-----------: |
+| `self_register_agent`        | Register agent with proof-of-human     |      No       |
+| `self_check_registration`    | Poll registration status               |      No       |
+| `self_get_identity`          | Get current agent's on-chain identity  |      Yes      |
+| `self_deregister_agent`      | Revoke agent identity                  |      Yes      |
+| `self_sign_request`          | Generate auth headers for HTTP request |      Yes      |
+| `self_authenticated_fetch`   | Make signed HTTP request               |      Yes      |
+| `self_verify_agent`          | Verify another agent's identity        |      No       |
+| `self_verify_request`        | Verify incoming request headers        |      No       |
+| `self_lookup_agent`          | Look up agent by on-chain ID           |      No       |
+| `self_list_agents_for_human` | List agents for a human address        |      No       |
 
 ### Resources
 
-| URI | Description |
-|-----|-------------|
+| URI               | Description                             |
+| ----------------- | --------------------------------------- |
 | `self://networks` | Contract addresses, chain IDs, RPC URLs |
-| `self://identity` | Current agent's on-chain identity |
+| `self://identity` | Current agent's on-chain identity       |
 
 ### Links
 
@@ -798,13 +798,13 @@ SDK default base URL can be overridden with env var `SELF_AGENT_API_BASE`.
 
 ### 9.1 Registration Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/agent/register` | Initiate registration, generate keypair, build QR |
-| GET | `/api/agent/register/qr?token=` | Retrieve QR code image URL and deep link |
-| GET | `/api/agent/register/status?token=` | Poll registration status |
-| POST | `/api/agent/register/callback?token=` | Receive Self app callback after passport scan |
-| GET | `/api/agent/register/export?token=` | Export agent private key |
+| Method | Path                                  | Description                                       |
+| ------ | ------------------------------------- | ------------------------------------------------- |
+| POST   | `/api/agent/register`                 | Initiate registration, generate keypair, build QR |
+| GET    | `/api/agent/register/qr?token=`       | Retrieve QR code image URL and deep link          |
+| GET    | `/api/agent/register/status?token=`   | Poll registration status                          |
+| POST   | `/api/agent/register/callback?token=` | Receive Self app callback after passport scan     |
+| GET    | `/api/agent/register/export?token=`   | Export agent private key                          |
 
 **POST `/api/agent/register`** request body:
 
@@ -826,19 +826,19 @@ SDK default base URL can be overridden with env var `SELF_AGENT_API_BASE`.
 
 ### 9.2 Deregistration Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/agent/deregister` | Initiate deregistration |
-| GET | `/api/agent/deregister/status?token=` | Poll deregistration status |
-| POST | `/api/agent/deregister/callback?token=` | Receive Self app callback |
+| Method | Path                                    | Description                |
+| ------ | --------------------------------------- | -------------------------- |
+| POST   | `/api/agent/deregister`                 | Initiate deregistration    |
+| GET    | `/api/agent/deregister/status?token=`   | Poll deregistration status |
+| POST   | `/api/agent/deregister/callback?token=` | Receive Self app callback  |
 
 ### 9.3 Query Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/agent/info/{chainId}/{agentId}` | Full agent info by ID |
-| GET | `/api/agent/agents/{chainId}/{address}` | List all agents for a human address |
-| GET | `/api/agent/verify/{chainId}/{agentId}` | Verification status and provider info |
+| Method | Path                                    | Description                           |
+| ------ | --------------------------------------- | ------------------------------------- |
+| GET    | `/api/agent/info/{chainId}/{agentId}`   | Full agent info by ID                 |
+| GET    | `/api/agent/agents/{chainId}/{address}` | List all agents for a human address   |
+| GET    | `/api/agent/verify/{chainId}/{agentId}` | Verification status and provider info |
 
 **`chainId`**: `42220` (mainnet) or `11142220` (testnet)
 
@@ -866,30 +866,30 @@ SDK default base URL can be overridden with env var `SELF_AGENT_API_BASE`.
 
 ### 9.4 Discovery Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/cards/{chainId}/{agentId}` | Agent metadata card (A2A) |
-| GET | `/api/reputation/{chainId}/{agentId}` | Reputation score and proof type |
-| GET | `/api/verify-status/{chainId}/{agentId}` | Verification status summary |
+| Method | Path                                     | Description                     |
+| ------ | ---------------------------------------- | ------------------------------- |
+| GET    | `/api/cards/{chainId}/{agentId}`         | Agent metadata card (A2A)       |
+| GET    | `/api/reputation/{chainId}/{agentId}`    | Reputation score and proof type |
+| GET    | `/api/verify-status/{chainId}/{agentId}` | Verification status summary     |
 
 ### 9.5 Demo Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/demo/verify` | Verify agent signature, return credentials |
-| POST | `/api/demo/agent-to-agent` | Demo agent verifies caller, responds signed |
-| POST | `/api/demo/chain-verify` | Relay EIP-712 meta-tx to AgentDemoVerifier |
-| POST | `/api/demo/census` | Record agent credentials in census |
-| GET | `/api/demo/census` | Read aggregate census statistics |
-| POST | `/api/demo/chat` | Forward chat to LangChain with agent verification |
+| Method | Path                       | Description                                       |
+| ------ | -------------------------- | ------------------------------------------------- |
+| POST   | `/api/demo/verify`         | Verify agent signature, return credentials        |
+| POST   | `/api/demo/agent-to-agent` | Demo agent verifies caller, responds signed       |
+| POST   | `/api/demo/chain-verify`   | Relay EIP-712 meta-tx to AgentDemoVerifier        |
+| POST   | `/api/demo/census`         | Record agent credentials in census                |
+| GET    | `/api/demo/census`         | Read aggregate census statistics                  |
+| POST   | `/api/demo/chat`           | Forward chat to LangChain with agent verification |
 
 ### 9.6 Account Abstraction Proxy
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/aa/token?chainId=` | Issue AA proxy token |
-| POST | `/api/aa/bundler?chainId=` | Proxy to Pimlico bundler |
-| POST | `/api/aa/paymaster?chainId=` | Proxy to Pimlico paymaster |
+| Method | Path                         | Description                |
+| ------ | ---------------------------- | -------------------------- |
+| POST   | `/api/aa/token?chainId=`     | Issue AA proxy token       |
+| POST   | `/api/aa/bundler?chainId=`   | Proxy to Pimlico bundler   |
+| POST   | `/api/aa/paymaster?chainId=` | Proxy to Pimlico paymaster |
 
 ---
 
@@ -1129,17 +1129,17 @@ Use these deterministic checks to validate your service integration:
 
 Nine ZK-attested credential fields are stored on-chain per agent:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `issuingState` | `string` | Passport issuing country code |
-| `name` | `string[]` | Name components |
-| `idNumber` | `string` | Document ID number |
-| `nationality` | `string` | ISO country code |
-| `dateOfBirth` | `string` | Date of birth |
-| `gender` | `string` | Gender |
-| `expiryDate` | `string` | Document expiry date |
-| `olderThan` | `uint256` | Verified minimum age (0, 18, or 21) |
-| `ofac` | `bool[3]` | OFAC screening results |
+| Field          | Type       | Description                         |
+| -------------- | ---------- | ----------------------------------- |
+| `issuingState` | `string`   | Passport issuing country code       |
+| `name`         | `string[]` | Name components                     |
+| `idNumber`     | `string`   | Document ID number                  |
+| `nationality`  | `string`   | ISO country code                    |
+| `dateOfBirth`  | `string`   | Date of birth                       |
+| `gender`       | `string`   | Gender                              |
+| `expiryDate`   | `string`   | Document expiry date                |
+| `olderThan`    | `uint256`  | Verified minimum age (0, 18, or 21) |
+| `ofac`         | `bool[3]`  | OFAC screening results              |
 
 ### Credential Flow
 
@@ -1306,14 +1306,14 @@ claude plugin add /path/to/self-agent-id/plugin
 
 ### Skills (6)
 
-| Skill | Triggers |
-|---|---|
-| `self-agent-id-overview` | "what is self agent id", "explain ERC-8004" |
-| `register-agent` | "register agent", "create agent identity" |
-| `sign-requests` | "sign request", "agent auth headers" |
-| `verify-agents` | "verify agent", "add verification middleware" |
-| `query-credentials` | "lookup agent", "agent credentials" |
-| `integrate-self-id` | "add self agent id to my project" |
+| Skill                    | Triggers                                      |
+| ------------------------ | --------------------------------------------- |
+| `self-agent-id-overview` | "what is self agent id", "explain ERC-8004"   |
+| `register-agent`         | "register agent", "create agent identity"     |
+| `sign-requests`          | "sign request", "agent auth headers"          |
+| `verify-agents`          | "verify agent", "add verification middleware" |
+| `query-credentials`      | "lookup agent", "agent credentials"           |
+| `integrate-self-id`      | "add self agent id to my project"             |
 
 See [plugin README](plugin/README.md) for setup details.
 
@@ -1349,11 +1349,11 @@ cd rust-sdk && cargo test
 
 ### Environment Variables
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `SELF_AGENT_PRIVATE_KEY` | — | Agent's hex private key |
-| `SELF_NETWORK` | `testnet` | `mainnet` or `testnet` |
-| `SELF_AGENT_API_BASE` | `https://self-agent-id.vercel.app` | API base URL override |
+| Variable                 | Default                            | Purpose                 |
+| ------------------------ | ---------------------------------- | ----------------------- |
+| `SELF_AGENT_PRIVATE_KEY` | —                                  | Agent's hex private key |
+| `SELF_NETWORK`           | `testnet`                          | `mainnet` or `testnet`  |
+| `SELF_AGENT_API_BASE`    | `https://self-agent-id.vercel.app` | API base URL override   |
 
 Priority: explicit param > env var > default. Note: `SELF_API_URL` is removed — use `SELF_AGENT_API_BASE`.
 

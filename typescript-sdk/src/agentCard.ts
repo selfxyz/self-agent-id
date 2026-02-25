@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { ethers } from "ethers";
+import type { ethers } from "ethers";
 import { REGISTRY_ABI, PROVIDER_ABI } from "./constants";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -151,7 +151,7 @@ export function getProviderLabel(strength: number): string {
  * @returns A color string: "green" (>=80), "blue" (>=60), "amber" (>=40), or "gray".
  */
 export function getStrengthColor(
-  strength: number
+  strength: number,
 ): "green" | "blue" | "amber" | "gray" {
   if (strength >= 80) return "green";
   if (strength >= 60) return "blue";
@@ -188,7 +188,7 @@ export async function buildAgentCard(
     agentProvider?: A2AProvider;
     capabilities?: A2ACapabilities;
     securitySchemes?: A2ASecurityScheme[];
-  }
+  },
 ): Promise<ERC8004AgentDocument> {
   const [
     providerName,
@@ -202,9 +202,10 @@ export async function buildAgentCard(
     provider.verificationStrength() as Promise<number>,
     registry.getAgentCredentials(agentId).catch(() => null),
     registry.getAddress() as Promise<string>,
-    (registry.runner?.provider
-      ?.getNetwork()
-      .then((n: ethers.Network) => Number(n.chainId)) ?? Promise.resolve(0)
+    (
+      registry.runner?.provider
+        ?.getNetwork()
+        .then((n: ethers.Network) => Number(n.chainId)) ?? Promise.resolve(0)
     ).catch(() => 0),
     provider.getAddress() as Promise<string>,
   ]);
@@ -311,7 +312,7 @@ export interface GenerateRegistrationJSONOptions {
  * @returns A populated {@link ERC8004AgentDocument}.
  */
 export function generateRegistrationJSON(
-  options: GenerateRegistrationJSONOptions
+  options: GenerateRegistrationJSONOptions,
 ): ERC8004AgentDocument {
   return {
     type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",

@@ -37,16 +37,14 @@ function createMockRegistry(
     selfProofProvider: () => Promise<string>;
     getAgentCredentials: (id: bigint) => Promise<any>;
     isProofFresh: (id: bigint) => Promise<boolean>;
-  }> = {}
+  }> = {},
 ) {
   return {
     isVerifiedAgent: overrides.isVerifiedAgent ?? (async () => true),
     getAgentId: overrides.getAgentId ?? (async () => 1n),
     getHumanNullifier: overrides.getHumanNullifier ?? (async () => 123n),
-    getAgentCountForHuman:
-      overrides.getAgentCountForHuman ?? (async () => 1n),
-    getProofProvider:
-      overrides.getProofProvider ?? (async () => SELF_PROVIDER),
+    getAgentCountForHuman: overrides.getAgentCountForHuman ?? (async () => 1n),
+    getProofProvider: overrides.getProofProvider ?? (async () => SELF_PROVIDER),
     selfProofProvider:
       overrides.selfProofProvider ?? (async () => SELF_PROVIDER),
     getAgentCredentials:
@@ -68,7 +66,7 @@ function createMockRegistry(
 
 function createVerifierWithMock(
   config: Record<string, any> = {},
-  registryOverrides: Record<string, any> = {}
+  registryOverrides: Record<string, any> = {},
 ): SelfAgentVerifier {
   const verifier = new SelfAgentVerifier({
     registryAddress: FAKE_REGISTRY,
@@ -96,7 +94,7 @@ async function signAndVerify(
     body: string | undefined;
     signature: string;
     timestamp: string;
-  }> = {}
+  }> = {},
 ) {
   const agent = createAgent();
   const method = overrides.method ?? "POST";
@@ -188,7 +186,7 @@ describe("SelfAgentVerifier", () => {
     it("rejects an agent not verified on-chain", async () => {
       const verifier = createVerifierWithMock(
         {},
-        { isVerifiedAgent: async () => false }
+        { isVerifiedAgent: async () => false },
       );
 
       const result = await signAndVerify(verifier);
@@ -209,7 +207,7 @@ describe("SelfAgentVerifier", () => {
         {
           getProofProvider: async () =>
             "0x2222222222222222222222222222222222222222",
-        }
+        },
       );
 
       const result = await signAndVerify(verifier);
@@ -225,7 +223,7 @@ describe("SelfAgentVerifier", () => {
     it("rejects when human has more agents than maxAgentsPerHuman", async () => {
       const verifier = createVerifierWithMock(
         { maxAgentsPerHuman: 3 },
-        { getAgentCountForHuman: async () => 5n }
+        { getAgentCountForHuman: async () => 5n },
       );
 
       const result = await signAndVerify(verifier);
@@ -239,7 +237,7 @@ describe("SelfAgentVerifier", () => {
     it("accepts when maxAgentsPerHuman is 0 (disabled)", async () => {
       const verifier = createVerifierWithMock(
         { maxAgentsPerHuman: 0 },
-        { getAgentCountForHuman: async () => 5n }
+        { getAgentCountForHuman: async () => 5n },
       );
 
       const result = await signAndVerify(verifier);
@@ -255,7 +253,11 @@ describe("SelfAgentVerifier", () => {
     it("rejects a replayed signature", async () => {
       const verifier = createVerifierWithMock();
       const agent = createAgent();
-      const headers = await agent.signRequest("POST", "/api/test", '{"data":true}');
+      const headers = await agent.signRequest(
+        "POST",
+        "/api/test",
+        '{"data":true}',
+      );
       const params = {
         signature: headers[HEADERS.SIGNATURE],
         timestamp: headers[HEADERS.TIMESTAMP],
@@ -279,7 +281,11 @@ describe("SelfAgentVerifier", () => {
         enableReplayProtection: false,
       });
       const agent = createAgent();
-      const headers = await agent.signRequest("POST", "/api/test", '{"data":true}');
+      const headers = await agent.signRequest(
+        "POST",
+        "/api/test",
+        '{"data":true}',
+      );
       const params = {
         signature: headers[HEADERS.SIGNATURE],
         timestamp: headers[HEADERS.TIMESTAMP],
@@ -300,7 +306,11 @@ describe("SelfAgentVerifier", () => {
     it("invalid signature does not poison the replay cache", async () => {
       const verifier = createVerifierWithMock();
       const agent = createAgent();
-      const headers = await agent.signRequest("POST", "/api/test", '{"data":true}');
+      const headers = await agent.signRequest(
+        "POST",
+        "/api/test",
+        '{"data":true}',
+      );
 
       // First: send a bad signature (should fail with "Invalid signature")
       const badResult = await verifier.verify({
@@ -382,14 +392,17 @@ describe("SelfAgentVerifier", () => {
             olderThan: 16n,
             ofac: [true, false, false],
           }),
-        }
+        },
       );
 
       const result = await signAndVerify(verifier);
 
       assert.equal(result.valid, false);
       assert.match(result.error!, /minimum age.*required: 18.*got: 16/);
-      assert.ok(result.credentials, "should include credentials in error result");
+      assert.ok(
+        result.credentials,
+        "should include credentials in error result",
+      );
     });
 
     // ── 15. Age passes ────────────────────────────────────────────────
@@ -409,7 +422,7 @@ describe("SelfAgentVerifier", () => {
             olderThan: 21n,
             ofac: [true, false, false],
           }),
-        }
+        },
       );
 
       const result = await signAndVerify(verifier);
@@ -434,7 +447,7 @@ describe("SelfAgentVerifier", () => {
             olderThan: 30n,
             ofac: [false, false, false],
           }),
-        }
+        },
       );
 
       const result = await signAndVerify(verifier);
@@ -460,7 +473,7 @@ describe("SelfAgentVerifier", () => {
             olderThan: 30n,
             ofac: [true, false, false],
           }),
-        }
+        },
       );
 
       const result = await signAndVerify(verifier);
@@ -486,7 +499,7 @@ describe("SelfAgentVerifier", () => {
             olderThan: 30n,
             ofac: [true, false, false],
           }),
-        }
+        },
       );
 
       const result = await signAndVerify(verifier);
@@ -507,7 +520,7 @@ describe("SelfAgentVerifier", () => {
             callCount++;
             return true;
           },
-        }
+        },
       );
 
       await signAndVerify(verifier);
@@ -528,7 +541,7 @@ describe("SelfAgentVerifier", () => {
             callCount++;
             return true;
           },
-        }
+        },
       );
 
       await signAndVerify(verifier);
@@ -537,7 +550,11 @@ describe("SelfAgentVerifier", () => {
       verifier.clearCache();
 
       await signAndVerify(verifier);
-      assert.equal(callCount, 2, "after clearCache, registry should be called again");
+      assert.equal(
+        callCount,
+        2,
+        "after clearCache, registry should be called again",
+      );
     });
   });
 
@@ -551,16 +568,13 @@ describe("SelfAgentVerifier", () => {
           selfProofProvider: async () => {
             throw new Error("network timeout");
           },
-        }
+        },
       );
 
       const result = await signAndVerify(verifier);
 
       assert.equal(result.valid, false);
-      assert.equal(
-        result.error,
-        "Unable to verify proof provider — RPC error"
-      );
+      assert.equal(result.error, "Unable to verify proof provider — RPC error");
       assert.equal(result.agentAddress, TEST_ADDRESS);
     });
   });
@@ -571,7 +585,7 @@ describe("SelfAgentVerifier", () => {
     it("rejects when isProofFresh returns false", async () => {
       const verifier = createVerifierWithMock(
         {},
-        { isProofFresh: async () => false }
+        { isProofFresh: async () => false },
       );
 
       const result = await signAndVerify(verifier);
@@ -594,7 +608,7 @@ describe("SelfAgentVerifier", () => {
       const headers = await agent.signRequest(
         "POST",
         "/api/test",
-        '{"data":true}'
+        '{"data":true}',
       );
 
       const req: any = {
@@ -689,7 +703,7 @@ describe("SelfAgentVerifier", () => {
         const headers = await agent.signRequest(
           "POST",
           "/api/test",
-          '{"data":true}'
+          '{"data":true}',
         );
         return {
           headers: {
@@ -733,7 +747,11 @@ describe("SelfAgentVerifier", () => {
         nextCalled2 = true;
       });
 
-      assert.equal(nextCalled2, false, "rate-limited request should not call next");
+      assert.equal(
+        nextCalled2,
+        false,
+        "rate-limited request should not call next",
+      );
       assert.equal(statusCode, 429);
       assert.ok(jsonBody.retryAfterMs > 0, "retryAfterMs should be positive");
       assert.match(jsonBody.error, /Rate limit exceeded/);

@@ -4,7 +4,14 @@
 
 "use client";
 
-import { useReducer, useCallback, useRef, useEffect, useMemo, useState } from "react";
+import {
+  useReducer,
+  useCallback,
+  useRef,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { ethers } from "ethers";
 import MatrixText from "@/components/MatrixText";
 import {
@@ -25,14 +32,11 @@ import {
   Send,
 } from "lucide-react";
 import { SelfAgent, SelfAgentVerifier } from "@selfxyz/agent-sdk";
-import TestCard, { StepEntry } from "@/components/TestCard";
+import TestCard, { type StepEntry } from "@/components/TestCard";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
-import {
-  REGISTRY_ABI,
-  AGENT_DEMO_VERIFIER_ABI,
-} from "@/lib/constants";
+import { REGISTRY_ABI, AGENT_DEMO_VERIFIER_ABI } from "@/lib/constants";
 import { signInWithPasskey, isPasskeySupported } from "@/lib/aa";
 import {
   getAgentPrivateKeyByAgent,
@@ -184,13 +188,20 @@ function reducer(state: DemoState, action: Action): DemoState {
         ...state,
         logs: [
           ...state.logs,
-          { timestamp: Date.now(), testId: action.testId, message: action.message },
+          {
+            timestamp: Date.now(),
+            testId: action.testId,
+            message: action.message,
+          },
         ],
       };
     case "SET_CHAT_INPUT":
       return { ...state, chatInput: action.value };
     case "ADD_CHAT_MESSAGE":
-      return { ...state, chatMessages: [...state.chatMessages, action.message] };
+      return {
+        ...state,
+        chatMessages: [...state.chatMessages, action.message],
+      };
     case "CHAT_LOADING":
       return { ...state, chatLoading: action.loading };
     case "TOGGLE_CHAT":
@@ -221,7 +232,7 @@ function buildCredentialBadges(creds: AgentCredentials): string[] {
   if (creds.ofac?.some(Boolean)) badges.push("Not on OFAC List");
   const names = (creds.name ?? []).map(cleanStr).filter(Boolean);
   if (names.length > 0) badges.push(names.join(" "));
-  return badges.filter(b => b.length > 0);
+  return badges.filter((b) => b.length > 0);
 }
 
 function makeSteps(
@@ -244,7 +255,10 @@ function makeSteps(
   }));
 }
 
-function allDone(labels: string[], timings?: (number | undefined)[]): StepEntry[] {
+function allDone(
+  labels: string[],
+  timings?: (number | undefined)[],
+): StepEntry[] {
   return labels.map((label, i) => ({
     label,
     status: "done" as const,
@@ -276,11 +290,7 @@ const LOG_COLORS: Record<string, string> = {
 // Chat Section Component
 // ---------------------------------------------------------------------------
 
-const CHAT_SUGGESTIONS = [
-  "Who am I?",
-  "What are you?",
-  "meow?",
-];
+const CHAT_SUGGESTIONS = ["Who am I?", "What are you?", "meow?"];
 
 function ChatSection({
   messages,
@@ -323,11 +333,11 @@ function ChatSection({
         <Bot size={20} className={unlocked ? "text-cyan-400" : "text-muted"} />
         <h3 className="font-semibold">AI Agent Chat</h3>
         {unlocked && (
-          <Badge variant="success" className="ml-1">verified</Badge>
+          <Badge variant="success" className="ml-1">
+            verified
+          </Badge>
         )}
-        <span className="text-xs text-muted ml-auto">
-          {isOpen ? "▲" : "▼"}
-        </span>
+        <span className="text-xs text-muted ml-auto">{isOpen ? "▲" : "▼"}</span>
       </button>
 
       {/* Collapsible body */}
@@ -367,7 +377,9 @@ function ChatSection({
                   }`}
                 >
                   {msg.role === "agent" && (
-                    <span className="text-cyan-400 text-xs font-medium block mb-1">Agent</span>
+                    <span className="text-cyan-400 text-xs font-medium block mb-1">
+                      Agent
+                    </span>
                   )}
                   <span className="whitespace-pre-wrap">{msg.content}</span>
                 </div>
@@ -391,7 +403,9 @@ function ChatSection({
             <input
               type="text"
               value={input}
-              onChange={(e) => dispatch({ type: "SET_CHAT_INPUT", value: e.target.value })}
+              onChange={(e) =>
+                dispatch({ type: "SET_CHAT_INPUT", value: e.target.value })
+              }
               placeholder="Ask the AI agent..."
               disabled={loading}
               className="flex-1 px-4 py-2.5 bg-surface-2 border border-border rounded-lg
@@ -403,7 +417,11 @@ function ChatSection({
               disabled={loading || !input.trim()}
               className="px-4"
             >
-              {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              {loading ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Send size={16} />
+              )}
             </Button>
           </form>
         </div>
@@ -431,7 +449,9 @@ function ConsoleLog({ logs }: { logs: LogEntry[] }) {
     <div className="mt-6">
       <div className="flex items-center gap-2 mb-2">
         <Terminal size={14} className="text-muted" />
-        <span className="text-xs font-medium text-muted uppercase tracking-wider">Live Console</span>
+        <span className="text-xs font-medium text-muted uppercase tracking-wider">
+          Live Console
+        </span>
       </div>
       <div
         ref={containerRef}
@@ -439,12 +459,15 @@ function ConsoleLog({ logs }: { logs: LogEntry[] }) {
       >
         {logs.map((log, i) => {
           const ts = new Date(log.timestamp);
-          const time = ts.toLocaleTimeString("en-US", {
-            hour12: false,
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-          }) + "." + String(ts.getMilliseconds()).padStart(3, "0");
+          const time =
+            ts.toLocaleTimeString("en-US", {
+              hour12: false,
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            }) +
+            "." +
+            String(ts.getMilliseconds()).padStart(3, "0");
 
           return (
             <div key={i} className="whitespace-pre-wrap">
@@ -595,14 +618,21 @@ async function runServiceTest(
     // Step 0: verify
     log(id, "Constructing POST /verify");
     log(id, "Signing request body with secp256k1...");
-    dispatch({ type: "UPDATE_TEST", testId: id, state: { steps: makeSteps(steps, 0, t) } });
+    dispatch({
+      type: "UPDATE_TEST",
+      testId: id,
+      state: { steps: makeSteps(steps, 0, t) },
+    });
     await new Promise((r) => setTimeout(r, 0));
     const t0 = performance.now();
 
     const verifyRes = await agent.fetch(serviceUrl("/verify"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "demo-verification", timestamp: Date.now() }),
+      body: JSON.stringify({
+        action: "demo-verification",
+        timestamp: Date.now(),
+      }),
     });
 
     const verifyElapsed = Math.round(performance.now() - t0);
@@ -624,10 +654,17 @@ async function runServiceTest(
       return;
     }
 
-    log(id, `Agent verified — ID #${verifyData.agentId}, ${verifyData.credentials?.nationality || "?"} ${verifyData.credentials?.olderThan || "?"}+`);
+    log(
+      id,
+      `Agent verified — ID #${verifyData.agentId}, ${verifyData.credentials?.nationality || "?"} ${verifyData.credentials?.olderThan || "?"}+`,
+    );
 
     // Step 1: POST census
-    dispatch({ type: "UPDATE_TEST", testId: id, state: { steps: makeSteps(steps, 1, t) } });
+    dispatch({
+      type: "UPDATE_TEST",
+      testId: id,
+      state: { steps: makeSteps(steps, 1, t) },
+    });
     log(id, "Contributing credentials to census...");
     const t1 = performance.now();
 
@@ -642,7 +679,10 @@ async function runServiceTest(
     const censusData = await censusRes.json();
 
     if (!censusRes.ok) {
-      log(id, `Census POST failed: ${censusData.error || "unknown"} (${censusElapsed}ms)`);
+      log(
+        id,
+        `Census POST failed: ${censusData.error || "unknown"} (${censusElapsed}ms)`,
+      );
       dispatch({
         type: "UPDATE_TEST",
         testId: id,
@@ -655,10 +695,17 @@ async function runServiceTest(
       return;
     }
 
-    log(id, `POST /census — HTTP ${censusRes.status} — credentials recorded (${censusElapsed}ms)`);
+    log(
+      id,
+      `POST /census — HTTP ${censusRes.status} — credentials recorded (${censusElapsed}ms)`,
+    );
 
     // Step 2: GET census stats
-    dispatch({ type: "UPDATE_TEST", testId: id, state: { steps: makeSteps(steps, 2, t) } });
+    dispatch({
+      type: "UPDATE_TEST",
+      testId: id,
+      state: { steps: makeSteps(steps, 2, t) },
+    });
     log(id, "Signing GET /census request...");
     const t2 = performance.now();
 
@@ -668,7 +715,10 @@ async function runServiceTest(
     const stats = await statsRes.json();
 
     if (!statsRes.ok) {
-      log(id, `GET /census failed: ${stats.error || "unknown"} (${statsElapsed}ms)`);
+      log(
+        id,
+        `GET /census failed: ${stats.error || "unknown"} (${statsElapsed}ms)`,
+      );
       dispatch({
         type: "UPDATE_TEST",
         testId: id,
@@ -681,8 +731,16 @@ async function runServiceTest(
       return;
     }
 
-    const topStr = stats.topCountries?.map((c: { country: string; count: number }) => `${c.country}(${c.count})`).join(" ") || "none";
-    log(id, `GET /census — HTTP ${statsRes.status} — Top: ${topStr} | 18+: ${stats.verifiedOver18} | OFAC clear: ${stats.ofacClear} (${statsElapsed}ms)`);
+    const topStr =
+      stats.topCountries
+        ?.map(
+          (c: { country: string; count: number }) => `${c.country}(${c.count})`,
+        )
+        .join(" ") || "none";
+    log(
+      id,
+      `GET /census — HTTP ${statsRes.status} — Top: ${topStr} | 18+: ${stats.verifiedOver18} | OFAC clear: ${stats.ofacClear} (${statsElapsed}ms)`,
+    );
 
     const totalElapsed = Math.round(performance.now() - totalStart);
     log(id, `Test complete (${totalElapsed}ms total)`);
@@ -695,31 +753,62 @@ async function runServiceTest(
         steps: allDone(steps, t),
         result: (
           <div className="space-y-1 text-xs">
-            <p className="text-accent-success font-bold text-sm">Census Service: Agent Verified</p>
+            <p className="text-accent-success font-bold text-sm">
+              Census Service: Agent Verified
+            </p>
             <p className="text-muted">
-              Agent ID: <span className="text-foreground font-mono">#{verifyData.agentId}</span>
+              Agent ID:{" "}
+              <span className="text-foreground font-mono">
+                #{verifyData.agentId}
+              </span>
               {verifyData.credentials?.nationality && (
-                <> | <span className="text-foreground">{verifyData.credentials.nationality}</span></>
+                <>
+                  {" "}
+                  |{" "}
+                  <span className="text-foreground">
+                    {verifyData.credentials.nationality}
+                  </span>
+                </>
               )}
-              {verifyData.credentials?.olderThan && Number(verifyData.credentials.olderThan) > 0 && (
-                <> <span className="text-foreground">{verifyData.credentials.olderThan}+</span></>
-              )}
+              {verifyData.credentials?.olderThan &&
+                Number(verifyData.credentials.olderThan) > 0 && (
+                  <>
+                    {" "}
+                    <span className="text-foreground">
+                      {verifyData.credentials.olderThan}+
+                    </span>
+                  </>
+                )}
             </p>
             <p className="text-muted">
-              Census: <span className="text-foreground">{stats.totalAgents} agents</span>
+              Census:{" "}
+              <span className="text-foreground">
+                {stats.totalAgents} agents
+              </span>
             </p>
-            {stats.topCountries?.filter((c: { country: string }) => c.country?.trim()).length > 0 && (
+            {stats.topCountries?.filter((c: { country: string }) =>
+              c.country?.trim(),
+            ).length > 0 && (
               <p className="text-muted">
                 Top countries:{" "}
                 <span className="text-foreground">
-                  {stats.topCountries.filter((c: { country: string }) => c.country?.trim()).map((c: { country: string; count: number }) => `${c.country} (${c.count})`).join(", ")}
+                  {stats.topCountries
+                    .filter((c: { country: string }) => c.country?.trim())
+                    .map(
+                      (c: { country: string; count: number }) =>
+                        `${c.country} (${c.count})`,
+                    )
+                    .join(", ")}
                 </span>
               </p>
             )}
             <p className="text-muted">
-              18+: <span className="text-foreground">{stats.verifiedOver18}</span>
-              {" | "}21+: <span className="text-foreground">{stats.verifiedOver21}</span>
-              {" | "}OFAC clear: <span className="text-foreground">{stats.ofacClear}</span>
+              18+:{" "}
+              <span className="text-foreground">{stats.verifiedOver18}</span>
+              {" | "}21+:{" "}
+              <span className="text-foreground">{stats.verifiedOver21}</span>
+              {" | "}OFAC clear:{" "}
+              <span className="text-foreground">{stats.ofacClear}</span>
             </p>
           </div>
         ),
@@ -747,7 +836,9 @@ async function runPeerTest(
   net: NetworkConfig,
 ) {
   const id = "peer";
-  const agentUrl = net.demoAgentUrl || window.location.origin + `/api/demo/agent-to-agent?network=${net.id}`;
+  const agentUrl =
+    net.demoAgentUrl ||
+    window.location.origin + `/api/demo/agent-to-agent?network=${net.id}`;
   const steps = [
     "ECDSA sign + POST to demo agent...",
     "Demo agent: ecrecover \u2192 on-chain verify + sameHuman()...",
@@ -761,7 +852,11 @@ async function runPeerTest(
     log(id, `Agent: ${agentLabel}`);
     log(id, "Constructing POST to demo agent");
     log(id, "Signing request body with secp256k1...");
-    dispatch({ type: "UPDATE_TEST", testId: id, state: { steps: makeSteps(steps, 0, t) } });
+    dispatch({
+      type: "UPDATE_TEST",
+      testId: id,
+      state: { steps: makeSteps(steps, 0, t) },
+    });
     await new Promise((r) => setTimeout(r, 0));
     let t0 = performance.now();
 
@@ -776,7 +871,9 @@ async function runPeerTest(
     log(id, `POST demo-agent — HTTP ${res.status} (${elapsed}ms)`);
 
     if (!res.ok) {
-      const errData = await res.json().catch(() => ({ error: "Request rejected" }));
+      const errData = await res
+        .json()
+        .catch(() => ({ error: "Request rejected" }));
       log(id, `Rejected: ${errData.error || "unknown"}`);
       dispatch({
         type: "UPDATE_TEST",
@@ -791,7 +888,11 @@ async function runPeerTest(
     }
 
     log(id, "Demo agent is verifying caller on-chain...");
-    dispatch({ type: "UPDATE_TEST", testId: id, state: { steps: makeSteps(steps, 1, t) } });
+    dispatch({
+      type: "UPDATE_TEST",
+      testId: id,
+      state: { steps: makeSteps(steps, 1, t) },
+    });
 
     t0 = performance.now();
     const responseBody = await res.text();
@@ -817,21 +918,36 @@ async function runPeerTest(
     }
     const parseElapsed = Math.round(performance.now() - t0);
     t.push(parseElapsed);
-    const demoAgentInfo = (data.demoAgent as {
-      address?: string;
-      agentId?: string;
-      verified?: boolean;
-    } | undefined) ?? {};
-    const callerAgentInfo = (data.callerAgent as {
-      agentId?: string;
-      verified?: boolean;
-    } | undefined) ?? {};
+    const demoAgentInfo =
+      (data.demoAgent as
+        | {
+            address?: string;
+            agentId?: string;
+            verified?: boolean;
+          }
+        | undefined) ?? {};
+    const callerAgentInfo =
+      (data.callerAgent as
+        | {
+            agentId?: string;
+            verified?: boolean;
+          }
+        | undefined) ?? {};
     const sameHuman = Boolean(data.sameHuman);
     const message = typeof data.message === "string" ? data.message : "";
 
-    log(id, `Demo agent: ID #${demoAgentInfo.agentId}, verified=${demoAgentInfo.verified}`);
-    log(id, `Caller agent: ID #${callerAgentInfo.agentId}, verified=${callerAgentInfo.verified}`);
-    log(id, `sameHuman(#${demoAgentInfo.agentId}, #${callerAgentInfo.agentId}) = ${sameHuman}`);
+    log(
+      id,
+      `Demo agent: ID #${demoAgentInfo.agentId}, verified=${demoAgentInfo.verified}`,
+    );
+    log(
+      id,
+      `Caller agent: ID #${callerAgentInfo.agentId}, verified=${callerAgentInfo.verified}`,
+    );
+    log(
+      id,
+      `sameHuman(#${demoAgentInfo.agentId}, #${callerAgentInfo.agentId}) = ${sameHuman}`,
+    );
 
     // Verify response came from demo agent
     const demoSig = res.headers.get("x-self-agent-signature");
@@ -839,7 +955,11 @@ async function runPeerTest(
     const demoTs = res.headers.get("x-self-agent-timestamp");
     let responseSigVerified = false;
 
-    dispatch({ type: "UPDATE_TEST", testId: id, state: { steps: makeSteps(steps, 2, t) } });
+    dispatch({
+      type: "UPDATE_TEST",
+      testId: id,
+      state: { steps: makeSteps(steps, 2, t) },
+    });
     log(id, "Verifying demo agent's response signature...");
     if (demoAddr) log(id, `x-self-agent-address: ${shortAddr(demoAddr)}`);
     if (demoSig) log(id, `x-self-agent-signature: ${shortAddr(demoSig)}`);
@@ -860,7 +980,11 @@ async function runPeerTest(
         body: responseBody || undefined,
       });
 
-      const expectedDemoAddr = (net.demoAgentAddress || demoAgentInfo.address || "").toLowerCase();
+      const expectedDemoAddr = (
+        net.demoAgentAddress ||
+        demoAgentInfo.address ||
+        ""
+      ).toLowerCase();
       if (net.demoAgentAddress && demoAgentInfo.address) {
         const payloadDemoAddr = demoAgentInfo.address.toLowerCase();
         if (payloadDemoAddr !== net.demoAgentAddress.toLowerCase()) {
@@ -886,9 +1010,15 @@ async function runPeerTest(
         sigCheck.agentAddress.toLowerCase() === expectedDemoAddr;
 
       if (responseSigVerified) {
-        log(id, "Response signature verified against on-chain demo agent identity \u2713");
+        log(
+          id,
+          "Response signature verified against on-chain demo agent identity \u2713",
+        );
       } else {
-        log(id, `Response signature invalid: ${sigCheck.error || "address mismatch"}`);
+        log(
+          id,
+          `Response signature invalid: ${sigCheck.error || "address mismatch"}`,
+        );
         dispatch({
           type: "UPDATE_TEST",
           testId: id,
@@ -928,27 +1058,53 @@ async function runPeerTest(
         steps: allDone(steps, t),
         result: (
           <div className="space-y-1 text-xs">
-            <p className="text-accent-success font-bold text-sm">Agent-to-Agent Verified</p>
+            <p className="text-accent-success font-bold text-sm">
+              Agent-to-Agent Verified
+            </p>
             <p className="text-muted">
-              Your agent: <span className={callerAgentInfo.verified ? "text-accent-success" : "text-accent-error"}>
+              Your agent:{" "}
+              <span
+                className={
+                  callerAgentInfo.verified
+                    ? "text-accent-success"
+                    : "text-accent-error"
+                }
+              >
                 {callerAgentInfo.verified ? "Verified" : "Not verified"}
-              </span> (ID #{callerAgentInfo.agentId ?? "unknown"})
+              </span>{" "}
+              (ID #{callerAgentInfo.agentId ?? "unknown"})
             </p>
             <p className="text-muted">
-              Demo agent: <span className={demoAgentInfo.verified ? "text-accent-success" : "text-accent-error"}>
+              Demo agent:{" "}
+              <span
+                className={
+                  demoAgentInfo.verified
+                    ? "text-accent-success"
+                    : "text-accent-error"
+                }
+              >
                 {demoAgentInfo.verified ? "Verified" : "Not registered"}
-              </span> (ID #{demoAgentInfo.agentId ?? "unknown"})
+              </span>{" "}
+              (ID #{demoAgentInfo.agentId ?? "unknown"})
             </p>
             <p className="text-muted">
-              Same human: <span className={sameHuman ? "text-accent-success" : "text-foreground"}>
+              Same human:{" "}
+              <span
+                className={
+                  sameHuman ? "text-accent-success" : "text-foreground"
+                }
+              >
                 {sameHuman ? "Yes" : "No (different humans)"}
               </span>
             </p>
             <p className="text-muted">
-              Response signed by: <span className="font-mono text-foreground">
+              Response signed by:{" "}
+              <span className="font-mono text-foreground">
                 {demoAddr ? shortAddr(demoAddr) : "unsigned"}
               </span>
-              {responseSigVerified ? " \u2713 verified" : " (invalid signature)"}
+              {responseSigVerified
+                ? " \u2713 verified"
+                : " (invalid signature)"}
             </p>
             {message && (
               <p className="text-muted italic mt-1">&ldquo;{message}&rdquo;</p>
@@ -958,14 +1114,18 @@ async function runPeerTest(
       },
     });
   } catch (err) {
-    log(id, `Error: ${err instanceof Error ? err.message : "Agent-to-agent request failed"}`);
+    log(
+      id,
+      `Error: ${err instanceof Error ? err.message : "Agent-to-agent request failed"}`,
+    );
     dispatch({
       type: "UPDATE_TEST",
       testId: id,
       state: {
         status: "error",
         steps: makeSteps(steps, 0, t, true),
-        error: err instanceof Error ? err.message : "Agent-to-agent request failed",
+        error:
+          err instanceof Error ? err.message : "Agent-to-agent request failed",
       },
     });
   }
@@ -993,7 +1153,11 @@ async function runGateTest(
     log(id, `Agent: ${agentLabel}`);
 
     // Step 0: Read nonce + EIP-712 signing
-    dispatch({ type: "UPDATE_TEST", testId: id, state: { steps: makeSteps(steps, 0, t) } });
+    dispatch({
+      type: "UPDATE_TEST",
+      testId: id,
+      state: { steps: makeSteps(steps, 0, t) },
+    });
     await new Promise((r) => setTimeout(r, 0));
 
     const agentKey = ethers.zeroPadValue(agent.address, 32);
@@ -1010,20 +1174,27 @@ async function runGateTest(
 
     const deadline = Math.floor(Date.now() / 1000) + 300;
     log(id, "Constructing EIP-712 typed data (MetaVerify)");
-    log(id, `domain: AgentDemoVerifier v1, chainId=${net.chainId}, deadline=${deadline}`);
+    log(
+      id,
+      `domain: AgentDemoVerifier v1, chainId=${net.chainId}, deadline=${deadline}`,
+    );
 
     // Use raw wallet if private key available, otherwise prompt browser wallet
-    let eip712Signer: ethers.Signer & { signTypedData: typeof ethers.Wallet.prototype.signTypedData };
+    let eip712Signer: ethers.Signer & {
+      signTypedData: typeof ethers.Wallet.prototype.signTypedData;
+    };
     if (privateKey) {
       eip712Signer = new ethers.Wallet(privateKey);
       log(id, "Signing EIP-712 with agent key (secp256k1)...");
     } else if (window.ethereum) {
       const browserProvider = new ethers.BrowserProvider(window.ethereum);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      eip712Signer = await browserProvider.getSigner() as any;
+      eip712Signer = (await browserProvider.getSigner()) as any;
       log(id, "Signing EIP-712 via browser wallet...");
     } else {
-      throw new Error("No private key or browser wallet available for EIP-712 signing.");
+      throw new Error(
+        "No private key or browser wallet available for EIP-712 signing.",
+      );
     }
 
     const eip712Signature = await eip712Signer.signTypedData(
@@ -1042,21 +1213,28 @@ async function runGateTest(
     t.push(Math.round(t0 - totalStart));
 
     // Step 1: POST to chain-verify
-    dispatch({ type: "UPDATE_TEST", testId: id, state: { steps: makeSteps(steps, 1, t) } });
+    dispatch({
+      type: "UPDATE_TEST",
+      testId: id,
+      state: { steps: makeSteps(steps, 1, t) },
+    });
     log(id, "Signing HTTP request via SDK...");
     log(id, "POST /api/demo/chain-verify — awaiting response...");
 
-    const res = await agent.fetch(window.location.origin + "/api/demo/chain-verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        agentKey,
-        nonce: nonce.toString(),
-        deadline,
-        eip712Signature,
-        networkId: net.id,
-      }),
-    });
+    const res = await agent.fetch(
+      window.location.origin + "/api/demo/chain-verify",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentKey,
+          nonce: nonce.toString(),
+          deadline,
+          eip712Signature,
+          networkId: net.id,
+        }),
+      },
+    );
 
     const elapsed1 = Math.round(performance.now() - t0);
     t.push(elapsed1);
@@ -1078,17 +1256,33 @@ async function runGateTest(
     }
 
     // Step 2: confirmed
-    dispatch({ type: "UPDATE_TEST", testId: id, state: { steps: makeSteps(steps, 2, t) } });
+    dispatch({
+      type: "UPDATE_TEST",
+      testId: id,
+      state: { steps: makeSteps(steps, 2, t) },
+    });
 
     log(id, `HTTP ${res.status} — tx submitted (${elapsed1}ms)`);
-    log(id, `tx ${data.txHash?.slice(0, 10)}...${data.txHash?.slice(-8)} confirmed in block #${data.blockNumber}`);
+    log(
+      id,
+      `tx ${data.txHash?.slice(0, 10)}...${data.txHash?.slice(-8)} confirmed in block #${data.blockNumber}`,
+    );
     log(id, `On-chain: signer verified as ${shortAddr(agent.address)}`);
     if (data.credentials) {
-      log(id, `AgentChainVerified(agent=#${data.agentId}, age=${data.credentials.olderThan}+, ${data.credentials.nationality})`);
+      log(
+        id,
+        `AgentChainVerified(agent=#${data.agentId}, age=${data.credentials.olderThan}+, ${data.credentials.nationality})`,
+      );
     }
-    log(id, `Verification #${data.verificationCount} for agent, #${data.totalVerifications} total`);
+    log(
+      id,
+      `Verification #${data.verificationCount} for agent, #${data.totalVerifications} total`,
+    );
     if (data.rateLimitRemaining != null) {
-      log(id, `${data.rateLimitRemaining} verification${data.rateLimitRemaining === 1 ? "" : "s"} remaining this hour`);
+      log(
+        id,
+        `${data.rateLimitRemaining} verification${data.rateLimitRemaining === 1 ? "" : "s"} remaining this hour`,
+      );
     }
     log(id, `Explorer: ${data.explorerUrl}`);
 
@@ -1104,7 +1298,10 @@ async function runGateTest(
         steps: allDone(steps, t),
         result: (
           <div className="space-y-1 text-xs">
-            <p className="text-accent-success font-bold text-sm">Verified On-Chain ({net.isTestnet ? "Celo Sepolia" : "Celo Mainnet"})</p>
+            <p className="text-accent-success font-bold text-sm">
+              Verified On-Chain (
+              {net.isTestnet ? "Celo Sepolia" : "Celo Mainnet"})
+            </p>
             <p className="text-muted">
               Tx:{" "}
               <a
@@ -1117,23 +1314,35 @@ async function runGateTest(
               </a>
             </p>
             <p className="text-muted">
-              Block: <span className="text-foreground font-mono">#{data.blockNumber}</span>
+              Block:{" "}
+              <span className="text-foreground font-mono">
+                #{data.blockNumber}
+              </span>
             </p>
             <p className="text-muted">
-              Agent ID: <span className="text-foreground font-mono">#{data.agentId}</span>
+              Agent ID:{" "}
+              <span className="text-foreground font-mono">#{data.agentId}</span>
             </p>
             {data.credentials?.nationality && (
               <p className="text-muted">
-                Nationality: <span className="text-foreground">{data.credentials.nationality}</span>
+                Nationality:{" "}
+                <span className="text-foreground">
+                  {data.credentials.nationality}
+                </span>
               </p>
             )}
-            {data.credentials?.olderThan && Number(data.credentials.olderThan) > 0 && (
-              <p className="text-muted">
-                Age: <span className="text-foreground">{data.credentials.olderThan}+</span>
-              </p>
-            )}
+            {data.credentials?.olderThan &&
+              Number(data.credentials.olderThan) > 0 && (
+                <p className="text-muted">
+                  Age:{" "}
+                  <span className="text-foreground">
+                    {data.credentials.olderThan}+
+                  </span>
+                </p>
+              )}
             <p className="text-muted">
-              Verification #{data.verificationCount} for agent, #{data.totalVerifications} total
+              Verification #{data.verificationCount} for agent, #
+              {data.totalVerifications} total
             </p>
             {data.rateLimitRemaining != null && (
               <p className="text-muted">
@@ -1142,7 +1351,10 @@ async function runGateTest(
             )}
             {data.gasUsed && (
               <p className="text-muted">
-                Gas used: <span className="text-foreground font-mono">{Number(data.gasUsed).toLocaleString()}</span>
+                Gas used:{" "}
+                <span className="text-foreground font-mono">
+                  {Number(data.gasUsed).toLocaleString()}
+                </span>
               </p>
             )}
           </div>
@@ -1150,7 +1362,10 @@ async function runGateTest(
       },
     });
   } catch (err) {
-    log(id, `Error: ${err instanceof Error ? err.message : "Chain verification failed"}`);
+    log(
+      id,
+      `Error: ${err instanceof Error ? err.message : "Chain verification failed"}`,
+    );
     dispatch({
       type: "UPDATE_TEST",
       testId: id,
@@ -1179,7 +1394,9 @@ export default function DemoPage() {
   const [passkeyAvailable, setPasskeyAvailable] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [loadedViaPasskey, setLoadedViaPasskey] = useState(false);
-  const [passkeyWalletAddress, setPasskeyWalletAddress] = useState<string | null>(null);
+  const [passkeyWalletAddress, setPasskeyWalletAddress] = useState<
+    string | null
+  >(null);
   const [passkeyHasSigningKey, setPasskeyHasSigningKey] = useState(false);
   const [passkeyKeyInput, setPasskeyKeyInput] = useState("");
   const [passkeyKeyError, setPasskeyKeyError] = useState("");
@@ -1198,18 +1415,16 @@ export default function DemoPage() {
     setPasskeyAvailable(isPasskeySupported());
   }, []);
 
-  const log = useCallback(
-    (testId: string, message: string) => {
-      dispatch({ type: "ADD_LOG", testId, message });
-    },
-    [],
-  );
+  const log = useCallback((testId: string, message: string) => {
+    dispatch({ type: "ADD_LOG", testId, message });
+  }, []);
 
   // ---- Setup ----
 
   const handleLoadAgent = useCallback(async () => {
     dispatch({ type: "LOADING" });
-    const bootLog = (msg: string) => dispatch({ type: "ADD_LOG", testId: "agent", message: msg });
+    const bootLog = (msg: string) =>
+      dispatch({ type: "ADD_LOG", testId: "agent", message: msg });
     const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     try {
@@ -1238,13 +1453,19 @@ export default function DemoPage() {
       await delay(100);
 
       const rpcHost = network.rpcUrl.replace(/^https?:\/\//, "").split("/")[0];
-      bootLog(`Connecting to ${network.isTestnet ? "Celo Sepolia" : "Celo"} (RPC: ${rpcHost})...`);
+      bootLog(
+        `Connecting to ${network.isTestnet ? "Celo Sepolia" : "Celo"} (RPC: ${rpcHost})...`,
+      );
       await delay(100);
 
-      bootLog(`Checking on-chain registry (${shortAddr(network.registryAddress)})...`);
+      bootLog(
+        `Checking on-chain registry (${shortAddr(network.registryAddress)})...`,
+      );
       const registered = await agent.isRegistered();
       if (!registered) {
-        bootLog("ERROR: Agent not found in registry. Register at /register first.");
+        bootLog(
+          "ERROR: Agent not found in registry. Register at /register first.",
+        );
         dispatch({
           type: "SETUP_ERROR",
           error: "Agent not registered. Register at /register first.",
@@ -1253,12 +1474,18 @@ export default function DemoPage() {
       }
 
       const info = await agent.getInfo();
-      bootLog(`Agent ID: #${info.agentId} — ${info.isVerified ? "Verified" : "Not verified"}`);
+      bootLog(
+        `Agent ID: #${info.agentId} — ${info.isVerified ? "Verified" : "Not verified"}`,
+      );
       await delay(100);
 
       // Check proof provider
       const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-      const contract = new ethers.Contract(network.registryAddress, REGISTRY_ABI, provider);
+      const contract = new ethers.Contract(
+        network.registryAddress,
+        REGISTRY_ABI,
+        provider,
+      );
 
       try {
         const providerAddr = await contract.agentProofProvider(info.agentId);
@@ -1286,7 +1513,8 @@ export default function DemoPage() {
           credentials = creds;
           const parts: string[] = [];
           if (creds.nationality) parts.push(`nationality=${creds.nationality}`);
-          if (creds.olderThan > 0n) parts.push(`olderThan=${creds.olderThan.toString()}`);
+          if (creds.olderThan > 0n)
+            parts.push(`olderThan=${creds.olderThan.toString()}`);
           if (creds.ofac?.some(Boolean)) parts.push("ofac=[clear]");
           bootLog(`Credentials loaded: ${parts.join(", ")}`);
         } else {
@@ -1300,8 +1528,10 @@ export default function DemoPage() {
       // Log verification config from credentials
       if (credentials) {
         const configParts: string[] = [];
-        if (credentials.olderThan > 0n) configParts.push(`age >= ${credentials.olderThan.toString()}`);
-        if (credentials.ofac?.some(Boolean)) configParts.push("OFAC screening enabled");
+        if (credentials.olderThan > 0n)
+          configParts.push(`age >= ${credentials.olderThan.toString()}`);
+        if (credentials.ofac?.some(Boolean))
+          configParts.push("OFAC screening enabled");
         if (configParts.length > 0) {
           bootLog(`Verification config: ${configParts.join(", ")}`);
         }
@@ -1312,8 +1542,12 @@ export default function DemoPage() {
       await delay(80);
 
       // Log target endpoints
-      const serviceHost = network.demoServiceUrl ? new URL(network.demoServiceUrl).host : "localhost";
-      const agentHost = network.demoAgentUrl ? new URL(network.demoAgentUrl).host : "localhost";
+      const serviceHost = network.demoServiceUrl
+        ? new URL(network.demoServiceUrl).host
+        : "localhost";
+      const agentHost = network.demoAgentUrl
+        ? new URL(network.demoAgentUrl).host
+        : "localhost";
       bootLog(`Demo service endpoint: ${serviceHost}`);
       bootLog(`Demo agent endpoint: ${agentHost}`);
       await delay(80);
@@ -1331,7 +1565,9 @@ export default function DemoPage() {
         },
       });
     } catch (err) {
-      bootLog(`ERROR: ${err instanceof Error ? err.message : "Failed to load agent"}`);
+      bootLog(
+        `ERROR: ${err instanceof Error ? err.message : "Failed to load agent"}`,
+      );
       dispatch({
         type: "SETUP_ERROR",
         error: err instanceof Error ? err.message : "Failed to load agent",
@@ -1353,7 +1589,8 @@ export default function DemoPage() {
     setPasskeyHasSigningKey(false);
     setPasskeyKeyInput("");
     setPasskeyKeyError("");
-    const bootLog = (msg: string) => dispatch({ type: "ADD_LOG", testId: "agent", message: msg });
+    const bootLog = (msg: string) =>
+      dispatch({ type: "ADD_LOG", testId: "agent", message: msg });
 
     try {
       bootLog("Authenticating with passkey...");
@@ -1362,7 +1599,11 @@ export default function DemoPage() {
       bootLog(`Passkey smart wallet: ${shortAddr(walletAddress)}`);
 
       const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-      const registry = new ethers.Contract(network.registryAddress, REGISTRY_ABI, provider);
+      const registry = new ethers.Contract(
+        network.registryAddress,
+        REGISTRY_ABI,
+        provider,
+      );
 
       bootLog("Scanning registry for guardian-managed agents...");
       const mintFilter = registry.filters.Transfer(ethers.ZeroAddress, null);
@@ -1378,9 +1619,17 @@ export default function DemoPage() {
           }
         | undefined;
 
-      for (let toBlock = latestBlock; toBlock >= 0 && !selected; toBlock -= blockWindow) {
+      for (
+        let toBlock = latestBlock;
+        toBlock >= 0 && !selected;
+        toBlock -= blockWindow
+      ) {
         const fromBlock = Math.max(0, toBlock - blockWindow + 1);
-        const mintEvents = await registry.queryFilter(mintFilter, fromBlock, toBlock);
+        const mintEvents = await registry.queryFilter(
+          mintFilter,
+          fromBlock,
+          toBlock,
+        );
 
         for (let i = mintEvents.length - 1; i >= 0; i -= 1) {
           const logEvent = mintEvents[i] as ethers.EventLog;
@@ -1388,10 +1637,12 @@ export default function DemoPage() {
 
           try {
             const guardian: string = await registry.agentGuardian(agentId);
-            if (guardian.toLowerCase() !== walletAddress.toLowerCase()) continue;
+            if (guardian.toLowerCase() !== walletAddress.toLowerCase())
+              continue;
 
             const agentKey: string = await registry.agentIdToAgentKey(agentId);
-            const isVerified: boolean = await registry.isVerifiedAgent(agentKey);
+            const isVerified: boolean =
+              await registry.isVerifiedAgent(agentKey);
             if (!isVerified) continue;
 
             const address = "0x" + agentKey.slice(26);
@@ -1409,7 +1660,8 @@ export default function DemoPage() {
                 olderThan: raw.olderThan ?? raw[7] ?? 0n,
                 ofac: raw.ofac ?? raw[8] ?? [false, false, false],
               };
-              if (creds.nationality || creds.olderThan > 0n) credentials = creds;
+              if (creds.nationality || creds.olderThan > 0n)
+                credentials = creds;
             } catch {
               // credentials are optional
             }
@@ -1436,7 +1688,8 @@ export default function DemoPage() {
 
       // Try to recover a locally cached agent key so passkey mode can run signed tests.
       const cachedKey =
-        getAgentPrivateKeyByAgent(selected.address) || getAgentPrivateKeyByGuardian(walletAddress);
+        getAgentPrivateKeyByAgent(selected.address) ||
+        getAgentPrivateKeyByGuardian(walletAddress);
       let signingReady = false;
       if (cachedKey) {
         try {
@@ -1445,7 +1698,9 @@ export default function DemoPage() {
             registryAddress: network.registryAddress,
             rpcUrl: network.rpcUrl,
           });
-          if (signerAgent.address.toLowerCase() !== selected.address.toLowerCase()) {
+          if (
+            signerAgent.address.toLowerCase() !== selected.address.toLowerCase()
+          ) {
             throw new Error("Cached key does not match selected agent.");
           }
           agentRef.current = signerAgent;
@@ -1456,7 +1711,9 @@ export default function DemoPage() {
             guardianAddress: walletAddress,
           });
           signingReady = true;
-          bootLog("Recovered local agent signing key. Signed tests are enabled.");
+          bootLog(
+            "Recovered local agent signing key. Signed tests are enabled.",
+          );
         } catch {
           agentRef.current = null;
           privateKeyRef.current = "";
@@ -1471,7 +1728,9 @@ export default function DemoPage() {
         `Loaded guardian-managed agent #${selected.agentId.toString()} (${shortAddr(selected.address)})`,
       );
       if (!signingReady) {
-        bootLog("Passkey mode loaded. Add this agent key once to run signed tests.");
+        bootLog(
+          "Passkey mode loaded. Add this agent key once to run signed tests.",
+        );
       }
 
       dispatch({
@@ -1509,8 +1768,12 @@ export default function DemoPage() {
         registryAddress: network.registryAddress,
         rpcUrl: network.rpcUrl,
       });
-      if (signerAgent.address.toLowerCase() !== state.agent.address.toLowerCase()) {
-        throw new Error("This private key does not match the passkey-selected agent.");
+      if (
+        signerAgent.address.toLowerCase() !== state.agent.address.toLowerCase()
+      ) {
+        throw new Error(
+          "This private key does not match the passkey-selected agent.",
+        );
       }
       agentRef.current = signerAgent;
       privateKeyRef.current = key;
@@ -1526,17 +1789,28 @@ export default function DemoPage() {
     } catch (err) {
       setPasskeyHasSigningKey(false);
       setPasskeyKeyError(
-        err instanceof Error ? err.message : "Failed to attach agent private key.",
+        err instanceof Error
+          ? err.message
+          : "Failed to attach agent private key.",
       );
     }
-  }, [state.agent, loadedViaPasskey, passkeyKeyInput, network, passkeyWalletAddress, log]);
+  }, [
+    state.agent,
+    loadedViaPasskey,
+    passkeyKeyInput,
+    network,
+    passkeyWalletAddress,
+    log,
+  ]);
 
   const handleConnectWallet = useCallback(async () => {
     setWalletLoading(true);
     setWalletError("");
     try {
       if (!window.ethereum) {
-        throw new Error("No wallet detected. Install MetaMask or another browser wallet.");
+        throw new Error(
+          "No wallet detected. Install MetaMask or another browser wallet.",
+        );
       }
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
@@ -1550,19 +1824,22 @@ export default function DemoPage() {
       const registry = new ethers.Contract(
         network.registryAddress,
         REGISTRY_ABI,
-        rpcProvider
+        rpcProvider,
       );
       const isVerified = await registry.isVerifiedAgent(agentKey);
 
       if (!isVerified) {
         throw new Error(
           "This wallet is not registered as a verified agent. " +
-          "Register first using Simple (Verified Wallet) mode."
+            "Register first using Simple (Verified Wallet) mode.",
         );
       }
 
       // Create SelfAgent with wallet signer
-      const agent = new SelfAgent({ signer, network: network.isTestnet ? "testnet" : "mainnet" });
+      const agent = new SelfAgent({
+        signer,
+        network: network.isTestnet ? "testnet" : "mainnet",
+      });
       agentRef.current = agent;
       privateKeyRef.current = ""; // no raw key — wallet signs directly
       setWalletAddress(address);
@@ -1580,7 +1857,9 @@ export default function DemoPage() {
         },
       });
     } catch (err) {
-      setWalletError(err instanceof Error ? err.message : "Failed to connect wallet");
+      setWalletError(
+        err instanceof Error ? err.message : "Failed to connect wallet",
+      );
     } finally {
       setWalletLoading(false);
     }
@@ -1621,7 +1900,10 @@ export default function DemoPage() {
     // multiple concurrent signing requests, overwhelming the wallet UI and causing
     // rejections. Run sequentially in wallet mode so the user approves one at a time.
     if (!pk && hasWallet) {
-      log("agent", "Browser wallet detected — running tests sequentially to avoid concurrent signing popups");
+      log(
+        "agent",
+        "Browser wallet detected — running tests sequentially to avoid concurrent signing popups",
+      );
       await runServiceTest(agent, agentLabel, dispatch, log, network);
       await runPeerTest(agent, agentLabel, dispatch, log, network);
       await runGateTest(agent, pk, agentLabel, dispatch, log, network);
@@ -1647,16 +1929,32 @@ export default function DemoPage() {
 
     const fakeLabel = `${shortAddr(fakeWallet.address)} (unregistered)`;
     log("service", `Starting test with FAKE agent...`);
-    log("service", `Generated random key: ${shortAddr(fakeWallet.address)} (unregistered)`);
+    log(
+      "service",
+      `Generated random key: ${shortAddr(fakeWallet.address)} (unregistered)`,
+    );
     log("peer", `Starting test with FAKE agent...`);
-    log("peer", `Generated random key: ${shortAddr(fakeWallet.address)} (unregistered)`);
+    log(
+      "peer",
+      `Generated random key: ${shortAddr(fakeWallet.address)} (unregistered)`,
+    );
     log("gate", `Starting test with FAKE agent...`);
-    log("gate", `Generated random key: ${shortAddr(fakeWallet.address)} (unregistered)`);
+    log(
+      "gate",
+      `Generated random key: ${shortAddr(fakeWallet.address)} (unregistered)`,
+    );
 
     await Promise.all([
       runServiceTest(fakeAgent, fakeLabel, dispatch, log, network),
       runPeerTest(fakeAgent, fakeLabel, dispatch, log, network),
-      runGateTest(fakeAgent, fakeWallet.privateKey, fakeLabel, dispatch, log, network),
+      runGateTest(
+        fakeAgent,
+        fakeWallet.privateKey,
+        fakeLabel,
+        dispatch,
+        log,
+        network,
+      ),
     ]);
   }, [log, network]);
 
@@ -1665,12 +1963,16 @@ export default function DemoPage() {
   const sendChatMessage = useCallback(
     async (query: string) => {
       dispatch({ type: "SET_CHAT_INPUT", value: "" });
-      dispatch({ type: "ADD_CHAT_MESSAGE", message: { role: "user", content: query } });
+      dispatch({
+        type: "ADD_CHAT_MESSAGE",
+        message: { role: "user", content: query },
+      });
       dispatch({ type: "CHAT_LOADING", loading: true });
       log("chat", `User: ${query}`);
 
       try {
-        const chatUrl = window.location.origin + `/api/demo/chat?network=${network.id}`;
+        const chatUrl =
+          window.location.origin + `/api/demo/chat?network=${network.id}`;
         const agent = agentRef.current;
         const unlocked = chatUnlockedRef.current;
         let res: Response;
@@ -1679,7 +1981,10 @@ export default function DemoPage() {
 
         if (agent && unlocked) {
           // Tests passed — send signed request with agent identity
-          log("chat", `Sending SIGNED request (agent ${shortAddr(agent.address)})...`);
+          log(
+            "chat",
+            `Sending SIGNED request (agent ${shortAddr(agent.address)})...`,
+          );
           res = await agent.fetch(chatUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1688,7 +1993,10 @@ export default function DemoPage() {
         } else {
           // Tests NOT passed or no agent — send anonymous (LangChain will hard-refuse)
           if (agent && !unlocked) {
-            log("chat", "Agent loaded but tests not passed yet — sending as ANONYMOUS");
+            log(
+              "chat",
+              "Agent loaded but tests not passed yet — sending as ANONYMOUS",
+            );
           } else {
             log("chat", "No agent loaded — sending as ANONYMOUS");
           }
@@ -1700,7 +2008,10 @@ export default function DemoPage() {
         }
 
         const data = await res.json();
-        log("chat", `Response: HTTP ${res.status}, verified=${data.verified ?? "n/a"}, agent=${data.agent ?? "n/a"}`);
+        log(
+          "chat",
+          `Response: HTTP ${res.status}, verified=${data.verified ?? "n/a"}, agent=${data.agent ?? "n/a"}`,
+        );
 
         if (!res.ok) {
           const errMsg = data.error || `HTTP ${res.status}`;
@@ -1710,7 +2021,10 @@ export default function DemoPage() {
             message: { role: "agent", content: `Error: ${errMsg}` },
           });
         } else {
-          log("chat", `Agent: ${data.response?.slice(0, 100)}${data.response?.length > 100 ? "..." : ""}`);
+          log(
+            "chat",
+            `Agent: ${data.response?.slice(0, 100)}${data.response?.length > 100 ? "..." : ""}`,
+          );
           dispatch({
             type: "ADD_CHAT_MESSAGE",
             message: { role: "agent", content: data.response },
@@ -1743,14 +2057,25 @@ export default function DemoPage() {
         </div>
         <p className="text-muted max-w-lg mx-auto">
           Test Self Agent ID integration end-to-end. Load your registered agent,
-          then run real verification tests against on-chain contracts and service endpoints.
+          then run real verification tests against on-chain contracts and
+          service endpoints.
         </p>
         <p className="text-xs text-subtle max-w-lg mx-auto mt-2">
           Don&apos;t have an agent yet?{" "}
-          <a href="/agents/register" className="text-accent hover:text-accent-2 underline underline-offset-2">Register via dApp</a>
-          {" "}or use the{" "}
-          <a href="/cli" className="text-accent hover:text-accent-2 underline underline-offset-2">CLI</a>
-          {" "}for terminal and agent-guided workflows.
+          <a
+            href="/agents/register"
+            className="text-accent hover:text-accent-2 underline underline-offset-2"
+          >
+            Register via dApp
+          </a>{" "}
+          or use the{" "}
+          <a
+            href="/cli"
+            className="text-accent hover:text-accent-2 underline underline-offset-2"
+          >
+            CLI
+          </a>{" "}
+          for terminal and agent-guided workflows.
         </p>
       </div>
 
@@ -1803,8 +2128,8 @@ export default function DemoPage() {
           {setupMode === "private-key" ? (
             <>
               <p className="text-xs text-muted mb-4">
-                Enter the private key of a registered agent. The key stays in your browser
-                and is never sent to the server.
+                Enter the private key of a registered agent. The key stays in
+                your browser and is never sent to the server.
               </p>
               <form
                 onSubmit={(e) => {
@@ -1817,7 +2142,9 @@ export default function DemoPage() {
                   <input
                     type={state.showKey ? "text" : "password"}
                     value={state.privateKey}
-                    onChange={(e) => dispatch({ type: "SET_KEY", key: e.target.value })}
+                    onChange={(e) =>
+                      dispatch({ type: "SET_KEY", key: e.target.value })
+                    }
                     placeholder="0x... (agent private key)"
                     className="w-full px-4 py-3 pr-10 bg-surface-2 border border-border rounded-lg focus:border-accent focus:ring-0 font-mono text-sm"
                   />
@@ -1852,7 +2179,8 @@ export default function DemoPage() {
           ) : setupMode === "passkey" ? (
             <div className="space-y-3">
               <p className="text-xs text-muted">
-                Sign in with your passkey to load the guardian-managed agent tied to your smart wallet.
+                Sign in with your passkey to load the guardian-managed agent
+                tied to your smart wallet.
               </p>
               <Button
                 type="button"
@@ -1933,7 +2261,8 @@ export default function DemoPage() {
             <div className="flex justify-between">
               <span className="text-muted">Address</span>
               <span className="font-mono text-xs">
-                {state.agent.address.slice(0, 8)}...{state.agent.address.slice(-6)}
+                {state.agent.address.slice(0, 8)}...
+                {state.agent.address.slice(-6)}
               </span>
             </div>
             <div className="flex justify-between">
@@ -1943,7 +2272,10 @@ export default function DemoPage() {
             {loadedViaPasskey && (
               <div className="text-xs text-muted pt-1 border-t border-border/60 mt-2">
                 Loaded via passkey
-                {passkeyWalletAddress ? ` (${shortAddr(passkeyWalletAddress)})` : ""}.
+                {passkeyWalletAddress
+                  ? ` (${shortAddr(passkeyWalletAddress)})`
+                  : ""}
+                .
                 {passkeyHasSigningKey
                   ? " Local signing key found. Signed tests are enabled."
                   : " Add this agent key once to run signed tests."}
@@ -1952,7 +2284,8 @@ export default function DemoPage() {
             {loadedViaPasskey && !passkeyHasSigningKey && (
               <div className="mt-3 pt-3 border-t border-border/60 space-y-2">
                 <p className="text-xs text-muted">
-                  Enter this agent&apos;s private key once. It will be cached in this browser for passkey demo sessions.
+                  Enter this agent&apos;s private key once. It will be cached in
+                  this browser for passkey demo sessions.
                 </p>
                 <div className="flex gap-2">
                   <input
@@ -1962,7 +2295,11 @@ export default function DemoPage() {
                     placeholder="0x... (agent private key)"
                     className="flex-1 px-3 py-2 bg-surface-2 border border-border rounded text-xs font-mono focus:border-accent focus:ring-0"
                   />
-                  <Button type="button" size="sm" onClick={handleAttachPasskeyAgentKey}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleAttachPasskeyAgentKey}
+                  >
                     Attach Key
                   </Button>
                 </div>
@@ -1971,16 +2308,21 @@ export default function DemoPage() {
                 )}
               </div>
             )}
-            {state.agent.credentials && (() => {
-              const badges = buildCredentialBadges(state.agent.credentials!).filter(b => b.trim());
-              return badges.length > 0 ? (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {badges.map((b, i) => (
-                    <Badge key={i} variant="success">{b}</Badge>
-                  ))}
-                </div>
-              ) : null;
-            })()}
+            {state.agent.credentials &&
+              (() => {
+                const badges = buildCredentialBadges(
+                  state.agent.credentials,
+                ).filter((b) => b.trim());
+                return badges.length > 0 ? (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {badges.map((b, i) => (
+                      <Badge key={i} variant="success">
+                        {b}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null;
+              })()}
           </div>
         </Card>
       )}
@@ -2012,7 +2354,10 @@ export default function DemoPage() {
         </Button>
         <Button
           onClick={runFakeAgent}
-          disabled={state.loading || Object.values(state.tests).some((t) => t.status === "running")}
+          disabled={
+            state.loading ||
+            Object.values(state.tests).some((t) => t.status === "running")
+          }
           size="lg"
           variant="secondary"
         >
@@ -2022,7 +2367,8 @@ export default function DemoPage() {
       </div>
       {loadedViaPasskey && !passkeyHasSigningKey && (
         <p className="text-xs text-subtle text-center">
-          Passkey mode is active. Attach this agent&apos;s private key once to enable signed integration tests.
+          Passkey mode is active. Attach this agent&apos;s private key once to
+          enable signed integration tests.
         </p>
       )}
 
@@ -2031,7 +2377,7 @@ export default function DemoPage() {
           <TestCard
             key={test.id}
             title={test.title}
-            icon={testIcons[test.id as keyof typeof testIcons]}
+            icon={testIcons[test.id]}
             description={test.description}
             steps={state.tests[test.id]?.steps ?? []}
             status={state.tests[test.id]?.status ?? "idle"}

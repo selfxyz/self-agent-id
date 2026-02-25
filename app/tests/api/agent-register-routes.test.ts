@@ -56,7 +56,8 @@ function installCommonMocks() {
   vi.doMock("@selfxyz/agent-sdk", () => ({
     buildSimpleRegisterUserDataAscii: mockBuildSimpleRegisterUserDataAscii,
     buildAdvancedRegisterUserDataAscii: mockBuildAdvancedRegisterUserDataAscii,
-    buildWalletFreeRegisterUserDataAscii: mockBuildWalletFreeRegisterUserDataAscii,
+    buildWalletFreeRegisterUserDataAscii:
+      mockBuildWalletFreeRegisterUserDataAscii,
     signRegistrationChallenge: mockSignRegistrationChallenge,
     getRegistrationConfigIndex: mockGetRegistrationConfigIndex,
     REGISTRY_ABI: [],
@@ -94,7 +95,9 @@ function setDefaultMocks() {
   });
   mockBuildSimpleRegisterUserDataAscii.mockReturnValue("simple-user-data");
   mockBuildAdvancedRegisterUserDataAscii.mockReturnValue("advanced-user-data");
-  mockBuildWalletFreeRegisterUserDataAscii.mockReturnValue("walletfree-user-data");
+  mockBuildWalletFreeRegisterUserDataAscii.mockReturnValue(
+    "walletfree-user-data",
+  );
   mockSignRegistrationChallenge.mockResolvedValue("signed-challenge");
   mockGetRegistrationConfigIndex.mockReturnValue(3);
   mockGetUniversalLink.mockReturnValue("self://deep-link");
@@ -116,13 +119,19 @@ function setDefaultMocks() {
     (_session: unknown, _secret: string, extra: Record<string, unknown>) =>
       NextResponse.json({ sessionToken: "rotated", ...extra }, { status: 200 }),
   );
-  mockHelpers.humanInstructions.mockImplementation((stage: string) => [`instruction:${stage}`]);
-  mockHelpers.errorResponse.mockImplementation((message: string, status: number) =>
-    NextResponse.json({ error: message }, { status }),
+  mockHelpers.humanInstructions.mockImplementation((stage: string) => [
+    `instruction:${stage}`,
+  ]);
+  mockHelpers.errorResponse.mockImplementation(
+    (message: string, status: number) =>
+      NextResponse.json({ error: message }, { status }),
   );
-  mockHelpers.corsResponse.mockImplementation(() => new NextResponse(null, { status: 204 }));
-  mockHelpers.jsonResponse.mockImplementation((body: Record<string, unknown>, status = 200) =>
-    NextResponse.json(body, { status }),
+  mockHelpers.corsResponse.mockImplementation(
+    () => new NextResponse(null, { status: 204 }),
+  );
+  mockHelpers.jsonResponse.mockImplementation(
+    (body: Record<string, unknown>, status = 200) =>
+      NextResponse.json(body, { status }),
   );
   mockHelpers.getSessionSecret.mockReturnValue("session-secret");
   mockHelpers.getNetworkConfig.mockReturnValue({
@@ -203,7 +212,11 @@ describe("agent register init route", () => {
     const res = await POST(
       makeNextRequest("https://example.com/api/agent/register", {
         method: "POST",
-        body: JSON.stringify({ mode: "simple", network: "testnet", humanAddress: "0xabc" }),
+        body: JSON.stringify({
+          mode: "simple",
+          network: "testnet",
+          humanAddress: "0xabc",
+        }),
       }),
     );
 
@@ -221,17 +234,25 @@ describe("agent register init route", () => {
       }),
     );
     expect(invalidMode.status).toBe(400);
-    expect((await jsonBody<{ error: string }>(invalidMode)).error).toContain("Invalid mode");
+    expect((await jsonBody<{ error: string }>(invalidMode)).error).toContain(
+      "Invalid mode",
+    );
 
     mockHelpers.isValidNetwork.mockReturnValue(false);
     const invalidNetwork = await POST(
       makeNextRequest("https://example.com/api/agent/register", {
         method: "POST",
-        body: JSON.stringify({ mode: "simple", network: "badnet", humanAddress: "0xabc" }),
+        body: JSON.stringify({
+          mode: "simple",
+          network: "badnet",
+          humanAddress: "0xabc",
+        }),
       }),
     );
     expect(invalidNetwork.status).toBe(400);
-    expect((await jsonBody<{ error: string }>(invalidNetwork)).error).toContain("Invalid network");
+    expect((await jsonBody<{ error: string }>(invalidNetwork)).error).toContain(
+      "Invalid network",
+    );
   });
 
   it("requires humanAddress for simple mode", async () => {
@@ -240,13 +261,18 @@ describe("agent register init route", () => {
     const res = await POST(
       makeNextRequest("https://example.com/api/agent/register", {
         method: "POST",
-        body: JSON.stringify({ mode: "simple", network: "testnet", humanAddress: "not-an-address" }),
+        body: JSON.stringify({
+          mode: "simple",
+          network: "testnet",
+          humanAddress: "not-an-address",
+        }),
       }),
     );
 
     expect(res.status).toBe(400);
     expect(await jsonBody(res)).toEqual({
-      error: "humanAddress is required and must be a valid Ethereum address for this mode",
+      error:
+        "humanAddress is required and must be a valid Ethereum address for this mode",
     });
   });
 
@@ -265,7 +291,9 @@ describe("agent register init route", () => {
     );
 
     expect(res.status).toBe(400);
-    expect(await jsonBody(res)).toEqual({ error: "minimumAge must be 0, 18, or 21" });
+    expect(await jsonBody(res)).toEqual({
+      error: "minimumAge must be 0, 18, or 21",
+    });
   });
 
   it("creates a simple mode registration session", async () => {
@@ -287,7 +315,9 @@ describe("agent register init route", () => {
       minimumAge: 18,
       ofac: true,
     });
-    expect(await jsonBody<{ mode: string; sessionToken: string }>(res)).toMatchObject({
+    expect(
+      await jsonBody<{ mode: string; sessionToken: string }>(res),
+    ).toMatchObject({
       mode: "simple",
       sessionToken: "encrypted-session-token",
     });
@@ -354,7 +384,9 @@ describe("agent register init route", () => {
     );
 
     expect(res.status).toBe(500);
-    expect((await jsonBody<{ error: string }>(res)).error).toContain("SESSION_SECRET");
+    expect((await jsonBody<{ error: string }>(res)).error).toContain(
+      "SESSION_SECRET",
+    );
   });
 
   it("returns CORS preflight response for OPTIONS", async () => {
@@ -378,7 +410,9 @@ describe("agent register callback route", () => {
       }),
     );
     expect(res.status).toBe(400);
-    expect(await jsonBody(res)).toEqual({ error: "Missing token query parameter" });
+    expect(await jsonBody(res)).toEqual({
+      error: "Missing token query parameter",
+    });
   });
 
   it("maps expired sessions to 410", async () => {
@@ -387,9 +421,12 @@ describe("agent register callback route", () => {
     });
     const { POST } = await loadRegisterCallbackRoute();
     const res = await POST(
-      makeNextRequest("https://example.com/api/agent/register/callback?token=t", {
-        method: "POST",
-      }),
+      makeNextRequest(
+        "https://example.com/api/agent/register/callback?token=t",
+        {
+          method: "POST",
+        },
+      ),
     );
 
     expect(res.status).toBe(410);
@@ -403,10 +440,13 @@ describe("agent register callback route", () => {
     });
     const { POST } = await loadRegisterCallbackRoute();
     const res = await POST(
-      makeNextRequest("https://example.com/api/agent/register/callback?token=t", {
-        method: "POST",
-        body: JSON.stringify({ error: "Proof rejected" }),
-      }),
+      makeNextRequest(
+        "https://example.com/api/agent/register/callback?token=t",
+        {
+          method: "POST",
+          body: JSON.stringify({ error: "Proof rejected" }),
+        },
+      ),
     );
 
     expect(res.status).toBe(200);
@@ -424,15 +464,21 @@ describe("agent register callback route", () => {
     });
     const { POST } = await loadRegisterCallbackRoute();
     const res = await POST(
-      makeNextRequest("https://example.com/api/agent/register/callback?token=t", {
-        method: "POST",
-        body: JSON.stringify({ proof: "ok" }),
-      }),
+      makeNextRequest(
+        "https://example.com/api/agent/register/callback?token=t",
+        {
+          method: "POST",
+          body: JSON.stringify({ proof: "ok" }),
+        },
+      ),
     );
 
     expect(res.status).toBe(200);
     expect(mockHelpers.sessionResponse).toHaveBeenCalledWith(
-      expect.objectContaining({ stage: "proof-received", proof: { proof: "ok" } }),
+      expect.objectContaining({
+        stage: "proof-received",
+        proof: { proof: "ok" },
+      }),
       "session-secret",
       expect.objectContaining({ agentAddress: "0xabc" }),
     );
@@ -446,27 +492,40 @@ describe("agent register callback route", () => {
     });
     const { POST } = await loadRegisterCallbackRoute();
     const res = await POST(
-      makeNextRequest("https://example.com/api/agent/register/callback?token=t", {
-        method: "POST",
-        body: JSON.stringify({ proof: "ok" }),
-      }),
+      makeNextRequest(
+        "https://example.com/api/agent/register/callback?token=t",
+        {
+          method: "POST",
+          body: JSON.stringify({ proof: "ok" }),
+        },
+      ),
     );
 
     expect(res.status).toBe(400);
-    expect(await jsonBody(res)).toEqual({ error: "Token is not for a registration session" });
+    expect(await jsonBody(res)).toEqual({
+      error: "Token is not for a registration session",
+    });
   });
 
   it("short-circuits with 200 for already-completed session", async () => {
     mockHelpers.decryptAndValidateSession.mockReturnValue({
-      session: { type: "register", stage: "completed", agentAddress: "0xdone", agentId: 99 },
+      session: {
+        type: "register",
+        stage: "completed",
+        agentAddress: "0xdone",
+        agentId: 99,
+      },
       secret: "session-secret",
     });
     const { POST } = await loadRegisterCallbackRoute();
     const res = await POST(
-      makeNextRequest("https://example.com/api/agent/register/callback?token=t", {
-        method: "POST",
-        body: JSON.stringify({ proof: "ok" }),
-      }),
+      makeNextRequest(
+        "https://example.com/api/agent/register/callback?token=t",
+        {
+          method: "POST",
+          body: JSON.stringify({ proof: "ok" }),
+        },
+      ),
     );
 
     expect(res.status).toBe(200);
@@ -484,10 +543,13 @@ describe("agent register callback route", () => {
     });
     const { POST } = await loadRegisterCallbackRoute();
     const res = await POST(
-      makeNextRequest("https://example.com/api/agent/register/callback?token=t", {
-        method: "POST",
-        body: JSON.stringify({}),
-      }),
+      makeNextRequest(
+        "https://example.com/api/agent/register/callback?token=t",
+        {
+          method: "POST",
+          body: JSON.stringify({}),
+        },
+      ),
     );
 
     expect(res.status).toBe(400);
@@ -501,10 +563,13 @@ describe("agent register callback route", () => {
     });
     const { POST } = await loadRegisterCallbackRoute();
     const res = await POST(
-      makeNextRequest("https://example.com/api/agent/register/callback?token=t", {
-        method: "POST",
-        body: "{not valid json",
-      }),
+      makeNextRequest(
+        "https://example.com/api/agent/register/callback?token=t",
+        {
+          method: "POST",
+          body: "{not valid json",
+        },
+      ),
     );
 
     expect(res.status).toBe(400);
@@ -532,7 +597,9 @@ describe("agent register status route", () => {
       }),
     );
     expect(res.status).toBe(400);
-    expect(await jsonBody(res)).toEqual({ error: "Missing token query parameter" });
+    expect(await jsonBody(res)).toEqual({
+      error: "Missing token query parameter",
+    });
   });
 
   it("returns current terminal stage without on-chain checks", async () => {
@@ -640,7 +707,9 @@ describe("agent register QR route", () => {
   it("requires token and qr-ready stage", async () => {
     const { GET } = await loadRegisterQrRoute();
     const missingToken = await GET(
-      makeNextRequest("https://example.com/api/agent/register/qr", { method: "GET" }),
+      makeNextRequest("https://example.com/api/agent/register/qr", {
+        method: "GET",
+      }),
     );
     expect(missingToken.status).toBe(400);
 
@@ -649,7 +718,9 @@ describe("agent register QR route", () => {
       secret: "session-secret",
     });
     const wrongStage = await GET(
-      makeNextRequest("https://example.com/api/agent/register/qr?token=t", { method: "GET" }),
+      makeNextRequest("https://example.com/api/agent/register/qr?token=t", {
+        method: "GET",
+      }),
     );
     expect(wrongStage.status).toBe(409);
   });
@@ -665,7 +736,9 @@ describe("agent register QR route", () => {
     });
     const { GET } = await loadRegisterQrRoute();
     const res = await GET(
-      makeNextRequest("https://example.com/api/agent/register/qr?token=t", { method: "GET" }),
+      makeNextRequest("https://example.com/api/agent/register/qr?token=t", {
+        method: "GET",
+      }),
     );
 
     expect(res.status).toBe(200);
@@ -697,7 +770,9 @@ describe("agent register export route", () => {
       }),
     );
     expect(res.status).toBe(400);
-    expect(await jsonBody(res)).toEqual({ error: "Missing token in request body" });
+    expect(await jsonBody(res)).toEqual({
+      error: "Missing token in request body",
+    });
   });
 
   it("enforces completed stage and private key availability", async () => {
@@ -715,7 +790,11 @@ describe("agent register export route", () => {
     expect(notCompleted.status).toBe(409);
 
     mockHelpers.decryptAndValidateSession.mockReturnValue({
-      session: { type: "register", stage: "completed", agentPrivateKey: undefined },
+      session: {
+        type: "register",
+        stage: "completed",
+        agentPrivateKey: undefined,
+      },
       secret: "session-secret",
     });
     const missingPk = await POST(

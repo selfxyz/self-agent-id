@@ -46,7 +46,10 @@ export default function CodeBlock({ tabs }: CodeBlockProps) {
 
   return (
     <div className="w-full rounded-lg border border-border overflow-hidden">
-      <div className="flex border-b border-border" style={{ backgroundColor: "#1e1e2e" }}>
+      <div
+        className="flex border-b border-border"
+        style={{ backgroundColor: "#1e1e2e" }}
+      >
         {tabs.map((tab, i) => (
           <button
             key={tab.label}

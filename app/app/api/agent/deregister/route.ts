@@ -7,7 +7,7 @@
 // Validates the agent is registered on-chain, builds the deregistration
 // userDefinedData, and returns Self app QR data + deep link.
 
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import { ethers } from "ethers";
 import {
   buildSimpleDeregisterUserDataAscii,
@@ -47,8 +47,13 @@ interface DeregisterRequestBody {
 
 export async function POST(req: NextRequest) {
   // Rate limit: 10 deregistration requests per minute per IP
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  const rl = await checkRateLimit({ key: `deregister:${ip}`, limit: 10, windowMs: 60_000 });
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const rl = await checkRateLimit({
+    key: `deregister:${ip}`,
+    limit: 10,
+    windowMs: 60_000,
+  });
   if (!rl.allowed) {
     return errorResponse("Too many requests", 429);
   }
@@ -67,7 +72,7 @@ export async function POST(req: NextRequest) {
       400,
     );
   }
-  const network = body.network as ApiNetwork;
+  const network = body.network;
   const networkConfig = getNetworkConfig(network);
 
   // ── Validate agentAddress ────────────────────────────────────────────────
@@ -98,10 +103,7 @@ export async function POST(req: NextRequest) {
       networkConfig,
     );
     if (!isVerified) {
-      return errorResponse(
-        "Agent is not currently registered on-chain",
-        404,
-      );
+      return errorResponse("Agent is not currently registered on-chain", 404);
     }
 
     // ── Determine mode from on-chain data ────────────────────────────────
@@ -143,9 +145,11 @@ export async function POST(req: NextRequest) {
     const selfAppDisclosures: Record<string, boolean | number> = {};
     if (body.disclosures?.nationality) selfAppDisclosures.nationality = true;
     if (body.disclosures?.name) selfAppDisclosures.name = true;
-    if (body.disclosures?.date_of_birth) selfAppDisclosures.date_of_birth = true;
+    if (body.disclosures?.date_of_birth)
+      selfAppDisclosures.date_of_birth = true;
     if (body.disclosures?.gender) selfAppDisclosures.gender = true;
-    if (body.disclosures?.issuing_state) selfAppDisclosures.issuing_state = true;
+    if (body.disclosures?.issuing_state)
+      selfAppDisclosures.issuing_state = true;
     if (body.disclosures?.ofac) selfAppDisclosures.ofac = true;
     if (disclosures.minimumAge && disclosures.minimumAge > 0) {
       selfAppDisclosures.minimumAge = disclosures.minimumAge;

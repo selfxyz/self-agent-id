@@ -153,7 +153,9 @@ function normalizeV(v: number): number {
  * @param signature - Full hex signature or pre-split parts.
  * @returns Normalized signature parts with canonical v.
  */
-function signatureParts(signature: string | RegistrationSignatureParts): RegistrationSignatureParts {
+function signatureParts(
+  signature: string | RegistrationSignatureParts,
+): RegistrationSignatureParts {
   if (typeof signature === "string") {
     const sig = ethers.Signature.from(signature);
     return { r: sig.r, s: sig.s, v: normalizeV(sig.v) };
@@ -218,7 +220,9 @@ function bytes32(value: string): Uint8Array {
  * @param disclosures - Disclosure requirements (defaults to no age gate, no OFAC).
  * @returns Config index in range 0..5.
  */
-export function getRegistrationConfigIndex(disclosures: RegistrationDisclosures = {}): number {
+export function getRegistrationConfigIndex(
+  disclosures: RegistrationDisclosures = {},
+): number {
   return toConfigIndex(disclosures);
 }
 
@@ -231,7 +235,9 @@ export function getRegistrationConfigIndex(disclosures: RegistrationDisclosures 
  * @param input - Human address, chain ID, and registry address.
  * @returns The 32-byte keccak256 hash as a hex string.
  */
-export function computeRegistrationChallengeHash(input: RegistrationChallengeInput): string {
+export function computeRegistrationChallengeHash(
+  input: RegistrationChallengeInput,
+): string {
   const human = normalizeAddress(input.humanIdentifier);
   const registry = normalizeAddress(input.registryAddress);
   const chainId = BigInt(input.chainId);
@@ -239,8 +245,8 @@ export function computeRegistrationChallengeHash(input: RegistrationChallengeInp
   return ethers.keccak256(
     ethers.solidityPacked(
       ["string", "address", "uint256", "address"],
-      ["self-agent-id:register:", human, chainId, registry]
-    )
+      ["self-agent-id:register:", human, chainId, registry],
+    ),
   );
 }
 
@@ -253,7 +259,7 @@ export function computeRegistrationChallengeHash(input: RegistrationChallengeInp
  */
 export async function signRegistrationChallenge(
   agentPrivateKey: string,
-  input: RegistrationChallengeInput
+  input: RegistrationChallengeInput,
 ): Promise<SignedRegistrationChallenge> {
   const wallet = new ethers.Wallet(agentPrivateKey);
   const messageHash = computeRegistrationChallengeHash(input);
@@ -277,7 +283,9 @@ export async function signRegistrationChallenge(
  * @param disclosures - Disclosure requirements (defaults to none).
  * @returns Two-character ASCII userData string.
  */
-export function buildSimpleRegisterUserDataAscii(disclosures: RegistrationDisclosures = {}): string {
+export function buildSimpleRegisterUserDataAscii(
+  disclosures: RegistrationDisclosures = {},
+): string {
   const idx = configDigit(toConfigIndex(disclosures));
   return ASCII_ACTION.REGISTER + idx;
 }
@@ -289,7 +297,9 @@ export function buildSimpleRegisterUserDataAscii(disclosures: RegistrationDisclo
  * @param disclosures - Disclosure requirements (defaults to none).
  * @returns Two-character ASCII userData string.
  */
-export function buildSimpleDeregisterUserDataAscii(disclosures: RegistrationDisclosures = {}): string {
+export function buildSimpleDeregisterUserDataAscii(
+  disclosures: RegistrationDisclosures = {},
+): string {
   const idx = configDigit(toConfigIndex(disclosures));
   return ASCII_ACTION.DEREGISTER + idx;
 }
@@ -326,7 +336,9 @@ export function buildAdvancedDeregisterUserDataAscii(params: {
   disclosures?: RegistrationDisclosures;
 }): string {
   const idx = configDigit(toConfigIndex(params.disclosures ?? {}));
-  return ASCII_ACTION.DEREGISTER_ADVANCED + idx + addressHex(params.agentAddress);
+  return (
+    ASCII_ACTION.DEREGISTER_ADVANCED + idx + addressHex(params.agentAddress)
+  );
 }
 
 export function buildWalletFreeRegisterUserDataAscii(params: {
@@ -352,16 +364,26 @@ export function buildWalletFreeRegisterUserDataAscii(params: {
   );
 }
 
-export function buildSimpleRegisterUserDataBinary(disclosures: RegistrationDisclosures = {}): string {
+export function buildSimpleRegisterUserDataBinary(
+  disclosures: RegistrationDisclosures = {},
+): string {
   const idx = toConfigIndex(disclosures);
   assertConfigIndex(idx);
-  return ethers.concat([numberToOneByte(ACTION.REGISTER), numberToOneByte(idx)]);
+  return ethers.concat([
+    numberToOneByte(ACTION.REGISTER),
+    numberToOneByte(idx),
+  ]);
 }
 
-export function buildSimpleDeregisterUserDataBinary(disclosures: RegistrationDisclosures = {}): string {
+export function buildSimpleDeregisterUserDataBinary(
+  disclosures: RegistrationDisclosures = {},
+): string {
   const idx = toConfigIndex(disclosures);
   assertConfigIndex(idx);
-  return ethers.concat([numberToOneByte(ACTION.DEREGISTER), numberToOneByte(idx)]);
+  return ethers.concat([
+    numberToOneByte(ACTION.DEREGISTER),
+    numberToOneByte(idx),
+  ]);
 }
 
 export function buildAdvancedRegisterUserDataBinary(params: {
@@ -406,7 +428,9 @@ export function buildWalletFreeRegisterUserDataBinary(params: {
   const idx = toConfigIndex(params.disclosures ?? {});
   assertConfigIndex(idx);
   const sig = signatureParts(params.signature);
-  const guardian = normalizeAddress(params.guardianAddress ?? ethers.ZeroAddress);
+  const guardian = normalizeAddress(
+    params.guardianAddress ?? ethers.ZeroAddress,
+  );
 
   return ethers.concat([
     numberToOneByte(ACTION.REGISTER_WALLET_FREE),

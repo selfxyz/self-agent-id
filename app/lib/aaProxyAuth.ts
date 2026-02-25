@@ -3,11 +3,12 @@
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
 import { createHash, createHmac, timingSafeEqual } from "crypto";
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 
 const TOKEN_SECRET = process.env.AA_PROXY_TOKEN_SECRET || "";
 const TOKEN_TTL_MS = Number(process.env.AA_PROXY_TOKEN_TTL_MS || 90_000);
-const ENFORCE_ORIGIN = (process.env.AA_PROXY_ENFORCE_ORIGIN || "true") !== "false";
+const ENFORCE_ORIGIN =
+  (process.env.AA_PROXY_ENFORCE_ORIGIN || "true") !== "false";
 const ALLOWED_ORIGINS = (process.env.AA_PROXY_ALLOWED_ORIGINS || "")
   .split(",")
   .map((v) => v.trim())
@@ -34,7 +35,9 @@ function sign(payloadB64: string): string {
   );
 }
 
-function parseToken(token: string): { payload: TokenPayload; payloadB64: string; sigB64: string } | null {
+function parseToken(
+  token: string,
+): { payload: TokenPayload; payloadB64: string; sigB64: string } | null {
   const [payloadB64, sigB64] = token.split(".");
   if (!payloadB64 || !sigB64) return null;
   try {
@@ -68,7 +71,10 @@ function getUaHash(req: NextRequest): string {
   return createHash("sha256").update(ua).digest("hex");
 }
 
-export function validateAllowedOrigin(req: NextRequest): { ok: boolean; error?: string } {
+export function validateAllowedOrigin(req: NextRequest): {
+  ok: boolean;
+  error?: string;
+} {
   if (!ENFORCE_ORIGIN) return { ok: true };
 
   const origin = req.headers.get("origin");
@@ -89,14 +95,18 @@ export function validateAllowedOrigin(req: NextRequest): { ok: boolean; error?: 
     }
 
     if (!expectedHost) return { ok: false, error: "Missing host header" };
-    if (parsed.host !== expectedHost) return { ok: false, error: "Cross-origin request blocked" };
+    if (parsed.host !== expectedHost)
+      return { ok: false, error: "Cross-origin request blocked" };
     return { ok: true };
   } catch {
     return { ok: false, error: "Invalid origin/referer" };
   }
 }
 
-export function issueAaProxyToken(req: NextRequest, chainId: string): {
+export function issueAaProxyToken(
+  req: NextRequest,
+  chainId: string,
+): {
   token?: string;
   expiresAt?: number;
   error?: string;
@@ -132,7 +142,10 @@ export function verifyAaProxyToken(
   const expectedSig = sign(parsed.payloadB64);
   const expectedBuf = Buffer.from(expectedSig);
   const gotBuf = Buffer.from(parsed.sigB64);
-  if (expectedBuf.length !== gotBuf.length || !timingSafeEqual(expectedBuf, gotBuf)) {
+  if (
+    expectedBuf.length !== gotBuf.length ||
+    !timingSafeEqual(expectedBuf, gotBuf)
+  ) {
     return { ok: false, error: "Invalid AA token signature" };
   }
 
@@ -154,4 +167,3 @@ export function verifyAaProxyToken(
 
   return { ok: true };
 }
-

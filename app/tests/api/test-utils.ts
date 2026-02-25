@@ -7,6 +7,8 @@ export function makeNextRequest(
   return new NextRequest(url, init);
 }
 
-export async function jsonBody<T = Record<string, unknown>>(res: Response): Promise<T> {
+export async function jsonBody<T = Record<string, unknown>>(
+  res: Response,
+): Promise<T> {
   return (await res.json()) as T;
 }

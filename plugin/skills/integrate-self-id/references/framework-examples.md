@@ -15,7 +15,9 @@ import { SelfAgentVerifier } from "@selfxyz/agent-sdk";
 // --- Configuration ---
 
 const PORT = process.env.PORT || 3000;
-const NETWORK = (process.env.SELF_NETWORK || "mainnet") as "mainnet" | "testnet";
+const NETWORK = (process.env.SELF_NETWORK || "mainnet") as
+  | "mainnet"
+  | "testnet";
 
 // --- Verifier Setup ---
 
@@ -575,10 +577,7 @@ const agentAuth = async (c: any, next: any) => {
   const timestamp = c.req.header("x-self-agent-timestamp");
 
   if (!address || !signature || !timestamp) {
-    return c.json(
-      { error: "Missing Self Agent authentication headers" },
-      401
-    );
+    return c.json({ error: "Missing Self Agent authentication headers" }, 401);
   }
 
   const body = await c.req.text();
@@ -595,7 +594,7 @@ const agentAuth = async (c: any, next: any) => {
   if (!result.valid) {
     return c.json(
       { error: "Agent verification failed", reason: result.error },
-      401
+      401,
     );
   }
 
@@ -611,7 +610,7 @@ app.get("/info", (c) =>
   c.json({
     name: "Edge Agent Service",
     runtime: "Cloudflare Workers",
-  })
+  }),
 );
 
 // --- Protected Routes ---
@@ -643,10 +642,7 @@ app.post("/api/claim-reward", (c) => {
   const agent = c.get("agent");
 
   if (agent.agentCount > 1) {
-    return c.json(
-      { error: "Only one agent per human can claim" },
-      403
-    );
+    return c.json({ error: "Only one agent per human can claim" }, 403);
   }
 
   return c.json({ claimed: true, agentId: agent.agentId });
@@ -684,7 +680,7 @@ export async function GET(req: NextRequest) {
   if (!address || !signature || !timestamp) {
     return NextResponse.json(
       { error: "Missing Self Agent authentication headers" },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -700,7 +696,7 @@ export async function GET(req: NextRequest) {
   if (!result.valid) {
     return NextResponse.json(
       { error: "Agent verification failed", reason: result.error },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -720,7 +716,7 @@ export async function POST(req: NextRequest) {
   if (!address || !signature || !timestamp) {
     return NextResponse.json(
       { error: "Missing Self Agent authentication headers" },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -738,7 +734,7 @@ export async function POST(req: NextRequest) {
   if (!result.valid) {
     return NextResponse.json(
       { error: "Agent verification failed", reason: result.error },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -772,7 +768,7 @@ const verifier = SelfAgentVerifier.create()
 export async function verifyAgent(
   req: NextRequest,
   method: string,
-  path: string
+  path: string,
 ): Promise<{ result: VerificationResult } | { error: NextResponse }> {
   const address = req.headers.get("x-self-agent-address");
   const signature = req.headers.get("x-self-agent-signature");
@@ -782,7 +778,7 @@ export async function verifyAgent(
     return {
       error: NextResponse.json(
         { error: "Missing Self Agent authentication headers" },
-        { status: 401 }
+        { status: 401 },
       ),
     };
   }
@@ -802,7 +798,7 @@ export async function verifyAgent(
     return {
       error: NextResponse.json(
         { error: "Agent verification failed", reason: result.error },
-        { status: 401 }
+        { status: 401 },
       ),
     };
   }
@@ -1176,20 +1172,20 @@ forge verify-contract \
 
 **Mainnet (Celo, chain 42220):**
 
-| Parameter | Value |
-|---|---|
-| `_registry` | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` |
-| `_reputation` | (deployed alongside registry) |
-| `_validation` | (deployed alongside registry) |
+| Parameter       | Value                                        |
+| --------------- | -------------------------------------------- |
+| `_registry`     | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` |
+| `_reputation`   | (deployed alongside registry)                |
+| `_validation`   | (deployed alongside registry)                |
 | `_selfProvider` | `0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d` |
 
 **Testnet (Celo Sepolia, chain 11142220):**
 
-| Parameter | Value |
-|---|---|
-| `_registry` | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` |
-| `_reputation` | (deployed alongside registry) |
-| `_validation` | (deployed alongside registry) |
+| Parameter       | Value                                        |
+| --------------- | -------------------------------------------- |
+| `_registry`     | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` |
+| `_reputation`   | (deployed alongside registry)                |
+| `_validation`   | (deployed alongside registry)                |
 | `_selfProvider` | `0x5E61c3051Bf4115F90AacEAE6212bc419f8aBB6c` |
 
 ---
@@ -1208,6 +1204,7 @@ All frameworks should return consistent error responses for verification failure
 ```
 
 Standard HTTP status codes:
+
 - `401 Unauthorized` — Missing headers, invalid signature, unverified agent, wrong provider
 - `403 Forbidden` — Credential check failed (age, OFAC, sybil limit)
 - `429 Too Many Requests` — Rate limit exceeded
@@ -1248,7 +1245,7 @@ app.use(
       "x-self-agent-signature",
       "x-self-agent-timestamp",
     ],
-  })
+  }),
 );
 ```
 

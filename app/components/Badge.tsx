@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 
 const styles: Record<string, string> = {
   success: "bg-accent-success/10 text-accent-success border-accent-success/20",
@@ -18,7 +18,11 @@ interface BadgeProps {
   className?: string;
 }
 
-export function Badge({ children, variant = "muted", className = "" }: BadgeProps) {
+export function Badge({
+  children,
+  variant = "muted",
+  className = "",
+}: BadgeProps) {
   return (
     <span
       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${styles[variant]} ${className}`}

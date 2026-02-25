@@ -7,6 +7,7 @@ Reviewer mode: Read-only audit (no code modifications)
 ## Findings (Critical to Informational)
 
 ### 1. Critical: Unauthenticated MCP endpoint exposes privileged identity operations
+
 - Severity: Critical
 - Location:
   - `app/app/api/mcp/route.ts:15`
@@ -21,6 +22,7 @@ Reviewer mode: Read-only audit (no code modifications)
 - CVSS 3.1: `AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H`
 
 ### 2. High: MCP `self_authenticated_fetch` is an unauthenticated SSRF/open-proxy primitive
+
 - Severity: High
 - Location:
   - `app/lib/mcp/handlers/auth.ts:64`
@@ -32,6 +34,7 @@ Reviewer mode: Read-only audit (no code modifications)
 - CVSS 3.1: `AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:L/A:L`
 
 ### 3. High: Session token transport in URL plus export endpoint enables agent key theft on token disclosure
+
 - Severity: High
 - Location:
   - `app/app/api/agent/register/route.ts:231`
@@ -47,6 +50,7 @@ Reviewer mode: Read-only audit (no code modifications)
 - CVSS 3.1: `AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:L`
 
 ### 4. High: `/api/demo/chat` allows anonymous upstream invocation with no rate limit
+
 - Severity: High
 - Location:
   - `app/app/api/demo/chat/route.ts:34`
@@ -58,6 +62,7 @@ Reviewer mode: Read-only audit (no code modifications)
 - CVSS 3.1: `AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H`
 
 ### 5. Medium: Replay guard can be poisoned (unbounded future timestamps and ordering issue in chain-verify path)
+
 - Severity: Medium
 - Location:
   - `app/lib/replayGuard.ts:91`
@@ -71,6 +76,7 @@ Reviewer mode: Read-only audit (no code modifications)
 - CVSS 3.1: `AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:M`
 
 ### 6. Medium: Callback proof payload accepted with minimal validation and stored in session token
+
 - Severity: Medium
 - Location:
   - `app/app/api/agent/register/callback/route.ts:52`
@@ -84,6 +90,7 @@ Reviewer mode: Read-only audit (no code modifications)
 - CVSS 3.1: `AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:M`
 
 ### 7. Medium: AA proxy origin/IP controls are bypass-prone as authentication boundaries
+
 - Severity: Medium
 - Location:
   - `app/lib/aaProxyAuth.ts:59`
@@ -96,6 +103,7 @@ Reviewer mode: Read-only audit (no code modifications)
 - CVSS 3.1: `AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:M`
 
 ### 8. Medium: Wildcard CORS applied globally to state-changing agent endpoints
+
 - Severity: Medium
 - Location:
   - `app/lib/agent-api-helpers.ts:50`
@@ -107,6 +115,7 @@ Reviewer mode: Read-only audit (no code modifications)
 - CVSS 3.1: `AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N`
 
 ### 9. Medium: No explicit outbound timeouts on critical external calls
+
 - Severity: Medium
 - Location:
   - `app/app/api/aa/bundler/route.ts:131`
@@ -120,6 +129,7 @@ Reviewer mode: Read-only audit (no code modifications)
 - CVSS 3.1: `AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:M`
 
 ### 10. Low: Demo chain-verify limiter is per-instance in-memory
+
 - Severity: Low
 - Location:
   - `app/app/api/demo/chain-verify/route.ts:22`
@@ -130,6 +140,7 @@ Reviewer mode: Read-only audit (no code modifications)
 - CVSS 3.1: `AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L`
 
 ### 11. Low: Upstash `INCR` plus conditional `PEXPIRE` is not atomic
+
 - Severity: Low
 - Location:
   - `app/lib/securityStore.ts:110`
@@ -141,6 +152,7 @@ Reviewer mode: Read-only audit (no code modifications)
 - CVSS 3.1: `AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:L`
 
 ### 12. Informational: Core crypto usage is mostly sound, but secret hygiene requirements are under-specified
+
 - Severity: Informational
 - Location:
   - `app/lib/session-token.ts:34`
@@ -154,6 +166,7 @@ Reviewer mode: Read-only audit (no code modifications)
 - CVSS: N/A
 
 ### 13. Informational: Dependency and security test posture still need hardening depth
+
 - Severity: Informational
 - Location:
   - `app/package.json:15`
@@ -167,6 +180,7 @@ Reviewer mode: Read-only audit (no code modifications)
 ## Cross-Review Additions (Second Security Review Reconciliation)
 
 ### A1. Medium: MCP `self_verify_request` disables replay protection
+
 - Severity: Medium (can be High if downstream treats MCP output as authoritative authz)
 - Location:
   - `app/lib/mcp/handlers/verify.ts:172`
@@ -177,6 +191,7 @@ Reviewer mode: Read-only audit (no code modifications)
 - CVSS 3.1: `AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N`
 
 ### A2. Medium: AA proxy body limit checks UTF-16 char count, not UTF-8 bytes
+
 - Severity: Medium
 - Location:
   - `app/app/api/aa/bundler/route.ts:120`
@@ -188,6 +203,7 @@ Reviewer mode: Read-only audit (no code modifications)
 - CVSS 3.1: `AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L`
 
 ### A3. Low: Deregistration initiation has no caller possession proof for target agent
+
 - Severity: Low
 - Location:
   - `app/app/api/agent/deregister/route.ts:48`
@@ -199,6 +215,7 @@ Reviewer mode: Read-only audit (no code modifications)
 - CVSS 3.1: `AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N`
 
 ### Reconciliation Notes
+
 - Strong concurrence: unauthenticated MCP exposure, SSRF risk, URL token leakage, replay/timestamp issues, outage/degraded-rate-limit concerns, and missing outbound timeouts.
 - Severity nuance: I treat deregistration initiation as lower severity than direct auth bypass because Self-app confirmation remains a hard gate.
 - Protocol nuance: removing MCP `DELETE` is not always safe because some MCP transport modes use it; gate it behind auth and method policy rather than blanket removal.
@@ -229,6 +246,7 @@ Goal: Compromise identity trust or abuse infrastructure
 ## Remediation Roadmap
 
 ### Immediate (same day)
+
 1. Add authentication/authorization guard on `/api/mcp`.
 2. Enforce strict per-tool authorization for privileged MCP actions (request signing, authenticated fetch, identity-changing flows).
 3. Require signed auth on `/api/demo/chat` in production and add strict rate limits.
@@ -236,12 +254,14 @@ Goal: Compromise identity trust or abuse infrastructure
 5. Restrict CORS for state-changing routes.
 
 ### Short Term (1-3 days)
+
 1. Move session tokens out of query params to header/cookie transport.
 2. Add signed callback authenticity verification and strict schema validation.
 3. Enforce replay timestamp bounds and cap replay key TTL.
 4. Move demo per-human rate limits to Upstash shared state.
 
 ### Medium Term (1-2 weeks)
+
 1. Add token audience and endpoint scoping for AA proxy tokens.
 2. Add startup secret policy checks (presence, min entropy, safe defaults).
 3. Build security regression suite (auth bypass, replay, SSRF, request size, timeout behavior).
@@ -249,6 +269,7 @@ Goal: Compromise identity trust or abuse infrastructure
 ## Threat Model Update (STRIDE)
 
 ### Registration/Deregistration
+
 - Spoofing: Callback authenticity gap.
 - Tampering: Stage transitions can be influenced via unvalidated payloads.
 - Repudiation: Limited event-level auditing context.
@@ -257,6 +278,7 @@ Goal: Compromise identity trust or abuse infrastructure
 - Elevation of Privilege: Token reuse across endpoints if leaked.
 
 ### Verification and Public Read APIs
+
 - Spoofing: Low.
 - Tampering: Low.
 - Repudiation: Moderate observability gaps.
@@ -265,6 +287,7 @@ Goal: Compromise identity trust or abuse infrastructure
 - Elevation of Privilege: Low.
 
 ### AA Proxy
+
 - Spoofing: Origin/IP checks are not strong identity.
 - Tampering: Method allowlist helps.
 - Repudiation: Caller attribution limited without stronger auth.
@@ -273,6 +296,7 @@ Goal: Compromise identity trust or abuse infrastructure
 - Elevation of Privilege: Token scope confusion risk.
 
 ### MCP Endpoint
+
 - Spoofing: Critical if unauthenticated.
 - Tampering: Tool misuse across broad capabilities.
 - Repudiation: Weak user-level attribution.
@@ -281,6 +305,7 @@ Goal: Compromise identity trust or abuse infrastructure
 - Elevation of Privilege: High with private-key tools enabled.
 
 ### Demo Endpoints
+
 - Spoofing: Mixed (some verified, some anonymous).
 - Tampering: Replay/cache abuse vectors.
 - Repudiation: Minimal.
@@ -289,6 +314,7 @@ Goal: Compromise identity trust or abuse infrastructure
 - Elevation of Privilege: Moderate.
 
 ### Rate Limiting/Security Store
+
 - Spoofing: Header-based IP keying limitations.
 - Tampering: Low.
 - Repudiation: Low.

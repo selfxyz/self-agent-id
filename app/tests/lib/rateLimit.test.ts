@@ -17,34 +17,54 @@ describe("checkRateLimit", () => {
 
   it("allows when count <= limit", async () => {
     mockIncrementWithWindow.mockResolvedValue({ count: 3, ttlMs: 5000 });
-    const result = await checkRateLimit({ key: "test", limit: 5, windowMs: 60000 });
+    const result = await checkRateLimit({
+      key: "test",
+      limit: 5,
+      windowMs: 60000,
+    });
     expect(result.allowed).toBe(true);
     expect(result.remaining).toBe(2);
   });
 
   it("allows when count equals limit exactly", async () => {
     mockIncrementWithWindow.mockResolvedValue({ count: 5, ttlMs: 5000 });
-    const result = await checkRateLimit({ key: "test", limit: 5, windowMs: 60000 });
+    const result = await checkRateLimit({
+      key: "test",
+      limit: 5,
+      windowMs: 60000,
+    });
     expect(result.allowed).toBe(true);
     expect(result.remaining).toBe(0);
   });
 
   it("denies when count > limit", async () => {
     mockIncrementWithWindow.mockResolvedValue({ count: 6, ttlMs: 5000 });
-    const result = await checkRateLimit({ key: "test", limit: 5, windowMs: 60000 });
+    const result = await checkRateLimit({
+      key: "test",
+      limit: 5,
+      windowMs: 60000,
+    });
     expect(result.allowed).toBe(false);
     expect(result.remaining).toBe(0);
   });
 
   it("remaining never goes negative", async () => {
     mockIncrementWithWindow.mockResolvedValue({ count: 100, ttlMs: 5000 });
-    const result = await checkRateLimit({ key: "test", limit: 5, windowMs: 60000 });
+    const result = await checkRateLimit({
+      key: "test",
+      limit: 5,
+      windowMs: 60000,
+    });
     expect(result.remaining).toBe(0);
   });
 
   it("retryAfterMs is at least 1", async () => {
     mockIncrementWithWindow.mockResolvedValue({ count: 1, ttlMs: 0 });
-    const result = await checkRateLimit({ key: "test", limit: 5, windowMs: 60000 });
+    const result = await checkRateLimit({
+      key: "test",
+      limit: 5,
+      windowMs: 60000,
+    });
     expect(result.retryAfterMs).toBeGreaterThanOrEqual(1);
   });
 

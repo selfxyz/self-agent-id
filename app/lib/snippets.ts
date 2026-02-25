@@ -26,24 +26,84 @@ export interface Feature {
 // ============================================================
 
 export const SERVICE_FEATURES: Feature[] = [
-  { id: "age18", label: "Over 18", description: "Require agent's human to be 18+" },
-  { id: "age21", label: "Over 21", description: "Require agent's human to be 21+" },
-  { id: "ofac", label: "Not on OFAC List", description: "Require OFAC sanctions check" },
-  { id: "nationality", label: "Nationality", description: "Read agent's nationality credential" },
-  { id: "issuingState", label: "Issuing State", description: "Read passport issuing state" },
-  { id: "sybil", label: "Custom Sybil Limit", description: "Allow up to 5 agents per human" },
-  { id: "regAge", label: "Registration Age", description: "Require agent registered for N blocks" },
-  { id: "credentials", label: "Read All Credentials", description: "Fetch full credential set" },
-  { id: "rateLimit", label: "Rate Limit", description: "Limit requests per agent per time window" },
+  {
+    id: "age18",
+    label: "Over 18",
+    description: "Require agent's human to be 18+",
+  },
+  {
+    id: "age21",
+    label: "Over 21",
+    description: "Require agent's human to be 21+",
+  },
+  {
+    id: "ofac",
+    label: "Not on OFAC List",
+    description: "Require OFAC sanctions check",
+  },
+  {
+    id: "nationality",
+    label: "Nationality",
+    description: "Read agent's nationality credential",
+  },
+  {
+    id: "issuingState",
+    label: "Issuing State",
+    description: "Read passport issuing state",
+  },
+  {
+    id: "sybil",
+    label: "Custom Sybil Limit",
+    description: "Allow up to 5 agents per human",
+  },
+  {
+    id: "regAge",
+    label: "Registration Age",
+    description: "Require agent registered for N blocks",
+  },
+  {
+    id: "credentials",
+    label: "Read All Credentials",
+    description: "Fetch full credential set",
+  },
+  {
+    id: "rateLimit",
+    label: "Rate Limit",
+    description: "Limit requests per agent per time window",
+  },
 ];
 
 export const AGENT_FEATURES: Feature[] = [
-  { id: "checkStatus", label: "Check Status", description: "Verify own registration before requests" },
-  { id: "ownCreds", label: "Read Credentials", description: "Fetch own ZK-attested credentials" },
-  { id: "agentInfo", label: "Agent Info", description: "Fetch agent ID, owner, and registration block" },
-  { id: "sameHuman", label: "Same Human Check", description: "Detect if peer agent is same person" },
-  { id: "diffHuman", label: "Different Human", description: "Reject collaboration with own agents" },
-  { id: "mutual", label: "Mutual Verification", description: "Both agents must be verified" },
+  {
+    id: "checkStatus",
+    label: "Check Status",
+    description: "Verify own registration before requests",
+  },
+  {
+    id: "ownCreds",
+    label: "Read Credentials",
+    description: "Fetch own ZK-attested credentials",
+  },
+  {
+    id: "agentInfo",
+    label: "Agent Info",
+    description: "Fetch agent ID, owner, and registration block",
+  },
+  {
+    id: "sameHuman",
+    label: "Same Human Check",
+    description: "Detect if peer agent is same person",
+  },
+  {
+    id: "diffHuman",
+    label: "Different Human",
+    description: "Reject collaboration with own agents",
+  },
+  {
+    id: "mutual",
+    label: "Mutual Verification",
+    description: "Both agents must be verified",
+  },
 ];
 
 // ============================================================
@@ -51,8 +111,14 @@ export const AGENT_FEATURES: Feature[] = [
 // ============================================================
 
 function needsCreds(f: Set<string>): boolean {
-  return f.has("age18") || f.has("age21") || f.has("ofac") ||
-    f.has("nationality") || f.has("issuingState") || f.has("credentials");
+  return (
+    f.has("age18") ||
+    f.has("age21") ||
+    f.has("ofac") ||
+    f.has("nationality") ||
+    f.has("issuingState") ||
+    f.has("credentials")
+  );
 }
 
 // ============================================================
@@ -84,7 +150,8 @@ function buildServiceTS(
   let body = `  console.log("Verified agent:", req.agent.address);`;
 
   // Credential reads (display only — validation is done by the builder)
-  const needsCredRead = f.has("nationality") || f.has("issuingState") || f.has("credentials");
+  const needsCredRead =
+    f.has("nationality") || f.has("issuingState") || f.has("credentials");
   if (needsCredRead) {
     body += `\n\n  // Read ZK-attested credentials (validation handled by the builder)
   const creds = req.agent.credentials;`;
@@ -123,13 +190,17 @@ app.use(express.json({
   },
 }));
 ${verifierDecl}
-${regAge ? `
+${
+  regAge
+    ? `
 const provider = new ethers.JsonRpcProvider("${rpcUrl}");
 const registry = new ethers.Contract(
   "${registryAddress}",
   ["function agentRegisteredAt(uint256) view returns (uint256)"],
   provider,
-);` : ""}
+);`
+    : ""
+}
 app.use("/api", verifier.auth());
 
 app.post("/api/data", ${asyncKw}(req, res) => {
@@ -155,13 +226,16 @@ function buildServicePythonSDK(f: Set<string>): string {
   // Build handler body — credential checks handled by builder, only reads remain
   let body = `    print("Verified agent:", g.agent.agent_address)`;
 
-  const needsCredRead = f.has("nationality") || f.has("issuingState") || f.has("credentials");
+  const needsCredRead =
+    f.has("nationality") || f.has("issuingState") || f.has("credentials");
   if (needsCredRead) {
     body += `\n\n    # Read ZK-attested credentials (validation handled by the builder)
     creds = g.agent.credentials`;
   }
-  if (f.has("nationality")) body += `\n    print("Nationality:", creds.nationality)`;
-  if (f.has("issuingState")) body += `\n    print("Issuing state:", creds.issuing_state)`;
+  if (f.has("nationality"))
+    body += `\n    print("Nationality:", creds.nationality)`;
+  if (f.has("issuingState"))
+    body += `\n    print("Issuing state:", creds.issuing_state)`;
   if (f.has("credentials")) body += `\n    print("All credentials:", creds)`;
 
   body += `\n\n    return jsonify(ok=True)`;
@@ -188,7 +262,8 @@ function buildServiceRustSDK(f: Set<string>): string {
   if (f.has("age21")) builderLines.push("        .require_age(21)");
   if (f.has("ofac")) builderLines.push("        .require_ofac()");
   if (f.has("sybil")) builderLines.push("        .sybil_limit(5)");
-  if (f.has("rateLimit")) builderLines.push("        .rate_limit(RateLimit { per_minute: 10 })");
+  if (f.has("rateLimit"))
+    builderLines.push("        .rate_limit(RateLimit { per_minute: 10 })");
 
   const verifierBody = builderLines.length
     ? `SelfAgentVerifier::create()\n${builderLines.join("\n")}\n        .build()`
@@ -336,7 +411,11 @@ ${body}
 
 // ── Agent → Agent builders ──
 
-function buildAgentAgentTS(f: Set<string>, registryAddress: string = "0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379", rpcUrl: string = "https://forno.celo-sepolia.celo-testnet.org"): string {
+function buildAgentAgentTS(
+  f: Set<string>,
+  registryAddress: string = "0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379",
+  rpcUrl: string = "https://forno.celo-sepolia.celo-testnet.org",
+): string {
   const mutual = f.has("mutual");
   const sameHuman = f.has("sameHuman");
   const diffHuman = f.has("diffHuman");
@@ -411,7 +490,10 @@ ${verifyBody}
 }`;
 }
 
-function buildAgentAgentSolidity(f: Set<string>, registryAddress: string = "0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379"): string {
+function buildAgentAgentSolidity(
+  f: Set<string>,
+  registryAddress: string = "0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379",
+): string {
   const diffHuman = f.has("diffHuman");
   const sameHuman = f.has("sameHuman");
   const mutual = f.has("mutual");
@@ -476,7 +558,10 @@ ${modifier}
 
 // ── Agent → Chain builder ──
 
-function buildAgentChainSolidity(f: Set<string>, registryAddress: string = "0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379"): string {
+function buildAgentChainSolidity(
+  f: Set<string>,
+  registryAddress: string = "0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379",
+): string {
   const sybil = f.has("sybil");
   const creds = needsCreds(f);
   const regAge = f.has("regAge");
@@ -999,7 +1084,11 @@ export function getServiceSnippets(
         "Verify that an AI agent calling your API is human-backed. The SDK recovers the signer from the ECDSA signature, checks isVerifiedAgent() on-chain, and optionally reads ZK-attested credentials and enforces sybil limits.",
       flow: "npm install @selfxyz/agent-sdk (or pip install selfxyz-agent-sdk or cargo add self-agent-sdk) \u2192 Create verifier \u2192 Add middleware \u2192 Done",
       snippets: [
-        { label: "TypeScript", language: "typescript", code: buildServiceTS(f, registryAddress, rpcUrl) },
+        {
+          label: "TypeScript",
+          language: "typescript",
+          code: buildServiceTS(f, registryAddress, rpcUrl),
+        },
         { label: "Python", language: "python", code: buildServicePythonSDK(f) },
         { label: "Rust", language: "rust", code: buildServiceRustSDK(f) },
       ],
@@ -1010,10 +1099,22 @@ export function getServiceSnippets(
         "Verify a peer agent is human-backed before collaborating. Recover the signer from their ECDSA signature, check isVerifiedAgent() on-chain, and use sameHuman() to detect sybil attacks in multi-agent systems.",
       flow: "Receive signed message \u2192 Verify via SDK \u2192 Check identity \u2192 Collaborate",
       snippets: [
-        { label: "TypeScript", language: "typescript", code: buildAgentAgentTS(f, registryAddress, rpcUrl) },
-        { label: "Python", language: "python", code: buildAgentAgentPythonSDK(f) },
+        {
+          label: "TypeScript",
+          language: "typescript",
+          code: buildAgentAgentTS(f, registryAddress, rpcUrl),
+        },
+        {
+          label: "Python",
+          language: "python",
+          code: buildAgentAgentPythonSDK(f),
+        },
         { label: "Rust", language: "rust", code: buildAgentAgentRustSDK(f) },
-        { label: "Solidity", language: "solidity", code: buildAgentAgentSolidity(f, registryAddress) },
+        {
+          label: "Solidity",
+          language: "solidity",
+          code: buildAgentAgentSolidity(f, registryAddress),
+        },
       ],
     },
     {
@@ -1022,7 +1123,11 @@ export function getServiceSnippets(
         "Gate your smart contract so only human-backed agents can call it. The contract derives the agent key as bytes32(uint256(uint160(msg.sender))) and calls isVerifiedAgent() on the registry. No SDK needed \u2014 pure on-chain verification.",
       flow: "Agent calls your contract \u2192 Modifier derives key from msg.sender \u2192 Checks registry \u2192 Executes",
       snippets: [
-        { label: "Solidity", language: "solidity", code: buildAgentChainSolidity(f, registryAddress) },
+        {
+          label: "Solidity",
+          language: "solidity",
+          code: buildAgentChainSolidity(f, registryAddress),
+        },
       ],
     },
   ];
@@ -1042,7 +1147,11 @@ export function getAgentSnippets(
         "Your agent signs every outgoing HTTP request with ECDSA (timestamp + method + URL + body hash). Services recover the signer from the signature and check isVerifiedAgent() on-chain \u2014 no API keys or tokens needed.",
       flow: "npm install @selfxyz/agent-sdk (or pip install selfxyz-agent-sdk or cargo add self-agent-sdk) \u2192 Create agent \u2192 Use agent.fetch() \u2192 Service verifies automatically",
       snippets: [
-        { label: "TypeScript", language: "typescript", code: buildSignRequestsTS(f) },
+        {
+          label: "TypeScript",
+          language: "typescript",
+          code: buildSignRequestsTS(f),
+        },
         {
           label: "Python",
           language: "python",
@@ -1071,10 +1180,22 @@ print(f"Agent ID: {info.agent_id}, Verified: {info.is_verified}")`,
         "Your agent address is a real Ethereum wallet. Fund it with gas and it can call smart contracts directly. Contracts derive bytes32(uint256(uint160(msg.sender))) and check the registry \u2014 no off-chain signature needed for on-chain calls.",
       flow: "Fund agent wallet with gas \u2192 Agent calls contract \u2192 Contract checks registry \u2192 Action proceeds",
       snippets: [
-        { label: "TypeScript", language: "typescript", code: buildSubmitTxTS(rpcUrl) },
-        { label: "Python", language: "python", code: buildSubmitTxPython(rpcUrl) },
+        {
+          label: "TypeScript",
+          language: "typescript",
+          code: buildSubmitTxTS(rpcUrl),
+        },
+        {
+          label: "Python",
+          language: "python",
+          code: buildSubmitTxPython(rpcUrl),
+        },
         { label: "Rust", language: "rust", code: buildSubmitTxRust(rpcUrl) },
-        { label: "Solidity (Contract)", language: "solidity", code: buildSubmitTxSolidity(registryAddress) },
+        {
+          label: "Solidity (Contract)",
+          language: "solidity",
+          code: buildSubmitTxSolidity(registryAddress),
+        },
       ],
     },
     {
@@ -1083,8 +1204,16 @@ print(f"Agent ID: {info.agent_id}, Verified: {info.is_verified}")`,
         "Run the same demo tests from your terminal that the browser demo runs. Hits the live Cloud Run endpoints for service verification, agent-to-agent peer check, and on-chain meta-transaction verification.",
       flow: "Set AGENT_PRIVATE_KEY → Run script → Hits live endpoints → Confirms agent works end-to-end",
       snippets: [
-        { label: "TypeScript", language: "typescript", code: buildTestSetupTS() },
-        { label: "Python", language: "python", code: buildTestSetupPythonSDK() },
+        {
+          label: "TypeScript",
+          language: "typescript",
+          code: buildTestSetupTS(),
+        },
+        {
+          label: "Python",
+          language: "python",
+          code: buildTestSetupPythonSDK(),
+        },
         { label: "Rust", language: "rust", code: buildTestSetupRustSDK() },
       ],
     },

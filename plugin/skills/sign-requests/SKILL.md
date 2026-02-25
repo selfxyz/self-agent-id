@@ -20,11 +20,11 @@ metadata:
 
 Every authenticated HTTP request from a Self Agent carries exactly three headers. These headers together form a tamper-proof, replay-resistant authentication envelope:
 
-| Header | Content | Format |
-|---|---|---|
-| `x-self-agent-address` | Agent's Ethereum address | EIP-55 checksummed hex (e.g., `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`) |
-| `x-self-agent-signature` | ECDSA signature over the request | Hex-encoded, 0x-prefixed, 65 bytes (r + s + v) |
-| `x-self-agent-timestamp` | Unix timestamp in milliseconds | String (e.g., `"1708704000000"`) |
+| Header                   | Content                          | Format                                                                      |
+| ------------------------ | -------------------------------- | --------------------------------------------------------------------------- |
+| `x-self-agent-address`   | Agent's Ethereum address         | EIP-55 checksummed hex (e.g., `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`) |
+| `x-self-agent-signature` | ECDSA signature over the request | Hex-encoded, 0x-prefixed, 65 bytes (r + s + v)                              |
+| `x-self-agent-timestamp` | Unix timestamp in milliseconds   | String (e.g., `"1708704000000"`)                                            |
 
 The address header is informational only. The receiving service recovers the signer address from the signature and compares it to the header value. This ensures the address cannot be spoofed — a valid signature can only be produced by the holder of the corresponding private key.
 
@@ -33,6 +33,7 @@ The address header is informational only. The receiving service recovers the sig
 The signing algorithm is identical across all three SDKs (TypeScript, Python, Rust) and the MCP server. The steps are:
 
 1. **Compute the body hash.** Take the request body as a UTF-8 string. If there is no body (e.g., GET requests), use an empty string. Hash it with Keccak-256. The result is a hex string with `0x` prefix.
+
    ```
    bodyHash = keccak256(body || "")
    ```
@@ -43,9 +44,11 @@ The signing algorithm is identical across all three SDKs (TypeScript, Python, Ru
    - `https://example.com/` becomes `/`
 
 3. **Build the signing message.** Concatenate four components as a single UTF-8 string, then hash with Keccak-256:
+
    ```
    message = keccak256(timestamp + method.toUpperCase() + pathWithQuery + bodyHash)
    ```
+
    Where `timestamp` is the millisecond Unix timestamp as a string, `method` is uppercase (GET, POST, PUT, DELETE), `pathWithQuery` is the canonicalized URL from step 2, and `bodyHash` is the hex string from step 1 (including the `0x` prefix).
 
 4. **Sign with EIP-191 personal_sign.** Apply EIP-191 personal message signing over the raw 32-byte hash from step 3. This prepends the standard `\x19Ethereum Signed Message:\n32` prefix before signing with the agent's ECDSA private key.
@@ -75,11 +78,13 @@ The MCP server provides two tools for request signing. Both require `SELF_AGENT_
 Generate authentication headers to attach manually.
 
 **Input:**
+
 - `method` (required): HTTP method — `GET`, `POST`, `PUT`, or `DELETE`
 - `url` (required): Full URL including scheme and host (e.g., `https://api.example.com/data?page=1`)
 - `body` (optional): Request body as a JSON string
 
 **Output:**
+
 ```json
 {
   "headers": {
@@ -98,12 +103,14 @@ Use this tool when building a request manually or when needing to inspect the he
 Have the MCP server perform the full signed HTTP request.
 
 **Input:**
+
 - `method` (required): HTTP method — `GET`, `POST`, `PUT`, or `DELETE`
 - `url` (required): Full URL
 - `body` (optional): Request body as a JSON string
 - `content_type` (optional): Content-Type header, defaults to `application/json`
 
 **Output:**
+
 ```json
 {
   "status": 200,
@@ -125,7 +132,7 @@ const agent = new SelfAgent({ privateKey: process.env.AGENT_PRIVATE_KEY! });
 const headers = await agent.signRequest(
   "POST",
   "https://api.example.com/protected",
-  JSON.stringify({ data: "value" })
+  JSON.stringify({ data: "value" }),
 );
 // headers = {
 //   "x-self-agent-address": "0x...",
@@ -264,7 +271,9 @@ if (await agent.isRegistered()) {
   const response = await agent.fetch("https://api.example.com/protected");
   // handle response
 } else {
-  console.error("Agent not registered — register first before making signed requests");
+  console.error(
+    "Agent not registered — register first before making signed requests",
+  );
 }
 ```
 
@@ -278,8 +287,8 @@ const response = await fetch(url, {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
-    "Authorization": "Bearer app-token",  // application-level auth
-    ...authHeaders,                        // agent identity headers
+    Authorization: "Bearer app-token", // application-level auth
+    ...authHeaders, // agent identity headers
   },
   body,
 });
@@ -290,7 +299,10 @@ const response = await fetch(url, {
 GET requests omit the body parameter. The body hash is computed over an empty string:
 
 ```typescript
-const headers = await agent.signRequest("GET", "https://api.example.com/data?page=1");
+const headers = await agent.signRequest(
+  "GET",
+  "https://api.example.com/data?page=1",
+);
 ```
 
 ```python
@@ -303,11 +315,11 @@ For full runnable code examples including error handling, retry logic, and integ
 
 ## Troubleshooting
 
-| Symptom | Cause | Resolution |
-|---|---|---|
-| Signature verification fails on server | Body mismatch — the body used for signing differs from the body sent | Ensure the exact same string is passed to both `signRequest()` and the HTTP request body. JSON serialization order matters. |
-| Signature verification fails on server | Timestamp drift between client and server | Check that both machines have synchronized clocks (NTP). The default window is 5 minutes. |
-| `401 Unauthorized` with valid signature | Path mismatch — signing used full URL but server verified with path only (or vice versa) | The signing algorithm uses only the path and query string (no scheme or host). Ensure the server reconstructs the same path. |
-| `SELF_AGENT_PRIVATE_KEY` not found | Environment variable not set in MCP server config | Add the key to the `env` block in your MCP server configuration (`.claude/mcp_servers.json` or `.mcp.json`). |
-| Signature is `0x` followed by 130 hex chars but verification fails | Wrong EIP-191 prefix or hash construction | Verify the message is hashed with Keccak-256 before EIP-191 personal_sign. The prefix must be `\x19Ethereum Signed Message:\n32` (32 bytes, not the hex string length). |
-| GET request signature rejected | Body parameter passed as `undefined` instead of omitted | For GET requests, omit the body parameter entirely or pass an empty string. Do not pass `undefined` or `null`. |
+| Symptom                                                            | Cause                                                                                    | Resolution                                                                                                                                                              |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Signature verification fails on server                             | Body mismatch — the body used for signing differs from the body sent                     | Ensure the exact same string is passed to both `signRequest()` and the HTTP request body. JSON serialization order matters.                                             |
+| Signature verification fails on server                             | Timestamp drift between client and server                                                | Check that both machines have synchronized clocks (NTP). The default window is 5 minutes.                                                                               |
+| `401 Unauthorized` with valid signature                            | Path mismatch — signing used full URL but server verified with path only (or vice versa) | The signing algorithm uses only the path and query string (no scheme or host). Ensure the server reconstructs the same path.                                            |
+| `SELF_AGENT_PRIVATE_KEY` not found                                 | Environment variable not set in MCP server config                                        | Add the key to the `env` block in your MCP server configuration (`.claude/mcp_servers.json` or `.mcp.json`).                                                            |
+| Signature is `0x` followed by 130 hex chars but verification fails | Wrong EIP-191 prefix or hash construction                                                | Verify the message is hashed with Keccak-256 before EIP-191 personal_sign. The prefix must be `\x19Ethereum Signed Message:\n32` (32 bytes, not the hex string length). |
+| GET request signature rejected                                     | Body parameter passed as `undefined` instead of omitted                                  | For GET requests, omit the body parameter entirely or pass an empty string. Do not pass `undefined` or `null`.                                                          |

@@ -2,15 +2,14 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 const variants: Record<string, string> = {
   primary:
     "bg-gradient-to-r from-accent to-accent-2 text-white hover:opacity-90",
   secondary:
     "bg-surface-2 border border-border text-foreground hover:border-border-strong hover:translate-y-[-1px]",
-  ghost:
-    "bg-transparent text-muted hover:text-foreground hover:bg-surface-1",
+  ghost: "bg-transparent text-muted hover:text-foreground hover:bg-surface-1",
   danger:
     "bg-accent-error/10 border border-accent-error/20 text-accent-error hover:bg-accent-error/20",
 };

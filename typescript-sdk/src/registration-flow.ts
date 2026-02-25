@@ -149,7 +149,7 @@ export interface ApiAgentsForHuman {
 
 export class ExpiredSessionError extends Error {
   constructor(
-    message = "Registration session expired. Call requestRegistration() again to start a new session."
+    message = "Registration session expired. Call requestRegistration() again to start a new session.",
   ) {
     super(message);
     this.name = "ExpiredSessionError";
@@ -192,10 +192,7 @@ function chainIdForNetwork(network: NetworkName): number {
   return CHAIN_IDS[network];
 }
 
-async function apiFetch<T>(
-  url: string,
-  init?: RequestInit
-): Promise<T> {
+async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await globalThis.fetch(url, init);
   const body = await res.json();
 
@@ -264,7 +261,7 @@ interface DeregisterInitResponse {
  * Returns a session object with polling and key export methods.
  */
 export async function requestRegistration(
-  opts: RegistrationRequest
+  opts: RegistrationRequest,
 ): Promise<RegistrationSession> {
   const base = resolveApiBase(opts.apiBase);
   const network = opts.network ?? "mainnet";
@@ -284,7 +281,7 @@ export async function requestRegistration(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    }
+    },
   );
 
   return buildRegistrationSession(data, base);
@@ -294,7 +291,7 @@ export async function requestRegistration(
  * Initiate agent deregistration through the Self Agent ID REST API.
  */
 export async function requestDeregistration(
-  opts: DeregistrationRequest
+  opts: DeregistrationRequest,
 ): Promise<DeregistrationSession> {
   const base = resolveApiBase(opts.apiBase);
   const network = opts.network ?? "mainnet";
@@ -311,7 +308,7 @@ export async function requestDeregistration(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    }
+    },
   );
 
   return buildDeregistrationSession(data, base);
@@ -322,15 +319,13 @@ export async function requestDeregistration(
  */
 export async function getAgentInfo(
   agentId: number,
-  opts?: { network?: NetworkName; apiBase?: string }
+  opts?: { network?: NetworkName; apiBase?: string },
 ): Promise<ApiAgentInfo> {
   const base = resolveApiBase(opts?.apiBase);
   const network = opts?.network ?? "mainnet";
   const chainId = chainIdForNetwork(network);
 
-  return apiFetch<ApiAgentInfo>(
-    `${base}/api/agent/info/${chainId}/${agentId}`
-  );
+  return apiFetch<ApiAgentInfo>(`${base}/api/agent/info/${chainId}/${agentId}`);
 }
 
 /**
@@ -338,14 +333,14 @@ export async function getAgentInfo(
  */
 export async function getAgentsForHuman(
   address: string,
-  opts?: { network?: NetworkName; apiBase?: string }
+  opts?: { network?: NetworkName; apiBase?: string },
 ): Promise<ApiAgentsForHuman> {
   const base = resolveApiBase(opts?.apiBase);
   const network = opts?.network ?? "mainnet";
   const chainId = chainIdForNetwork(network);
 
   return apiFetch<ApiAgentsForHuman>(
-    `${base}/api/agent/agents/${chainId}/${address}`
+    `${base}/api/agent/agents/${chainId}/${address}`,
   );
 }
 
@@ -353,7 +348,7 @@ export async function getAgentsForHuman(
 
 function buildRegistrationSession(
   data: RegisterInitResponse,
-  apiBase: string
+  apiBase: string,
 ): RegistrationSession {
   let currentToken = data.sessionToken;
 
@@ -377,7 +372,7 @@ function buildRegistrationSession(
         let status: StatusResponse;
         try {
           status = await apiFetch<StatusResponse>(
-            `${apiBase}/api/agent/register/status?token=${encodeURIComponent(currentToken)}`
+            `${apiBase}/api/agent/register/status?token=${encodeURIComponent(currentToken)}`,
           );
         } catch (err) {
           if (
@@ -411,7 +406,7 @@ function buildRegistrationSession(
       }
 
       throw new RegistrationError(
-        `Registration did not complete within ${timeout}ms. The session may still be active — call waitForCompletion() again to resume polling.`
+        `Registration did not complete within ${timeout}ms. The session may still be active — call waitForCompletion() again to resume polling.`,
       );
     },
 
@@ -422,7 +417,7 @@ function buildRegistrationSession(
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token: currentToken }),
-        }
+        },
       );
       return status.privateKey;
     },
@@ -431,7 +426,7 @@ function buildRegistrationSession(
 
 function buildDeregistrationSession(
   data: DeregisterInitResponse,
-  apiBase: string
+  apiBase: string,
 ): DeregistrationSession {
   let currentToken = data.sessionToken;
 
@@ -454,7 +449,7 @@ function buildDeregistrationSession(
         let status: StatusResponse;
         try {
           status = await apiFetch<StatusResponse>(
-            `${apiBase}/api/agent/deregister/status?token=${encodeURIComponent(currentToken)}`
+            `${apiBase}/api/agent/deregister/status?token=${encodeURIComponent(currentToken)}`,
           );
         } catch (err) {
           if (
@@ -462,7 +457,7 @@ function buildDeregistrationSession(
             err.message.toLowerCase().includes("expired")
           ) {
             throw new ExpiredSessionError(
-              "Deregistration session expired. Call requestDeregistration() again to start a new session."
+              "Deregistration session expired. Call requestDeregistration() again to start a new session.",
             );
           }
           throw err;
@@ -480,13 +475,13 @@ function buildDeregistrationSession(
 
         if (status.stage === "expired") {
           throw new ExpiredSessionError(
-            "Deregistration session expired. Call requestDeregistration() again to start a new session."
+            "Deregistration session expired. Call requestDeregistration() again to start a new session.",
           );
         }
       }
 
       throw new RegistrationError(
-        `Deregistration did not complete within ${timeout}ms. The session may still be active — call waitForCompletion() again to resume polling.`
+        `Deregistration did not complete within ${timeout}ms. The session may still be active — call waitForCompletion() again to resume polling.`,
       );
     },
   };

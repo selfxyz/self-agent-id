@@ -3,7 +3,17 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { ethers } from "ethers";
-import { Wallet, RefreshCw, Cpu, Shield, FileText, Search, Key, Fingerprint, Loader2 } from "lucide-react";
+import {
+  Wallet,
+  RefreshCw,
+  Cpu,
+  Shield,
+  FileText,
+  Search,
+  Key,
+  Fingerprint,
+  Loader2,
+} from "lucide-react";
 import { connectWallet } from "@/lib/wallet";
 import { REGISTRY_ABI, PROVIDER_ABI } from "@/lib/constants";
 import { useNetwork } from "@/lib/NetworkContext";
@@ -11,7 +21,13 @@ import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { StatusDot } from "@/components/StatusDot";
-import { signInWithPasskey, sendUserOperation, encodeGuardianRevoke, isPasskeySupported, isGaslessSupported } from "@/lib/aa";
+import {
+  signInWithPasskey,
+  sendUserOperation,
+  encodeGuardianRevoke,
+  isPasskeySupported,
+  isGaslessSupported,
+} from "@/lib/aa";
 
 interface AgentCredentials {
   issuingState: string;
@@ -46,7 +62,12 @@ async function fetchCredentials(
       olderThan: raw.olderThan ?? raw[7] ?? 0n,
       ofac: raw.ofac || raw[8] || [false, false, false],
     };
-    if (creds.nationality || creds.issuingState || creds.olderThan > 0n || creds.ofac?.some(Boolean)) {
+    if (
+      creds.nationality ||
+      creds.issuingState ||
+      creds.olderThan > 0n ||
+      creds.ofac?.some(Boolean)
+    ) {
       return creds;
     }
   } catch {
@@ -110,8 +131,10 @@ async function paginatedQueryFilter(
       const msg = err instanceof Error ? err.message : String(err);
       // Detect RPC block-range limit errors and halve the window
       if (
-        (msg.includes("block range") || msg.includes("10 block range") ||
-         msg.includes("Log response size exceeded") || msg.includes("query returned more than")) &&
+        (msg.includes("block range") ||
+          msg.includes("10 block range") ||
+          msg.includes("Log response size exceeded") ||
+          msg.includes("query returned more than")) &&
         blockWindow > MIN_WINDOW
       ) {
         blockWindow = Math.max(MIN_WINDOW, Math.floor(blockWindow / 2));
@@ -153,7 +176,11 @@ async function buildAgentEntry(
     }
 
     const credentials = await fetchCredentials(registry, agentId);
-    const { strength, hasA2ACard } = await fetchVerificationStrength(registry, agentId, provider);
+    const { strength, hasA2ACard } = await fetchVerificationStrength(
+      registry,
+      agentId,
+      provider,
+    );
 
     return {
       agentId,
@@ -188,7 +215,9 @@ export default function MyAgentsPage() {
   const [agents, setAgents] = useState<AgentEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [lookupMode, setLookupMode] = useState<"wallet" | "key" | "passkey">("wallet");
+  const [lookupMode, setLookupMode] = useState<"wallet" | "key" | "passkey">(
+    "wallet",
+  );
   const [agentKeyInput, setAgentKeyInput] = useState("");
   const [passkeyAddress, setPasskeyAddress] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
@@ -228,7 +257,11 @@ export default function MyAgentsPage() {
 
     try {
       const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-      const registry = new ethers.Contract(network.registryAddress, REGISTRY_ABI, provider);
+      const registry = new ethers.Contract(
+        network.registryAddress,
+        REGISTRY_ABI,
+        provider,
+      );
 
       const agentId: bigint = await registry.getAgentId(agentKey);
       if (agentId === 0n) {
@@ -259,21 +292,27 @@ export default function MyAgentsPage() {
       }
 
       const credentials = await fetchCredentials(registry, agentId);
-      const { strength, hasA2ACard } = await fetchVerificationStrength(registry, agentId, provider);
-
-      setAgents([{
+      const { strength, hasA2ACard } = await fetchVerificationStrength(
+        registry,
         agentId,
-        agentKey,
-        agentAddress,
-        isVerified,
-        registeredAt,
-        mode,
-        guardian,
-        hasMetadata,
-        hasA2ACard,
-        verificationStrength: strength,
-        credentials,
-      }]);
+        provider,
+      );
+
+      setAgents([
+        {
+          agentId,
+          agentKey,
+          agentAddress,
+          isVerified,
+          registeredAt,
+          mode,
+          guardian,
+          hasMetadata,
+          hasA2ACard,
+          verificationStrength: strength,
+          credentials,
+        },
+      ]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to look up agent");
     } finally {
@@ -303,11 +342,19 @@ export default function MyAgentsPage() {
 
     try {
       const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-      const registry = new ethers.Contract(network.registryAddress, REGISTRY_ABI, provider);
+      const registry = new ethers.Contract(
+        network.registryAddress,
+        REGISTRY_ABI,
+        provider,
+      );
 
       // Scan Transfer events to find all minted agents, then check if guardian matches
       const mintFilter = registry.filters.Transfer(ethers.ZeroAddress, null);
-      const mintEvents = await paginatedQueryFilter(registry, mintFilter, provider);
+      const mintEvents = await paginatedQueryFilter(
+        registry,
+        mintFilter,
+        provider,
+      );
 
       const results: AgentEntry[] = [];
 
@@ -323,11 +370,13 @@ export default function MyAgentsPage() {
             continue;
           }
 
-          if (guardian.toLowerCase() !== guardianAddress.toLowerCase()) continue;
+          if (guardian.toLowerCase() !== guardianAddress.toLowerCase())
+            continue;
 
           const agentKey: string = await registry.agentIdToAgentKey(agentId);
           const isVerified: boolean = await registry.isVerifiedAgent(agentKey);
-          const registeredAt: bigint = await registry.agentRegisteredAt(agentId);
+          const registeredAt: bigint =
+            await registry.agentRegisteredAt(agentId);
           const agentAddress = "0x" + agentKey.slice(26);
 
           let hasMetadata = false;
@@ -337,7 +386,11 @@ export default function MyAgentsPage() {
           } catch {}
 
           const credentials = await fetchCredentials(registry, agentId);
-          const { strength, hasA2ACard } = await fetchVerificationStrength(registry, agentId, provider);
+          const { strength, hasA2ACard } = await fetchVerificationStrength(
+            registry,
+            agentId,
+            provider,
+          );
 
           results.push({
             agentId,
@@ -371,7 +424,11 @@ export default function MyAgentsPage() {
 
     try {
       const callData = encodeGuardianRevoke(agentId);
-      await sendUserOperation(network.registryAddress as `0x${string}`, callData, network);
+      await sendUserOperation(
+        network.registryAddress as `0x${string}`,
+        callData,
+        network,
+      );
 
       // Refresh list after successful revocation
       if (passkeyAddress) {
@@ -394,7 +451,7 @@ export default function MyAgentsPage() {
       const registry = new ethers.Contract(
         network.registryAddress,
         REGISTRY_ABI,
-        provider
+        provider,
       );
 
       const results: AgentEntry[] = [];
@@ -408,7 +465,13 @@ export default function MyAgentsPage() {
         try {
           const currentOwner: string = await registry.ownerOf(simpleAgentId);
           if (currentOwner.toLowerCase() === ownerAddress.toLowerCase()) {
-            const entry = await buildAgentEntry(registry, provider, simpleAgentId, simpleKey, ownerAddress);
+            const entry = await buildAgentEntry(
+              registry,
+              provider,
+              simpleAgentId,
+              simpleKey,
+              ownerAddress,
+            );
             if (entry) results.push(entry);
           }
         } catch {
@@ -421,7 +484,11 @@ export default function MyAgentsPage() {
       const balance: bigint = await registry.balanceOf(ownerAddress);
       if (balance > BigInt(results.length)) {
         const mintFilter = registry.filters.Transfer(null, ownerAddress);
-        const mintEvents = await paginatedQueryFilter(registry, mintFilter, provider);
+        const mintEvents = await paginatedQueryFilter(
+          registry,
+          mintFilter,
+          provider,
+        );
 
         const foundIds = new Set(results.map((r) => r.agentId));
 
@@ -432,10 +499,17 @@ export default function MyAgentsPage() {
 
           try {
             const currentOwner: string = await registry.ownerOf(agentId);
-            if (currentOwner.toLowerCase() !== ownerAddress.toLowerCase()) continue;
+            if (currentOwner.toLowerCase() !== ownerAddress.toLowerCase())
+              continue;
 
             const agentKey: string = await registry.agentIdToAgentKey(agentId);
-            const entry = await buildAgentEntry(registry, provider, agentId, agentKey, ownerAddress);
+            const entry = await buildAgentEntry(
+              registry,
+              provider,
+              agentId,
+              agentKey,
+              ownerAddress,
+            );
             if (entry) results.push(entry);
           } catch {
             // Token was burned — skip
@@ -445,9 +519,7 @@ export default function MyAgentsPage() {
 
       setAgents(results);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load agents"
-      );
+      setError(err instanceof Error ? err.message : "Failed to load agents");
     } finally {
       setLoading(false);
     }
@@ -457,13 +529,18 @@ export default function MyAgentsPage() {
     <div className="max-w-lg mx-auto">
       <h1 className="text-3xl font-bold text-center mb-2">My Agents</h1>
       <p className="text-muted text-center mb-8">
-        View agents registered to your wallet, look up by key, or sign in with a passkey.
+        View agents registered to your wallet, look up by key, or sign in with a
+        passkey.
       </p>
 
       {/* Mode toggle */}
       <div className="flex justify-center gap-2 mb-6 flex-wrap">
         <button
-          onClick={() => { setLookupMode("wallet"); setAgents([]); setError(""); }}
+          onClick={() => {
+            setLookupMode("wallet");
+            setAgents([]);
+            setError("");
+          }}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             lookupMode === "wallet"
               ? "bg-surface-2 border border-accent text-foreground"
@@ -474,7 +551,11 @@ export default function MyAgentsPage() {
           Connect Wallet
         </button>
         <button
-          onClick={() => { setLookupMode("key"); setAgents([]); setError(""); }}
+          onClick={() => {
+            setLookupMode("key");
+            setAgents([]);
+            setError("");
+          }}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             lookupMode === "key"
               ? "bg-surface-2 border border-accent text-foreground"
@@ -486,7 +567,12 @@ export default function MyAgentsPage() {
         </button>
         {passkeyAvailable && (
           <button
-            onClick={() => { setLookupMode("passkey"); setAgents([]); setError(""); setPasskeyAddress(null); }}
+            onClick={() => {
+              setLookupMode("passkey");
+              setAgents([]);
+              setError("");
+              setPasskeyAddress(null);
+            }}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               lookupMode === "passkey"
                 ? "bg-surface-2 border border-accent-success text-foreground"
@@ -504,7 +590,12 @@ export default function MyAgentsPage() {
         !passkeyAddress ? (
           <div className="flex flex-col items-center gap-4">
             <Fingerprint size={32} className="text-accent-success" />
-            <Button onClick={handlePasskeySignIn} variant="primary" size="lg" disabled={loading}>
+            <Button
+              onClick={handlePasskeySignIn}
+              variant="primary"
+              size="lg"
+              disabled={loading}
+            >
               {loading ? (
                 <>
                   <Loader2 size={18} className="animate-spin" />
@@ -518,9 +609,14 @@ export default function MyAgentsPage() {
               )}
             </Button>
             <p className="text-xs text-subtle text-center max-w-xs">
-              Uses your passkey (Face ID / fingerprint) to find agents where your smart wallet is the guardian.
+              Uses your passkey (Face ID / fingerprint) to find agents where
+              your smart wallet is the guardian.
             </p>
-            {error && <p className="text-sm text-accent-error text-center max-w-xs">{error}</p>}
+            {error && (
+              <p className="text-sm text-accent-error text-center max-w-xs">
+                {error}
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
@@ -532,12 +628,17 @@ export default function MyAgentsPage() {
                 </span>
               </p>
               <button
-                onClick={() => passkeyAddress && loadAgentsByGuardian(passkeyAddress)}
+                onClick={() =>
+                  passkeyAddress && loadAgentsByGuardian(passkeyAddress)
+                }
                 disabled={loading}
                 className="p-2 text-muted hover:text-foreground hover:bg-surface-2 rounded-lg transition-colors disabled:opacity-50"
                 title="Refresh"
               >
-                <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+                <RefreshCw
+                  size={16}
+                  className={loading ? "animate-spin" : ""}
+                />
               </button>
             </div>
 
@@ -553,7 +654,9 @@ export default function MyAgentsPage() {
             {!loading && agents.length === 0 && (
               <Card className="text-center py-8">
                 <Cpu size={32} className="text-muted mx-auto mb-3" />
-                <p className="text-muted mb-4">No agents found for this passkey.</p>
+                <p className="text-muted mb-4">
+                  No agents found for this passkey.
+                </p>
                 <Link href="/agents/register">
                   <Button variant="primary">Register an Agent</Button>
                 </Link>
@@ -591,7 +694,10 @@ export default function MyAgentsPage() {
                 className="p-2 text-muted hover:text-foreground hover:bg-surface-2 rounded-lg transition-colors disabled:opacity-50"
                 title="Refresh"
               >
-                <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+                <RefreshCw
+                  size={16}
+                  className={loading ? "animate-spin" : ""}
+                />
               </button>
             </div>
 
@@ -607,7 +713,9 @@ export default function MyAgentsPage() {
             {!loading && agents.length === 0 && walletAddress && (
               <Card className="text-center py-8">
                 <Cpu size={32} className="text-muted mx-auto mb-3" />
-                <p className="text-muted mb-4">No agents found for this wallet.</p>
+                <p className="text-muted mb-4">
+                  No agents found for this wallet.
+                </p>
                 <Link href="/agents/register">
                   <Button variant="primary">Register an Agent</Button>
                 </Link>
@@ -622,8 +730,8 @@ export default function MyAgentsPage() {
         <div className="space-y-4">
           <Card>
             <p className="text-sm text-muted mb-3">
-              Enter your agent address to look it up on the registry. This is useful
-              if you registered without a wallet (wallet-free mode).
+              Enter your agent address to look it up on the registry. This is
+              useful if you registered without a wallet (wallet-free mode).
             </p>
             <div className="flex gap-2">
               <input
@@ -634,7 +742,12 @@ export default function MyAgentsPage() {
                 className="flex-1 bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm font-mono placeholder:text-subtle focus:border-accent focus:outline-none transition-colors"
                 onKeyDown={(e) => e.key === "Enter" && handleKeyLookup()}
               />
-              <Button onClick={handleKeyLookup} variant="primary" size="sm" disabled={loading}>
+              <Button
+                onClick={handleKeyLookup}
+                variant="primary"
+                size="sm"
+                disabled={loading}
+              >
                 <Search size={14} />
                 Look Up
               </Button>
@@ -653,7 +766,9 @@ export default function MyAgentsPage() {
           {!loading && agents.length === 0 && agentKeyInput && !error && (
             <Card className="text-center py-8">
               <Search size={32} className="text-muted mx-auto mb-3" />
-              <p className="text-muted">Enter an agent address and click Look Up.</p>
+              <p className="text-muted">
+                Enter an agent address and click Look Up.
+              </p>
             </Card>
           )}
 
@@ -683,13 +798,20 @@ function renderAgentCards(
               <span className="font-medium">
                 Agent #{agent.agentId.toString()}
               </span>
-              <Badge variant={
-                agent.mode === "simple" ? "muted" :
-                agent.mode === "advanced" ? "success" : "info"
-              }>
-                {agent.mode === "simple" ? "Verified Wallet" :
-                 agent.mode === "advanced" ? "Agent Identity" :
-                 "Wallet-Free"}
+              <Badge
+                variant={
+                  agent.mode === "simple"
+                    ? "muted"
+                    : agent.mode === "advanced"
+                      ? "success"
+                      : "info"
+                }
+              >
+                {agent.mode === "simple"
+                  ? "Verified Wallet"
+                  : agent.mode === "advanced"
+                    ? "Agent Identity"
+                    : "Wallet-Free"}
               </Badge>
               {agent.guardian !== ethers.ZeroAddress && (
                 <Badge variant="success">
@@ -697,17 +819,21 @@ function renderAgentCards(
                   Smart Wallet
                 </Badge>
               )}
-              {agent.hasA2ACard && (
-                <Badge variant="info">A2A</Badge>
-              )}
+              {agent.hasA2ACard && <Badge variant="info">A2A</Badge>}
             </div>
             <div className="flex items-center gap-2">
               {agent.verificationStrength !== undefined && (
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white ${
-                  agent.verificationStrength >= 80 ? "bg-green-500" :
-                  agent.verificationStrength >= 60 ? "bg-blue-500" :
-                  agent.verificationStrength >= 40 ? "bg-amber-500" : "bg-gray-500"
-                }`}>
+                <div
+                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white ${
+                    agent.verificationStrength >= 80
+                      ? "bg-green-500"
+                      : agent.verificationStrength >= 60
+                        ? "bg-blue-500"
+                        : agent.verificationStrength >= 40
+                          ? "bg-amber-500"
+                          : "bg-gray-500"
+                  }`}
+                >
                   {agent.verificationStrength}
                 </div>
               )}
@@ -721,9 +847,7 @@ function renderAgentCards(
             <p className="text-xs text-muted">
               {agent.mode === "simple" ? "Wallet" : "Agent"} Address
             </p>
-            <p className="font-mono text-sm break-all">
-              {agent.agentAddress}
-            </p>
+            <p className="font-mono text-sm break-all">{agent.agentAddress}</p>
           </div>
 
           {agent.credentials && (
@@ -742,7 +866,8 @@ function renderAgentCards(
           <div className="flex items-center gap-3 mt-2">
             {agent.guardian !== ethers.ZeroAddress && (
               <span className="flex items-center gap-1 text-xs text-muted">
-                <Shield size={12} /> Guardian: {agent.guardian.slice(0, 6)}...{agent.guardian.slice(-4)}
+                <Shield size={12} /> Guardian: {agent.guardian.slice(0, 6)}...
+                {agent.guardian.slice(-4)}
               </span>
             )}
             {agent.hasMetadata && (
@@ -756,12 +881,13 @@ function renderAgentCards(
               </span>
             )}
           </div>
-
         </Card>
       </Link>
 
-      {onRevoke && agent.isVerified && agent.guardian !== ethers.ZeroAddress && (
-        isGaslessSupported(network) ? (
+      {onRevoke &&
+        agent.isVerified &&
+        agent.guardian !== ethers.ZeroAddress &&
+        (isGaslessSupported(network) ? (
           <button
             onClick={() => onRevoke(agent.agentId)}
             disabled={revokingId === agent.agentId.toString()}
@@ -782,13 +908,15 @@ function renderAgentCards(
         ) : (
           <p className="text-xs text-subtle px-1">
             Gasless revocation available on mainnet. On testnet, use the{" "}
-            <Link href={`/agents/verify?key=${encodeURIComponent(agent.agentKey)}`} className="text-accent underline">
+            <Link
+              href={`/agents/verify?key=${encodeURIComponent(agent.agentKey)}`}
+              className="text-accent underline"
+            >
               Verify page
             </Link>{" "}
             to deregister via passport scan.
           </p>
-        )
-      )}
+        ))}
     </div>
   ));
 }

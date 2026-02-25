@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { NETWORKS, getNetwork, isNetworkReady, type NetworkConfig } from "@/lib/network";
+import {
+  NETWORKS,
+  getNetwork,
+  isNetworkReady,
+  type NetworkConfig,
+} from "@/lib/network";
 import { CHAIN_CONFIG } from "@/lib/chain-config";
 
 describe("NETWORKS", () => {
@@ -35,7 +40,10 @@ describe("isNetworkReady", () => {
   });
 
   it("returns false when registryAddress is empty", () => {
-    const config = { ...NETWORKS["celo-mainnet"], registryAddress: "" } as NetworkConfig;
+    const config = {
+      ...NETWORKS["celo-mainnet"],
+      registryAddress: "",
+    } as NetworkConfig;
     expect(isNetworkReady(config)).toBe(false);
   });
 });

@@ -7,7 +7,7 @@
 // Poll deregistration status. Checks on-chain whether the agent is
 // no longer verified, and returns updated session state.
 
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import {
   decryptAndValidateSession,
   getNetworkConfig,
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     return sessionResponse(session, secret, {
       agentAddress: session.agentAddress,
       agentId: session.agentId,
-      humanInstructions: humanInstructions(session.stage as "completed" | "failed"),
+      humanInstructions: humanInstructions(session.stage),
     });
   }
 

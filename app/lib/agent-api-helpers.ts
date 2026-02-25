@@ -215,9 +215,7 @@ export function humanInstructions(stage: RegistrationStage): string[] {
     case "completed":
       return ["Registration complete. Your agent is now verified on-chain."];
     case "failed":
-      return [
-        "Registration failed. Check the error details and try again.",
-      ];
+      return ["Registration failed. Check the error details and try again."];
     case "expired":
       return ["Session expired. Please start a new registration."];
     default:

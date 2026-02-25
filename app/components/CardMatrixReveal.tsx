@@ -6,7 +6,8 @@
 
 import { useEffect, useRef } from "react";
 
-const CHARS = "01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン";
+const CHARS =
+  "01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン";
 const FONT_SIZE = 12;
 const COL_SPEED_MIN = 0.3;
 const COL_SPEED_MAX = 0.8;
@@ -52,9 +53,13 @@ export default function CardMatrixOverlay({
     canvas.height = rect.height;
 
     const cols = Math.ceil(canvas.width / FONT_SIZE);
-    const drops: number[] = Array.from({ length: cols }, () => Math.random() * -15);
-    const speeds: number[] = Array.from({ length: cols }, () =>
-      COL_SPEED_MIN + Math.random() * (COL_SPEED_MAX - COL_SPEED_MIN)
+    const drops: number[] = Array.from(
+      { length: cols },
+      () => Math.random() * -15,
+    );
+    const speeds: number[] = Array.from(
+      { length: cols },
+      () => COL_SPEED_MIN + Math.random() * (COL_SPEED_MAX - COL_SPEED_MIN),
     );
 
     let animId = 0;
@@ -82,7 +87,8 @@ export default function CardMatrixOverlay({
 
         if (y > canvas.height && Math.random() > 0.95) {
           drops[i] = Math.random() * -10;
-          speeds[i] = COL_SPEED_MIN + Math.random() * (COL_SPEED_MAX - COL_SPEED_MIN);
+          speeds[i] =
+            COL_SPEED_MIN + Math.random() * (COL_SPEED_MAX - COL_SPEED_MIN);
         }
       }
 

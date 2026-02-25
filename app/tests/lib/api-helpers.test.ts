@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { validateAgentId, corsResponse, errorResponse, CORS_HEADERS } from "@/lib/api-helpers";
+import {
+  validateAgentId,
+  corsResponse,
+  errorResponse,
+  CORS_HEADERS,
+} from "@/lib/api-helpers";
 
 describe("validateAgentId", () => {
   it("returns bigint for valid positive id", () => {
@@ -28,7 +33,9 @@ describe("corsResponse", () => {
     const res = corsResponse();
     expect(res.status).toBe(204);
     expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
-    expect(res.headers.get("Access-Control-Allow-Methods")).toBe("GET, OPTIONS");
+    expect(res.headers.get("Access-Control-Allow-Methods")).toBe(
+      "GET, OPTIONS",
+    );
     expect(res.headers.get("Cache-Control")).toBe("public, max-age=60");
   });
 });

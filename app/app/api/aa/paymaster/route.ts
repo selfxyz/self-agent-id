@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/rateLimit";
 import {
   getClientIp,
@@ -21,7 +21,9 @@ const ALLOWED_METHODS = new Set([
   "eth_chainId",
 ]);
 const MAX_BODY_BYTES = 200_000;
-const RATE_LIMIT_PER_MINUTE = Number(process.env.AA_PROXY_MAX_REQ_PER_MINUTE || 60);
+const RATE_LIMIT_PER_MINUTE = Number(
+  process.env.AA_PROXY_MAX_REQ_PER_MINUTE || 60,
+);
 const WINDOW_MS = 60_000;
 
 type JsonRpcRequest = {
@@ -31,7 +33,9 @@ type JsonRpcRequest = {
   id?: string | number | null;
 };
 
-function parseAndValidateRpc(body: string): { ok: true; req: JsonRpcRequest } | { ok: false; error: string } {
+function parseAndValidateRpc(
+  body: string,
+): { ok: true; req: JsonRpcRequest } | { ok: false; error: string } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);

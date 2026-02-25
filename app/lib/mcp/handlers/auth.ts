@@ -17,7 +17,10 @@ interface AuthenticatedFetchArgs {
   content_type: string;
 }
 
-export async function handleSignRequest(args: SignRequestArgs, config: McpConfig) {
+export async function handleSignRequest(
+  args: SignRequestArgs,
+  config: McpConfig,
+) {
   if (!config.privateKey) {
     return toolError(
       "No agent identity configured. Set SELF_AGENT_PRIVATE_KEY in your MCP server configuration, " +
@@ -46,7 +49,10 @@ export async function handleSignRequest(args: SignRequestArgs, config: McpConfig
   }
 }
 
-export async function handleAuthenticatedFetch(args: AuthenticatedFetchArgs, config: McpConfig) {
+export async function handleAuthenticatedFetch(
+  args: AuthenticatedFetchArgs,
+  config: McpConfig,
+) {
   if (!config.privateKey) {
     return toolError(
       "No agent identity configured. Set SELF_AGENT_PRIVATE_KEY in your MCP server configuration, " +

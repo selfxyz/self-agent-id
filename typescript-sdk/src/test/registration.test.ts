@@ -29,12 +29,30 @@ const AGENT_PK =
 
 describe("registration helpers", () => {
   it("maps disclosure choices to config index", () => {
-    assert.strictEqual(getRegistrationConfigIndex({ minimumAge: 0, ofac: false }), 0);
-    assert.strictEqual(getRegistrationConfigIndex({ minimumAge: 18, ofac: false }), 1);
-    assert.strictEqual(getRegistrationConfigIndex({ minimumAge: 21, ofac: false }), 2);
-    assert.strictEqual(getRegistrationConfigIndex({ minimumAge: 0, ofac: true }), 3);
-    assert.strictEqual(getRegistrationConfigIndex({ minimumAge: 18, ofac: true }), 4);
-    assert.strictEqual(getRegistrationConfigIndex({ minimumAge: 21, ofac: true }), 5);
+    assert.strictEqual(
+      getRegistrationConfigIndex({ minimumAge: 0, ofac: false }),
+      0,
+    );
+    assert.strictEqual(
+      getRegistrationConfigIndex({ minimumAge: 18, ofac: false }),
+      1,
+    );
+    assert.strictEqual(
+      getRegistrationConfigIndex({ minimumAge: 21, ofac: false }),
+      2,
+    );
+    assert.strictEqual(
+      getRegistrationConfigIndex({ minimumAge: 0, ofac: true }),
+      3,
+    );
+    assert.strictEqual(
+      getRegistrationConfigIndex({ minimumAge: 18, ofac: true }),
+      4,
+    );
+    assert.strictEqual(
+      getRegistrationConfigIndex({ minimumAge: 21, ofac: true }),
+      5,
+    );
   });
 
   it("computes chain+registry-bound challenge hash", () => {
@@ -47,8 +65,13 @@ describe("registration helpers", () => {
     const expected = ethers.keccak256(
       ethers.solidityPacked(
         ["string", "address", "uint256", "address"],
-        ["self-agent-id:register:", ethers.getAddress(HUMAN), BigInt(CHAIN_ID), ethers.getAddress(REGISTRY)]
-      )
+        [
+          "self-agent-id:register:",
+          ethers.getAddress(HUMAN),
+          BigInt(CHAIN_ID),
+          ethers.getAddress(REGISTRY),
+        ],
+      ),
     );
 
     assert.strictEqual(computed, expected);
@@ -68,10 +91,13 @@ describe("registration helpers", () => {
 
     const recovered = ethers.recoverAddress(
       ethers.hashMessage(ethers.getBytes(signed.messageHash)),
-      { r: signed.r, s: signed.s, v: signed.v }
+      { r: signed.r, s: signed.s, v: signed.v },
     );
 
-    assert.strictEqual(recovered.toLowerCase(), signed.agentAddress.toLowerCase());
+    assert.strictEqual(
+      recovered.toLowerCase(),
+      signed.agentAddress.toLowerCase(),
+    );
   });
 
   it("builds ASCII userData with expected lengths", async () => {
@@ -84,7 +110,10 @@ describe("registration helpers", () => {
     const agentAddr = signed.agentAddress;
 
     const simpleR = buildSimpleRegisterUserDataAscii({ minimumAge: 18 });
-    const simpleD = buildSimpleDeregisterUserDataAscii({ minimumAge: 21, ofac: true });
+    const simpleD = buildSimpleDeregisterUserDataAscii({
+      minimumAge: 21,
+      ofac: true,
+    });
     const advR = buildAdvancedRegisterUserDataAscii({
       agentAddress: agentAddr,
       signature: signed.signature,
@@ -119,7 +148,10 @@ describe("registration helpers", () => {
     });
 
     const simpleR = buildSimpleRegisterUserDataBinary({ minimumAge: 18 });
-    const simpleD = buildSimpleDeregisterUserDataBinary({ minimumAge: 21, ofac: true });
+    const simpleD = buildSimpleDeregisterUserDataBinary({
+      minimumAge: 21,
+      ofac: true,
+    });
     const advR = buildAdvancedRegisterUserDataBinary({
       agentAddress: signed.agentAddress,
       signature: signed.signature,

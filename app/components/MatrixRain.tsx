@@ -17,7 +17,8 @@ interface MatrixRainProps {
   maxOpacity?: number;
 }
 
-const CHARS = "01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン";
+const CHARS =
+  "01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン";
 const FONT_SIZE = 14;
 const COL_SPEED_MIN = 0.4;
 const COL_SPEED_MAX = 1.2;
@@ -47,9 +48,15 @@ export default function MatrixRain({
     window.addEventListener("resize", resize);
 
     const cols = Math.ceil(canvas.width / FONT_SIZE);
-    const drops: number[] = Array.from({ length: cols }, () => Math.random() * -30);
-    const speeds: number[] = Array.from({ length: cols }, () =>
-      (COL_SPEED_MIN + Math.random() * (COL_SPEED_MAX - COL_SPEED_MIN)) * speed
+    const drops: number[] = Array.from(
+      { length: cols },
+      () => Math.random() * -30,
+    );
+    const speeds: number[] = Array.from(
+      { length: cols },
+      () =>
+        (COL_SPEED_MIN + Math.random() * (COL_SPEED_MAX - COL_SPEED_MIN)) *
+        speed,
     );
 
     // Trail fade: lower maxOpacity = faster trail fade so chars don't pile up
@@ -81,7 +88,9 @@ export default function MatrixRain({
 
         if (y > canvas.height && Math.random() > 0.98) {
           drops[i] = Math.random() * -20;
-          speeds[i] = (COL_SPEED_MIN + Math.random() * (COL_SPEED_MAX - COL_SPEED_MIN)) * speed;
+          speeds[i] =
+            (COL_SPEED_MIN + Math.random() * (COL_SPEED_MAX - COL_SPEED_MIN)) *
+            speed;
         }
       }
 
@@ -113,9 +122,8 @@ export default function MatrixRain({
 
   // For full-opacity mode, start with black bg so the page is hidden immediately
   // (before React hydration / canvas starts drawing)
-  const initialStyle = maxOpacity >= 1
-    ? { opacity: 1, backgroundColor: "#000" }
-    : { opacity: 0 };
+  const initialStyle =
+    maxOpacity >= 1 ? { opacity: 1, backgroundColor: "#000" } : { opacity: 0 };
 
   return (
     <div

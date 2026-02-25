@@ -64,7 +64,7 @@ describe("SelfAgent signing", () => {
     // Reconstruct the message the same way the verifier would
     const bodyHash = ethers.keccak256(ethers.toUtf8Bytes(body));
     const message = ethers.keccak256(
-      ethers.toUtf8Bytes(timestamp + method + url + bodyHash)
+      ethers.toUtf8Bytes(timestamp + method + url + bodyHash),
     );
 
     // Recover signer — this is what closes the off-chain verification gap
@@ -88,7 +88,7 @@ describe("SelfAgent signing", () => {
 
     assert.notStrictEqual(
       headers1[HEADERS.SIGNATURE],
-      headers2[HEADERS.SIGNATURE]
+      headers2[HEADERS.SIGNATURE],
     );
   });
 
@@ -101,7 +101,7 @@ describe("SelfAgent signing", () => {
       ts,
       method,
       "https://demo.example.com/api/data?x=1",
-      body
+      body,
     );
     const path = computeSigningMessage(ts, method, "/api/data?x=1", body);
 

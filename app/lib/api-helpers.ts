@@ -22,7 +22,7 @@ export function corsResponse(): NextResponse {
 export function errorResponse(message: string, status: number): NextResponse {
   return NextResponse.json(
     { error: message },
-    { status, headers: CORS_HEADERS }
+    { status, headers: CORS_HEADERS },
   );
 }
 

@@ -3,13 +3,19 @@
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
 import { NextRequest, NextResponse } from "next/server";
-import { CORS_HEADERS, corsResponse, errorResponse, validateAgentId } from "@/lib/api-helpers";
+import {
+  CORS_HEADERS,
+  corsResponse,
+  errorResponse,
+  validateAgentId,
+} from "@/lib/api-helpers";
 import { CHAIN_CONFIG } from "@/lib/chain-config";
 import { DEFAULT_NETWORK, NETWORKS } from "@/lib/network";
 
 function resolveChainId(req: NextRequest): string {
-  const fromQuery = req.nextUrl.searchParams.get("chain")
-    ?? req.nextUrl.searchParams.get("chainId");
+  const fromQuery =
+    req.nextUrl.searchParams.get("chain") ??
+    req.nextUrl.searchParams.get("chainId");
 
   if (fromQuery) return fromQuery;
 
@@ -19,7 +25,7 @@ function resolveChainId(req: NextRequest): string {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const { agentId } = await params;
 
@@ -31,7 +37,10 @@ export async function GET(
     return errorResponse(`Unsupported chain: ${chainId}`, 400);
   }
 
-  const target = new URL(`/api/cards/${chainId}/${id.toString()}`, req.nextUrl.origin);
+  const target = new URL(
+    `/api/cards/${chainId}/${id.toString()}`,
+    req.nextUrl.origin,
+  );
 
   return NextResponse.redirect(target, {
     status: 307,

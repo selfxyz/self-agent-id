@@ -304,7 +304,8 @@ export class VerifierBuilder {
       maxAgeMs: this._maxAgeMs,
       cacheTtlMs: this._cacheTtlMs,
       maxAgentsPerHuman: this._maxAgentsPerHuman,
-      includeCredentials: needsCredentials || this._includeCredentials || undefined,
+      includeCredentials:
+        needsCredentials || this._includeCredentials || undefined,
       requireSelfProvider: this._requireSelfProvider,
       enableReplayProtection: this._enableReplayProtection,
       minimumAge: this._minimumAge,
@@ -384,7 +385,8 @@ export class SelfAgentVerifier {
   private rateLimiter: RateLimiter | null;
   private cache = new Map<string, CacheEntry>();
   private replayCache = new Map<string, ReplayEntry>();
-  private selfProviderCache: { address: string; expiresAt: number } | null = null;
+  private selfProviderCache: { address: string; expiresAt: number } | null =
+    null;
 
   constructor(config: VerifierConfig = {}) {
     const net = NETWORKS[config.network ?? DEFAULT_NETWORK];
@@ -392,7 +394,7 @@ export class SelfAgentVerifier {
     this.registry = new ethers.Contract(
       config.registryAddress ?? net.registryAddress,
       REGISTRY_ABI,
-      provider
+      provider,
     );
     this.maxAgeMs = config.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
     this.cacheTtlMs = config.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
@@ -404,7 +406,9 @@ export class SelfAgentVerifier {
     this.minimumAge = config.minimumAge;
     this.requireOFACPassed = config.requireOFACPassed ?? false;
     this.allowedNationalities = config.allowedNationalities;
-    this.rateLimiter = config.rateLimitConfig ? new RateLimiter(config.rateLimitConfig) : null;
+    this.rateLimiter = config.rateLimitConfig
+      ? new RateLimiter(config.rateLimitConfig)
+      : null;
   }
 
   /** Create a chainable builder for configuring a verifier */
@@ -468,7 +472,12 @@ export class SelfAgentVerifier {
 
     // 2. Reconstruct the signed message
     const canonicalUrl = canonicalizeSigningUrl(url);
-    const message = computeSigningMessage(timestamp, method, canonicalUrl, body);
+    const message = computeSigningMessage(
+      timestamp,
+      method,
+      canonicalUrl,
+      body,
+    );
 
     // 3. Recover signer address from signature (cryptographic — can't be faked)
     let signerAddress: string;
@@ -495,8 +504,14 @@ export class SelfAgentVerifier {
     const agentKey = ethers.zeroPadValue(signerAddress, 32);
 
     // 6. Check on-chain status (with cache)
-    const { isVerified, isProofFresh, agentId, agentCount, nullifier, providerAddress } =
-      await this.checkOnChain(agentKey);
+    const {
+      isVerified,
+      isProofFresh,
+      agentId,
+      agentCount,
+      nullifier,
+      providerAddress,
+    } = await this.checkOnChain(agentKey);
 
     if (!isVerified) {
       return {
@@ -553,7 +568,10 @@ export class SelfAgentVerifier {
     }
 
     // 8. Sybil resistance: reject if human has too many agents
-    if (this.maxAgentsPerHuman > 0 && agentCount > BigInt(this.maxAgentsPerHuman)) {
+    if (
+      this.maxAgentsPerHuman > 0 &&
+      agentCount > BigInt(this.maxAgentsPerHuman)
+    ) {
       return {
         valid: false,
         agentAddress: signerAddress,
@@ -573,7 +591,10 @@ export class SelfAgentVerifier {
 
     // 10. Credential checks (post-verify — only if credentials were fetched)
     if (credentials) {
-      if (this.minimumAge != null && credentials.olderThan < BigInt(this.minimumAge)) {
+      if (
+        this.minimumAge != null &&
+        credentials.olderThan < BigInt(this.minimumAge)
+      ) {
         return {
           valid: false,
           agentAddress: signerAddress,
@@ -633,15 +654,28 @@ export class SelfAgentVerifier {
       }
     }
 
-    return { valid: true, agentAddress: signerAddress, agentKey, agentId, agentCount, nullifier, credentials };
+    return {
+      valid: true,
+      agentAddress: signerAddress,
+      agentKey,
+      agentId,
+      agentCount,
+      nullifier,
+      credentials,
+    };
   }
 
   /**
    * Check on-chain agent status with caching.
    */
-  private async checkOnChain(
-    agentKey: string
-  ): Promise<{ isVerified: boolean; isProofFresh: boolean; agentId: bigint; agentCount: bigint; nullifier: bigint; providerAddress: string }> {
+  private async checkOnChain(agentKey: string): Promise<{
+    isVerified: boolean;
+    isProofFresh: boolean;
+    agentId: bigint;
+    agentCount: bigint;
+    nullifier: bigint;
+    providerAddress: string;
+  }> {
     const cached = this.cache.get(agentKey);
     if (cached && cached.expiresAt > Date.now()) {
       return {
@@ -669,9 +703,11 @@ export class SelfAgentVerifier {
 
       // Always check proof freshness
       promises.push(
-        (this.registry.isProofFresh(agentId) as Promise<boolean>).then((fresh) => {
-          isProofFresh = fresh;
-        })
+        (this.registry.isProofFresh(agentId) as Promise<boolean>).then(
+          (fresh) => {
+            isProofFresh = fresh;
+          },
+        ),
       );
 
       if (this.maxAgentsPerHuman > 0) {
@@ -679,15 +715,17 @@ export class SelfAgentVerifier {
           this.registry.getHumanNullifier(agentId).then(async (n: bigint) => {
             nullifier = n;
             agentCount = await this.registry.getAgentCountForHuman(n);
-          })
+          }),
         );
       }
 
       if (this.requireSelfProvider) {
         promises.push(
-          (this.registry.getProofProvider(agentId) as Promise<string>).then((addr) => {
-            providerAddress = addr;
-          })
+          (this.registry.getProofProvider(agentId) as Promise<string>).then(
+            (addr) => {
+              providerAddress = addr;
+            },
+          ),
         );
       }
 
@@ -704,7 +742,14 @@ export class SelfAgentVerifier {
       expiresAt: Date.now() + this.cacheTtlMs,
     });
 
-    return { isVerified, isProofFresh, agentId, agentCount, nullifier, providerAddress };
+    return {
+      isVerified,
+      isProofFresh,
+      agentId,
+      agentCount,
+      nullifier,
+      providerAddress,
+    };
   }
 
   /**
@@ -712,7 +757,10 @@ export class SelfAgentVerifier {
    * Cached separately since it rarely changes.
    */
   private async getSelfProviderAddress(): Promise<string> {
-    if (this.selfProviderCache && this.selfProviderCache.expiresAt > Date.now()) {
+    if (
+      this.selfProviderCache &&
+      this.selfProviderCache.expiresAt > Date.now()
+    ) {
       return this.selfProviderCache.address;
     }
 
@@ -728,7 +776,9 @@ export class SelfAgentVerifier {
   /**
    * Fetch ZK-attested credentials for an agent.
    */
-  private async fetchCredentials(agentId: bigint): Promise<AgentCredentials | undefined> {
+  private async fetchCredentials(
+    agentId: bigint,
+  ): Promise<AgentCredentials | undefined> {
     try {
       const raw = await this.registry.getAgentCredentials(agentId);
       return {
@@ -754,7 +804,11 @@ export class SelfAgentVerifier {
     this.replayCache.clear();
   }
 
-  private checkAndRecordReplay(signature: string, message: string, ts: number): string | null {
+  private checkAndRecordReplay(
+    signature: string,
+    message: string,
+    ts: number,
+  ): string | null {
     const now = Date.now();
     this.pruneReplayCache(now);
 
@@ -781,7 +835,7 @@ export class SelfAgentVerifier {
     // Drop oldest-ish entries by earliest expiration first.
     const overflow = this.replayCache.size - this.replayCacheMaxEntries;
     const sorted = [...this.replayCache.entries()].sort(
-      (a, b) => a[1].expiresAt - b[1].expiresAt
+      (a, b) => a[1].expiresAt - b[1].expiresAt,
     );
     for (let i = 0; i < overflow; i++) {
       this.replayCache.delete(sorted[i][0]);
@@ -867,7 +921,7 @@ export class SelfAgentVerifier {
  */
 function buildReauthUrl(
   agentId: bigint,
-  options: { chainId: number; registryAddress: string; reauthBaseUrl?: string }
+  options: { chainId: number; registryAddress: string; reauthBaseUrl?: string },
 ): string {
   const base = options.reauthBaseUrl ?? REAUTH_BASE_URL;
   return `${base}/reauth?agentId=${agentId}&chainId=${options.chainId}&registry=${options.registryAddress}`;
@@ -914,11 +968,11 @@ function buildReauthUrl(
 export async function verifyAgent(
   agentKey: string,
   options: { chainId: number; registryAddress: string; reauthBaseUrl?: string },
-  rpcUrl?: string
+  rpcUrl?: string,
 ): Promise<VerifyResult> {
   if (!/^0x[0-9a-fA-F]{64}$/.test(agentKey)) {
     throw new TypeError(
-      `agentKey must be a 0x-prefixed 32-byte hex string; received "${agentKey}"`
+      `agentKey must be a 0x-prefixed 32-byte hex string; received "${agentKey}"`,
     );
   }
 
@@ -926,11 +980,19 @@ export async function verifyAgent(
   // network whose registry address matches, or finally to Celo mainnet.
   const resolvedRpcUrl =
     rpcUrl ??
-    (Object.values(NETWORKS).find((n) => n.registryAddress.toLowerCase() === options.registryAddress.toLowerCase())
-      ?.rpcUrl ?? NETWORKS[DEFAULT_NETWORK].rpcUrl);
+    Object.values(NETWORKS).find(
+      (n) =>
+        n.registryAddress.toLowerCase() ===
+        options.registryAddress.toLowerCase(),
+    )?.rpcUrl ??
+    NETWORKS[DEFAULT_NETWORK].rpcUrl;
 
   const provider = new ethers.JsonRpcProvider(resolvedRpcUrl);
-  const registry = new ethers.Contract(options.registryAddress, REGISTRY_ABI, provider);
+  const registry = new ethers.Contract(
+    options.registryAddress,
+    REGISTRY_ABI,
+    provider,
+  );
 
   // Step 1: resolve agent key → agentId
   const agentId = (await registry.getAgentId(agentKey)) as bigint;
@@ -959,6 +1021,7 @@ export async function verifyAgent(
   return {
     verified: true,
     agentId,
-    expiresAt: expiresAtSecs > 0n ? new Date(Number(expiresAtSecs) * 1000) : null,
+    expiresAt:
+      expiresAtSecs > 0n ? new Date(Number(expiresAtSecs) * 1000) : null,
   };
 }

@@ -57,12 +57,14 @@ All contracts are written in Solidity 0.8.28, compiled with `--evm-version cancu
 ### SelfAgentRegistry
 
 The core contract. Inherits from:
+
 - `ERC721` (OpenZeppelin) — soulbound NFT issuance
 - `Ownable` (OpenZeppelin) — admin functions (provider whitelist, config)
 - `SelfVerificationRoot` (@selfxyz/contracts) — Hub V2 ZK verification callback
 - `IERC8004ProofOfHuman` — ERC-8004 proof-of-human extension
 
 **Key responsibilities:**
+
 - Mint soulbound ERC-721 NFTs upon successful ZK verification
 - Support 4 registration modes (simple, advanced, wallet-free, smart-wallet)
 - Store ZK-attested credentials (nationality, age, OFAC status) on-chain
@@ -73,6 +75,7 @@ The core contract. Inherits from:
 - Self-deregistration by NFT owner
 
 **Registration modes and action bytes:**
+
 - `R` (0x52) — Simple register: agent key = wallet address
 - `K` (0x4B) — Advanced register: separate agent keypair, ECDSA signature verified
 - `W` (0x57) — Wallet-free: agent-owned NFT, optional guardian address
@@ -86,6 +89,7 @@ The config index at byte position [1] selects which of the 6 verification config
 ### SelfHumanProofProvider
 
 A lightweight metadata wrapper implementing `IHumanProofProvider`. Reports:
+
 - `providerName()` returns `"self"`
 - `verificationStrength()` returns `100`
 - `verifyHumanProof()` always reverts with `DirectVerificationNotSupported`
@@ -93,6 +97,7 @@ A lightweight metadata wrapper implementing `IHumanProofProvider`. Reports:
 The revert is intentional: Self Hub V2 uses an async callback pattern. Verification must flow through `SelfAgentRegistry.verifySelfProof()` -> Hub V2 -> `onVerificationSuccess` -> `customVerificationHook`. The provider contract exists solely to satisfy the ERC-8004 provider whitelist and report metadata.
 
 Immutable state:
+
 - `hubV2` — The Hub V2 contract address
 - `scope` — The scope value for nullifier generation (computed at registry deploy time)
 
@@ -101,11 +106,13 @@ Immutable state:
 A stateless view-only wrapper implementing ERC-8004 reputation scoring. It reads `verificationStrength()` from the proof provider that verified each agent. No storage of its own — purely reads from the registry and provider contracts.
 
 Functions:
+
 - `getReputationScore(agentId)` — Returns 0-100 score (0 if unverified)
 - `getReputation(agentId)` — Returns (score, providerName, hasProof, registeredAtBlock)
 - `getReputationBatch(agentIds)` — Batch query for multiple agents
 
 Score interpretation:
+
 - 100 = Passport NFC chip + biometric (Self Protocol)
 - 60 = Government ID without chip
 - 40 = Video liveness check
@@ -116,6 +123,7 @@ Score interpretation:
 An ERC-8004 validation provider performing freshness checks. Measures proof age in blocks since registration and compares against a configurable threshold.
 
 Functions:
+
 - `validateAgent(agentId)` — Returns (valid, fresh, registeredAt, blockAge, proofProvider)
 - `isValidAgent(agentId)` — Returns true only if valid AND fresh
 - `validateBatch(agentIds)` — Batch boolean check
@@ -140,15 +148,17 @@ All three SDKs (TypeScript, Python, Rust) follow identical API designs.
 The `SelfAgent` class is instantiated by the agent (the AI system making authenticated requests). It manages:
 
 **Construction:**
+
 ```typescript
 const agent = new SelfAgent({
-  privateKey: "0x...",           // Agent's ECDSA private key
-  chainId: 42220,               // Celo Mainnet (or 11142220 for testnet)
+  privateKey: "0x...", // Agent's ECDSA private key
+  chainId: 42220, // Celo Mainnet (or 11142220 for testnet)
   registryAddress: "0x62E3...", // Optional override
 });
 ```
 
 **Core methods:**
+
 - `signRequest(method, path, body?)` — Generate the 3 auth headers
 - `register(mode, options?)` — Initiate registration flow (returns QR URL)
 - `getRegistrationStatus()` — Poll registration completion
@@ -158,6 +168,7 @@ const agent = new SelfAgent({
 - `getAgentId()` — Resolve agent key to agent ID
 
 **Auth header generation:**
+
 1. Compute body hash: `keccak256(body || "")`
 2. Build message: concatenate `timestamp + METHOD + pathWithQuery + bodyHash` as a single string
 3. Compute signing message: `keccak256(message)`
@@ -172,13 +183,14 @@ The `SelfAgentVerifier` class is used by services receiving agent requests. It v
 const verifier = new SelfAgentVerifier()
   .setChainId(42220)
   .setRegistryAddress("0x62E3...")
-  .setProviderAddress("0x0B43...")   // Verify provider is Self Protocol
-  .setMaxAgentsPerHuman(1)           // Sybil limit
-  .setMaxTimestampAge(300)           // 5-minute signature window
+  .setProviderAddress("0x0B43...") // Verify provider is Self Protocol
+  .setMaxAgentsPerHuman(1) // Sybil limit
+  .setMaxTimestampAge(300) // 5-minute signature window
   .build();
 ```
 
 **Verification pipeline:**
+
 1. Extract 3 headers from the request
 2. Validate timestamp is within allowed window
 3. Reconstruct the signed message from request data
@@ -190,6 +202,7 @@ const verifier = new SelfAgentVerifier()
 9. Optionally check sybil limits via `getAgentCountForHuman(nullifier)`
 
 **Middleware support:**
+
 - Express: `verifier.expressMiddleware()`
 - Generic: `verifier.verify(request)` returns `{ valid, agentAddress, agentId, error? }`
 
@@ -231,15 +244,15 @@ The `@selfxyz/mcp-server` package implements the Model Context Protocol for AI c
 
 ### Resources (2)
 
-| URI | Description |
-|---|---|
+| URI               | Description                                                 |
+| ----------------- | ----------------------------------------------------------- |
 | `self://networks` | Network configuration (chain IDs, RPCs, contract addresses) |
-| `self://identity` | Current agent identity state (if configured) |
+| `self://identity` | Current agent identity state (if configured)                |
 
 ### Prompts (1)
 
-| Name | Description |
-|---|---|
+| Name                          | Description                                                     |
+| ----------------------------- | --------------------------------------------------------------- |
 | `self_integrate_verification` | Guided prompt for integrating agent verification into a service |
 
 ### Session Management
@@ -255,35 +268,35 @@ Base URL: `https://self-agent-id.vercel.app` (override via `SELF_AGENT_API_BASE`
 
 ### Registration
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/api/agent/register` | Start registration (returns session ID) |
-| `GET` | `/api/agent/register/status?token=X` | Poll registration status |
-| `GET` | `/api/agent/register/qr?token=X` | Get QR code for Self app scanning |
-| `POST` | `/api/agent/register/callback` | Hub V2 callback (internal) |
+| Method | Path                                 | Description                             |
+| ------ | ------------------------------------ | --------------------------------------- |
+| `POST` | `/api/agent/register`                | Start registration (returns session ID) |
+| `GET`  | `/api/agent/register/status?token=X` | Poll registration status                |
+| `GET`  | `/api/agent/register/qr?token=X`     | Get QR code for Self app scanning       |
+| `POST` | `/api/agent/register/callback`       | Hub V2 callback (internal)              |
 
 ### Deregistration
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/api/agent/deregister` | Start deregistration |
-| `GET` | `/api/agent/deregister/status?token=X` | Poll deregistration status |
-| `POST` | `/api/agent/deregister/callback` | Hub V2 callback (internal) |
+| Method | Path                                   | Description                |
+| ------ | -------------------------------------- | -------------------------- |
+| `POST` | `/api/agent/deregister`                | Start deregistration       |
+| `GET`  | `/api/agent/deregister/status?token=X` | Poll deregistration status |
+| `POST` | `/api/agent/deregister/callback`       | Hub V2 callback (internal) |
 
 ### Agent Info & Discovery
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/agent/info/{chainId}/{agentId}` | Get agent details |
-| `GET` | `/api/agent/agents/{chainId}/{address}` | List agents for an address |
-| `GET` | `/api/agent/verify/{chainId}/{agentId}` | Verify agent on-chain status |
+| Method | Path                                    | Description                  |
+| ------ | --------------------------------------- | ---------------------------- |
+| `GET`  | `/api/agent/info/{chainId}/{agentId}`   | Get agent details            |
+| `GET`  | `/api/agent/agents/{chainId}/{address}` | List agents for an address   |
+| `GET`  | `/api/agent/verify/{chainId}/{agentId}` | Verify agent on-chain status |
 
 ### Cards & Reputation
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/cards/{chainId}/{agentId}` | Get agent's public profile card |
-| `GET` | `/api/reputation/{chainId}/{agentId}` | Get agent's reputation score |
+| Method | Path                                  | Description                     |
+| ------ | ------------------------------------- | ------------------------------- |
+| `GET`  | `/api/cards/{chainId}/{agentId}`      | Get agent's public profile card |
+| `GET`  | `/api/reputation/{chainId}/{agentId}` | Get agent's reputation score    |
 
 ## Data Flow Diagrams
 
@@ -402,31 +415,31 @@ Base URL: `https://self-agent-id.vercel.app` (override via `SELF_AGENT_API_BASE`
 
 ### Celo Mainnet (Production)
 
-| Property | Value |
-|---|---|
-| Chain ID | 42220 |
-| RPC | `https://forno.celo.org` |
-| Block time | ~5 seconds |
-| Registry | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` |
-| Provider | `0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d` |
-| DemoVerifier | `0xD8ec054FD869A762bC977AC328385142303c7def` |
-| AgentGate | `0x26e05bF632fb5bACB665ab014240EAC1413dAE35` |
-| Hub V2 | `0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF` |
-| Explorer | [celoscan.io](https://celoscan.io) / [explorer.celo.org](https://explorer.celo.org) |
+| Property     | Value                                                                               |
+| ------------ | ----------------------------------------------------------------------------------- |
+| Chain ID     | 42220                                                                               |
+| RPC          | `https://forno.celo.org`                                                            |
+| Block time   | ~5 seconds                                                                          |
+| Registry     | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944`                                        |
+| Provider     | `0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d`                                        |
+| DemoVerifier | `0xD8ec054FD869A762bC977AC328385142303c7def`                                        |
+| AgentGate    | `0x26e05bF632fb5bACB665ab014240EAC1413dAE35`                                        |
+| Hub V2       | `0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF`                                        |
+| Explorer     | [celoscan.io](https://celoscan.io) / [explorer.celo.org](https://explorer.celo.org) |
 
 ### Celo Sepolia (Testnet)
 
-| Property | Value |
-|---|---|
-| Chain ID | 11142220 |
-| RPC | `https://forno.celo-sepolia.celo-testnet.org` |
-| Block time | ~5 seconds |
-| Registry | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` |
-| Provider | `0x5E61c3051Bf4115F90AacEAE6212bc419f8aBB6c` |
-| DemoVerifier | `0xc31BAe8f2d7FCd19f737876892f05d9bDB294241` |
-| AgentGate | `0x86Af07e30Aa42367cbcA7f2B1764Be346598bbc2` |
-| Hub V2 | `0x16ECBA51e18a4a7e61fdC417f0d47AFEeDfbed74` |
-| Explorer | [celo-sepolia.celoscan.io](https://celo-sepolia.celoscan.io) |
+| Property     | Value                                                        |
+| ------------ | ------------------------------------------------------------ |
+| Chain ID     | 11142220                                                     |
+| RPC          | `https://forno.celo-sepolia.celo-testnet.org`                |
+| Block time   | ~5 seconds                                                   |
+| Registry     | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379`                 |
+| Provider     | `0x5E61c3051Bf4115F90AacEAE6212bc419f8aBB6c`                 |
+| DemoVerifier | `0xc31BAe8f2d7FCd19f737876892f05d9bDB294241`                 |
+| AgentGate    | `0x86Af07e30Aa42367cbcA7f2B1764Be346598bbc2`                 |
+| Hub V2       | `0x16ECBA51e18a4a7e61fdC417f0d47AFEeDfbed74`                 |
+| Explorer     | [celo-sepolia.celoscan.io](https://celo-sepolia.celoscan.io) |
 
 ### Important Network Notes
 

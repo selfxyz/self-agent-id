@@ -81,7 +81,10 @@ describe("validateAllowedOrigin (enforce on, allowlist)", () => {
     vi.resetModules();
     vi.stubEnv("AA_PROXY_TOKEN_SECRET", "test-secret");
     vi.stubEnv("AA_PROXY_ENFORCE_ORIGIN", "true");
-    vi.stubEnv("AA_PROXY_ALLOWED_ORIGINS", "https://app.example.com,https://other.example.com");
+    vi.stubEnv(
+      "AA_PROXY_ALLOWED_ORIGINS",
+      "https://app.example.com,https://other.example.com",
+    );
     const mod = await import("@/lib/aaProxyAuth");
     validateAllowedOrigin = mod.validateAllowedOrigin;
   });

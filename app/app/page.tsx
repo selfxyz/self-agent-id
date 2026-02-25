@@ -70,7 +70,8 @@ export default function Home() {
                     <Bot size={16} className="text-accent-2" />
                   </span>
                   <p className="text-base text-muted leading-relaxed">
-                    Your agents book travel, manage finances, and negotiate on your behalf.
+                    Your agents book travel, manage finances, and negotiate on
+                    your behalf.
                   </p>
                 </div>
                 <div className="flex items-start gap-3">
@@ -78,7 +79,8 @@ export default function Home() {
                     <Shield size={16} className="text-accent-warn" />
                   </span>
                   <p className="text-base text-foreground font-medium leading-relaxed">
-                    But how does anyone know there&apos;s a real person behind them?
+                    But how does anyone know there&apos;s a real person behind
+                    them?
                   </p>
                 </div>
                 <div className="flex items-start gap-3">
@@ -86,7 +88,11 @@ export default function Home() {
                     <Fingerprint size={16} className="text-accent-success" />
                   </span>
                   <p className="text-base text-muted leading-relaxed">
-                    Self Agent ID lets agents prove they&apos;re human-backed, privately and instantly. <strong className="text-foreground">No personal data shared. Ever.</strong>
+                    Self Agent ID lets agents prove they&apos;re human-backed,
+                    privately and instantly.{" "}
+                    <strong className="text-foreground">
+                      No personal data shared. Ever.
+                    </strong>
                   </p>
                 </div>
               </div>
@@ -111,20 +117,26 @@ export default function Home() {
                   </Button>
                 </a>
               </div>
-
             </div>
 
             {/* Right: Lottie animation */}
             <div className="flex-1 relative max-w-2xl md:max-w-3xl w-full">
               <div className="absolute inset-0 bg-gradient-to-br from-accent/5 via-accent-2/5 to-transparent rounded-3xl -m-4" />
               {animationData ? (
-                <div className="relative pointer-events-none origin-center scale-[2]" style={{ maskImage: "radial-gradient(ellipse 85% 85% at 50% 50%, black 60%, transparent 100%)", WebkitMaskImage: "radial-gradient(ellipse 85% 85% at 50% 50%, black 60%, transparent 100%)" }}>
+                <div
+                  className="relative pointer-events-none origin-center scale-[2]"
+                  style={{
+                    maskImage:
+                      "radial-gradient(ellipse 85% 85% at 50% 50%, black 60%, transparent 100%)",
+                    WebkitMaskImage:
+                      "radial-gradient(ellipse 85% 85% at 50% 50%, black 60%, transparent 100%)",
+                  }}
+                >
                   <Lottie animationData={animationData} loop autoplay />
                 </div>
               ) : (
                 /* Fallback: show the icon while animation loads */
                 <div className="flex items-center justify-center py-16">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src="/self-icon.png"
                     alt="Self"
@@ -142,7 +154,9 @@ export default function Home() {
       {/* ────────────── The Trust Gap ────────────── */}
       <section className="bg-surface-1 px-6 py-20">
         <div className="max-w-2xl mx-auto">
-          <h2 className="text-3xl font-bold text-center mb-10">The Trust Gap</h2>
+          <h2 className="text-3xl font-bold text-center mb-10">
+            The Trust Gap
+          </h2>
 
           {/* Tweet quote card */}
           <a
@@ -151,14 +165,16 @@ export default function Home() {
             rel="noopener noreferrer"
             className="block"
           >
-            <Card glow className="relative border-accent-warn/20 bg-white hover:border-accent-warn/40 transition-colors">
+            <Card
+              glow
+              className="relative border-accent-warn/20 bg-white hover:border-accent-warn/40 transition-colors"
+            >
               <div className="absolute top-4 right-4 text-subtle">
                 <ExternalLink size={14} />
               </div>
 
               {/* Author */}
               <div className="flex items-center gap-3 mb-4">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/profile_picture.jpg"
                   alt="Gal Nagli"
@@ -174,11 +190,36 @@ export default function Home() {
 
               {/* Tweet text */}
               <blockquote className="text-lg text-foreground leading-relaxed mb-4">
-                The number of registered AI agents is also fake, there is no rate limiting on account creation, my <a href="https://x.com/openclaw" target="_blank" rel="noopener noreferrer" className="text-accent-2 hover:underline" onClick={(e) => e.stopPropagation()}>@openclaw</a> agent just registered <strong className="text-accent-warn">500,000 users</strong> on <a href="https://x.com/moltbook" target="_blank" rel="noopener noreferrer" className="text-accent-2 hover:underline" onClick={(e) => e.stopPropagation()}>@moltbook</a> - don&apos;t trust all the media hype 🙂
+                The number of registered AI agents is also fake, there is no
+                rate limiting on account creation, my{" "}
+                <a
+                  href="https://x.com/openclaw"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent-2 hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  @openclaw
+                </a>{" "}
+                agent just registered{" "}
+                <strong className="text-accent-warn">500,000 users</strong> on{" "}
+                <a
+                  href="https://x.com/moltbook"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent-2 hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  @moltbook
+                </a>{" "}
+                - don&apos;t trust all the media hype 🙂
               </blockquote>
 
               {/* Embedded media */}
-              <div className="grid grid-cols-2 gap-1 rounded-xl overflow-hidden mb-4" onClick={(e) => e.stopPropagation()}>
+              <div
+                className="grid grid-cols-2 gap-1 rounded-xl overflow-hidden mb-4"
+                onClick={(e) => e.stopPropagation()}
+              >
                 {/* Video */}
                 <video
                   src="/video.mp4"
@@ -189,7 +230,6 @@ export default function Home() {
                   className="w-full h-full object-cover aspect-square"
                 />
                 {/* Screenshot */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/screen.jpeg"
                   alt="Moltbook showing 634,737 AI agents registered"
@@ -220,7 +260,11 @@ export default function Home() {
           </a>
 
           <p className="text-center text-muted mt-8 max-w-lg mx-auto leading-relaxed">
-            Self Agent ID makes this impossible. One identity per person. Verified on-chain. <strong className="text-foreground">Sybil-resistant by design.</strong>
+            Self Agent ID makes this impossible. One identity per person.
+            Verified on-chain.{" "}
+            <strong className="text-foreground">
+              Sybil-resistant by design.
+            </strong>
           </p>
         </div>
       </section>
@@ -228,9 +272,7 @@ export default function Home() {
       {/* ────────────── How It Works ────────────── */}
       <section className="px-6 py-20">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-3xl font-bold text-center mb-12">
-            How It Works
-          </h2>
+          <h2 className="text-3xl font-bold text-center mb-12">How It Works</h2>
 
           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1fr] items-stretch gap-4 md:gap-0">
             {[
@@ -253,7 +295,10 @@ export default function Home() {
               <React.Fragment key={i}>
                 {i > 0 && (
                   <div className="hidden md:flex items-center justify-center px-2">
-                    <ArrowRight size={20} className="text-subtle flex-shrink-0" />
+                    <ArrowRight
+                      size={20}
+                      className="text-subtle flex-shrink-0"
+                    />
                   </div>
                 )}
                 {i > 0 && (
@@ -261,7 +306,10 @@ export default function Home() {
                     <ArrowRight size={20} className="text-subtle rotate-90" />
                   </div>
                 )}
-                <Card glow className="flex flex-col items-center text-center h-full">
+                <Card
+                  glow
+                  className="flex flex-col items-center text-center h-full"
+                >
                   <div className="w-20 h-20 rounded-full bg-accent/10 flex items-center justify-center mb-4">
                     <step.icon size={40} className="text-accent" />
                   </div>
@@ -279,7 +327,9 @@ export default function Home() {
       {/* ─── Who Is It For ─── */}
       <section className="bg-surface-1 px-6 py-16">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-3xl font-bold text-center mb-10">Who Is It For</h2>
+          <h2 className="text-3xl font-bold text-center mb-10">
+            Who Is It For
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               {
@@ -318,14 +368,14 @@ export default function Home() {
             ].map((item) => (
               <Card key={item.title} className="flex flex-col h-full">
                 <div className="flex items-center gap-3 mb-4">
-                  <span className={`w-12 h-12 rounded-full ${item.bgColor} flex items-center justify-center flex-shrink-0`}>
+                  <span
+                    className={`w-12 h-12 rounded-full ${item.bgColor} flex items-center justify-center flex-shrink-0`}
+                  >
                     <item.icon size={24} className={item.iconColor} />
                   </span>
                   <h3 className="font-bold text-lg">{item.title}</h3>
                 </div>
-                <p className="text-sm text-muted mb-6 flex-1">
-                  {item.desc}
-                </p>
+                <p className="text-sm text-muted mb-6 flex-1">{item.desc}</p>
                 <Link href={item.href}>
                   <Button variant={item.btnVariant} size="sm">
                     <item.btnIcon size={14} />
@@ -479,8 +529,9 @@ export default function Home() {
           </div>
           <p className="text-center text-muted mb-6 max-w-xl mx-auto">
             Add agent verification to your service with a few lines of code.
-            SDKs available for TypeScript, Python, and Rust. Building with AI agents?
-            Use the MCP server to give your agent identity directly from your IDE.
+            SDKs available for TypeScript, Python, and Rust. Building with AI
+            agents? Use the MCP server to give your agent identity directly from
+            your IDE.
           </p>
 
           {/* Package badges */}
