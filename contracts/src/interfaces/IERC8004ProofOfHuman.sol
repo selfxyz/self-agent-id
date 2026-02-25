@@ -10,6 +10,9 @@ pragma solidity 0.8.28;
 ///      This makes proof-of-human a first-class, trustless property of agent identity,
 ///      rather than relying on a validator's attestation in the Validation Registry.
 interface IERC8004ProofOfHuman {
+    /// @notice ERC-8004 required: emitted on every agent registration
+    event Registered(uint256 indexed agentId, string agentURI, address indexed owner);
+
     /// @notice Emitted when an agent is registered with proof-of-human
     event AgentRegisteredWithHumanProof(
         uint256 indexed agentId,

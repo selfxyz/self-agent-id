@@ -1817,4 +1817,103 @@ contract SelfAgentRegistryTest is Test {
         vm.expectRevert();
         registry.setMaxAgentsPerHuman(5);
     }
+
+    // ====================================================
+    // ERC-8004: agentURI storage + Registered event (Task 1)
+    // ====================================================
+
+    function test_registeredEventEmittedOnSimpleRegister() public {
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        bytes memory userData = _buildUserData(0x52);
+
+        // also verifies agentURI is empty string ""
+        vm.expectEmit(true, true, false, true);
+        emit IERC8004ProofOfHuman.Registered(1, "", human1);
+
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    function test_registeredEventEmittedOnAdvancedRegister() public {
+        address agentAddr = vm.addr(advAgentPrivKey1);
+        (uint8 v, bytes32 r, bytes32 s) = _signRegistration(advAgentPrivKey1, human1);
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        bytes memory userData = _buildAdvancedUserData(agentAddr, v, r, s);
+
+        // Advanced mode: NFT minted to humanAddress (human1), agentId = 1; also verifies agentURI is empty string ""
+        vm.expectEmit(true, true, false, true);
+        emit IERC8004ProofOfHuman.Registered(1, "", human1);
+
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    function test_registeredEventEmittedOnWalletFreeRegister() public {
+        address agentAddr = vm.addr(advAgentPrivKey1);
+        (uint8 v, bytes32 r, bytes32 s) = _signRegistration(advAgentPrivKey1, human1);
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        bytes memory userData = _buildWalletFreeUserData(agentAddr, human1, v, r, s);
+
+        // Wallet-free: NFT minted to agentAddr, agentId = 1; also verifies agentURI is empty string ""
+        vm.expectEmit(true, true, false, true);
+        emit IERC8004ProofOfHuman.Registered(1, "", agentAddr);
+
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+    }
+
+    function test_registerWithHumanProofStoresURI() public {
+        string memory uri = "ipfs://QmTestAgentRegistrationFile";
+        bytes memory providerData = abi.encodePacked(agentKey1);
+
+        mockProvider.setNextNullifier(nullifier1);
+        vm.prank(human1);
+        uint256 agentId = registry.registerWithHumanProof(uri, address(mockProvider), "", providerData);
+
+        assertEq(registry.tokenURI(agentId), uri);
+    }
+
+    function test_registerWithHumanProofEmitsRegisteredEvent() public {
+        string memory uri = "ipfs://QmTestAgentRegistrationFile";
+        bytes memory providerData = abi.encodePacked(agentKey1);
+
+        mockProvider.setNextNullifier(nullifier1);
+
+        vm.expectEmit(true, true, false, true);
+        emit IERC8004ProofOfHuman.Registered(1, uri, human1);
+
+        vm.prank(human1);
+        registry.registerWithHumanProof(uri, address(mockProvider), "", providerData);
+    }
+
+    function test_tokenURIRevertsForNonexistentToken() public {
+        vm.expectRevert();
+        registry.tokenURI(999);
+    }
+
+    function test_agentURIClearedOnRevoke() public {
+        // Register with a URI via mock provider
+        string memory uri = "ipfs://QmTestAgentRegistrationFile";
+        bytes memory providerData = abi.encodePacked(agentKey1);
+
+        mockProvider.setNextNullifier(nullifier1);
+        vm.prank(human1);
+        uint256 agentId = registry.registerWithHumanProof(uri, address(mockProvider), "", providerData);
+        assertEq(registry.tokenURI(agentId), uri, "URI should be stored after registration");
+
+        // Self-deregister burns the NFT and clears storage
+        vm.prank(human1);
+        registry.selfDeregister(agentId);
+
+        // tokenURI should revert because the token no longer exists
+        vm.expectRevert();
+        registry.tokenURI(agentId);
+    }
+
+    function test_tokenURIEmptyAfterHubRegister() public {
+        // Hub V2 path passes "" for URI — tokenURI should return ""
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+        assertEq(registry.tokenURI(agentId), "");
+    }
 }

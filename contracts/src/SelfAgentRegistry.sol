@@ -92,6 +92,9 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     /// @notice Nonce per agent address to prevent signature replay attacks
     mapping(address => uint256) public agentNonces;
 
+    /// @notice Maps agentId to the agent URI (ERC-8004 registration file location)
+    mapping(uint256 => string) private _agentURIs;
+
     /// @notice Stores ZK-attested credential claims for each agent
     struct AgentCredentials {
         string issuingState;
@@ -139,7 +142,7 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     error NotSameHuman();
 
     // ====================================================
-    // Events (V4 additions)
+    // Events
     // ====================================================
 
     /// @notice Emitted when a guardian is set for an agent
@@ -332,7 +335,7 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     ///      will revert for the Self provider. Other providers that support synchronous
     ///      verification can work through this path.
     function registerWithHumanProof(
-        string calldata,
+        string calldata agentURI,
         address proofProvider,
         bytes calldata proof,
         bytes calldata providerData
@@ -350,7 +353,9 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
             agentKey := calldataload(providerData.offset)
         }
 
-        uint256 agentId = _mintAgent(nullifier, agentKey, proofProvider, msg.sender);
+        // Copy agentURI to memory to avoid stack-too-deep with many calldata params
+        string memory uri = agentURI;
+        uint256 agentId = _mintAgent(nullifier, agentKey, proofProvider, msg.sender, uri);
         return agentId;
     }
 
@@ -442,6 +447,14 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
         return _agentCredentials[agentId];
     }
 
+    /// @notice ERC-721 tokenURI override — returns the agent's ERC-8004 registration file URI
+    /// @param tokenId The agent ID to query
+    /// @return The agent URI string (empty if none was provided at registration)
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        _requireOwned(tokenId);
+        return _agentURIs[tokenId];
+    }
+
     // ====================================================
     // Guardian Functions
     // ====================================================
@@ -487,12 +500,14 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
     /// @param agentKey The agent's key (address-derived bytes32 identifier)
     /// @param proofProvider The address of the proof provider
     /// @param to The address to mint the NFT to (the human's address)
+    /// @param agentURI The agent URI (ERC-8004 registration file location; empty string if none)
     /// @return agentId The newly minted agent ID
     function _mintAgent(
         uint256 nullifier,
         bytes32 agentKey,
         address proofProvider,
-        address to
+        address to,
+        string memory agentURI
     ) internal returns (uint256 agentId) {
         if (agentKeyToAgentId[agentKey] != 0) revert AgentAlreadyRegistered(agentKey);
         if (maxAgentsPerHuman > 0 && activeAgentCount[nullifier] >= maxAgentsPerHuman) {
@@ -513,12 +528,18 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
         agentKeyToAgentId[agentKey] = agentId;
         agentIdToAgentKey[agentId] = agentKey;
 
+        // Store agent URI if provided
+        if (bytes(agentURI).length > 0) {
+            _agentURIs[agentId] = agentURI;
+        }
+
         emit AgentRegisteredWithHumanProof(
             agentId,
             proofProvider,
             nullifier,
             IHumanProofProvider(proofProvider).verificationStrength()
         );
+        emit Registered(agentId, agentURI, to);
 
         return agentId;
     }
@@ -535,7 +556,7 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
         ISelfVerificationRoot.GenericDiscloseOutputV2 memory output
     ) internal {
         address provider = selfProofProvider;
-        uint256 agentId = _mintAgent(nullifier, agentKey, provider, humanAddress);
+        uint256 agentId = _mintAgent(nullifier, agentKey, provider, humanAddress, "");
         _storeCredentials(agentId, output);
     }
 
@@ -553,7 +574,7 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
         ISelfVerificationRoot.GenericDiscloseOutputV2 memory output
     ) internal {
         address provider = selfProofProvider;
-        uint256 agentId = _mintAgent(nullifier, agentKey, provider, agentAddress);
+        uint256 agentId = _mintAgent(nullifier, agentKey, provider, agentAddress, "");
         _storeCredentials(agentId, output);
 
         if (guardian != address(0)) {
@@ -592,10 +613,11 @@ contract SelfAgentRegistry is ERC721, Ownable, SelfVerificationRoot, IERC8004Pro
             activeAgentCount[nullifier]--;
         }
 
-        // Clear guardian, metadata, and credentials
+        // Clear guardian, metadata, credentials, and URI
         delete agentGuardian[agentId];
         delete agentMetadata[agentId];
         delete _agentCredentials[agentId];
+        delete _agentURIs[agentId];
 
         // Burn the NFT
         _burn(agentId);

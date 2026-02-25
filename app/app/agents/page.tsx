@@ -80,6 +80,30 @@ async function fetchVerificationStrength(
   return { strength, hasA2ACard };
 }
 
+/**
+ * Paginated queryFilter to avoid eth_getLogs block-range limits on
+ * RPC providers like Alchemy (free tier caps at 10-block ranges).
+ * Scans backwards from latest block in 50 000-block windows.
+ */
+async function paginatedQueryFilter(
+  registry: ethers.Contract,
+  filter: ethers.ContractEventName,
+  provider: ethers.JsonRpcProvider,
+): Promise<(ethers.EventLog | ethers.Log)[]> {
+  const latestBlock = await provider.getBlockNumber();
+  const blockWindow = 50_000;
+  const allEvents: (ethers.EventLog | ethers.Log)[] = [];
+
+  for (let toBlock = latestBlock; toBlock >= 0; toBlock -= blockWindow) {
+    const fromBlock = Math.max(0, toBlock - blockWindow + 1);
+    const events = await registry.queryFilter(filter, fromBlock, toBlock);
+    allEvents.push(...events);
+    if (fromBlock === 0) break;
+  }
+
+  return allEvents;
+}
+
 function buildDisclosureBadges(creds: AgentCredentials): string[] {
   const badges: string[] = [];
   if (creds.olderThan > 0n) badges.push(`${creds.olderThan.toString()}+`);
@@ -214,7 +238,7 @@ export default function MyAgentsPage() {
 
       // Scan Transfer events to find all minted agents, then check if guardian matches
       const mintFilter = registry.filters.Transfer(ethers.ZeroAddress, null);
-      const mintEvents = await registry.queryFilter(mintFilter, 0, "latest");
+      const mintEvents = await paginatedQueryFilter(registry, mintFilter, provider);
 
       const results: AgentEntry[] = [];
 
@@ -306,7 +330,7 @@ export default function MyAgentsPage() {
 
       // Query Transfer events where `to` is the connected wallet (mints)
       const mintFilter = registry.filters.Transfer(null, ownerAddress);
-      const mintEvents = await registry.queryFilter(mintFilter, 0, "latest");
+      const mintEvents = await paginatedQueryFilter(registry, mintFilter, provider);
 
       const results: AgentEntry[] = [];
 

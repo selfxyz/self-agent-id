@@ -46,6 +46,17 @@ export function getChain(network: NetworkConfig): Chain {
 }
 
 // ── Config ────────────────────────────────────────────────────────────
+
+/**
+ * Get the WebAuthn Relying Party ID.
+ * Uses NEXT_PUBLIC_PASSKEY_RP_ID if set, otherwise falls back to the
+ * current browser hostname.  For production deploy on ai.app.self.xyz
+ * set the env var so passkeys are always bound to the canonical domain.
+ */
+function getPasskeyRpId(): string {
+  return process.env.NEXT_PUBLIC_PASSKEY_RP_ID || window.location.hostname;
+}
+
 function getZeroDevProjectId(): string | null {
   return process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID || null;
 }
@@ -139,7 +150,7 @@ export async function createPasskeyWallet(passkeyName: string, network?: Network
     passkeyName,
     passkeyServerUrl: getPasskeyServerUrl(),
     mode: WebAuthnMode.Register,
-    rpID: window.location.hostname,
+    rpID: getPasskeyRpId(),
   });
 
   const passkeyValidator = await toPasskeyValidator(publicClient, {
@@ -173,7 +184,7 @@ export async function signInWithPasskey(network?: NetworkConfig): Promise<{
     passkeyName: "Self Agent ID",
     passkeyServerUrl: getPasskeyServerUrl(),
     mode: WebAuthnMode.Login,
-    rpID: window.location.hostname,
+    rpID: getPasskeyRpId(),
   });
 
   const passkeyValidator = await toPasskeyValidator(publicClient, {
@@ -218,7 +229,7 @@ export async function sendUserOperation(
     passkeyName: "Self Agent ID",
     passkeyServerUrl: getPasskeyServerUrl(),
     mode: WebAuthnMode.Login,
-    rpID: window.location.hostname,
+    rpID: getPasskeyRpId(),
   });
 
   const passkeyValidator = await toPasskeyValidator(publicClient, {
