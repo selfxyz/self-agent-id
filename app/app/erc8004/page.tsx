@@ -5,7 +5,6 @@
 "use client";
 
 import { ExternalLink, GitPullRequest } from "lucide-react";
-import MatrixText from "@/components/MatrixText";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
@@ -21,14 +20,13 @@ export default function ERC8004Page() {
         <Badge variant="info" className="mb-4">
           Proposed Optional Extension
         </Badge>
-        <div className="flex justify-center mb-4">
-          <MatrixText text="ERC-8004 Proof-of-Human" fontSize={40} />
-        </div>
+        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground mb-4">
+          ERC-8004 Proof-of-Human
+        </h1>
         <p className="text-lg text-muted max-w-2xl mx-auto">
-          A proposed optional extension to ERC-8004 that adds on-chain,
-          privacy-preserving proof-of-human verification for AI agents.
-          We&apos;re proposing this as a new section in the ERC-8004 EIP document,
-          similar to how ERC-721 defines optional Metadata and Enumerable extensions.
+          An optional extension to ERC-8004 that adds on-chain, privacy-preserving
+          proof-of-human verification for AI agents, proposed as a new section in the
+          EIP, similar to how ERC-721 defines optional Metadata and Enumerable extensions.
         </p>
       </div>
 
@@ -38,7 +36,7 @@ export default function ERC8004Page() {
         <p className="text-muted leading-relaxed">
           ERC-8004 is a proposed standard for on-chain AI agent registries. It defines
           a minimal interface for registering agents, assigning them unique IDs (as NFTs),
-          and looking up agent ownership. Think of it as ENS for AI agents &mdash; a
+          and looking up agent ownership. Think of it as ENS for AI agents: a
           universal, composable identity layer.
         </p>
         <CodeBlock
@@ -46,7 +44,7 @@ export default function ERC8004Page() {
             {
               label: "IERC8004 (Base)",
               language: "solidity",
-              code: `/// @title IERC8004 — Agent Registry (Base Standard)
+              code: `/// @title IERC8004 - Agent Registry (Base Standard)
 /// @notice Minimal interface for on-chain agent registration
 interface IERC8004 {
     /// @notice Register a new agent with a public key
@@ -78,7 +76,7 @@ interface IERC8004 {
           <p className="text-muted leading-relaxed mt-3">
             Without proof-of-human, anyone can register unlimited agents, enabling sybil attacks,
             bot farms, and impersonation. Protocols that gate access to &ldquo;verified agents&rdquo;
-            have no standard way to check humanity. Each project builds its own solution &mdash;
+            have no standard way to check humanity. Each project builds its own solution,
             fragmenting the ecosystem and creating integration overhead.
           </p>
         </Card>
@@ -88,7 +86,7 @@ interface IERC8004 {
       <section className="space-y-4">
         <h2 className="text-2xl font-bold">Our Proposal</h2>
         <p className="text-muted leading-relaxed">
-          We propose <strong className="text-foreground">IERC8004ProofOfHuman</strong> &mdash; an
+          We propose <strong className="text-foreground">IERC8004ProofOfHuman</strong>, an
           optional extension interface that adds proof-of-human verification as a first-class,
           composable property of agent identity. Registries that need human verification
           implement this alongside the base standard. Three design principles:
@@ -348,10 +346,10 @@ GET /.well-known/a2a/{agentId}?chain={chainId}  → Redirect to card resolver`}<
           <div className="flex items-start gap-3">
             <GitPullRequest size={24} className="text-accent-warn flex-shrink-0 mt-0.5" />
             <div>
-              <p className="font-bold mb-1">Pull Request — Coming Soon</p>
+              <p className="font-bold mb-1">Pull Request: Coming Soon</p>
               <p className="text-sm text-muted">
                 We&apos;re preparing a PR to the ERC-8004 EIP document proposing
-                proof-of-human as an optional extension section &mdash; similar to
+                proof-of-human as an optional extension section, similar to
                 how ERC-721 defines optional Metadata and Enumerable extensions
                 within the same EIP. The PR will include the full interface
                 specification, rationale, security considerations, and a link to

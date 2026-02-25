@@ -1,10 +1,18 @@
 ---
 name: query-credentials
 description: >
-  This skill should be used when the user asks to "lookup agent",
-  "agent credentials", "check agent status", "find agents",
-  "agent discovery", "agent card", "agent info", "list agents for human",
-  or wants to query agent identity, credentials, reputation, or status.
+  Read-only queries for Self Agent ID data — look up agents by address or ID,
+  list agents for a human, check own identity, retrieve ZK-attested credentials,
+  reputation scores, freshness status, and A2A agent cards. Use when the user
+  asks to "lookup agent", "agent credentials", "check agent status", "find agents",
+  "agent discovery", "agent card", "agent info", or "list agents for human".
+  Do NOT use for verification middleware or adding verification to APIs — use
+  verify-agents for that.
+license: MIT
+metadata:
+  author: Self Protocol
+  version: 1.0.0
+  mcp-server: self-agent-id
 ---
 
 # Query Agent Credentials
@@ -89,7 +97,7 @@ Example content:
   "mainnet": {
     "chainId": 42220,
     "rpc": "https://forno.celo.org",
-    "registry": "0x62E37d0f6c5f67784b8828B3dF68BCDbB2e55095",
+    "registry": "0x60651482a3033A72128f874623Fc790061cc46D4",
     "provider": "0xb0F718Bad279e51A9447D36EAa457418dBd4D95b",
     "explorer": "https://celoscan.io"
   },
@@ -150,7 +158,7 @@ Example agent card:
   "url": "https://myagent.example.com",
   "selfProtocol": {
     "agentId": 5,
-    "registry": "0x62E37d0f6c5f67784b8828B3dF68BCDbB2e55095",
+    "registry": "0x60651482a3033A72128f874623Fc790061cc46D4",
     "chainId": 42220,
     "proofProvider": "0xb0F718Bad279e51A9447D36EAa457418dBd4D95b",
     "providerName": "self",
@@ -292,6 +300,16 @@ After registering, confirm the identity is correctly recorded:
 2. Verify `registered` is `true` and `agentId` is non-zero.
 3. Verify `credentials_summary` matches the selected verification config.
 4. Verify the proof provider address matches Self Protocol's known provider address.
+
+## Troubleshooting
+
+| Symptom | Cause | Resolution |
+|---|---|---|
+| `self_get_identity` returns "Private key not configured" | `SELF_AGENT_PRIVATE_KEY` env var not set in MCP server | Add the key to the `env` block in your MCP server configuration. Read-only tools (`self_lookup_agent`, `self_list_agents_for_human`) work without a key. |
+| `self_lookup_agent` returns empty/null for a known agent | Wrong network selected | The agent may be registered on testnet but you're querying mainnet (or vice versa). Specify the correct `network` parameter. |
+| Credentials show `olderThan: 0` for a registered agent | Agent used verification config `'0'` or `'3'` (no age gate) | The agent registered without an age threshold. This is expected for configs that don't include age verification. |
+| `ofacClean: false` for a legitimate agent | Agent used a config without OFAC screening (`'0'`, `'1'`, or `'2'`) | A `false` value means "not screened", not "failed screening". Check the verification config used at registration. |
+| REST API returns 404 | Wrong chain ID in URL path | Use `42220` for mainnet or `11142220` for testnet. The old Alfajores chain ID (`44787`) is not supported. |
 
 ## Reference Documentation
 

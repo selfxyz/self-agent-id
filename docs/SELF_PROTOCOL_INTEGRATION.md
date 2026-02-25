@@ -94,6 +94,12 @@ Use these to validate an integration quickly:
 3. `GET /api/verify-status/{chainId}/{agentId}`
 4. `GET /.well-known/a2a/{agentId}?chain={chainId}` (redirects to card resolver)
 
+## JSON Schema & SDK helpers
+
+1. Agent registration JSON format: `docs/AGENT_REGISTRATION_JSON.md`
+   Describes the ERC-8004 registration JSON structure, Proof-of-Human extensions,
+   and SDK helpers for auto-generating the file.
+
 ## CLI docs
 
 For full CLI integration:

@@ -1,5 +1,6 @@
 .worktrees/
 .claude/
+.agents/
 
 # OS/editor noise
 .DS_Store
@@ -42,3 +43,7 @@ htmlcov/
 
 # Plans
 docs
+
+# Yarn PnP
+.pnp.cjs
+.pnp.loader.mjs

@@ -1,10 +1,17 @@
 ---
 name: sign-requests
 description: >
-  This skill should be used when the user asks to "sign a request",
-  "authenticate as agent", "agent auth headers", "self agent fetch",
-  "signed HTTP request", "make authenticated call", or needs to send
-  HTTP requests with Self Agent ID authentication headers.
+  How to sign HTTP requests with Self Agent ID's 3-header ECDSA authentication
+  system. Covers the signing algorithm, MCP tools (self_sign_request,
+  self_authenticated_fetch), SDK usage in TypeScript/Python/Rust, and replay
+  protection. Use when the user asks to "sign a request", "authenticate as agent",
+  "agent auth headers", "self agent fetch", "signed HTTP request", or
+  "make authenticated call".
+license: MIT
+metadata:
+  author: Self Protocol
+  version: 1.0.0
+  mcp-server: self-agent-id
 ---
 
 # Sign Requests
@@ -292,4 +299,15 @@ headers = agent.sign_request("GET", "https://api.example.com/data?page=1")
 
 ## Complete Examples
 
-For full runnable code examples including error handling, retry logic, and integration with popular HTTP libraries, see [`examples/signed-fetch.md`](examples/signed-fetch.md).
+For full runnable code examples including error handling, retry logic, and integration with popular HTTP libraries, see [`references/signed-fetch.md`](references/signed-fetch.md).
+
+## Troubleshooting
+
+| Symptom | Cause | Resolution |
+|---|---|---|
+| Signature verification fails on server | Body mismatch — the body used for signing differs from the body sent | Ensure the exact same string is passed to both `signRequest()` and the HTTP request body. JSON serialization order matters. |
+| Signature verification fails on server | Timestamp drift between client and server | Check that both machines have synchronized clocks (NTP). The default window is 5 minutes. |
+| `401 Unauthorized` with valid signature | Path mismatch — signing used full URL but server verified with path only (or vice versa) | The signing algorithm uses only the path and query string (no scheme or host). Ensure the server reconstructs the same path. |
+| `SELF_AGENT_PRIVATE_KEY` not found | Environment variable not set in MCP server config | Add the key to the `env` block in your MCP server configuration (`.claude/mcp_servers.json` or `.mcp.json`). |
+| Signature is `0x` followed by 130 hex chars but verification fails | Wrong EIP-191 prefix or hash construction | Verify the message is hashed with Keccak-256 before EIP-191 personal_sign. The prefix must be `\x19Ethereum Signed Message:\n32` (32 bytes, not the hex string length). |
+| GET request signature rejected | Body parameter passed as `undefined` instead of omitted | For GET requests, omit the body parameter entirely or pass an empty string. Do not pass `undefined` or `null`. |

@@ -71,7 +71,7 @@ export function Footer() {
               : "Not deployed"}
           </span>
           {network.isTestnet && (
-            <span className="text-xs text-amber-400">(testnet)</span>
+            <span className="text-xs text-amber-600">(testnet)</span>
           )}
           <ExternalLink size={12} />
         </a>

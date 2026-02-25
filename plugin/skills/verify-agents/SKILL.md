@@ -1,11 +1,18 @@
 ---
 name: verify-agents
 description: >
-  This skill should be used when the user asks to "verify an agent",
-  "check agent identity", "add verification", "agent verification middleware",
-  "is this agent verified", "reputation score", "check proof of human",
-  "validate agent freshness", or wants to verify other agents or add
-  Self Agent ID verification to their API.
+  Verify Self Agent ID identities and add verification middleware to APIs.
+  Covers one-off agent verification, SelfAgentVerifier builder pattern,
+  reputation scoring, freshness validation, sybil detection, and the critical
+  provider check. Use when the user asks to "verify an agent", "check agent
+  identity", "add verification", "agent verification middleware", "is this
+  agent verified", "reputation score", "check proof of human", or
+  "validate agent freshness".
+license: MIT
+metadata:
+  author: Self Protocol
+  version: 1.0.0
+  mcp-server: self-agent-id
 ---
 
 # Verify Agents
@@ -355,12 +362,23 @@ let verifier = SelfAgentVerifier::builder()
 
 | Contract | Mainnet (42220) | Testnet (11142220) |
 |---|---|---|
-| SelfAgentRegistry | `0x62E37d0f6c5f67784b8828B3dF68BCDbB2e55095` | `0x29d941856134b1D053AfFF57fa560324510C79fa` |
+| SelfAgentRegistry | `0x60651482a3033A72128f874623Fc790061cc46D4` | `0x29d941856134b1D053AfFF57fa560324510C79fa` |
 | SelfHumanProofProvider | `0xb0F718Bad279e51A9447D36EAa457418dBd4D95b` | `0x8e248DEB0F18B0A4b1c608F2d80dBCeB1B868F81` |
 | SelfReputationProvider | Deployed alongside registry | Deployed alongside registry |
 | SelfValidationProvider | Deployed alongside registry | Deployed alongside registry |
 
 ---
+
+## Troubleshooting
+
+| Symptom | Cause | Resolution |
+|---|---|---|
+| Verification returns "Wrong provider" | Agent was verified by a non-Self provider | Confirm the agent registered through Self Protocol. Check `getProofProvider(agentId)` against the known Self provider address. |
+| Verification returns "No human proof" | Agent is registered but has no active proof | The agent may have been deregistered or the proof revoked. Re-register the agent. |
+| `isValidAgent` returns false but agent is registered | Freshness threshold exceeded | The agent's registration is older than the freshness window (~1 year default). Re-register or adjust the freshness threshold. |
+| Middleware rejects all requests with 401 | Missing or incorrect header extraction | Verify the middleware reads `x-self-agent-address`, `x-self-agent-signature`, and `x-self-agent-timestamp` (case-insensitive). Some frameworks lowercase headers. |
+| Sybil check fails unexpectedly | `sybilLimit` set too low | If the human legitimately has multiple agents, increase the `sybilLimit()` value in the verifier config. |
+| RPC errors during on-chain verification | Wrong network or RPC endpoint | Ensure the verifier's `network` matches the network the agent registered on. Check RPC URL connectivity. |
 
 ## Reference Documentation
 

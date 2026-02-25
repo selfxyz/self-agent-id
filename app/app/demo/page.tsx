@@ -695,11 +695,11 @@ async function runServiceTest(
         steps: allDone(steps, t),
         result: (
           <div className="space-y-1 text-xs">
-            <p className="text-accent-success font-bold text-sm">Census Service — Agent Verified</p>
+            <p className="text-accent-success font-bold text-sm">Census Service: Agent Verified</p>
             <p className="text-muted">
               Agent ID: <span className="text-foreground font-mono">#{verifyData.agentId}</span>
               {verifyData.credentials?.nationality && (
-                <> — <span className="text-foreground">{verifyData.credentials.nationality}</span></>
+                <> | <span className="text-foreground">{verifyData.credentials.nationality}</span></>
               )}
               {verifyData.credentials?.olderThan && Number(verifyData.credentials.olderThan) > 0 && (
                 <> <span className="text-foreground">{verifyData.credentials.olderThan}+</span></>
@@ -1736,7 +1736,7 @@ export default function DemoPage() {
         </p>
         <p className="text-xs text-subtle max-w-lg mx-auto mt-2">
           Don&apos;t have an agent yet?{" "}
-          <a href="/register" className="text-accent hover:text-accent-2 underline underline-offset-2">Register via dApp</a>
+          <a href="/agents/register" className="text-accent hover:text-accent-2 underline underline-offset-2">Register via dApp</a>
           {" "}or use the{" "}
           <a href="/cli" className="text-accent hover:text-accent-2 underline underline-offset-2">CLI</a>
           {" "}for terminal and agent-guided workflows.

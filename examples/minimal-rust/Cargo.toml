@@ -12,7 +12,7 @@ name = "service"
 path = "src/service.rs"
 
 [dependencies]
-self-agent-sdk = { version = "0.1.0", features = ["axum"] }
+self-agent-sdk = { version = "0.1.0-alpha.1", features = ["axum"] }
 tokio = { version = "1", features = ["full"] }
 axum = "0.8"
 serde_json = "1"

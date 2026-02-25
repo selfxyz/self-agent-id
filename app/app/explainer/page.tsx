@@ -5,7 +5,6 @@
 "use client";
 
 import Link from "next/link";
-import MatrixText from "@/components/MatrixText";
 import {
   Users,
   Lock,
@@ -41,13 +40,13 @@ export default function ExplainerPage() {
           </Badge>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/self-icon.png" alt="Self" width={64} height={64} className="rounded-xl mb-4" />
-          <div className="flex justify-center mb-6">
-            <MatrixText text="Proof-of-Human for AI Agents" fontSize={52} />
-          </div>
+          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-foreground mb-6">
+            Proof-of-Human for AI Agents
+          </h1>
           <p className="text-lg text-muted max-w-2xl mb-10">
             A composable, privacy-preserving standard that lets any smart contract
-            or service verify an AI agent is operated by a real, unique human
-            &mdash; without revealing who that human is.
+            or service verify an AI agent is operated by a real, unique human,
+            without revealing who that human is.
           </p>
           <div className="flex flex-col sm:flex-row gap-3">
             <Link href="/integration">
@@ -75,17 +74,14 @@ export default function ExplainerPage() {
           <h2 className="text-3xl font-bold mb-6">The Problem</h2>
           <div className="text-lg text-muted leading-relaxed space-y-4">
             <p>
-              AI agents are becoming autonomous participants in our digital lives &mdash;
-              booking travel, managing finances, writing code, and negotiating on our
-              behalf. As they act for us, every service they interact with faces the
-              same question: <strong className="text-foreground">&ldquo;Is this agent backed by a real person,
-              or is it part of a bot farm?&rdquo;</strong>
+              AI agents are becoming autonomous participants: booking travel, managing finances,
+              negotiating on our behalf. Every service they touch faces the same question:{" "}
+              <strong className="text-foreground">&ldquo;Is this agent backed by a real person, or is it a bot?&rdquo;</strong>
             </p>
             <p>
-              Without a universal standard, every platform builds its own verification
-              &mdash; fragmented, expensive, and unreliable. Proof-of-human gives agents
-              a portable, privacy-preserving credential that any service can check
-              instantly, without knowing who the human behind the agent is.
+              Without a standard, every platform builds its own verification. Fragmented, expensive,
+              and unreliable. Proof-of-human gives agents a portable credential that any service
+              can check instantly, without knowing who the human is.
             </p>
           </div>
         </div>
@@ -188,12 +184,12 @@ export default function ExplainerPage() {
           <h2 className="text-3xl font-bold text-center mb-4">Security Model</h2>
           <p className="text-center text-muted max-w-2xl mx-auto mb-12">
             The registry supports four registration modes. All produce the same
-            on-chain result &mdash; a verified, sybil-resistant agent NFT &mdash;
-            but they differ in who holds the agent&apos;s private key and how the
+            on-chain result (a verified, sybil-resistant agent NFT) but
+            they differ in who holds the agent&apos;s private key and how the
             human manages their agent.
           </p>
 
-          {/* Four modes — 2x2 grid */}
+          {/* Four modes - 2x2 grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
             {/* Agent Identity */}
             <Card>
@@ -242,13 +238,13 @@ export default function ExplainerPage() {
               </p>
               <p className="text-sm text-muted mb-4">
                 The human&apos;s wallet address becomes the agent key. No extra
-                keypair to manage &mdash; ideal for single-agent setups and quick
+                keypair to manage. Ideal for single-agent setups and quick
                 integrations.
               </p>
               <div className="space-y-2 text-sm text-muted">
                 <p className="font-bold text-foreground">How it&apos;s secured:</p>
                 <ul className="list-disc list-inside space-y-1">
-                  <li>Key is derived <em>inside</em> the contract callback &mdash; can&apos;t be spoofed</li>
+                  <li>Key is derived <em>inside</em> the contract callback, can&apos;t be spoofed</li>
                   <li>ZK proof binds wallet address to human nullifier</li>
                   <li>SDK signs requests with wallet key; services recover signer from ECDSA signature</li>
                 </ul>
@@ -314,7 +310,7 @@ export default function ExplainerPage() {
               <div className="space-y-2 text-sm text-muted">
                 <p className="font-bold text-foreground">How it&apos;s secured:</p>
                 <ul className="list-disc list-inside space-y-1">
-                  <li>Passkey (WebAuthn) backed by device biometrics &mdash; phishing-resistant</li>
+                  <li>Passkey (WebAuthn) backed by device biometrics, phishing-resistant</li>
                   <li>Smart wallet = guardian, can revoke agent gaslessly</li>
                   <li>Agent signs requests with its own ECDSA key</li>
                 </ul>
@@ -333,15 +329,15 @@ export default function ExplainerPage() {
             <div>
               <h3 className="font-bold text-lg mb-3">ZK-Attested Credentials</h3>
               <p className="text-muted mb-4">
-                Agents can optionally carry ZK-attested claims from their human backer &mdash;
+                Agents can optionally carry ZK-attested claims from their human backer,
                 such as age verification (over 18), OFAC sanctions clearance, nationality, or name.
                 During registration, the user chooses which fields to disclose. The Self app generates
-                a zero-knowledge proof on the user&apos;s phone &mdash; only the attested result
+                a zero-knowledge proof on the user&apos;s phone. Only the attested result
                 is stored on-chain, never raw passport data.
               </p>
               <p className="text-muted">
-                Any service can query an agent&apos;s credentials on-chain or via the SDK &mdash;
-                no additional identity check needed. Unselected fields are simply not included.
+                Any service can query an agent&apos;s credentials on-chain or via the SDK.
+                No additional identity check needed. Unselected fields are simply not included.
                 All disclosures are fully optional and chosen by the user at registration time.
               </p>
             </div>
@@ -364,7 +360,7 @@ export default function ExplainerPage() {
                   <p className="text-sm text-muted">
                     Signs each request with the agent&apos;s private key (wallet key in simple
                     mode, independent key in advanced mode). The signature covers the
-                    timestamp, HTTP method, URL, and body hash &mdash; preventing replay
+                    timestamp, HTTP method, URL, and body hash, preventing replay
                     and tampering.
                   </p>
                 </Card>
@@ -384,7 +380,7 @@ export default function ExplainerPage() {
                 completely.
               </p>
               <p className="text-muted mt-3">
-                <strong className="text-foreground">Fully composable</strong> &mdash; SDKs are available for{" "}
+                <strong className="text-foreground">Fully composable.</strong> SDKs are available for{" "}
                 <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">TypeScript</code>,{" "}
                 <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">Python</code>, and{" "}
                 <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">Rust</code>, with the signing
@@ -443,7 +439,7 @@ export default function ExplainerPage() {
           <Card className="mb-8">
             <p className="font-bold text-sm mb-3">Verification Strength Scale</p>
             <p className="text-xs text-muted mb-4">
-              The score comes from the proof provider that verified the agent &mdash; not computed client-side.
+              The score comes from the proof provider that verified the agent, not computed client-side.
               Self Protocol uses passport/biometric NFC verification (strength 100).
             </p>
             <div className="space-y-2 font-mono text-xs">
@@ -553,7 +549,7 @@ require(score >= 80, "Insufficient verification");`}</pre>
                   {
                     label: "Solidity",
                     language: "solidity",
-                    code: `/// @title IERC8004 — Agent Registry (Base Standard)
+                    code: `/// @title IERC8004 - Agent Registry (Base Standard)
 interface IERC8004 {
     function registerAgent(bytes32 agentPubKey) external returns (uint256);
     function getAgentId(bytes32 agentPubKey) external view returns (uint256);
@@ -578,7 +574,7 @@ interface IERC8004 {
                   {
                     label: "Solidity",
                     language: "solidity",
-                    code: `/// @title IERC8004ProofOfHuman — Extension Interface
+                    code: `/// @title IERC8004ProofOfHuman - Extension Interface
 /// @notice Adds proof-of-human verification to ERC-8004 agents.
 interface IERC8004ProofOfHuman is IERC8004 {
     // ── Registration ──────────────────────────────
