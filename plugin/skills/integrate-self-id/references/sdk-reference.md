@@ -314,7 +314,7 @@ let session = agent.request_registration(18, true).await?;
 | `deepLink` | `string` | Direct link to open Self app (mobile) |
 | `agentAddress` | `string` | The agent's Ethereum address |
 | `privateKeyHex` | `string` | The agent's private key (SAVE IMMEDIATELY) |
-| `expiresAt` | `number` | Unix timestamp when session expires (10 min) |
+| `expiresAt` | `number` | Unix timestamp when session expires (30 min) |
 
 ---
 
@@ -862,7 +862,7 @@ import { REGISTRY_ABI, PROVIDER_ABI } from "@selfxyz/agent-sdk";
 
 ### ExpiredSessionError
 
-Thrown when a registration or deregistration session has exceeded the 10-minute timeout.
+Thrown when a registration or deregistration session has exceeded the 30-minute timeout.
 
 ```typescript
 import { ExpiredSessionError } from "@selfxyz/agent-sdk";
@@ -913,8 +913,8 @@ The SDK calls these endpoints internally. They are also available for direct use
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/api/agent/register` | Start a registration session |
-| `GET` | `/api/agent/register/status?sessionId=X` | Poll registration status |
-| `GET` | `/api/agent/register/qr?sessionId=X` | Get QR code image |
+| `GET` | `/api/agent/register/status?token=X` | Poll registration status |
+| `GET` | `/api/agent/register/qr?token=X` | Get QR code data |
 
 ### Deregistration
 

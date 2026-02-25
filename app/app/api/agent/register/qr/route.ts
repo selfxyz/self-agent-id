@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
     if (msg.includes("expired")) {
       return errorResponse("Session expired", 410);
     }
-    return errorResponse(`Invalid session token: ${msg}`, 401);
+    return errorResponse("Invalid session token", 401);
   }
 
   if (session.type !== "register" && session.type !== "deregister") {
@@ -53,12 +53,11 @@ export async function GET(req: NextRequest) {
   }
 
   const deepLink = getUniversalLink(qrData);
-  const size = 400;
-  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(deepLink)}`;
 
+  // QR code should be generated client-side to avoid leaking registration
+  // metadata to external services (previously used api.qrserver.com).
   return jsonResponse({
     deepLink,
-    qrImageUrl,
     selfApp: qrData,
   });
 }
