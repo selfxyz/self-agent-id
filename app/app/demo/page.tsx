@@ -1616,11 +1616,22 @@ export default function DemoPage() {
 
     const agentLabel = `${shortAddr(agent.address)} (ID #${state.agent.agentId}${state.agent.credentials ? `, ${state.agent.credentials.olderThan.toString()}+ ${state.agent.credentials.nationality}` : ""})`;
 
-    await Promise.all([
-      runServiceTest(agent, agentLabel, dispatch, log, network),
-      runPeerTest(agent, agentLabel, dispatch, log, network),
-      runGateTest(agent, pk, agentLabel, dispatch, log, network),
-    ]);
+    // When using browser wallet (no raw private key), each agent.fetch() triggers
+    // a wallet popup for personal_sign. Running tests in parallel would fire
+    // multiple concurrent signing requests, overwhelming the wallet UI and causing
+    // rejections. Run sequentially in wallet mode so the user approves one at a time.
+    if (!pk && hasWallet) {
+      log("agent", "Browser wallet detected — running tests sequentially to avoid concurrent signing popups");
+      await runServiceTest(agent, agentLabel, dispatch, log, network);
+      await runPeerTest(agent, agentLabel, dispatch, log, network);
+      await runGateTest(agent, pk, agentLabel, dispatch, log, network);
+    } else {
+      await Promise.all([
+        runServiceTest(agent, agentLabel, dispatch, log, network),
+        runPeerTest(agent, agentLabel, dispatch, log, network),
+        runGateTest(agent, pk, agentLabel, dispatch, log, network),
+      ]);
+    }
   }, [state.agent, loadedViaPasskey, walletAddress, log, network]);
 
   const runFakeAgent = useCallback(async () => {

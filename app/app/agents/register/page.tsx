@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ethers } from "ethers";
@@ -101,6 +101,9 @@ export default function RegisterPage() {
   const [activeAgentSnippet, setActiveAgentSnippet] = useState(0);
   const [activeAgentFeatures, setActiveAgentFeatures] = useState<Set<string>>(new Set());
 
+  // Guard against double-triggering handleSuccess (websocket + on-chain poll race)
+  const successTriggeredRef = useRef(false);
+
   // Agent Card flow state
   const [cardStep, setCardStep] = useState<"pending" | "writing" | "done" | "skipped">("pending");
   const [verificationStrength, setVerificationStrength] = useState<number | null>(null);
@@ -113,6 +116,31 @@ export default function RegisterPage() {
     () => getAgentSnippets(network.registryAddress, network.rpcUrl, activeAgentFeatures),
     [network.registryAddress, network.rpcUrl, activeAgentFeatures]
   );
+
+  // On-chain polling fallback: if websocket misses "proof_verified",
+  // poll the contract to detect successful registration while on the scan step.
+  useEffect(() => {
+    if (step !== "scan") return;
+
+    const addressToCheck = mode === "simple" ? walletAddress : agentWallet?.address;
+    if (!addressToCheck) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const registered = await checkIfRegistered(addressToCheck);
+        if (registered) {
+          console.log("[on-chain poll] Agent registered on-chain, triggering success");
+          clearInterval(interval);
+          handleSuccess();
+        }
+      } catch (err) {
+        console.warn("[on-chain poll] Check failed:", err);
+      }
+    }, 5000); // poll every 5 seconds
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, mode, walletAddress, agentWallet?.address]);
 
   const toggleAgentFeature = (id: string) => {
     setActiveAgentFeatures((prev) => {
@@ -419,6 +447,10 @@ export default function RegisterPage() {
   };
 
   const handleSuccess = () => {
+    // Guard against double-triggering (websocket + on-chain poll race)
+    if (successTriggeredRef.current) return;
+    successTriggeredRef.current = true;
+
     setStep("success");
     window.scrollTo({ top: 0, behavior: "smooth" });
     // Auto-trigger Agent Card writing after a short delay
@@ -1033,6 +1065,7 @@ export default function RegisterPage() {
               }
               setSelfApp(null);
               setErrorMessage("");
+              successTriggeredRef.current = false;
             }}
             variant="ghost"
           >
