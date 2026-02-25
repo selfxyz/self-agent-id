@@ -2176,11 +2176,13 @@ contract SelfAgentRegistryTest is Test {
         uint256 deadline
     ) internal view returns (bytes memory sig) {
         address walletAddr = vm.addr(walletPrivKey);
+        uint256 nonce = registry.walletSetNonces(agentId);
         bytes32 structHash = keccak256(abi.encode(
             registry.AGENT_WALLET_SET_TYPEHASH(),
             agentId,
             walletAddr,
             ownerAddr,
+            nonce,
             deadline
         ));
         bytes32 digest = keccak256(abi.encodePacked(
@@ -2549,5 +2551,89 @@ contract SelfAgentRegistryTest is Test {
         uint256 secondId = registry.registerWithHumanProof("", address(mockProvider), "", providerData);
         assertGt(secondId, firstId, "new agentId should be higher");
         assertTrue(registry.isProofFresh(secondId), "refreshed proof should be fresh");
+    }
+
+    // ====================================================
+    // Security Audit Fixes — SC-1: setAgentWallet nonce replay
+    // ====================================================
+
+    function test_setAgentWalletNonceIncrementsOnSet() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        assertEq(registry.walletSetNonces(agentId), 0, "nonce starts at 0");
+
+        uint256 walletPrivKey = 0xB0B;
+        address walletAddr = vm.addr(walletPrivKey);
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes memory sig = _signAgentWalletSet(walletPrivKey, agentId, human1, deadline);
+
+        vm.prank(human1);
+        registry.setAgentWallet(agentId, walletAddr, deadline, sig);
+
+        assertEq(registry.walletSetNonces(agentId), 1, "nonce should be 1 after first set");
+    }
+
+    function test_setAgentWalletReplayAfterUnsetReverts() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        uint256 walletPrivKey = 0xB0B;
+        address walletAddr = vm.addr(walletPrivKey);
+        uint256 deadline = block.timestamp + 1 hours;
+
+        // Sign at nonce=0
+        bytes memory sig = _signAgentWalletSet(walletPrivKey, agentId, human1, deadline);
+
+        // Set wallet (consumes nonce 0)
+        vm.prank(human1);
+        registry.setAgentWallet(agentId, walletAddr, deadline, sig);
+
+        // Unset wallet
+        vm.prank(human1);
+        registry.unsetAgentWallet(agentId);
+
+        // Replay the same signature — should revert because nonce is now 1
+        vm.prank(human1);
+        vm.expectRevert(SelfAgentRegistry.InvalidWalletSignature.selector);
+        registry.setAgentWallet(agentId, walletAddr, deadline, sig);
+    }
+
+    // ====================================================
+    // Security Audit Fixes — SC-5/SC-6: Nullifier/provider cleanup on revocation
+    // ====================================================
+
+    function test_revokeAgentClearsNullifierAndProvider() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        // Before revocation: nullifier and provider are set
+        assertEq(registry.agentNullifier(agentId), nullifier1);
+        assertTrue(registry.agentProofProvider(agentId) != address(0));
+
+        // Revoke
+        vm.prank(human1);
+        registry.selfDeregister(agentId);
+
+        // After revocation: nullifier and provider should be cleared
+        assertEq(registry.agentNullifier(agentId), 0, "nullifier should be cleared after revocation");
+        assertEq(registry.agentProofProvider(agentId), address(0), "provider should be cleared after revocation");
+    }
+
+    // ====================================================
+    // Security Audit Fixes — SC-12: ProofProviderRemoved event on setSelfProofProvider
+    // ====================================================
+
+    function test_setSelfProofProviderEmitsRemovedEventForOldProvider() public {
+        address oldProvider = address(selfProvider);
+
+        // Deploy a new mock provider
+        SelfHumanProofProvider newProvider = new SelfHumanProofProvider(hubMock, registry.scope());
+
+        vm.prank(owner);
+        // Expect the old provider to be removed
+        vm.expectEmit(true, false, false, false);
+        emit IERC8004ProofOfHuman.ProofProviderRemoved(oldProvider);
+        registry.setSelfProofProvider(address(newProvider));
     }
 }

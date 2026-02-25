@@ -278,6 +278,11 @@ contract SelfValidationRegistryTest is Test {
         assertGt(lastUpdated, 0, "lastUpdated from yesterday must be non-zero");
     }
 
+    function test_submitFreshnessValidationRevertsForNonexistentAgent() public {
+        vm.expectRevert(bytes("agent does not exist"));
+        val.submitFreshnessValidation(99999);
+    }
+
     function test_getSummaryAveragesMultipleValidators() public {
         uint256 agentId = _mintTestAgent();
         address owner_ = registry.ownerOf(agentId);

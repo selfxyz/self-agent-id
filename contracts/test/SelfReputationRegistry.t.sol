@@ -181,7 +181,7 @@ contract SelfReputationRegistryTest is Test {
 
         address[] memory filter = new address[](1);
         filter[0] = clientA;
-        (uint64 count, int128 val, ) = rep.getSummary(agentId, filter, "", "");
+        (uint64 count, int256 val, ) = rep.getSummary(agentId, filter, "", "");
         assertEq(count, 1);
         assertEq(val, 100);
     }
@@ -193,6 +193,27 @@ contract SelfReputationRegistryTest is Test {
         rep.getSummary(agentId, empty, "", "");
     }
 
+    function test_getSummaryDoesNotOverflowWithMaxValues() public {
+        uint256 agentId = _mintTestAgent();
+        address clientA = address(0xA);
+        address clientB = address(0xB);
+
+        // Submit max-value feedback from two clients (would overflow int128)
+        int128 maxVal = 1e38;
+        vm.prank(clientA);
+        rep.giveFeedback(agentId, maxVal, 0, "", "", "", "", bytes32(0));
+        vm.prank(clientB);
+        rep.giveFeedback(agentId, maxVal, 0, "", "", "", "", bytes32(0));
+
+        // This should not overflow now that we use int256 internally
+        address[] memory clients = new address[](2);
+        clients[0] = clientA;
+        clients[1] = clientB;
+        (uint64 count, int256 val, ) = rep.getSummary(agentId, clients, "", "");
+        assertEq(count, 2);
+        assertEq(val, int256(maxVal) + int256(maxVal));
+    }
+
     function test_autoFeedbackSubmittedOnRegistration() public {
         // Registry already has rep set in setUp — mint and check
         uint256 agentId = _mintTestAgent();
@@ -200,7 +221,7 @@ contract SelfReputationRegistryTest is Test {
         // Self (identity registry) should have auto-submitted proof-of-human feedback
         address[] memory clients = new address[](1);
         clients[0] = address(registry);
-        (uint64 count, int128 val, ) = rep.getSummary(agentId, clients, "", "");
+        (uint64 count, int256 val, ) = rep.getSummary(agentId, clients, "", "");
         assertEq(count, 1);
         assertGt(val, 0);
     }

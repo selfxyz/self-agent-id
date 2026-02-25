@@ -220,6 +220,10 @@ contract SelfValidationRegistry is ImplRoot {
     /// @notice Submit a freshness validation on behalf of Self Protocol (built-in validator)
     function submitFreshnessValidation(uint256 agentId) external {
         SelfValidationRegistryStorage storage $ = _getSelfValidationRegistryStorage();
+        require(
+            ISelfAgentRegistryReader($.identityRegistry).agentRegisteredAt(agentId) != 0,
+            "agent does not exist"
+        );
         bool fresh = ISelfAgentRegistryReader($.identityRegistry).isProofFresh(agentId);
         bytes32 requestHash = keccak256(abi.encodePacked("freshness", agentId, block.timestamp / 1 days));
 

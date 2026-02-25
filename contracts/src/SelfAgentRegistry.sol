@@ -65,9 +65,9 @@ contract SelfAgentRegistry is
     // Constants (compiled into bytecode, not storage)
     // ====================================================
 
-    /// @notice EIP-712 typehash for the AgentWalletSet struct
+    /// @notice EIP-712 typehash for the AgentWalletSet struct (includes nonce for replay protection)
     bytes32 public constant AGENT_WALLET_SET_TYPEHASH = keccak256(
-        "AgentWalletSet(uint256 agentId,address newWallet,address owner,uint256 deadline)"
+        "AgentWalletSet(uint256 agentId,address newWallet,address owner,uint256 nonce,uint256 deadline)"
     );
 
     /// @dev Action byte for simple registration ('R' = 0x52)
@@ -135,6 +135,7 @@ contract SelfAgentRegistry is
         address validationRegistry;
         uint256 nextAgentId;
         mapping(uint256 => uint256) proofExpiresAt;
+        mapping(uint256 => uint256) walletSetNonces;
     }
 
     /// @dev keccak256(abi.encode(uint256(keccak256("self.storage.SelfAgentRegistry")) - 1)) & ~bytes32(uint256(0xff))
@@ -311,6 +312,8 @@ contract SelfAgentRegistry is
     function validationRegistry() external view returns (address) { return _getSelfAgentRegistryStorage().validationRegistry; }
     /// @notice Returns the unix timestamp at which the agent's human proof expires
     function proofExpiresAt(uint256 id) external view returns (uint256) { return _getSelfAgentRegistryStorage().proofExpiresAt[id]; }
+    /// @notice Returns the current wallet-set nonce for the given agent (replay protection for setAgentWallet)
+    function walletSetNonces(uint256 id) external view returns (uint256) { return _getSelfAgentRegistryStorage().walletSetNonces[id]; }
 
     // ====================================================
     // Admin Functions
@@ -324,8 +327,10 @@ contract SelfAgentRegistry is
     /// @notice Set the SelfHumanProofProvider companion address
     function setSelfProofProvider(address provider) external onlyRole(SECURITY_ROLE) {
         SelfAgentRegistryStorage storage $ = _getSelfAgentRegistryStorage();
-        if ($.selfProofProvider != address(0) && $.approvedProviders[$.selfProofProvider]) {
-            $.approvedProviders[$.selfProofProvider] = false;
+        address oldProvider = $.selfProofProvider;
+        if (oldProvider != address(0) && $.approvedProviders[oldProvider]) {
+            $.approvedProviders[oldProvider] = false;
+            emit ProofProviderRemoved(oldProvider);
         }
         $.selfProofProvider = provider;
         if (!$.approvedProviders[provider]) {
@@ -513,11 +518,11 @@ contract SelfAgentRegistry is
     ) external override returns (uint256) {
         SelfAgentRegistryStorage storage $ = _getSelfAgentRegistryStorage();
         if (!$.approvedProviders[proofProvider_]) revert ProviderNotApproved(proofProvider_);
+        if (providerData.length < 32) revert ProviderDataTooShort();
 
         (bool verified, uint256 nullifier) = IHumanProofProvider(proofProvider_).verifyHumanProof(proof, providerData);
         if (!verified) revert VerificationFailed();
 
-        if (providerData.length < 32) revert ProviderDataTooShort();
         bytes32 agentKey;
         assembly {
             agentKey := calldataload(providerData.offset)
@@ -687,14 +692,18 @@ contract SelfAgentRegistry is
         uint256 deadline,
         bytes calldata signature
     ) external override {
+        SelfAgentRegistryStorage storage $ = _getSelfAgentRegistryStorage();
         if (msg.sender != ownerOf(agentId)) revert NotNftOwner(agentId);
         if (block.timestamp > deadline) revert DeadlineExpired();
+
+        uint256 nonce = $.walletSetNonces[agentId]++;
 
         bytes32 structHash = keccak256(abi.encode(
             AGENT_WALLET_SET_TYPEHASH,
             agentId,
             newWallet,
             msg.sender,
+            nonce,
             deadline
         ));
         address recovered = ECDSA.recover(_hashTypedDataV4(structHash), signature);
@@ -845,6 +854,8 @@ contract SelfAgentRegistry is
             $.activeAgentCount[nullifier]--;
         }
 
+        delete $.agentNullifier[agentId];
+        delete $.agentProofProvider[agentId];
         delete $.agentGuardian[agentId];
         delete $.agentMetadata[agentId];
         delete $.agentCredentials[agentId];
