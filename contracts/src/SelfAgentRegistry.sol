@@ -11,6 +11,7 @@ import { SelfStructs } from "@selfxyz/contracts/contracts/libraries/SelfStructs.
 import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import { EIP712Upgradeable } from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import { IERC8004 } from "./interfaces/IERC8004.sol";
 import { IERC8004ProofOfHuman } from "./interfaces/IERC8004ProofOfHuman.sol";
 import { IERC165 } from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import { IHumanProofProvider } from "./interfaces/IHumanProofProvider.sol";
@@ -474,7 +475,7 @@ contract SelfAgentRegistry is
         }
     }
 
-    /// @inheritdoc IERC8004ProofOfHuman
+    /// @inheritdoc IERC8004
     function register(
         string calldata agentURI,
         string[] calldata metadataKeys,
@@ -651,19 +652,19 @@ contract SelfAgentRegistry is
         emit AgentMetadataUpdated(agentId);
     }
 
-    /// @inheritdoc IERC8004ProofOfHuman
+    /// @inheritdoc IERC8004
     function setAgentURI(uint256 agentId, string calldata newURI) external override {
         if (msg.sender != ownerOf(agentId)) revert NotNftOwner(agentId);
         _getSelfAgentRegistryStorage().agentURIs[agentId] = newURI;
         emit URIUpdated(agentId, newURI, msg.sender);
     }
 
-    /// @inheritdoc IERC8004ProofOfHuman
+    /// @inheritdoc IERC8004
     function getMetadata(uint256 agentId, string memory metadataKey) external view override returns (bytes memory) {
         return _getSelfAgentRegistryStorage().metadata[agentId][metadataKey];
     }
 
-    /// @inheritdoc IERC8004ProofOfHuman
+    /// @inheritdoc IERC8004
     function setMetadata(uint256 agentId, string calldata metadataKey, bytes calldata metadataValue) external override {
         if (msg.sender != ownerOf(agentId)) revert NotNftOwner(agentId);
         if (keccak256(bytes(metadataKey)) == _RESERVED_AGENT_WALLET_KEY_HASH) revert ReservedMetadataKey();
@@ -679,7 +680,7 @@ contract SelfAgentRegistry is
         return _domainSeparatorV4();
     }
 
-    /// @inheritdoc IERC8004ProofOfHuman
+    /// @inheritdoc IERC8004
     function setAgentWallet(
         uint256 agentId,
         address newWallet,
@@ -702,14 +703,14 @@ contract SelfAgentRegistry is
         _setMetadataInternal(agentId, "agentWallet", abi.encode(newWallet));
     }
 
-    /// @inheritdoc IERC8004ProofOfHuman
+    /// @inheritdoc IERC8004
     function getAgentWallet(uint256 agentId) external view override returns (address) {
         bytes memory raw = _getSelfAgentRegistryStorage().metadata[agentId]["agentWallet"];
         if (raw.length == 0) return address(0);
         return abi.decode(raw, (address));
     }
 
-    /// @inheritdoc IERC8004ProofOfHuman
+    /// @inheritdoc IERC8004
     function unsetAgentWallet(uint256 agentId) external override {
         if (msg.sender != ownerOf(agentId)) revert NotNftOwner(agentId);
         SelfAgentRegistryStorage storage $ = _getSelfAgentRegistryStorage();
@@ -975,7 +976,8 @@ contract SelfAgentRegistry is
         public view override(ERC721Upgradeable, AccessControlUpgradeable, IERC165)
         returns (bool)
     {
-        return interfaceId == type(IERC8004ProofOfHuman).interfaceId
+        return interfaceId == type(IERC8004).interfaceId
+            || interfaceId == type(IERC8004ProofOfHuman).interfaceId
             || ERC721Upgradeable.supportsInterface(interfaceId)
             || AccessControlUpgradeable.supportsInterface(interfaceId);
     }

@@ -8,6 +8,7 @@ import { SelfHumanProofProvider } from "../src/SelfHumanProofProvider.sol";
 import { MockHumanProofProvider } from "./mocks/MockHumanProofProvider.sol";
 import { ISelfVerificationRoot } from "@selfxyz/contracts/contracts/interfaces/ISelfVerificationRoot.sol";
 import { IIdentityVerificationHubV2 } from "@selfxyz/contracts/contracts/interfaces/IIdentityVerificationHubV2.sol";
+import { IERC8004 } from "../src/interfaces/IERC8004.sol";
 import { IERC8004ProofOfHuman } from "../src/interfaces/IERC8004ProofOfHuman.sol";
 import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import { ProxyRoot } from "../src/upgradeable/ProxyRoot.sol";
@@ -1848,7 +1849,7 @@ contract SelfAgentRegistryTest is Test {
 
         // also verifies agentURI is empty string ""
         vm.expectEmit(true, true, false, true);
-        emit IERC8004ProofOfHuman.Registered(1, "", human1);
+        emit IERC8004.Registered(1, "", human1);
 
         vm.prank(hubMock);
         registry.onVerificationSuccess(encodedOutput, userData);
@@ -1862,7 +1863,7 @@ contract SelfAgentRegistryTest is Test {
 
         // Advanced mode: NFT minted to humanAddress (human1), agentId = 1; also verifies agentURI is empty string ""
         vm.expectEmit(true, true, false, true);
-        emit IERC8004ProofOfHuman.Registered(1, "", human1);
+        emit IERC8004.Registered(1, "", human1);
 
         vm.prank(hubMock);
         registry.onVerificationSuccess(encodedOutput, userData);
@@ -1876,7 +1877,7 @@ contract SelfAgentRegistryTest is Test {
 
         // Wallet-free: NFT minted to agentAddr, agentId = 1; also verifies agentURI is empty string ""
         vm.expectEmit(true, true, false, true);
-        emit IERC8004ProofOfHuman.Registered(1, "", agentAddr);
+        emit IERC8004.Registered(1, "", agentAddr);
 
         vm.prank(hubMock);
         registry.onVerificationSuccess(encodedOutput, userData);
@@ -1900,7 +1901,7 @@ contract SelfAgentRegistryTest is Test {
         mockProvider.setNextNullifier(nullifier1);
 
         vm.expectEmit(true, true, false, true);
-        emit IERC8004ProofOfHuman.Registered(1, uri, human1);
+        emit IERC8004.Registered(1, uri, human1);
 
         vm.prank(human1);
         registry.registerWithHumanProof(uri, address(mockProvider), "", providerData);
@@ -1961,7 +1962,7 @@ contract SelfAgentRegistryTest is Test {
         string memory newURI = "ipfs://QmURIUpdatedEvent";
 
         vm.expectEmit(true, false, true, true);
-        emit IERC8004ProofOfHuman.URIUpdated(agentId, newURI, human1);
+        emit IERC8004.URIUpdated(agentId, newURI, human1);
 
         vm.prank(human1);
         registry.setAgentURI(agentId, newURI);
@@ -2114,7 +2115,7 @@ contract SelfAgentRegistryTest is Test {
         bytes memory value = bytes("gpt-4o");
 
         vm.expectEmit(true, true, false, true);
-        emit IERC8004ProofOfHuman.MetadataSet(agentId, "model", "model", value);
+        emit IERC8004.MetadataSet(agentId, "model", "model", value);
 
         vm.prank(human1);
         registry.setMetadata(agentId, "model", value);
@@ -2218,7 +2219,7 @@ contract SelfAgentRegistryTest is Test {
         bytes memory sig = _signAgentWalletSet(walletPrivKey, agentId, human1, deadline);
 
         vm.expectEmit(true, true, false, true);
-        emit IERC8004ProofOfHuman.MetadataSet(agentId, "agentWallet", "agentWallet", abi.encode(walletAddr));
+        emit IERC8004.MetadataSet(agentId, "agentWallet", "agentWallet", abi.encode(walletAddr));
 
         vm.prank(human1);
         registry.setAgentWallet(agentId, walletAddr, deadline, sig);
@@ -2315,7 +2316,7 @@ contract SelfAgentRegistryTest is Test {
 
         // Expect MetadataSet event with empty data on unset
         vm.expectEmit(true, true, false, true);
-        emit IERC8004ProofOfHuman.MetadataSet(agentId, "agentWallet", "agentWallet", bytes(""));
+        emit IERC8004.MetadataSet(agentId, "agentWallet", "agentWallet", bytes(""));
 
         vm.prank(human1);
         registry.unsetAgentWallet(agentId);
@@ -2349,6 +2350,11 @@ contract SelfAgentRegistryTest is Test {
 
     function test_supportsERC721() public view {
         assertTrue(registry.supportsInterface(0x80ac58cd)); // ERC-721
+    }
+
+    function test_supportsERC8004() public view {
+        bytes4 id = type(IERC8004).interfaceId;
+        assertTrue(registry.supportsInterface(id));
     }
 
     function test_supportsERC8004ProofOfHuman() public view {

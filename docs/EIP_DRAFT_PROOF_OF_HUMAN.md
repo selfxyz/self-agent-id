@@ -12,6 +12,10 @@ This EIP proposes an optional extension interface (`IERC8004ProofOfHuman`) for E
 Identity Registries that enables trustless binding of agent identities to verified unique
 humans via privacy-preserving zero-knowledge proofs.
 
+The extension is additive — it inherits from `IERC8004` and adds only proof-of-human
+registration, revocation, and query functions. Implementations that do not need
+proof-of-human can implement `IERC8004` alone.
+
 ---
 
 ## Motivation
@@ -30,9 +34,36 @@ This extension:
 
 ## Specification
 
-### Interface
+### Interfaces
 
-See `IERC8004ProofOfHuman.sol` for the full Solidity interface.
+This proposal defines two interfaces:
+
+**`IERC8004`** — the base ERC-8004 Identity Registry interface, covering:
+- Agent registration (`register()` overloads)
+- Agent URI management (`setAgentURI`)
+- Key-value metadata (`getMetadata`, `setMetadata`)
+- Agent wallet binding (`setAgentWallet`, `getAgentWallet`, `unsetAgentWallet`)
+- Events: `Registered`, `URIUpdated`, `MetadataSet`
+
+**`IERC8004ProofOfHuman`** — the extension interface, inheriting `IERC8004` and adding:
+- Proof-of-human registration (`registerWithHumanProof`)
+- Proof revocation (`revokeHumanProof`)
+- Proof query functions (`hasHumanProof`, `proofExpiresAt`, `isProofFresh`, etc.)
+- Sybil resistance queries (`getHumanNullifier`, `getAgentCountForHuman`, `sameHuman`)
+- Provider management (`isApprovedProvider`)
+- Events: `AgentRegisteredWithHumanProof`, `HumanProofRevoked`, `ProofProviderAdded`,
+  `ProofProviderRemoved`, `MaxProofAgeUpdated`, `MaxAgentsPerHumanUpdated`
+
+See `IERC8004.sol` and `IERC8004ProofOfHuman.sol` for the full Solidity interfaces.
+
+### ERC-165 Interface Detection
+
+Implementations MUST report support for both interfaces via `supportsInterface`:
+- `type(IERC8004).interfaceId` for the base interface
+- `type(IERC8004ProofOfHuman).interfaceId` for the proof-of-human extension
+
+Callers can use ERC-165 to detect whether a registry supports proof-of-human before
+calling extension functions.
 
 ### Key Concepts
 
@@ -43,8 +74,9 @@ The nullifier is stored on-chain but the original biometric data is not.
 
 **Proof Provider**
 An approved contract that verifies proofs and calls back the registry. The registry
-maintains an allowlist of approved providers. Self Protocol's Hub V2 is an example
-provider for government-ID + NFC-chip verification.
+maintains an allowlist of approved providers. Any identity verification protocol
+(Self Protocol, World ID, Humanity Protocol, etc.) can implement the
+`IHumanProofProvider` interface to serve as a provider.
 
 **maxAgentsPerHuman**
 A registry-level cap on how many agents one human can register (default: 1). Prevents
@@ -77,17 +109,29 @@ A 0-100 score indicating how strongly the proof binds a human identity:
 3. Revoking an agent returns the nullifier slot (human can re-register)
 4. Expired proofs cause `isProofFresh()` to return false without requiring any transaction
 
-### Events Required
+### Events
 
-- `Registered(agentId, agentURI, owner)` — ERC-8004 base requirement
-- `AgentRegisteredWithHumanProof(agentId, proofProvider, nullifier, verificationStrength)`
-- `HumanProofRevoked(agentId, nullifier)`
+**Base ERC-8004 events (defined in `IERC8004`):**
+- `Registered(agentId, agentURI, owner)`
 - `URIUpdated(agentId, newURI, updatedBy)`
 - `MetadataSet(agentId, indexedMetadataKey, metadataKey, metadataValue)`
+
+**Extension events (defined in `IERC8004ProofOfHuman`):**
+- `AgentRegisteredWithHumanProof(agentId, proofProvider, nullifier, verificationStrength)`
+- `HumanProofRevoked(agentId, nullifier)`
+- `ProofProviderAdded(provider, name)`
+- `ProofProviderRemoved(provider)`
+- `MaxProofAgeUpdated(newMaxProofAge)`
+- `MaxAgentsPerHumanUpdated(newMax)`
 
 ---
 
 ## Rationale
+
+**Why a separate `IERC8004` base interface?**
+Separating the base ERC-8004 interface from the proof-of-human extension ensures correct
+ERC-165 interface IDs and allows registries to adopt the base interface without the
+extension. This follows the pattern of ERC-721 and ERC-721Enumerable.
 
 **Why nullifiers instead of wallet addresses?**
 Wallet addresses can be created by anyone. A nullifier is derived from biometric data
@@ -134,6 +178,9 @@ the owner from transferring out and leaving the agent orphaned.
 - **SelfReputationRegistry** (Celo Mainnet): TBD
 - **SelfValidationRegistry** (Celo Mainnet): TBD
 - **Source:** https://github.com/selfxyz/self-agent-id
+
+The reference implementation uses the UUPS upgradeable proxy pattern, but implementers
+can choose any deployment strategy — the interfaces are proxy-agnostic.
 
 ---
 
