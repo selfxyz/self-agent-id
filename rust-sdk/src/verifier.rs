@@ -396,6 +396,7 @@ impl VerifierBuilder {
 
 struct CacheEntry {
     is_verified: bool,
+    is_proof_fresh: bool,
     agent_id: U256,
     agent_count: U256,
     nullifier: U256,
@@ -405,6 +406,7 @@ struct CacheEntry {
 
 struct OnChainStatus {
     is_verified: bool,
+    is_proof_fresh: bool,
     agent_id: U256,
     agent_count: U256,
     nullifier: U256,
@@ -627,6 +629,21 @@ impl SelfAgentVerifier {
             };
         }
 
+        // 6b. Check proof freshness (expired proofs should not pass verification)
+        if !on_chain.is_proof_fresh {
+            return VerificationResult {
+                valid: false,
+                agent_address: signer_address,
+                agent_key,
+                agent_id: on_chain.agent_id,
+                agent_count: on_chain.agent_count,
+                nullifier: on_chain.nullifier,
+                credentials: None,
+                error: Some("Agent's human proof has expired".to_string()),
+                retry_after_ms: None,
+            };
+        }
+
         // 7. Provider check: ensure agent was verified by Self Protocol
         if self.require_self_provider && on_chain.agent_id > U256::ZERO {
             let self_provider = match self.get_self_provider_address().await {
@@ -784,6 +801,7 @@ impl SelfAgentVerifier {
             if cached.expires_at > now {
                 return Ok(OnChainStatus {
                     is_verified: cached.is_verified,
+                    is_proof_fresh: cached.is_proof_fresh,
                     agent_id: cached.agent_id,
                     agent_count: cached.agent_count,
                     nullifier: cached.nullifier,
@@ -809,8 +827,15 @@ impl SelfAgentVerifier {
         let mut agent_count = U256::ZERO;
         let mut nullifier = U256::ZERO;
         let mut provider_address = Address::ZERO;
+        let mut is_proof_fresh = false;
 
         if agent_id > U256::ZERO {
+            is_proof_fresh = registry
+                .isProofFresh(agent_id)
+                .call()
+                .await
+                .map_err(|e| crate::Error::RpcError(e.to_string()))?;
+
             if self.max_agents_per_human > 0 {
                 nullifier = registry
                     .getHumanNullifier(agent_id)
@@ -837,6 +862,7 @@ impl SelfAgentVerifier {
             agent_key,
             CacheEntry {
                 is_verified,
+                is_proof_fresh,
                 agent_id,
                 agent_count,
                 nullifier,
@@ -847,6 +873,7 @@ impl SelfAgentVerifier {
 
         Ok(OnChainStatus {
             is_verified,
+            is_proof_fresh,
             agent_id,
             agent_count,
             nullifier,

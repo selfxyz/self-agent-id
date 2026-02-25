@@ -403,7 +403,6 @@ class SelfAgent:
         resp = httpx.post(f"{api_base}/api/agent/deregister", json={
             "network": self._network_name,
             "agentAddress": self._account.address,
-            "agentPrivateKey": self._private_key,
         })
         data = _api_json_or_raise(resp, "Deregistration request failed")
 

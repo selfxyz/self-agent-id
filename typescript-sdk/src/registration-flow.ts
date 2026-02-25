@@ -84,8 +84,6 @@ export interface DeregistrationRequest {
   network?: NetworkName;
   /** Agent's Ethereum address */
   agentAddress: string;
-  /** Agent's private key (only needed for agent-identity / wallet-free deregistration) */
-  agentPrivateKey?: string;
   /** Credential disclosures (should match original registration) */
   disclosures?: {
     minimumAge?: number;
@@ -304,7 +302,6 @@ export async function requestDeregistration(
   const payload = {
     network,
     agentAddress: opts.agentAddress,
-    agentPrivateKey: opts.agentPrivateKey,
     disclosures: opts.disclosures,
   };
 
@@ -420,7 +417,12 @@ function buildRegistrationSession(
 
     async exportKey() {
       const status = await apiFetch<{ privateKey: string }>(
-        `${apiBase}/api/agent/register/export?token=${encodeURIComponent(currentToken)}`
+        `${apiBase}/api/agent/register/export`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: currentToken }),
+        }
       );
       return status.privateKey;
     },

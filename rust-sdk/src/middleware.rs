@@ -75,12 +75,14 @@ pub async fn self_agent_auth(
 
     // Read body for verification
     let (parts, body) = request.into_parts();
-    let body_bytes = match axum::body::to_bytes(body, usize::MAX).await {
+    // Limit body size to 1 MB to prevent OOM from oversized requests
+    const MAX_BODY_SIZE: usize = 1024 * 1024;
+    let body_bytes = match axum::body::to_bytes(body, MAX_BODY_SIZE).await {
         Ok(b) => b,
         Err(_) => {
             return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({ "error": "Failed to read request body" })),
+                StatusCode::PAYLOAD_TOO_LARGE,
+                Json(serde_json::json!({ "error": "Request body too large" })),
             )
                 .into_response();
         }

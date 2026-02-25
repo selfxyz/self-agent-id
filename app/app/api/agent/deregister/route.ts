@@ -33,7 +33,6 @@ import {
 interface DeregisterRequestBody {
   network: string;
   agentAddress: string;
-  agentPrivateKey?: string;
   disclosures?: {
     minimumAge?: number;
     ofac?: boolean;
