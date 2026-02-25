@@ -23,9 +23,19 @@ import {
   type RegistrationSignatureParts,
 } from "./index";
 
+/** Registration mode alias used throughout the CLI. */
 type CliMode = RegistrationMode;
+
+/** Top-level CLI operation: register a new agent or deregister an existing one. */
 type CliOperation = "register" | "deregister";
+
+/** Self Protocol endpoint discriminator for Celo mainnet vs staging/testnet. */
 type EndpointType = "celo" | "staging_celo";
+
+/**
+ * Lifecycle stage of a CLI session, tracking progress from initialization
+ * through browser handoff, callback receipt, and on-chain confirmation.
+ */
 type SessionStage =
   | "initialized"
   | "handoff_opened"
@@ -35,31 +45,57 @@ type SessionStage =
   | "failed"
   | "expired";
 
+/** Network configuration for a CLI session, including chain details and app metadata. */
 interface CliNetwork {
+  /** EVM chain ID (42220 for Celo mainnet, 11142220 for Celo Sepolia). */
   chainId: number;
+  /** JSON-RPC endpoint URL for the target chain. */
   rpcUrl: string;
+  /** Checksummed address of the SelfAgentRegistry contract. */
   registryAddress: string;
+  /** Self Protocol endpoint type (mainnet or staging). */
   endpointType: EndpointType;
+  /** Base URL of the browser handoff app. */
   appUrl: string;
+  /** Human-readable application name shown during verification. */
   appName: string;
+  /** Self Protocol scope identifier for this registration. */
   scope: string;
 }
 
+/** Pre-signed registration data for smart-wallet mode, passed to the browser handoff. */
 interface SmartWalletTemplate {
+  /** Checksummed address of the generated agent wallet. */
   agentAddress: string;
+  /** ECDSA signature r component (hex). */
   r: string;
+  /** ECDSA signature s component (hex). */
   s: string;
+  /** ECDSA signature recovery id (27 or 28). */
   v: number;
+  /** Index into the registry's verification config array. */
   configIndex: number;
 }
 
+/**
+ * Persistent session state written to disk as JSON. Tracks the full lifecycle
+ * of a register or deregister flow: initialization, browser handoff, callback
+ * receipt, and on-chain verification.
+ */
 interface CliSession {
+  /** Schema version for forward compatibility. */
   version: 1;
+  /** Whether this session is a registration or deregistration. */
   operation: CliOperation;
+  /** Unique hex identifier for this session. */
   sessionId: string;
+  /** ISO 8601 timestamp when the session was created. */
   createdAt: string;
+  /** ISO 8601 timestamp when the session expires. */
   expiresAt: string;
+  /** Registration mode governing key generation and on-chain flow. */
   mode: CliMode;
+  /** Disclosure flags controlling what passport data is verified. */
   disclosures: RegistrationDisclosures & {
     nationality?: boolean;
     name?: boolean;
@@ -67,63 +103,121 @@ interface CliSession {
     gender?: boolean;
     issuing_state?: boolean;
   };
+  /** Target network configuration. */
   network: CliNetwork;
+  /** Registration-specific data: addresses, signatures, and user-defined payload. */
   registration: {
+    /** Address identifying the human (wallet address or generated agent address). */
     humanIdentifier: string;
+    /** Checksummed agent wallet address to be registered on-chain. */
     agentAddress: string;
+    /** ASCII-encoded userData payload for the Self Hub verification request. */
     userDefinedData?: string;
+    /** Keccak256 hash of the signed registration challenge. */
     challengeHash?: string;
+    /** ECDSA signature parts proving agent key ownership. */
     signature?: RegistrationSignatureParts;
+    /** Pre-signed template for smart-wallet mode registrations. */
     smartWalletTemplate?: SmartWalletTemplate;
   };
+  /** Local HTTP callback server configuration for receiving browser responses. */
   callback: {
+    /** Localhost binding address. */
     listenHost: "127.0.0.1";
+    /** Ephemeral port for the callback listener. */
     listenPort: number;
+    /** URL path the callback server listens on. */
     path: "/callback";
+    /** Random token the browser must echo back to authenticate the callback. */
     stateToken: string;
+    /** Whether a callback has already been received for this session. */
     used: boolean;
+    /** Status reported by the most recent callback. */
     lastStatus?: "success" | "error";
+    /** Error message from the most recent callback, if any. */
     lastError?: string;
   };
+  /** Mutable session state tracking lifecycle progress. */
   state: {
+    /** Current lifecycle stage. */
     stage: SessionStage;
+    /** ISO 8601 timestamp of the last state update. */
     updatedAt: string;
+    /** Most recent error message, if any. */
     lastError?: string;
+    /** On-chain agent token ID after successful registration. */
     agentId?: string;
+    /** Address of the Self Hub guardian that processed the verification. */
     guardianAddress?: string;
   };
+  /** Sensitive key material; only present for modes that generate agent keys. */
   secrets?: {
+    /** Hex-encoded private key of the generated agent wallet. */
     agentPrivateKey?: string;
   };
 }
 
+/**
+ * JSON payload base64url-encoded into the browser handoff URL. Contains
+ * everything the web app needs to initiate a Self verification flow and
+ * call back to the CLI on completion.
+ */
 interface CliHandoffPayload {
+  /** Schema version. */
   version: 1;
+  /** Register or deregister. */
   operation: CliOperation;
+  /** Session identifier echoed back in the callback. */
   sessionId: string;
+  /** Anti-forgery token the browser must include in its callback. */
   stateToken: string;
+  /** Full URL of the CLI's local callback server. */
   callbackUrl: string;
+  /** Registration mode. */
   mode: CliMode;
+  /** Target EVM chain ID. */
   chainId: number;
+  /** Checksummed registry contract address. */
   registryAddress: string;
+  /** Self Protocol endpoint type. */
   endpointType: EndpointType;
+  /** Application name displayed during verification. */
   appName: string;
+  /** Self Protocol scope identifier. */
   scope: string;
+  /** Human identifier (wallet address or generated agent address). */
   humanIdentifier: string;
+  /** Agent address the on-chain registry should record. */
   expectedAgentAddress: string;
+  /** Disclosure flags for the verification request. */
   disclosures?: CliSession["disclosures"];
+  /** ASCII-encoded userData for the Self Hub request. */
   userDefinedData?: string;
+  /** Pre-signed smart-wallet template, if applicable. */
   smartWalletTemplate?: SmartWalletTemplate;
+  /** Unix epoch milliseconds when this session expires. */
   expiresAt: number;
 }
 
+/** A single parsed CLI flag value: a string argument or a boolean (present/absent). */
 type FlagValue = string | boolean;
+
+/** Map of parsed CLI flags. Repeated flags produce arrays. */
 type FlagMap = Record<string, FlagValue | FlagValue[]>;
 
+/** Base URL for the browser handoff app. Override via SELF_AGENT_APP_URL env var. */
 const DEFAULT_APP_URL = process.env.SELF_AGENT_APP_URL || "https://self-agent-id.vercel.app";
+
+/** Application name shown during Self verification. Override via SELF_AGENT_APP_NAME env var. */
 const DEFAULT_APP_NAME = process.env.SELF_AGENT_APP_NAME || "Self Agent ID";
+
+/** Self Protocol scope identifier. Override via SELF_AGENT_SCOPE env var. */
 const DEFAULT_SCOPE = process.env.SELF_AGENT_SCOPE || "self-agent-id";
 
+/**
+ * Builds the CLI help text listing all available commands and example invocations.
+ * @returns Multi-line usage string.
+ */
 function usage(): string {
   return [
     "Self Agent CLI",
@@ -150,15 +244,28 @@ function usage(): string {
   ].join("\n");
 }
 
+/**
+ * Prints an error message to stderr and exits the process with code 1.
+ * @param message - Error message to display.
+ */
 function die(message: string): never {
   process.stderr.write(`${message}\n`);
   process.exit(1);
 }
 
+/**
+ * Returns the current time as an ISO 8601 string.
+ * @returns ISO 8601 timestamp.
+ */
 function nowIso(): string {
   return new Date().toISOString();
 }
 
+/**
+ * Encodes a UTF-8 string as base64url (RFC 4648 Section 5) without padding.
+ * @param text - Plain text to encode.
+ * @returns Base64url-encoded string.
+ */
 function base64UrlEncode(text: string): string {
   return Buffer.from(text, "utf8")
     .toString("base64")
@@ -167,34 +274,68 @@ function base64UrlEncode(text: string): string {
     .replace(/=+$/g, "");
 }
 
+/**
+ * Generates a cryptographically random hex string.
+ * @param bytes - Number of random bytes (default 16, producing 32 hex chars).
+ * @returns Hex-encoded random string.
+ */
 function randomIdHex(bytes = 16): string {
   return randomBytes(bytes).toString("hex");
 }
 
+/**
+ * Creates all parent directories for the given file path if they do not exist.
+ * @param path - Absolute or relative file path.
+ */
 function ensureDirForFile(path: string): void {
   mkdirSync(dirname(path), { recursive: true });
 }
 
+/**
+ * Writes a value as pretty-printed JSON to a file with restrictive permissions (0600).
+ * @param path - Destination file path.
+ * @param value - Value to serialize.
+ */
 function writeJsonFile(path: string, value: unknown): void {
   ensureDirForFile(path);
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
 }
 
+/**
+ * Writes a plain text string to a file with restrictive permissions (0600).
+ * @param path - Destination file path.
+ * @param value - Text content to write.
+ */
 function writeTextFile(path: string, value: string): void {
   ensureDirForFile(path);
   writeFileSync(path, value, { mode: 0o600 });
 }
 
+/**
+ * Reads and parses a session JSON file from disk.
+ * @param path - Path to the session file.
+ * @returns Parsed CLI session object.
+ */
 function readSession(path: string): CliSession {
   const raw = readFileSync(path, "utf8");
   return JSON.parse(raw) as CliSession;
 }
 
+/**
+ * Updates the session's `updatedAt` timestamp and writes it to disk.
+ * @param path - Path to the session file.
+ * @param session - Session object to persist.
+ */
 function saveSession(path: string, session: CliSession): void {
   session.state.updatedAt = nowIso();
   writeJsonFile(path, session);
 }
 
+/**
+ * Parses and validates a --mode flag value into a CliMode.
+ * @param value - Raw flag value (e.g. "verified-wallet"). Exits if missing or invalid.
+ * @returns Validated registration mode.
+ */
 function parseMode(value: string | undefined): CliMode {
   if (!value) die("Missing required --mode");
   const normalized = value.trim().toLowerCase();
@@ -205,6 +346,12 @@ function parseMode(value: string | undefined): CliMode {
   die(`Unsupported mode: ${value}`);
 }
 
+/**
+ * Parses a CLI flag value as a finite integer, exiting on invalid input.
+ * @param name - Flag name (for error messages).
+ * @param value - Raw string value to parse.
+ * @returns Parsed integer.
+ */
 function parseIntFlag(name: string, value: string | undefined): number {
   if (!value) die(`Missing value for --${name}`);
   const n = Number(value);
@@ -214,6 +361,12 @@ function parseIntFlag(name: string, value: string | undefined): number {
   return n;
 }
 
+/**
+ * Resolves network configuration from CLI flags. Supports named networks
+ * (mainnet/testnet) or custom chains via --chain, --registry, and --rpc.
+ * @param flags - Parsed CLI flags.
+ * @returns Resolved network configuration.
+ */
 function parseNetwork(flags: FlagMap): CliNetwork {
   const networkRaw = String(flags.network || "testnet").toLowerCase();
   const chainFlag = flags.chain ? parseIntFlag("chain", String(flags.chain)) : undefined;
@@ -254,6 +407,12 @@ function parseNetwork(flags: FlagMap): CliNetwork {
   };
 }
 
+/**
+ * Parses disclosure flags (--minimum-age, --ofac, --nationality, etc.) into
+ * a disclosure configuration object.
+ * @param flags - Parsed CLI flags.
+ * @returns Disclosure settings for the verification request.
+ */
 function parseDisclosures(flags: FlagMap): CliSession["disclosures"] {
   const minimumAgeRaw = flags["minimum-age"] ? String(flags["minimum-age"]) : "0";
   const minimumAge = parseIntFlag("minimum-age", minimumAgeRaw);
@@ -272,6 +431,13 @@ function parseDisclosures(flags: FlagMap): CliSession["disclosures"] {
   };
 }
 
+/**
+ * Parses raw argv tokens into positional arguments and a flag map.
+ * Flags are identified by `--` prefix; values follow the flag unless the next
+ * token is also a flag. Repeated flags produce arrays.
+ * @param argv - Argument tokens (typically `process.argv.slice(2)`).
+ * @returns Object containing positional args and parsed flags.
+ */
 function parseFlags(argv: string[]): { positionals: string[]; flags: FlagMap } {
   const positionals: string[] = [];
   const flags: FlagMap = {};
@@ -303,17 +469,35 @@ function parseFlags(argv: string[]): { positionals: string[]; flags: FlagMap } {
   return { positionals, flags };
 }
 
+/**
+ * Resolves the session file path from the --session flag.
+ * @param flags - Parsed CLI flags.
+ * @param required - If true, exits when --session is not provided.
+ * @returns Absolute path to the session file.
+ */
 function getSessionPath(flags: FlagMap, required = true): string {
   const raw = flags.session ? String(flags.session) : "";
   if (!raw && required) die("Missing required --session");
   return resolve(raw || ".self/session.json");
 }
 
+/**
+ * Resolves the output file path from the --out flag, defaulting to a
+ * randomly named file under `.self/`.
+ * @param flags - Parsed CLI flags.
+ * @returns Absolute path for session output.
+ */
 function getOutPath(flags: FlagMap): string {
   const outRaw = flags.out ? String(flags.out) : `.self/session-${randomIdHex(8)}.json`;
   return resolve(outRaw);
 }
 
+/**
+ * Resolves the callback listener port from --callback-port or picks a random
+ * port in the range 37100-37999.
+ * @param flags - Parsed CLI flags.
+ * @returns Port number for the local callback HTTP server.
+ */
 function getCallbackPort(flags: FlagMap): number {
   if (flags["callback-port"]) return parseIntFlag("callback-port", String(flags["callback-port"]));
   const min = 37100;
@@ -321,10 +505,21 @@ function getCallbackPort(flags: FlagMap): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+/**
+ * Converts an agent address into the 32-byte zero-padded hex key used
+ * for on-chain registry lookups.
+ * @param agentAddress - Checksummed Ethereum address.
+ * @returns 32-byte hex string (0x-prefixed).
+ */
 function expectedAgentKeyHex(agentAddress: string): string {
   return ethers.zeroPadValue(agentAddress, 32);
 }
 
+/**
+ * Constructs the full HTTP callback URL from a session's callback configuration.
+ * @param session - CLI session containing callback host, port, and path.
+ * @returns Full callback URL (e.g. "http://127.0.0.1:37150/callback").
+ */
 function callbackUrl(session: CliSession): string {
   const host = session.callback.listenHost;
   const port = session.callback.listenPort;
@@ -332,10 +527,22 @@ function callbackUrl(session: CliSession): string {
   return `http://${host}:${port}${path}`;
 }
 
+/**
+ * Returns the session's operation type, defaulting to "register" for
+ * backward compatibility with sessions created before the operation field existed.
+ * @param session - CLI session.
+ * @returns The operation type.
+ */
 function getSessionOperation(session: CliSession): CliOperation {
   return session.operation || "register";
 }
 
+/**
+ * Builds the handoff payload object from a session, ready to be
+ * base64url-encoded and embedded in the browser handoff URL.
+ * @param session - CLI session to extract payload data from.
+ * @returns Handoff payload for the browser app.
+ */
 function buildHandoffPayload(session: CliSession): CliHandoffPayload {
   return {
     version: 1,
@@ -358,28 +565,57 @@ function buildHandoffPayload(session: CliSession): CliHandoffPayload {
   };
 }
 
+/**
+ * Constructs the full browser handoff URL with the base64url-encoded payload
+ * as a query parameter.
+ * @param session - CLI session to generate the URL for.
+ * @returns Complete handoff URL for the user to open in a browser.
+ */
 function handoffUrl(session: CliSession): string {
   const payload = buildHandoffPayload(session);
   const encoded = base64UrlEncode(JSON.stringify(payload));
   return `${session.network.appUrl}/cli/register?payload=${encoded}`;
 }
 
+/**
+ * Pretty-prints a value as JSON to stdout.
+ * @param value - Value to serialize and print.
+ */
 function printJson(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
+/**
+ * Prints a plain text string to stdout with a trailing newline.
+ * @param value - Text to print.
+ */
 function printText(value: string): void {
   process.stdout.write(`${value}\n`);
 }
 
+/**
+ * Handles the `register init` subcommand. Delegates to {@link commandInit}.
+ * @param flags - Parsed CLI flags.
+ */
 async function commandRegisterInit(flags: FlagMap): Promise<void> {
   return commandInit(flags, "register");
 }
 
+/**
+ * Handles the `deregister init` subcommand. Delegates to {@link commandInit}.
+ * @param flags - Parsed CLI flags.
+ */
 async function commandDeregisterInit(flags: FlagMap): Promise<void> {
   return commandInit(flags, "deregister");
 }
 
+/**
+ * Core init command shared by register and deregister flows. Creates a new
+ * session file with generated keys (for agent-identity/wallet-free/smart-wallet
+ * modes), signed challenges, and callback server configuration.
+ * @param flags - Parsed CLI flags.
+ * @param operation - Whether to initialize a registration or deregistration session.
+ */
 async function commandInit(flags: FlagMap, operation: CliOperation): Promise<void> {
   const mode = parseMode(flags.mode ? String(flags.mode) : undefined);
   const network = parseNetwork(flags);
@@ -542,6 +778,12 @@ async function commandInit(flags: FlagMap, operation: CliOperation): Promise<voi
   });
 }
 
+/**
+ * Handles the `open` subcommand. Loads the session, checks expiry, generates
+ * the browser handoff URL, and prints it to stdout. Updates the session stage
+ * to "handoff_opened".
+ * @param flags - Parsed CLI flags (requires --session).
+ */
 async function commandOpen(flags: FlagMap): Promise<void> {
   const sessionPath = getSessionPath(flags);
   const session = readSession(sessionPath);
@@ -570,6 +812,12 @@ async function commandOpen(flags: FlagMap): Promise<void> {
   }
 }
 
+/**
+ * Queries the on-chain registry to check whether the agent is verified and
+ * retrieve its token ID.
+ * @param session - CLI session containing network and agent address info.
+ * @returns Object with `verified` status and `agentId` token ID string.
+ */
 async function pollOnChain(session: CliSession): Promise<{ verified: boolean; agentId: string }> {
   const provider = new ethers.JsonRpcProvider(session.network.rpcUrl);
   const registry = new ethers.Contract(session.network.registryAddress, REGISTRY_ABI, provider);
@@ -582,6 +830,11 @@ async function pollOnChain(session: CliSession): Promise<{ verified: boolean; ag
   return { verified: Boolean(verified), agentId };
 }
 
+/**
+ * Reads and parses the JSON body from an incoming HTTP request.
+ * @param req - Node.js IncomingMessage stream.
+ * @returns Parsed JSON body, or an empty object if the body is empty.
+ */
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   return new Promise((resolveBody, rejectBody) => {
@@ -598,6 +851,12 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   });
 }
 
+/**
+ * Sends a JSON response with CORS headers on the callback HTTP server.
+ * @param res - Node.js ServerResponse to write to.
+ * @param status - HTTP status code.
+ * @param payload - Response body to serialize as JSON.
+ */
 function sendJson(res: ServerResponse, status: number, payload: unknown): void {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json");
@@ -607,14 +866,30 @@ function sendJson(res: ServerResponse, status: number, payload: unknown): void {
   res.end(JSON.stringify(payload));
 }
 
+/**
+ * Handles the `register wait` subcommand. Delegates to {@link commandWait}.
+ * @param flags - Parsed CLI flags.
+ */
 async function commandRegisterWait(flags: FlagMap): Promise<void> {
   return commandWait(flags);
 }
 
+/**
+ * Handles the `deregister wait` subcommand. Delegates to {@link commandWait}.
+ * @param flags - Parsed CLI flags.
+ */
 async function commandDeregisterWait(flags: FlagMap): Promise<void> {
   return commandWait(flags);
 }
 
+/**
+ * Core wait command shared by register and deregister flows. Starts a local
+ * HTTP callback server, optionally prints the handoff URL, then polls the
+ * on-chain registry until the operation completes or times out. Exits with
+ * an error if the browser reports failure or the timeout is reached.
+ * @param flags - Parsed CLI flags (requires --session; optional --timeout-seconds,
+ *   --poll-ms, --open, --no-listener).
+ */
 async function commandWait(flags: FlagMap): Promise<void> {
   const sessionPath = getSessionPath(flags);
   const session = readSession(sessionPath);
@@ -785,6 +1060,11 @@ async function commandWait(flags: FlagMap): Promise<void> {
   });
 }
 
+/**
+ * Handles the `status` subcommand. Reads the session file and prints its
+ * current state as JSON to stdout.
+ * @param flags - Parsed CLI flags (requires --session).
+ */
 function commandStatus(flags: FlagMap): void {
   const sessionPath = getSessionPath(flags);
   const session = readSession(sessionPath);
@@ -804,6 +1084,13 @@ function commandStatus(flags: FlagMap): void {
   });
 }
 
+/**
+ * Handles the `register export` subcommand. Extracts the generated agent
+ * private key from the session and writes it to a file or prints it to stdout.
+ * Requires the --unsafe flag as an explicit acknowledgment of key exposure.
+ * @param flags - Parsed CLI flags (requires --session, --unsafe; optional
+ *   --out-key, --print-private-key).
+ */
 function commandRegisterExport(flags: FlagMap): void {
   const sessionPath = getSessionPath(flags);
   const session = readSession(sessionPath);
@@ -835,6 +1122,10 @@ function commandRegisterExport(flags: FlagMap): void {
   });
 }
 
+/**
+ * CLI entry point. Parses argv, dispatches to the appropriate command handler
+ * based on the operation (register/deregister) and subcommand (init/open/wait/status/export).
+ */
 async function main(): Promise<void> {
   const { positionals, flags } = parseFlags(process.argv.slice(2));
   if (

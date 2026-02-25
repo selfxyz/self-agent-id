@@ -41,10 +41,17 @@ DEMO_VERIFIED_ADDRESS = "0x83fa4380903fecb801F4e123835664973001ff00"
 
 
 def _now_iso() -> str:
+    """Return the current UTC time as an ISO 8601 string with a trailing 'Z'."""
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()) + "Z"
 
 
 def _secure_write_text(path: Path, text: str) -> None:
+    """Write text to a file with restrictive permissions (0600).
+
+    Args:
+        path: Destination file path. Parent directories are created if needed.
+        text: Content to write.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -52,22 +59,63 @@ def _secure_write_text(path: Path, text: str) -> None:
 
 
 def _secure_write_json(path: Path, payload: dict[str, Any]) -> None:
+    """Serialize a dict as pretty-printed JSON and write it securely to disk.
+
+    Args:
+        path: Destination file path.
+        payload: Dictionary to serialize.
+    """
     _secure_write_text(path, json.dumps(payload, indent=2) + "\n")
 
 
 def _read_json(path: Path) -> dict[str, Any]:
+    """Read and parse a JSON file.
+
+    Args:
+        path: Path to the JSON file.
+
+    Returns:
+        Parsed dictionary from the JSON content.
+    """
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _to_checksum(address: str) -> str:
+    """Convert an Ethereum address to its EIP-55 checksummed form.
+
+    Args:
+        address: Hex-encoded Ethereum address.
+
+    Returns:
+        Checksummed address string.
+    """
     return Web3.to_checksum_address(address)
 
 
 def _random_hex(bytes_len: int = 16) -> str:
+    """Generate a cryptographically secure random hex string.
+
+    Args:
+        bytes_len: Number of random bytes (output will be twice this length).
+
+    Returns:
+        Hex-encoded random string.
+    """
     return secrets.token_hex(bytes_len)
 
 
 def _parse_disclosures(args: argparse.Namespace) -> dict[str, Any]:
+    """Extract disclosure flags from parsed CLI arguments.
+
+    Args:
+        args: Parsed argparse namespace containing disclosure-related flags.
+
+    Returns:
+        Dictionary of disclosure settings (minimumAge, ofac, nationality, etc.).
+
+    Raises:
+        SystemExit: If --minimum-age is not 0, 18, or 21.
+    """
     minimum_age = int(args.minimum_age or 0)
     if minimum_age not in (0, 18, 21):
         raise SystemExit("--minimum-age must be 0, 18, or 21")
@@ -84,6 +132,21 @@ def _parse_disclosures(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _parse_network(args: argparse.Namespace) -> dict[str, Any]:
+    """Build a network configuration dict from parsed CLI arguments.
+
+    Supports either a named network (mainnet/testnet) or custom chain parameters.
+
+    Args:
+        args: Parsed argparse namespace containing network-related flags.
+
+    Returns:
+        Dictionary with chainId, rpcUrl, registryAddress, endpointType,
+        appUrl, appName, and scope.
+
+    Raises:
+        SystemExit: If custom --chain is provided without --registry or --rpc,
+            or if the named network is unsupported.
+    """
     app_url = (args.app_url or DEFAULT_APP_URL).rstrip("/")
     app_name = args.app_name or DEFAULT_APP_NAME
     scope = args.scope or DEFAULT_SCOPE
@@ -120,15 +183,43 @@ def _parse_network(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _callback_url(session: dict[str, Any]) -> str:
+    """Build the local HTTP callback URL from session callback configuration.
+
+    Args:
+        session: Session dictionary containing callback host, port, and path.
+
+    Returns:
+        Fully qualified callback URL string.
+    """
     cb = session["callback"]
     return f"http://{cb['listenHost']}:{cb['listenPort']}{cb['path']}"
 
 
 def _get_session_operation(session: dict[str, Any]) -> str:
+    """Return the operation type from a session, defaulting to 'register'.
+
+    Args:
+        session: Session dictionary.
+
+    Returns:
+        Either 'register' or 'deregister'.
+    """
     return str(session.get("operation") or "register")
 
 
 def _handoff_url(session: dict[str, Any]) -> str:
+    """Generate the browser handoff URL for the Self Agent web app.
+
+    Encodes the session data as a base64url payload and appends it as a query
+    parameter to the app URL.
+
+    Args:
+        session: Full session dictionary with network, registration, and
+            callback configuration.
+
+    Returns:
+        URL string that the user opens in a browser to complete verification.
+    """
     payload = {
         "version": 1,
         "operation": _get_session_operation(session),
@@ -160,19 +251,48 @@ def _handoff_url(session: dict[str, Any]) -> str:
 
 
 def _save_session(path: Path, session: dict[str, Any]) -> None:
+    """Update the session's timestamp and persist it to disk.
+
+    Args:
+        path: File path to write the session JSON.
+        session: Session dictionary (modified in place with updatedAt).
+    """
     session["state"]["updatedAt"] = _now_iso()
     _secure_write_json(path, session)
 
 
 def cmd_register_init(args: argparse.Namespace) -> None:
+    """Entry point for the ``register init`` subcommand.
+
+    Args:
+        args: Parsed CLI arguments.
+    """
     cmd_init(args, "register")
 
 
 def cmd_deregister_init(args: argparse.Namespace) -> None:
+    """Entry point for the ``deregister init`` subcommand.
+
+    Args:
+        args: Parsed CLI arguments.
+    """
     cmd_init(args, "deregister")
 
 
 def cmd_init(args: argparse.Namespace, operation: str) -> None:
+    """Create a new registration or deregistration session.
+
+    Generates an agent keypair (for non-verified-wallet modes), builds the
+    appropriate user-data payload, and writes a session JSON file to disk.
+
+    Args:
+        args: Parsed CLI arguments including mode, network, disclosures, and
+            output path.
+        operation: Either 'register' or 'deregister'.
+
+    Raises:
+        SystemExit: On invalid arguments (missing required flags, bad TTL, etc.).
+    """
     mode = args.mode
     network = _parse_network(args)
     disclosures = _parse_disclosures(args)
@@ -319,14 +439,35 @@ def cmd_init(args: argparse.Namespace, operation: str) -> None:
 
 
 def cmd_register_open(args: argparse.Namespace) -> None:
+    """Entry point for the ``register open`` subcommand.
+
+    Args:
+        args: Parsed CLI arguments.
+    """
     cmd_open(args)
 
 
 def cmd_deregister_open(args: argparse.Namespace) -> None:
+    """Entry point for the ``deregister open`` subcommand.
+
+    Args:
+        args: Parsed CLI arguments.
+    """
     cmd_open(args)
 
 
 def cmd_open(args: argparse.Namespace) -> None:
+    """Generate and print the browser handoff URL for a session.
+
+    Loads the session file, checks expiry, generates the handoff URL, and
+    updates the session stage to 'handoff_opened'.
+
+    Args:
+        args: Parsed CLI arguments with --session path.
+
+    Raises:
+        SystemExit: If the session has expired.
+    """
     session_path = Path(args.session).resolve()
     session = _read_json(session_path)
     operation = _get_session_operation(session)
@@ -354,14 +495,40 @@ def cmd_open(args: argparse.Namespace) -> None:
 
 @dataclass
 class CallbackState:
+    """Mutable state shared between the callback HTTP handler and the wait loop.
+
+    Attributes:
+        used: Whether the callback endpoint has been invoked.
+        error: Error message from the browser callback, if any.
+        guardian_address: Checksummed guardian address reported by the callback.
+    """
+
     used: bool = False
     error: str | None = None
     guardian_address: str | None = None
 
 
 def _make_handler(session: dict[str, Any], session_path: Path, state: CallbackState):
+    """Create an HTTP request handler class bound to a specific session.
+
+    Args:
+        session: Session dictionary to validate incoming callbacks against.
+        session_path: Path to persist session updates on callback receipt.
+        state: Shared mutable state for communicating results to the wait loop.
+
+    Returns:
+        A BaseHTTPRequestHandler subclass that processes POST callbacks.
+    """
     class Handler(BaseHTTPRequestHandler):
+        """HTTP handler for the local callback server."""
+
         def _respond(self, code: int, payload: dict[str, Any]) -> None:
+            """Send a JSON response with CORS headers.
+
+            Args:
+                code: HTTP status code.
+                payload: Dictionary to serialize as JSON in the response body.
+            """
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -371,9 +538,15 @@ def _make_handler(session: dict[str, Any], session_path: Path, state: CallbackSt
             self.wfile.write(json.dumps(payload).encode("utf-8"))
 
         def do_OPTIONS(self) -> None:  # noqa: N802
+            """Handle CORS preflight requests."""
             self._respond(204, {"ok": True})
 
         def do_POST(self) -> None:  # noqa: N802
+            """Process a callback POST from the browser verification flow.
+
+            Validates session ID, state token, and duplicate usage before
+            updating the shared callback state and persisting the session.
+            """
             if self.path.split("?")[0] != session["callback"]["path"]:
                 self._respond(404, {"error": "Not found"})
                 return
@@ -414,20 +587,45 @@ def _make_handler(session: dict[str, Any], session_path: Path, state: CallbackSt
                 self._respond(400, {"error": str(exc)})
 
         def log_message(self, format: str, *args: Any) -> None:  # noqa: A003
+            """Suppress default HTTP server logging."""
             return
 
     return Handler
 
 
 def cmd_register_wait(args: argparse.Namespace) -> None:
+    """Entry point for the ``register wait`` subcommand.
+
+    Args:
+        args: Parsed CLI arguments.
+    """
     cmd_wait(args)
 
 
 def cmd_deregister_wait(args: argparse.Namespace) -> None:
+    """Entry point for the ``deregister wait`` subcommand.
+
+    Args:
+        args: Parsed CLI arguments.
+    """
     cmd_wait(args)
 
 
 def cmd_wait(args: argparse.Namespace) -> None:
+    """Wait for on-chain registration or deregistration confirmation.
+
+    Starts a local HTTP callback server (unless --no-listener), then polls the
+    on-chain registry until the agent's verification status matches the expected
+    outcome or the timeout is reached.
+
+    Args:
+        args: Parsed CLI arguments with --session, --timeout-seconds, --poll-ms,
+            --open, and --no-listener flags.
+
+    Raises:
+        SystemExit: If the session has expired, the callback reports an error,
+            or the polling timeout is exceeded.
+    """
     session_path = Path(args.session).resolve()
     session = _read_json(session_path)
     operation = _get_session_operation(session)
@@ -546,14 +744,29 @@ def cmd_wait(args: argparse.Namespace) -> None:
 
 
 def cmd_register_status(args: argparse.Namespace) -> None:
+    """Entry point for the ``register status`` subcommand.
+
+    Args:
+        args: Parsed CLI arguments.
+    """
     cmd_status(args)
 
 
 def cmd_deregister_status(args: argparse.Namespace) -> None:
+    """Entry point for the ``deregister status`` subcommand.
+
+    Args:
+        args: Parsed CLI arguments.
+    """
     cmd_status(args)
 
 
 def cmd_status(args: argparse.Namespace) -> None:
+    """Print the current status of a session as JSON.
+
+    Args:
+        args: Parsed CLI arguments with --session path.
+    """
     session_path = Path(args.session).resolve()
     session = _read_json(session_path)
     operation = _get_session_operation(session)
@@ -579,6 +792,19 @@ def cmd_status(args: argparse.Namespace) -> None:
 
 
 def cmd_register_export(args: argparse.Namespace) -> None:
+    """Export the generated agent private key from a session.
+
+    The key can be written to a file (--out-key) and/or printed to stdout
+    (--print-private-key). Requires --unsafe to confirm intent.
+
+    Args:
+        args: Parsed CLI arguments with --session, --unsafe, --out-key, and
+            --print-private-key flags.
+
+    Raises:
+        SystemExit: If no private key exists in the session, --unsafe is not
+            set, or neither output option is specified.
+    """
     session_path = Path(args.session).resolve()
     session = _read_json(session_path)
     private_key = (session.get("secrets") or {}).get("agentPrivateKey")
@@ -615,6 +841,11 @@ def cmd_register_export(args: argparse.Namespace) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the full argparse argument parser for the Self Agent CLI.
+
+    Returns:
+        Configured ArgumentParser with register and deregister subcommands.
+    """
     parser = argparse.ArgumentParser(prog="self-agent")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -715,6 +946,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the Self Agent CLI.
+
+    Args:
+        argv: Command-line arguments. Defaults to sys.argv if None.
+
+    Returns:
+        Exit code (0 on success).
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
     args.func(args)

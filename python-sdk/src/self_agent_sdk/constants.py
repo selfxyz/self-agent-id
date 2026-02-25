@@ -2,17 +2,25 @@
 # SPDX-License-Identifier: BUSL-1.1
 # NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-"""Constants mirroring sdk/src/constants.ts"""
+"""Constants for the Self Agent SDK, mirroring sdk/src/constants.ts.
+
+Defines network configurations, default timeouts, HTTP header names,
+and JSON ABIs for the SelfAgentRegistry and IHumanProofProvider contracts.
+"""
+
 from typing import TypedDict, Literal
 
 NetworkName = Literal["mainnet", "testnet"]
 
 
 class NetworkConfig(TypedDict):
+    """Typed dict for per-network registry address and RPC endpoint."""
+
     registry_address: str
     rpc_url: str
 
 
+# Celo mainnet and Celo Sepolia testnet configurations
 NETWORKS: dict[NetworkName, NetworkConfig] = {
     "mainnet": {
         "registry_address": "0x60651482a3033A72128f874623Fc790061cc46D4",
@@ -29,6 +37,7 @@ ZERO_ADDRESS = "0x" + "0" * 40
 DEFAULT_MAX_AGE_MS = 5 * 60 * 1000       # 5 minutes
 DEFAULT_CACHE_TTL_MS = 60_000             # 1 minute
 
+# HTTP header names used in agent-to-agent signed requests
 HEADERS = {
     "ADDRESS": "x-self-agent-address",
     "SIGNATURE": "x-self-agent-signature",

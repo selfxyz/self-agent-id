@@ -14,12 +14,30 @@ from web3 import Web3
 
 
 class RegistrationDisclosures(TypedDict, total=False):
+    """Optional disclosure flags passed during registration.
+
+    Attributes:
+        minimumAge: Minimum age to verify (0, 18, or 21).
+        ofac: Whether to require OFAC screening.
+    """
+
     minimumAge: int
     ofac: bool
 
 
 @dataclass(frozen=True)
 class SignedRegistrationChallenge:
+    """Result of signing a registration challenge with the agent's private key.
+
+    Attributes:
+        message_hash: Keccak-256 hash of the registration challenge message.
+        signature: Full hex-encoded signature (r + s + v).
+        r: The r component of the ECDSA signature (hex).
+        s: The s component of the ECDSA signature (hex).
+        v: The recovery identifier (27 or 28).
+        agent_address: Checksummed Ethereum address of the signing agent.
+    """
+
     message_hash: str
     signature: str
     r: str
@@ -29,6 +47,18 @@ class SignedRegistrationChallenge:
 
 
 def get_registration_config_index(disclosures: RegistrationDisclosures | None = None) -> int:
+    """Map disclosure options to one of the six on-chain verification config indices.
+
+    The six configs are:
+        0 = no age / no OFAC, 1 = age 18, 2 = age 21,
+        3 = OFAC only, 4 = age 18 + OFAC, 5 = age 21 + OFAC.
+
+    Args:
+        disclosures: Optional disclosure flags (minimumAge, ofac).
+
+    Returns:
+        Config index (0-5) for the SelfAgentRegistry contract.
+    """
     d = disclosures or {}
     minimum_age = int(d.get("minimumAge", 0) or 0)
     ofac = bool(d.get("ofac", False))
@@ -47,6 +77,17 @@ def get_registration_config_index(disclosures: RegistrationDisclosures | None = 
 
 
 def _config_digit(disclosures: RegistrationDisclosures | None = None) -> str:
+    """Return the config index as a single-character string digit.
+
+    Args:
+        disclosures: Optional disclosure flags.
+
+    Returns:
+        Single character '0' through '5'.
+
+    Raises:
+        ValueError: If the computed index is outside the valid range.
+    """
     idx = get_registration_config_index(disclosures)
     if idx < 0 or idx > 5:
         raise ValueError(f"Invalid config index: {idx}")
@@ -54,6 +95,14 @@ def _config_digit(disclosures: RegistrationDisclosures | None = None) -> str:
 
 
 def _normalize_address(address: str) -> str:
+    """Convert an Ethereum address to its EIP-55 checksummed form.
+
+    Args:
+        address: Hex-encoded Ethereum address.
+
+    Returns:
+        Checksummed address string.
+    """
     return Web3.to_checksum_address(address)
 
 
@@ -62,6 +111,19 @@ def compute_registration_challenge_hash(
     chain_id: int,
     registry_address: str,
 ) -> str:
+    """Compute the Keccak-256 hash of the registration challenge message.
+
+    The challenge is constructed using Solidity-style tight packing of the
+    prefix string, human identifier address, chain ID, and registry address.
+
+    Args:
+        human_identifier: Checksummed Ethereum address of the human owner.
+        chain_id: EVM chain ID (e.g., 42220 for Celo mainnet).
+        registry_address: Checksummed address of the SelfAgentRegistry contract.
+
+    Returns:
+        Hex-encoded hash string prefixed with '0x'.
+    """
     digest = Web3.solidity_keccak(
         ["string", "address", "uint256", "address"],
         [
@@ -80,6 +142,21 @@ def sign_registration_challenge(
     chain_id: int,
     registry_address: str,
 ) -> SignedRegistrationChallenge:
+    """Sign a registration challenge with the agent's private key.
+
+    Computes the challenge hash and produces an EIP-191 personal-sign
+    signature, returning all components needed for on-chain verification.
+
+    Args:
+        private_key: Hex-encoded private key of the agent (with '0x' prefix).
+        human_identifier: Checksummed Ethereum address of the human owner.
+        chain_id: EVM chain ID.
+        registry_address: Checksummed address of the SelfAgentRegistry contract.
+
+    Returns:
+        A SignedRegistrationChallenge containing the hash, signature components,
+        and the agent's checksummed address.
+    """
     acct = Account.from_key(private_key)
     message_hash = compute_registration_challenge_hash(
         human_identifier=human_identifier,
@@ -108,12 +185,32 @@ def sign_registration_challenge(
 def build_simple_register_user_data_ascii(
     disclosures: RegistrationDisclosures | None = None,
 ) -> str:
+    """Build ASCII user-data for simple (verified-wallet) registration.
+
+    Format: 'R' + config digit (e.g., 'R0', 'R4').
+
+    Args:
+        disclosures: Optional disclosure flags.
+
+    Returns:
+        Two-character ASCII string for the userDefinedData field.
+    """
     return "R" + _config_digit(disclosures)
 
 
 def build_simple_deregister_user_data_ascii(
     disclosures: RegistrationDisclosures | None = None,
 ) -> str:
+    """Build ASCII user-data for simple (verified-wallet) deregistration.
+
+    Format: 'D' + config digit (e.g., 'D0', 'D3').
+
+    Args:
+        disclosures: Optional disclosure flags.
+
+    Returns:
+        Two-character ASCII string for the userDefinedData field.
+    """
     return "D" + _config_digit(disclosures)
 
 
@@ -124,6 +221,21 @@ def build_advanced_register_user_data_ascii(
     signature_v: int,
     disclosures: RegistrationDisclosures | None = None,
 ) -> str:
+    """Build ASCII user-data for advanced (agent-identity) registration.
+
+    Format: 'K' + config digit + agent address (40 hex) + r (64 hex) +
+    s (64 hex) + v (2 hex).
+
+    Args:
+        agent_address: Ethereum address of the agent being registered.
+        signature_r: The r component of the ECDSA signature (hex).
+        signature_s: The s component of the ECDSA signature (hex).
+        signature_v: The recovery identifier (27 or 28).
+        disclosures: Optional disclosure flags.
+
+    Returns:
+        ASCII-encoded user-data string.
+    """
     cfg = _config_digit(disclosures)
     addr_hex = _normalize_address(agent_address)[2:].lower()
     r_hex = signature_r.replace("0x", "").lower()
@@ -136,6 +248,17 @@ def build_advanced_deregister_user_data_ascii(
     agent_address: str,
     disclosures: RegistrationDisclosures | None = None,
 ) -> str:
+    """Build ASCII user-data for advanced (agent-identity) deregistration.
+
+    Format: 'X' + config digit + agent address (40 hex).
+
+    Args:
+        agent_address: Ethereum address of the agent being deregistered.
+        disclosures: Optional disclosure flags.
+
+    Returns:
+        ASCII-encoded user-data string.
+    """
     cfg = _config_digit(disclosures)
     addr_hex = _normalize_address(agent_address)[2:].lower()
     return "X" + cfg + addr_hex
@@ -149,6 +272,23 @@ def build_wallet_free_register_user_data_ascii(
     disclosures: RegistrationDisclosures | None = None,
     guardian_address: str | None = None,
 ) -> str:
+    """Build ASCII user-data for wallet-free registration.
+
+    Format: 'W' + config digit + agent address (40 hex) + guardian address
+    (40 hex, zero-padded if absent) + r (64 hex) + s (64 hex) + v (2 hex).
+
+    Args:
+        agent_address: Ethereum address of the agent being registered.
+        signature_r: The r component of the ECDSA signature (hex).
+        signature_s: The s component of the ECDSA signature (hex).
+        signature_v: The recovery identifier (27 or 28).
+        disclosures: Optional disclosure flags.
+        guardian_address: Optional guardian address. Defaults to zero address
+            if not provided.
+
+    Returns:
+        ASCII-encoded user-data string.
+    """
     cfg = _config_digit(disclosures)
     addr_hex = _normalize_address(agent_address)[2:].lower()
     guardian_hex = (
