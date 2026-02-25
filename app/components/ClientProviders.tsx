@@ -1,17 +1,14 @@
 "use client";
 
 import { type ReactNode } from "react";
+import { PrivyProvider } from "@privy-io/react-auth";
 import { NetworkProvider } from "@/lib/NetworkContext";
-import { isPrivyConfigured, getPrivyAppId } from "@/lib/privy";
+import { isPrivyConfigured, getPrivyAppId, PrivyBridge, PrivyDefaults } from "@/lib/privy";
 
 function MaybePrivyProvider({ children }: { children: ReactNode }) {
   if (!isPrivyConfigured()) {
-    return <>{children}</>;
+    return <PrivyDefaults>{children}</PrivyDefaults>;
   }
-
-  // Dynamic require to avoid build errors when @privy-io/react-auth is not installed
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { PrivyProvider } = require("@privy-io/react-auth");
 
   return (
     <PrivyProvider
@@ -25,7 +22,7 @@ function MaybePrivyProvider({ children }: { children: ReactNode }) {
         },
       }}
     >
-      {children}
+      <PrivyBridge>{children}</PrivyBridge>
     </PrivyProvider>
   );
 }

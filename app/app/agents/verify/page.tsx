@@ -24,7 +24,7 @@ import {
 import CodeBlock from "@/components/CodeBlock";
 import { getServiceSnippets, getAgentSnippets, SERVICE_FEATURES, AGENT_FEATURES } from "@/lib/snippets";
 import { connectWallet } from "@/lib/wallet";
-import { isPrivyConfigured } from "@/lib/privy";
+import { usePrivyState, isPrivyConfigured } from "@/lib/privy";
 import { REGISTRY_ABI, PROVIDER_ABI } from "@/lib/constants";
 import type { A2AAgentCard } from "@selfxyz/agent-sdk";
 import { useNetwork } from "@/lib/NetworkContext";
@@ -106,27 +106,8 @@ function VerifyContent() {
   const [activeAgentFeatures, setActiveAgentFeatures] = useState<Set<string>>(new Set());
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [passkeyAvailable, setPasskeyAvailable] = useState(false);
-  const [privyAvailable] = useState(() => isPrivyConfigured());
 
-  // Conditionally use Privy hooks (only available when PrivyProvider is mounted)
-  let privyLogin: (() => void) | null = null;
-  let privyAuthenticated = false;
-  let privyWallets: Array<{ address: string; walletClientType: string }> = [];
-  if (privyAvailable) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports, react-hooks/rules-of-hooks
-      const privy = require("@privy-io/react-auth");
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const { login, authenticated } = privy.usePrivy();
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const { wallets } = privy.useWallets();
-      privyLogin = login;
-      privyAuthenticated = authenticated;
-      privyWallets = wallets;
-    } catch {
-      // Privy not available
-    }
-  }
+  const { login: privyLogin, authenticated: privyAuthenticated, wallets: privyWallets } = usePrivyState();
 
   // When Privy authenticates, set wallet address from embedded wallet
   const privyEmbeddedAddress = privyAuthenticated
@@ -685,7 +666,7 @@ function VerifyContent() {
                   <Button onClick={handleConnectForDeregister} variant="danger" size="sm">
                     Connect wallet to deregister
                   </Button>
-                  {privyAvailable && privyLogin && (
+                  {isPrivyConfigured() && privyLogin && (
                     <Button onClick={() => privyLogin!()} variant="danger" size="sm">
                       <Mail size={14} />
                       Sign in with Privy

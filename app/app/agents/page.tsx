@@ -12,7 +12,7 @@ import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { StatusDot } from "@/components/StatusDot";
 import { signInWithPasskey, sendUserOperation, encodeGuardianRevoke, isPasskeySupported, isGaslessSupported } from "@/lib/aa";
-import { isPrivyConfigured } from "@/lib/privy";
+import { usePrivyState, isPrivyConfigured } from "@/lib/privy";
 
 interface AgentCredentials {
   issuingState: string;
@@ -127,30 +127,9 @@ export default function MyAgentsPage() {
   const [passkeyAddress, setPasskeyAddress] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [passkeyAvailable, setPasskeyAvailable] = useState(false);
-  const [privyAvailable] = useState(() => isPrivyConfigured());
   const [privyConnectedAddress, setPrivyConnectedAddress] = useState<string | null>(null);
 
-  // Conditionally use Privy hooks (only available when PrivyProvider is mounted)
-  let privyLogin: (() => void) | null = null;
-  let privyReady = false;
-  let privyAuthenticated = false;
-  let privyWallets: Array<{ address: string; walletClientType: string }> = [];
-  if (privyAvailable) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports, react-hooks/rules-of-hooks
-      const privy = require("@privy-io/react-auth");
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const { login, ready, authenticated } = privy.usePrivy();
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const { wallets } = privy.useWallets();
-      privyLogin = login;
-      privyReady = ready;
-      privyAuthenticated = authenticated;
-      privyWallets = wallets;
-    } catch {
-      // Privy not available — hooks will remain null/false
-    }
-  }
+  const { login: privyLogin, ready: privyReady, authenticated: privyAuthenticated, wallets: privyWallets } = usePrivyState();
 
   useEffect(() => {
     setPasskeyAvailable(isPasskeySupported());
@@ -485,7 +464,7 @@ export default function MyAgentsPage() {
             Sign in with Passkey
           </button>
         )}
-        {privyAvailable && (
+        {isPrivyConfigured() && (
           <button
             onClick={() => {
               setLookupMode("privy");

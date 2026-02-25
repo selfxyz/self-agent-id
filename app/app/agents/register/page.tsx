@@ -39,7 +39,7 @@ import { Button } from "@/components/Button";
 import { isPasskeySupported, createPasskeyWallet } from "@/lib/aa";
 import { savePasskey } from "@/lib/passkey-storage";
 import { saveAgentPrivateKey } from "@/lib/agentKeyVault";
-import { isPrivyConfigured } from "@/lib/privy";
+import { usePrivyState, isPrivyConfigured } from "@/lib/privy";
 
 // Dynamic import to avoid SSR issues with Self QR SDK
 const SelfQRcodeWrapper = dynamic(
@@ -81,30 +81,9 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
 
   // Privy mode state
-  const [privyAvailable] = useState(() => isPrivyConfigured());
   const [privyWalletAddress, setPrivyWalletAddress] = useState<string | null>(null);
 
-  // Conditionally use Privy hooks (only available when PrivyProvider is mounted)
-  let privyLogin: (() => void) | null = null;
-  let privyReady = false;
-  let privyAuthenticated = false;
-  let privyWallets: Array<{ address: string; walletClientType: string }> = [];
-  if (privyAvailable) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports, react-hooks/rules-of-hooks
-      const privy = require("@privy-io/react-auth");
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const { login, ready, authenticated } = privy.usePrivy();
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const { wallets } = privy.useWallets();
-      privyLogin = login;
-      privyReady = ready;
-      privyAuthenticated = authenticated;
-      privyWallets = wallets;
-    } catch {
-      // Privy not available — hooks will remain null/false
-    }
-  }
+  const { login: privyLogin, ready: privyReady, authenticated: privyAuthenticated, wallets: privyWallets } = usePrivyState();
 
   useEffect(() => {
     setPasskeySupported(isPasskeySupported());
@@ -664,7 +643,7 @@ export default function RegisterPage() {
             </button>
 
             {/* Privy (Social Login) mode card */}
-            {privyAvailable && (
+            {isPrivyConfigured() && (
               <button
                 onClick={() => setMode("privy")}
                 className={`text-left p-5 rounded-xl border-2 transition-all sm:col-span-2 ${
