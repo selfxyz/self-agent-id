@@ -84,8 +84,6 @@ export interface DeregistrationRequest {
   network?: NetworkName;
   /** Agent's Ethereum address */
   agentAddress: string;
-  /** Agent's private key (only needed for agent-identity / wallet-free deregistration) */
-  agentPrivateKey?: string;
   /** Credential disclosures (should match original registration) */
   disclosures?: {
     minimumAge?: number;
@@ -167,6 +165,12 @@ export class RegistrationError extends Error {
 
 // ── Internal Helpers ─────────────────────────────────────────────────────────
 
+/**
+ * Read the API base URL from the SELF_AGENT_API_BASE environment variable,
+ * falling back to the hardcoded default.
+ *
+ * @returns The base URL string.
+ */
 function defaultApiBaseFromEnv(): string {
   if (typeof process !== "undefined" && process?.env?.SELF_AGENT_API_BASE) {
     return process.env.SELF_AGENT_API_BASE;
@@ -174,6 +178,12 @@ function defaultApiBaseFromEnv(): string {
   return DEFAULT_API_BASE;
 }
 
+/**
+ * Resolve the final API base URL, stripping any trailing slashes.
+ *
+ * @param apiBase - Explicit override, or undefined to use the environment/default.
+ * @returns A normalized base URL with no trailing slash.
+ */
 function resolveApiBase(apiBase?: string): string {
   return (apiBase ?? defaultApiBaseFromEnv()).replace(/\/+$/, "");
 }
@@ -292,7 +302,6 @@ export async function requestDeregistration(
   const payload = {
     network,
     agentAddress: opts.agentAddress,
-    agentPrivateKey: opts.agentPrivateKey,
     disclosures: opts.disclosures,
   };
 
@@ -408,7 +417,12 @@ function buildRegistrationSession(
 
     async exportKey() {
       const status = await apiFetch<{ privateKey: string }>(
-        `${apiBase}/api/agent/register/export?token=${encodeURIComponent(currentToken)}`
+        `${apiBase}/api/agent/register/export`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: currentToken }),
+        }
       );
       return status.privateKey;
     },

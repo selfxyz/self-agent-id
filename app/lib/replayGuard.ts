@@ -5,8 +5,15 @@
 import { ethers } from "ethers";
 import { setIfAbsentWithTtl } from "@/lib/securityStore";
 
+/** Maximum age (in ms) before a signed request is considered stale. Default: 5 minutes. */
 const DEFAULT_MAX_AGE_MS = 5 * 60 * 1000;
 
+/**
+ * Normalize a URL into a canonical form for consistent signature verification.
+ * Strips the origin (scheme + host) and ensures the result starts with `/`.
+ * @param url - The raw URL or path to canonicalize.
+ * @returns A canonical path+query string (e.g. `/api/register?network=mainnet`).
+ */
 function canonicalizeSigningUrl(url: string): string {
   if (!url) return "";
 
@@ -30,6 +37,15 @@ function canonicalizeSigningUrl(url: string): string {
   }
 }
 
+/**
+ * Compute the canonical signing message hash from request parameters.
+ * The message is `keccak256(timestamp + METHOD + canonicalUrl + keccak256(body))`.
+ * @param params.timestamp - Unix timestamp string included in the signature.
+ * @param params.method - HTTP method (uppercased internally).
+ * @param params.url - Request URL (canonicalized internally).
+ * @param params.body - Optional request body (empty string if absent).
+ * @returns A keccak256 hex digest of the assembled message.
+ */
 function computeMessage(params: {
   timestamp: string;
   method: string;
@@ -47,7 +63,17 @@ function computeMessage(params: {
 
 /**
  * Distributed replay guard keyed by signature + canonical signing message.
- * Call only after signature verification succeeds to avoid poisoning.
+ * Records a request fingerprint in the security store and rejects duplicates.
+ * Call only after signature verification succeeds to avoid store poisoning.
+ *
+ * @param params.signature - The request signature (used as part of the dedup key).
+ * @param params.timestamp - Unix-epoch timestamp string from the signed request.
+ * @param params.method - HTTP method of the request.
+ * @param params.url - Request URL (canonicalized internally).
+ * @param params.body - Optional request body.
+ * @param params.maxAgeMs - Window in ms during which replays are blocked (default: {@link DEFAULT_MAX_AGE_MS}).
+ * @param params.scope - Namespace prefix for the dedup key (default: `"self"`).
+ * @returns `{ ok: true }` if the request is fresh, or `{ ok: false, error }` if replayed or invalid.
  */
 export async function checkAndRecordReplay(params: {
   signature: string;

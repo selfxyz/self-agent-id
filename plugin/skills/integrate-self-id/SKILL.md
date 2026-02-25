@@ -392,16 +392,15 @@ Human proofs expire after `maxProofAge` (default: 365 days) or when the passport
 
 ### Service-Side: Detect Expired Proofs
 
-The `SelfAgentVerifier` automatically checks proof freshness via `isProofFresh()`. When a proof has expired, the verifier rejects the request with a `PROOF_EXPIRED` reason. Handle this in your error responses to guide agents toward re-registration:
+The `SelfAgentVerifier` checks proof freshness via `isProofFresh()` as part of its `verify()` flow. When a proof has expired, the verifier returns `valid: false` with an error message. Handle this in your error responses to guide agents toward re-registration:
 
 ```typescript
 // TypeScript
 const result = await verifier.verify({ address, signature, timestamp, method, path, body });
-if (!result.valid && result.reason === "PROOF_EXPIRED") {
+if (!result.valid && result.error?.includes("proof has expired")) {
   return res.status(401).json({
     error: "Agent proof has expired",
     action: "deregister_and_reregister",
-    proofExpiresAt: result.proofExpiresAt,
   });
 }
 ```
@@ -458,7 +457,7 @@ Follow this sequence to validate a full integration from registration through ve
 
 2. **Scan QR with Self app** — The registration flow generates a QR code. Open the Self app, scan the QR, and scan the passport NFC chip. The Self app generates a ZK proof locally and submits it on-chain.
 
-3. **Poll for completion** — Call `agent.getRegistrationStatus()` (SDK) or `self_check_registration` (MCP) every 5-10 seconds. The flow typically takes 30-90 seconds. Sessions expire after 10 minutes.
+3. **Poll for completion** — Call `agent.getRegistrationStatus()` (SDK) or `self_check_registration` (MCP) every 5-10 seconds. The flow typically takes 30-90 seconds. Sessions expire after 30 minutes.
 
 4. **Test request signing** — Use `agent.signRequest()` or `self_sign_request` to generate the 3 auth headers. Verify them using `SelfAgentVerifier` or `self_verify_request`.
 

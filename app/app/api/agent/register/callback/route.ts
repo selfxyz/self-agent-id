@@ -56,6 +56,16 @@ export async function POST(req: NextRequest) {
     return errorResponse("Invalid callback payload", 400);
   }
 
+  // Check for error field first (before treating as successful proof)
+  if (callbackData && (callbackData as Record<string, unknown>).error) {
+    session.stage = "failed";
+    return sessionResponse(session, secret, {
+      agentAddress: session.agentAddress,
+      error: (callbackData as Record<string, unknown>).error,
+      humanInstructions: humanInstructions("failed"),
+    });
+  }
+
   // The Self app sends a proof payload on success. If we receive any data,
   // mark the session as proof-received. The status endpoint will then
   // confirm on-chain.
@@ -66,16 +76,6 @@ export async function POST(req: NextRequest) {
     return sessionResponse(session, secret, {
       agentAddress: session.agentAddress,
       humanInstructions: humanInstructions("proof-received"),
-    });
-  }
-
-  // If callback has error field, mark as failed
-  if (callbackData && (callbackData as Record<string, unknown>).error) {
-    session.stage = "failed";
-    return sessionResponse(session, secret, {
-      agentAddress: session.agentAddress,
-      error: (callbackData as Record<string, unknown>).error,
-      humanInstructions: humanInstructions("failed"),
     });
   }
 

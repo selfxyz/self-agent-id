@@ -30,6 +30,7 @@ import {
   corsResponse,
   type ApiNetwork,
 } from "@/lib/agent-api-helpers";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 type Mode = "simple" | "verified-wallet" | "agent-identity" | "wallet-free";
 
@@ -59,6 +60,13 @@ interface RegisterRequestBody {
 }
 
 export async function POST(req: NextRequest) {
+  // Rate limit: 10 registration requests per minute per IP
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const rl = await checkRateLimit({ key: `register:${ip}`, limit: 10, windowMs: 60_000 });
+  if (!rl.allowed) {
+    return errorResponse("Too many requests", 429);
+  }
+
   let body: RegisterRequestBody;
   try {
     body = await req.json();

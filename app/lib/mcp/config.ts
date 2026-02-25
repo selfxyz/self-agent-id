@@ -11,8 +11,10 @@ export interface McpConfig {
   registryAddress: string;
 }
 
-export function loadMcpConfig(): McpConfig {
-  const network: NetworkName = "mainnet";
+export function loadMcpConfig(overrideNetwork?: NetworkName): McpConfig {
+  const envNetwork = process.env.SELF_AGENT_NETWORK;
+  const network: NetworkName = overrideNetwork
+    ?? (envNetwork === "testnet" ? "testnet" : "mainnet");
   const networkConfig = NETWORKS[network];
   const apiUrl =
     process.env.SELF_AGENT_API_BASE ||

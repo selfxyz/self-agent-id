@@ -2,14 +2,15 @@
 
 ## Scope
 - Project: Self Agent ID (contracts + SDKs + demo app)
-- Baseline commit: `d9dca40a3bf12a4d3ea2d64a7cc3ff1f9c847d30` on `dev`
-- Threat model date: February 21, 2026
-- Security posture modeled for: public demo exposure next week
+- Baseline commit: `dev` branch post-security-audit fixes (February 2026)
+- Threat model date: February 25, 2026 (updated after comprehensive security audit)
+- Security posture modeled for: production deployment
 
 ## Executive Summary
 - STRIDE is industry-standard for software/system threat modeling (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege).
 - Core cryptographic primitives are sound (ECDSA/EIP-191, EIP-712, keccak256).
 - Major protocol-level weaknesses identified in the initial audit (header spoofing in chat path, canonicalization drift, replay handling gaps, open AA proxies) are now materially reduced.
+- Post-audit fixes applied: EIP-712 nonce-based replay protection for setAgentWallet, int256 overflow prevention in reputation registry, proof freshness checks in all SDK verify() paths, signed-header authentication in LangChain demo, CORS hardening, rate limiting, error sanitization, and security headers.
 - Remaining major risk is operational configuration drift: distributed protections exist but degrade to process-local memory when external store/secret env is missing.
 
 ## System Model
@@ -42,11 +43,11 @@
 ## STRIDE Analysis
 | STRIDE | Threat in this system | Current controls | Residual risk | Priority |
 |---|---|---|---|---|
-| Spoofing | Fake `x-self-agent-address` or identity headers | Identity now derived from signature recovery (chat and demo endpoints fixed) | If private key compromised, attacker is legitimate signer | Medium |
+| Spoofing | Fake `x-self-agent-address` or identity headers | Identity derived from signature recovery in all endpoints; LangChain demo now uses signed-header auth (EIP-191) | If private key compromised, attacker is legitimate signer | Medium |
 | Tampering | Body/URL rewriting causing verifier mismatch or bypass | Canonical URL helper added across TS/Python/Rust; middleware uses raw body when possible | Intermediaries that mutate body/URL post-signing still break auth (fail-closed) | Low |
 | Repudiation | Agent denies making a request | Signed request artifacts exist (signature+timestamp+message basis) | No tamper-evident centralized audit log by default | Medium |
 | Information Disclosure | Sensitive credential fields publicly queryable on-chain | Optional disclosure model exists | If enabled, disclosed PII is irreversible/public | High |
-| Denial of Service | Replay floods, AA proxy abuse, cache pressure | Replay detection added; AA endpoints now use token gating, origin checks, method allowlists, size caps, and shared rate-limit hooks | If external store is not configured, fallback is per-instance memory | Medium |
+| Denial of Service | Replay floods, AA proxy abuse, cache pressure | Replay detection added; AA endpoints use token gating, origin checks, method allowlists, size caps, and shared rate-limit hooks; per-IP rate limiting on register/deregister endpoints; Rust middleware enforces 1MB body limit; security headers set via next.config.mjs | If external store is not configured, fallback is per-instance memory (startup warning emitted) | Medium |
 | Elevation of Privilege | Abuse relayer/paymaster endpoints as free transaction proxy | Token-bound AA proxy auth + origin checks + RPC method restrictions | Token secret misconfiguration or lax origin policy can weaken protection | Medium |
 
 ## Key Threat Scenarios (Focused)
@@ -62,17 +63,22 @@
 ### 2) Replay Without Durable Replay Store
 - Failure mode: captured signed request replayed within timestamp window.
 - Effect: repeated unauthorized execution of same action.
-- Fix status: partially implemented.
+- Fix status: implemented with external store support.
   - In-memory replay cache enabled by default in TS/Python/Rust verifiers.
   - Replay key now binds signature + signing message, avoiding cross-message poisoning.
-- Residual: in-memory caches reset on restart and are not shared across instances.
-- Required for production: external replay store (Redis/DB) with TTL + atomic check-and-set, and stable shared AA token secret.
+  - Replay guard in chain-verify moved after signature validation to prevent cache poisoning.
+  - EIP-712 `setAgentWallet` now includes nonce to prevent signature replay after wallet unset.
+  - Upstash Redis support for production replay/rate-limit persistence (startup warning when absent).
+- Residual: in-memory caches reset on restart and are not shared across instances when Upstash is not configured.
+- Required for production: configure Upstash Redis (UPSTASH_REDIS_REST_URL/TOKEN) for durable replay/rate-limit store.
 
 ### 3) Demo Path Identity Spoofing
 - Failure mode: chat API trusting caller-provided address header.
 - Effect: privilege bypass in downstream agent gating.
 - Fix status: implemented.
   - Chat route now verifies signature/timestamp and forwards recovered address only.
+  - LangChain demo now requires signed-header auth (EIP-191 signature over request body).
+  - CORS restricted to configured origins (no more wildcard).
 
 ### 4) Public Infra Abuse (Bundler/Paymaster)
 - Failure mode: anonymous callers drain sponsored infra capacity.
@@ -81,24 +87,29 @@
   - Added token auth, origin checks, JSON-RPC allowlists, request throttling, and payload caps.
 - Residual: distributed deployment still needs shared/global rate limiting and strong secret/origin configuration hygiene.
 
-## Public Demo Readiness (Next Week)
-### Must-have
-1. Deploy with replay protection enabled (default is on).
-2. Ensure each runtime process reuses verifier instances (implemented via cached verifier factory in app).
-3. Set strict rate limits for AA routes (`AA_PROXY_MAX_REQ_PER_MINUTE`) appropriate to expected traffic.
-4. Pin expected demo agent address via env (`NEXT_PUBLIC_DEMO_AGENT_ADDRESS_CELO*`) for stronger peer-response identity checks.
+## Production Readiness
+### Implemented
+1. Replay protection enabled by default across all verifier SDKs.
+2. Rate limiting on register/deregister endpoints (10 req/min per IP).
+3. Signed-header authentication on all demo endpoints.
+4. Security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy, etc.).
+5. Error response sanitization across all API routes.
+6. Proof freshness checking in all SDK verify() paths.
+7. Nonce-based EIP-712 replay protection for setAgentWallet.
 
-### Should-have
-1. Configure Redis-backed replay/rate-limit store before scaling to >1 instance.
+### Required for multi-instance deployment
+1. Configure Upstash Redis (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`) for shared replay/rate-limit state.
 2. Set a stable strong `AA_PROXY_TOKEN_SECRET` and explicit origin allowlist.
-3. Reduce verifier cache TTL for revocation-sensitive demos if RPC budget allows.
+3. Pin expected demo agent address via env (`NEXT_PUBLIC_DEMO_AGENT_ADDRESS_CELO*`) for peer-response identity checks.
 
 ## Residual Risk Register
-- `R1` Distributed replay gap when external store is absent/misconfigured: Medium-High.
-- `R2` Optional on-chain PII disclosure misuse: High.
-- `R3` Internet-facing AA relay path (now token-gated, still abuse-sensitive): Medium.
+- `R1` Distributed replay gap when Upstash Redis is not configured: Medium (startup warning now emitted).
+- `R2` Optional on-chain PII disclosure misuse: High (inherent to credential disclosure model).
+- `R3` Internet-facing AA relay path (token-gated, rate-limited, still abuse-sensitive): Medium.
 - `R4` No immutable request audit pipeline: Medium.
+- `R5` Expired proof agents retain soulbound NFT (historical record only, `hasHumanProof()` returns false): Low.
 
 ## Decision
-- For a controlled public demo, current post-fix posture is acceptable if rate limits are tuned and expected demo agent address is pinned.
-- For production/multi-instance rollout, Redis-backed replay/rate limits + stable AA token secret are required before claiming robust anti-replay and abuse resistance.
+- Post-audit security posture is suitable for production deployment with Upstash Redis configured.
+- For single-instance deployments, in-memory fallback is acceptable with the understanding that state resets on restart.
+- For multi-instance deployments, Upstash Redis is required for shared replay/rate-limit state.

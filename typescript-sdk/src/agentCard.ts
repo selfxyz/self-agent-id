@@ -7,11 +7,13 @@ import { REGISTRY_ABI, PROVIDER_ABI } from "./constants";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+/** A capability or skill that the agent can perform, used in A2A Agent Cards. */
 export interface AgentSkill {
   name: string;
   description?: string;
 }
 
+/** Trust characteristics derived from the on-chain proof provider. */
 export interface TrustModel {
   proofType: string; // "passport", "kyc", "govt_id", "liveness"
   sybilResistant: boolean;
@@ -19,6 +21,7 @@ export interface TrustModel {
   minimumAgeVerified: number; // 0, 18, or 21
 }
 
+/** Optional credential disclosures extracted from on-chain agent registration data. */
 export interface CardCredentials {
   nationality?: string;
   issuingState?: string;
@@ -30,6 +33,7 @@ export interface CardCredentials {
   documentExpiry?: string;
 }
 
+/** On-chain proof metadata attached to an agent document via the Self Protocol. */
 export interface SelfProtocolExtension {
   agentId: number;
   registry: string;
@@ -43,17 +47,20 @@ export interface SelfProtocolExtension {
 
 // ─── A2A Agent Card sub-types ────────────────────────────────────────────────
 
+/** Feature flags describing what the A2A agent endpoint supports. */
 export interface A2ACapabilities {
   streaming: boolean;
   pushNotifications: boolean;
 }
 
+/** Organization or individual that operates the A2A agent. */
 export interface A2AProvider {
   name: string;
   url?: string;
   email?: string;
 }
 
+/** Authentication mechanism supported by the A2A agent endpoint. */
 export interface A2ASecurityScheme {
   type: "bearer" | "apiKey" | "oauth2" | "none";
   description?: string;
@@ -61,6 +68,7 @@ export interface A2ASecurityScheme {
 
 // ─── ERC-8004 service entry ───────────────────────────────────────────────────
 
+/** A service endpoint entry in the ERC-8004 agent document. */
 export interface ERC8004Service {
   name: "web" | "A2A" | "MCP" | "OASF" | "ENS" | "DID" | "email" | string;
   endpoint: string;
@@ -69,6 +77,7 @@ export interface ERC8004Service {
 
 // ─── Cross-chain registration reference (CAIP-10) ────────────────────────────
 
+/** Cross-chain registration reference using CAIP-10 addressing. */
 export interface ERC8004Registration {
   agentId: number;
   agentRegistry: string; // CAIP-10: eip155:<chainId>:<address>
@@ -76,6 +85,10 @@ export interface ERC8004Registration {
 
 // ─── The combined ERC-8004 + A2A document ────────────────────────────────────
 
+/**
+ * Combined ERC-8004 registration document with optional A2A Agent Card fields
+ * and Self Protocol on-chain proof metadata.
+ */
 export interface ERC8004AgentDocument {
   // ── ERC-8004 required ──
   type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1";
@@ -117,6 +130,12 @@ export const PROVIDER_LABELS: Record<number, string> = {
   40: "liveness",
 };
 
+/**
+ * Map a numeric verification strength to a human-readable provider label.
+ *
+ * @param strength - Verification strength score (0-100) from the proof provider contract.
+ * @returns A label such as "passport", "kyc", "govt_id", "liveness", or "unknown".
+ */
 export function getProviderLabel(strength: number): string {
   if (strength >= 100) return PROVIDER_LABELS[100];
   if (strength >= 80) return PROVIDER_LABELS[80];
@@ -125,6 +144,12 @@ export function getProviderLabel(strength: number): string {
   return "unknown";
 }
 
+/**
+ * Map a numeric verification strength to a UI-friendly color tier.
+ *
+ * @param strength - Verification strength score (0-100).
+ * @returns A color string: "green" (>=80), "blue" (>=60), "amber" (>=40), or "gray".
+ */
 export function getStrengthColor(
   strength: number
 ): "green" | "blue" | "amber" | "gray" {
@@ -136,6 +161,18 @@ export function getStrengthColor(
 
 // ─── Build Card from On-Chain Data ───────────────────────────────────────────
 
+/**
+ * Build a complete ERC-8004 agent document by reading on-chain registry and provider data.
+ *
+ * Fetches the provider name, verification strength, and credential disclosures from
+ * the contracts and merges them with the caller-supplied display fields.
+ *
+ * @param agentId - On-chain agent token ID.
+ * @param registry - Ethers contract instance for the SelfAgentRegistry.
+ * @param provider - Ethers contract instance for the SelfHumanProofProvider.
+ * @param userFields - Display and service fields supplied by the caller.
+ * @returns A fully populated {@link ERC8004AgentDocument}.
+ */
 export async function buildAgentCard(
   agentId: number,
   registry: ethers.Contract,
@@ -235,6 +272,10 @@ export async function buildAgentCard(
 
 // ─── Synchronous Registration JSON Builder ───────────────────────────────────
 
+/**
+ * Options for building an ERC-8004 registration JSON document without on-chain reads.
+ * Include the optional `a2a` field to make the document double as a valid A2A Agent Card.
+ */
 export interface GenerateRegistrationJSONOptions {
   // ERC-8004 required
   name: string;
@@ -260,6 +301,15 @@ export interface GenerateRegistrationJSONOptions {
   };
 }
 
+/**
+ * Build an ERC-8004 registration JSON document synchronously from plain options.
+ *
+ * Unlike {@link buildAgentCard}, this does not read from on-chain contracts.
+ * When `options.a2a` is provided, the returned document is also a valid A2A Agent Card.
+ *
+ * @param options - Document fields and optional A2A configuration.
+ * @returns A populated {@link ERC8004AgentDocument}.
+ */
 export function generateRegistrationJSON(
   options: GenerateRegistrationJSONOptions
 ): ERC8004AgentDocument {

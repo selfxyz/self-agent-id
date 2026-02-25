@@ -257,35 +257,37 @@ contract SelfReputationRegistry is ImplRoot {
         address[] calldata clientAddresses,
         string calldata tag1,
         string calldata tag2
-    ) external view returns (uint64 count, int128 summaryValue, uint8 summaryValueDecimals) {
+    ) external view returns (uint64 count, int256 summaryValue, uint8 summaryValueDecimals) {
         require(clientAddresses.length > 0, "clientAddresses required");
         bytes32 t1 = bytes(tag1).length > 0 ? keccak256(bytes(tag1)) : bytes32(0);
         bytes32 t2 = bytes(tag2).length > 0 ? keccak256(bytes(tag2)) : bytes32(0);
         (count, summaryValue, summaryValueDecimals) = _summarise(agentId, clientAddresses, t1, t2);
     }
 
-    /// @dev Iterate over multiple clients and aggregate their feedback for an agent
+    /// @dev Iterate over multiple clients and aggregate their feedback for an agent.
+    ///      Uses int256 internally to prevent overflow when summing int128 entries.
     function _summarise(
         uint256 agentId,
         address[] calldata clientAddresses,
         bytes32 tag1Hash,
         bytes32 tag2Hash
-    ) internal view returns (uint64 count, int128 summaryValue, uint8 summaryValueDecimals) {
+    ) internal view returns (uint64 count, int256 summaryValue, uint8 summaryValueDecimals) {
         for (uint256 i = 0; i < clientAddresses.length; i++) {
-            (uint64 c, int128 v, uint8 d) = _summariseClient(agentId, clientAddresses[i], tag1Hash, tag2Hash);
+            (uint64 c, int256 v, uint8 d) = _summariseClient(agentId, clientAddresses[i], tag1Hash, tag2Hash);
             count += c;
             summaryValue += v;
             if (c > 0) summaryValueDecimals = d;
         }
     }
 
-    /// @dev Aggregate feedback from a single client for an agent, filtered by tag hashes
+    /// @dev Aggregate feedback from a single client for an agent, filtered by tag hashes.
+    ///      Uses int256 internally to prevent overflow when summing int128 entries.
     function _summariseClient(
         uint256 agentId,
         address client,
         bytes32 tag1Hash,
         bytes32 tag2Hash
-    ) internal view returns (uint64 count, int128 summaryValue, uint8 summaryValueDecimals) {
+    ) internal view returns (uint64 count, int256 summaryValue, uint8 summaryValueDecimals) {
         SelfReputationRegistryStorage storage $ = _getSelfReputationRegistryStorage();
         uint64 lastIdx = $.lastIndex[agentId][client];
         for (uint64 j = 1; j <= lastIdx; j++) {

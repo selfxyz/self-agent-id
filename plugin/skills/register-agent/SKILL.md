@@ -40,7 +40,7 @@ The full registration lifecycle follows this sequence:
 9. **Soulbound NFT minted** — The registry mints a non-transferable ERC-721 NFT representing the agent identity.
 10. **Credentials stored** — ZK-attested credentials (nationality, age threshold, OFAC status) are stored on-chain.
 
-The entire flow typically takes 30-90 seconds from QR scan to NFT mint. The registration session expires after 10 minutes if the human does not complete the Self app flow.
+The entire flow typically takes 30-90 seconds from QR scan to NFT mint. The registration session expires after 30 minutes if the human does not complete the Self app flow.
 
 ## Mode Selection Guide
 
@@ -90,7 +90,7 @@ agent_address  — The agent's Ethereum address
 qr_url         — URL to display as a QR code for the Self app
 deep_link      — Direct link to open the Self app (mobile)
 private_key_hex — The agent's ECDSA private key (SAVE THIS IMMEDIATELY)
-expires_at     — Session expiry timestamp (10 minutes from creation)
+expires_at     — Session expiry timestamp (30 minutes from creation)
 ```
 
 ### Step 2: Present QR Code or Deep Link
@@ -110,7 +110,7 @@ status: "pending" | "verified" | "expired" | "failed"
 agent_id: (present when status is "verified") — the on-chain agent ID (uint256)
 ```
 
-Continue polling until the status changes from `"pending"`. The session expires after 10 minutes. A `"verified"` status means the soulbound NFT has been minted and credentials stored on-chain.
+Continue polling until the status changes from `"pending"`. The session expires after 30 minutes. A `"verified"` status means the soulbound NFT has been minted and credentials stored on-chain.
 
 ### Step 4: Store the Private Key Securely
 
@@ -151,8 +151,8 @@ const session = await agent.register("agent-identity", {
 });
 
 // Display QR code to the human
-console.log("Scan this QR code with the Self app:", session.qrUrl);
-console.log("Session ID:", session.sessionId);
+console.log("Scan this QR code with the Self app:", session.deepLink);
+console.log("Session token received");
 
 // Poll for completion
 let status = await agent.getRegistrationStatus();
@@ -203,7 +203,7 @@ After successful registration, verify the agent identity is correctly recorded o
 
 1. **Call `self_get_identity`** (MCP) or `agent.getInfo()` (SDK) — confirm `registered: true`, the agent ID is non-zero, and the proof provider is the Self Protocol address.
 
-2. **Check credentials** — verify the stored credentials match the selected verification config (e.g., `olderThan: 18` for config `'2'` or `'3'`, OFAC booleans set for configs `'1'`, `'3'`, or `'5'`).
+2. **Check credentials** — verify the stored credentials match the selected verification config (e.g., `olderThan: 18` for config `'1'` or `'4'`, OFAC booleans set for configs `'3'`, `'4'`, or `'5'`).
 
 3. **Verify on a block explorer** — navigate to the registry contract on Celoscan or Blockscout and look up the agent ID. The soulbound NFT should be visible under the NFT owner's address.
 
@@ -238,7 +238,7 @@ SDKs include a 30-day warning threshold. Check `proofExpiresAt` and prompt the h
 | QR code not scanning | Self app outdated | Update the Self app to the latest version |
 | NFC scan fails | Phone NFC disabled or passport not supported | Enable NFC in phone settings; ensure passport has an NFC chip (look for the chip icon on the bio page) |
 | Status stays "pending" | Human has not completed the Self app flow | Wait for the human to scan passport; check Self app for errors |
-| Status is "expired" | 10-minute session timeout elapsed | Start a new registration session |
+| Status is "expired" | 30-minute session timeout elapsed | Start a new registration session |
 | Status is "failed" | ZK proof verification failed on-chain | Check the verification config matches the passport capabilities; retry with a fresh session |
 | `TooManyAgentsForHuman` error | Sybil limit reached | The same human has already registered the maximum number of agents (default: 1). Deregister an existing agent first. |
 | `AgentAlreadyRegistered` error | Agent key already has a registration | The agent address is already registered. Use a different keypair or deregister the existing agent. |

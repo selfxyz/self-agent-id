@@ -18,26 +18,40 @@ into any Python service. The key pattern:
   address → agentKey → isVerifiedAgent() → getAgentId()
 
 Security layers:
-1. On-chain verification: isVerifiedAgent() on SelfAgentRegistry
-2. Rate limiting: 10 requests/hour per agent address
-3. Cloud Run: max 3 instances, 10 concurrency, gVisor sandbox
-4. SSRF prevention: URL validator blocks internal/private hosts
+1. Signed-header authentication: caller must sign the request body
+2. On-chain verification: isVerifiedAgent() on SelfAgentRegistry
+3. Rate limiting: 10 requests/hour per agent address
+4. Cloud Run: max 3 instances, 10 concurrency, gVisor sandbox
+5. SSRF prevention: URL validator blocks internal/private hosts
 """
+import hashlib
+import json
+import os
 import sys
 import time
 import traceback
 
+from eth_account.messages import encode_defunct
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from web3 import Web3
 
 app = FastAPI(title="Self Agent ID + LangChain Demo")
 
+# CORS: restrict to configured origins (defaults to the demo frontend)
+_allowed_origins = [
+    o.strip()
+    for o in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+]
+if not _allowed_origins:
+    _allowed_origins = ["https://self-agent-id.vercel.app"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_methods=["POST", "GET", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "x-self-agent-address", "x-self-agent-signature"],
 )
 
 # ── Network configuration ─────────────────────────────────────────────────
@@ -172,13 +186,42 @@ def is_valid_address(addr: str) -> bool:
     return addr.startswith("0x") and len(addr) == 42
 
 
+def verify_signature(agent_address: str, signature: str, body_bytes: bytes) -> bool:
+    """Verify that the caller controls the claimed agent address.
+
+    The caller signs SHA-256(request_body) with their agent private key.
+    We recover the signer address and compare to the claimed address.
+    """
+    try:
+        digest = hashlib.sha256(body_bytes).hexdigest()
+        message = encode_defunct(text=digest)
+        recovered = Web3().eth.account.recover_message(message, signature=signature)
+        return recovered.lower() == agent_address.lower()
+    except Exception:
+        return False
+
+
 @app.post("/agent")
 async def handle(request: Request):
     if _init_error:
-        raise HTTPException(status_code=500, detail=f"Service init failed: {_init_error[:500]}")
+        raise HTTPException(status_code=500, detail="Service temporarily unavailable")
 
-    body = await request.json()
-    agent_address = body.get("agent_address", "anonymous").lower()
+    # ── Signed-header authentication ────────────────────────────────────
+    # The caller MUST provide x-self-agent-address and x-self-agent-signature
+    # headers. The signature proves the caller controls the agent private key.
+    agent_address = request.headers.get("x-self-agent-address", "").lower()
+    signature = request.headers.get("x-self-agent-signature", "")
+
+    if not agent_address or not is_valid_address(agent_address):
+        raise HTTPException(status_code=401, detail="Missing or invalid x-self-agent-address header")
+    if not signature:
+        raise HTTPException(status_code=401, detail="Missing x-self-agent-signature header")
+
+    body_bytes = await request.body()
+    if not verify_signature(agent_address, signature, body_bytes):
+        raise HTTPException(status_code=401, detail="Invalid signature — caller does not control this agent address")
+
+    body = json.loads(body_bytes)
     query = body.get("query", "")
     network_id = body.get("network", "celo-sepolia")
     session_id = body.get("session_id", "unknown")
@@ -264,15 +307,14 @@ async def handle(request: Request):
     except Exception as exc:
         print(f"EXECUTOR ERROR: {exc}", file=sys.stderr, flush=True)
         traceback.print_exc(file=sys.stderr)
-        raise HTTPException(status_code=500, detail=str(exc)[:500])
+        raise HTTPException(status_code=500, detail="Agent processing failed")
 
 
 @app.get("/health")
 async def health():
     return {
-        "status": "ok" if not _init_error else "init_failed",
+        "status": "ok" if not _init_error else "degraded",
         "networks": list(NETWORKS.keys()),
         "active_sessions": len(session_verified),
         "total_queries": total_queries,
-        "error": _init_error[:200] if _init_error else None,
     }

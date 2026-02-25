@@ -376,8 +376,8 @@ Override by setting the `SELF_AGENT_API_BASE` environment variable. The previous
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/api/agent/register` | Start a registration session |
-| `GET` | `/api/agent/register/status?sessionId=X` | Poll registration status |
-| `GET` | `/api/agent/register/qr?sessionId=X` | Get QR code for Self app |
+| `GET` | `/api/agent/register/status?token=X` | Poll registration status |
+| `GET` | `/api/agent/register/qr?token=X` | Get QR code for Self app |
 | `POST` | `/api/agent/register/callback` | Hub V2 callback (internal) |
 
 ### Deregistration Endpoints
@@ -385,7 +385,7 @@ Override by setting the `SELF_AGENT_API_BASE` environment variable. The previous
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/api/agent/deregister` | Start a deregistration session |
-| `GET` | `/api/agent/deregister/status?sessionId=X` | Poll deregistration status |
+| `GET` | `/api/agent/deregister/status?token=X` | Poll deregistration status |
 | `POST` | `/api/agent/deregister/callback` | Hub V2 callback (internal) |
 
 ---

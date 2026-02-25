@@ -530,7 +530,6 @@ impl SelfAgent {
             DeregistrationRequest {
                 network: network_str.to_string(),
                 agent_address: format!("{:#x}", self.signer.address()),
-                agent_private_key: self.private_key.clone(),
             },
             api_base,
         )

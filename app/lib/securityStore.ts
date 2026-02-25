@@ -8,6 +8,14 @@ const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL || "";
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || "";
 const USE_UPSTASH = Boolean(UPSTASH_URL && UPSTASH_TOKEN);
 
+if (!USE_UPSTASH && typeof process !== "undefined") {
+  console.warn(
+    "[securityStore] UPSTASH_REDIS_REST_URL/TOKEN not set — " +
+    "rate limiting and replay protection will use in-memory fallback. " +
+    "This does not persist across serverless invocations or scale across instances."
+  );
+}
+
 type GlobalState = typeof globalThis & {
   __selfMemorySet?: Map<string, number>;
   __selfMemoryCounters?: Map<string, CounterEntry>;

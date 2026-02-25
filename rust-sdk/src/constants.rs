@@ -66,6 +66,7 @@ sol! {
         function getAgentCountForHuman(uint256 nullifier) external view returns (uint256);
         function sameHuman(uint256 agentIdA, uint256 agentIdB) external view returns (bool);
         function getProofProvider(uint256 agentId) external view returns (address);
+        function isProofFresh(uint256 agentId) external view returns (bool);
         function selfProofProvider() external view returns (address);
         function ownerOf(uint256 tokenId) external view returns (address);
 

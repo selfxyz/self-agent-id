@@ -8,12 +8,28 @@ from dataclasses import dataclass, field
 
 @dataclass
 class AgentSkill:
+    """A capability or skill advertised by an A2A agent.
+
+    Attributes:
+        name: Short identifier for the skill (e.g. "translation").
+        description: Optional human-readable description of the skill.
+    """
+
     name: str
     description: str | None = None
 
 
 @dataclass
 class TrustModel:
+    """Describes the trust characteristics of an agent's human proof.
+
+    Attributes:
+        proof_type: Type of proof ("passport", "kyc", "govt_id", "liveness").
+        sybil_resistant: Whether the proof prevents duplicate identities.
+        ofac_screened: Whether OFAC screening was performed.
+        minimum_age_verified: Minimum age threshold verified (0 if none).
+    """
+
     proof_type: str  # "passport", "kyc", "govt_id", "liveness"
     sybil_resistant: bool
     ofac_screened: bool
@@ -22,6 +38,21 @@ class TrustModel:
 
 @dataclass
 class CardCredentials:
+    """Subset of disclosed identity credentials included in an agent card.
+
+    All fields are optional; only disclosed attributes are set.
+
+    Attributes:
+        nationality: ISO 3166-1 alpha-3 nationality code.
+        issuing_state: ISO 3166-1 alpha-3 code of the document issuer.
+        older_than: Verified minimum age (18 or 21).
+        ofac_clean: Whether the agent passed OFAC screening.
+        has_name: Whether the agent disclosed their name.
+        has_date_of_birth: Whether the agent disclosed their date of birth.
+        has_gender: Whether the agent disclosed their gender.
+        document_expiry: Document expiry date string.
+    """
+
     nationality: str | None = None
     issuing_state: str | None = None
     older_than: int | None = None
@@ -34,6 +65,22 @@ class CardCredentials:
 
 @dataclass
 class SelfProtocolExtension:
+    """Self Protocol metadata extension for an A2A agent card.
+
+    Contains on-chain registry references, proof provider details,
+    trust model information, and optionally disclosed credentials.
+
+    Attributes:
+        agent_id: The agent's ERC-721 token ID in the registry.
+        registry: Contract address of the SelfAgentRegistry.
+        chain_id: EVM chain ID where the registry is deployed.
+        proof_provider: Address of the IHumanProofProvider contract.
+        provider_name: Human-readable name of the proof provider.
+        verification_strength: Numeric strength score (0-100).
+        trust_model: Trust characteristics derived from the proof.
+        credentials: Optionally disclosed identity credentials.
+    """
+
     agent_id: int
     registry: str
     chain_id: int
@@ -46,6 +93,22 @@ class SelfProtocolExtension:
 
 @dataclass
 class A2AAgentCard:
+    """Agent-to-Agent (A2A) agent card with Self Protocol extension.
+
+    Represents a discoverable agent identity card following the A2A
+    protocol specification, enriched with Self Protocol proof-of-human
+    metadata.
+
+    Attributes:
+        a2a_version: A2A protocol version (e.g. "0.1").
+        name: Display name of the agent.
+        self_protocol: Self Protocol extension with on-chain identity data.
+        description: Optional human-readable description.
+        url: Optional URL where the agent can be reached.
+        capabilities: Optional list of capability identifiers.
+        skills: Optional list of advertised skills.
+    """
+
     a2a_version: str  # "0.1"
     name: str
     self_protocol: SelfProtocolExtension
@@ -66,6 +129,14 @@ PROVIDER_LABELS: dict[int, str] = {
 
 
 def get_provider_label(strength: int) -> str:
+    """Map a verification strength score to a human-readable proof type label.
+
+    Args:
+        strength: Numeric verification strength (0-100).
+
+    Returns:
+        One of "passport", "kyc", "govt_id", "liveness", or "unknown".
+    """
     if strength >= 100:
         return "passport"
     if strength >= 80:
@@ -78,6 +149,14 @@ def get_provider_label(strength: int) -> str:
 
 
 def get_strength_color(strength: int) -> str:
+    """Map a verification strength score to a display color.
+
+    Args:
+        strength: Numeric verification strength (0-100).
+
+    Returns:
+        One of "green", "blue", "amber", or "gray".
+    """
     if strength >= 80:
         return "green"
     if strength >= 60:
@@ -88,7 +167,17 @@ def get_strength_color(strength: int) -> str:
 
 
 def build_agent_card_dict(card: A2AAgentCard) -> dict:
-    """Convert an A2AAgentCard to a JSON-serializable dict."""
+    """Convert an A2AAgentCard dataclass to a JSON-serializable dict.
+
+    Produces camelCase keys matching the A2A JSON schema. Optional fields
+    are omitted when ``None``.
+
+    Args:
+        card: The agent card to serialize.
+
+    Returns:
+        A dict suitable for ``json.dumps()`` or on-chain metadata storage.
+    """
     result: dict = {
         "a2aVersion": card.a2a_version,
         "name": card.name,
