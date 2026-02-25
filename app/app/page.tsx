@@ -282,7 +282,7 @@ export default function Home() {
                 iconColor: "text-accent",
                 bgColor: "bg-accent/20",
                 title: "Agent Operators",
-                desc: "Register your AI agent with a passport scan. Choose from four modes \u2014 wallet-based, agent keypair, wallet-free, or passkey smart wallet. Your agent gets a soulbound NFT and an A2A-compatible identity card that any service can verify instantly.",
+                desc: "Register your AI agent with a passport scan. Choose from five modes \u2014 wallet-based, agent keypair, wallet-free, passkey smart wallet, or social login via Privy. Your agent gets a soulbound NFT and an A2A-compatible identity card that any service can verify instantly.",
                 btnIcon: Key,
                 btnLabel: "Register Agent",
                 btnVariant: "primary" as const,

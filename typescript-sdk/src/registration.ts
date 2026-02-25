@@ -4,7 +4,8 @@ export type RegistrationMode =
   | "verified-wallet"
   | "agent-identity"
   | "wallet-free"
-  | "smart-wallet";
+  | "smart-wallet"
+  | "privy";
 
 export interface RegistrationDisclosures {
   minimumAge?: 0 | 18 | 21;

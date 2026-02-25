@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
+    "@privy-io/react-auth": "^2.12.1",
     "@selfxyz/agent-sdk": "0.1.0-alpha.1",
     "@selfxyz/qrcode": "^1.0.18",
     "@zerodev/passkey-validator": "^5.6.0",

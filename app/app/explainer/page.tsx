@@ -15,6 +15,7 @@ import {
   Key,
   ExternalLink,
   Code2,
+  Mail,
 } from "lucide-react";
 import CodeBlock from "@/components/CodeBlock";
 import { useNetwork } from "@/lib/NetworkContext";
@@ -179,13 +180,13 @@ export default function ExplainerPage() {
         <div className="max-w-4xl mx-auto">
           <h2 className="text-3xl font-bold text-center mb-4">Security Model</h2>
           <p className="text-center text-muted max-w-2xl mx-auto mb-12">
-            The registry supports four registration modes. All produce the same
+            The registry supports five registration modes. All produce the same
             on-chain result (a verified, sybil-resistant agent NFT) but
             they differ in who holds the agent&apos;s private key and how the
             human manages their agent.
           </p>
 
-          {/* Four modes - 2x2 grid */}
+          {/* Five modes grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
             {/* Agent Identity */}
             <Card>
@@ -315,6 +316,40 @@ export default function ExplainerPage() {
                 <p className="text-xs text-muted">
                   <strong className="text-foreground">Best for:</strong> Users who want the simplest experience
                   with no seed phrases, no browser extensions, and gasless management.
+                </p>
+              </div>
+            </Card>
+
+            {/* Social Login (Privy) */}
+            <Card className="md:col-span-2">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                  <Mail size={16} className="text-purple-400" />
+                </span>
+                <h3 className="font-bold text-lg">Social Login (Privy)</h3>
+              </div>
+              <p className="text-sm font-medium mb-2">
+                Email / Google / Twitter &rarr; Embedded Wallet
+              </p>
+              <p className="text-sm text-muted mb-4">
+                Sign in with a social account via Privy. An embedded wallet is created
+                automatically &mdash; no browser extension or seed phrase. A separate agent
+                keypair is generated, and the on-chain format is identical to Agent Identity
+                (&ldquo;K&rdquo; action). Only the wallet source differs.
+              </p>
+              <div className="space-y-2 text-sm text-muted">
+                <p className="font-bold text-foreground">How it&apos;s secured:</p>
+                <ul className="list-disc list-inside space-y-1">
+                  <li>Privy authenticates the human via social login (MPC-secured embedded wallet)</li>
+                  <li>Agent generates its own keypair &mdash; signs challenge proving key ownership</li>
+                  <li>ZK proof binds human identity to nullifier</li>
+                  <li>Agent operates with its own key at runtime &mdash; no Privy dependency</li>
+                </ul>
+              </div>
+              <div className="mt-4 pt-4 border-t border-border">
+                <p className="text-xs text-muted">
+                  <strong className="text-foreground">Best for:</strong> Users who prefer social login (email, Google, Twitter)
+                  over browser extensions. No crypto wallet setup required.
                 </p>
               </div>
             </Card>

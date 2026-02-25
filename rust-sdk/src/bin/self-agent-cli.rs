@@ -245,6 +245,7 @@ fn parse_mode(mode: &str) -> Result<&'static str, String> {
         "agent-identity" => Ok("agent-identity"),
         "wallet-free" => Ok("wallet-free"),
         "smart-wallet" => Ok("smart-wallet"),
+        "privy" => Ok("privy"),
         _ => Err(format!("Unsupported mode: {mode}")),
     }
 }
@@ -419,11 +420,11 @@ async fn command_init(flags: &HashMap<String, String>, operation: &str) -> Resul
     let mut smart_wallet_template: Option<SmartWalletTemplate> = None;
     let mut private_key: Option<String> = None;
 
-    if mode == "verified-wallet" || mode == "agent-identity" {
+    if mode == "verified-wallet" || mode == "agent-identity" || mode == "privy" {
         let human = flags
             .get("human-address")
             .cloned()
-            .ok_or("--human-address is required for verified-wallet and agent-identity")?;
+            .ok_or("--human-address is required for verified-wallet, agent-identity, and privy")?;
         human_identifier = format!(
             "{:#x}",
             Address::from_str(&human).map_err(|e| e.to_string())?
@@ -457,7 +458,7 @@ async fn command_init(flags: &HashMap<String, String>, operation: &str) -> Resul
             let sig_parts = signed.parts.clone();
             signature = Some(sig_parts.clone());
 
-            if mode == "agent-identity" {
+            if mode == "agent-identity" || mode == "privy" {
                 user_defined_data = Some(build_advanced_register_user_data_ascii(
                     &agent_address,
                     &sig_parts,
@@ -484,11 +485,11 @@ async fn command_init(flags: &HashMap<String, String>, operation: &str) -> Resul
         if mode == "verified-wallet" {
             agent_address = human_identifier.clone();
             user_defined_data = Some(build_simple_deregister_user_data_ascii(&reg_d));
-        } else if mode == "agent-identity" {
+        } else if mode == "agent-identity" || mode == "privy" {
             let agent = flags
                 .get("agent-address")
                 .cloned()
-                .ok_or("--agent-address is required for agent-identity deregistration")?;
+                .ok_or("--agent-address is required for agent-identity/privy deregistration")?;
             let parsed = Address::from_str(&agent).map_err(|e| e.to_string())?;
             agent_address = format!("{:#x}", parsed);
             user_defined_data = Some(build_advanced_deregister_user_data_ascii(

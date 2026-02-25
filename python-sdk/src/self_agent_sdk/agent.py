@@ -306,7 +306,7 @@ class SelfAgent:
 
         Args:
             mode: Registration mode (``"verified-wallet"``, ``"agent-identity"``,
-                ``"wallet-free"``, ``"smart-wallet"``).
+                ``"wallet-free"``, ``"smart-wallet"``, ``"privy"``).
             network: ``"mainnet"`` or ``"testnet"``.
             disclosures: Optional disclosure requirements (e.g.
                 ``{"minimumAge": 18, "ofac": True}``).

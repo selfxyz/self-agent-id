@@ -27,13 +27,14 @@ import {
   type ApiNetwork,
 } from "@/lib/agent-api-helpers";
 
-type Mode = "simple" | "verified-wallet" | "agent-identity" | "wallet-free";
+type Mode = "simple" | "verified-wallet" | "agent-identity" | "wallet-free" | "privy";
 
 const VALID_MODES = new Set<Mode>([
   "simple",
   "verified-wallet",
   "agent-identity",
   "wallet-free",
+  "privy",
 ]);
 
 interface RegisterRequestBody {
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
   const rawMode = body.mode === "verified-wallet" ? "simple" : body.mode;
   if (!rawMode || !VALID_MODES.has(rawMode as Mode)) {
     return errorResponse(
-      `Invalid mode: "${body.mode}". Valid modes: simple, verified-wallet, agent-identity, wallet-free`,
+      `Invalid mode: "${body.mode}". Valid modes: simple, verified-wallet, agent-identity, wallet-free, privy`,
       400,
     );
   }
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
   const networkConfig = getNetworkConfig(network);
 
   // ── Validate humanAddress (required for simple + agent-identity) ────────
-  const needsHumanAddress = mode === "simple" || mode === "agent-identity";
+  const needsHumanAddress = mode === "simple" || mode === "agent-identity" || mode === "privy";
   if (needsHumanAddress && (!body.humanAddress || !isValidAddress(body.humanAddress))) {
     return errorResponse(
       "humanAddress is required and must be a valid Ethereum address for this mode",
@@ -116,7 +117,7 @@ export async function POST(req: NextRequest) {
       humanAddress = ethers.getAddress(body.humanAddress!);
       agentAddress = humanAddress;
       userDefinedData = buildSimpleRegisterUserDataAscii(disclosures);
-    } else if (mode === "agent-identity") {
+    } else if (mode === "agent-identity" || mode === "privy") {
       // Agent-identity: generate fresh keypair, human wallet signs nothing server-side
       humanAddress = ethers.getAddress(body.humanAddress!);
       const wallet = ethers.Wallet.createRandom();

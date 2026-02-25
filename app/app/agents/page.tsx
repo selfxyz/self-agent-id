@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { ethers } from "ethers";
-import { Wallet, RefreshCw, Cpu, Shield, FileText, Search, Key, Fingerprint, Loader2 } from "lucide-react";
+import { Wallet, RefreshCw, Cpu, Shield, FileText, Search, Key, Fingerprint, Loader2, Mail } from "lucide-react";
 import { connectWallet } from "@/lib/wallet";
 import { REGISTRY_ABI, PROVIDER_ABI } from "@/lib/constants";
 import { useNetwork } from "@/lib/NetworkContext";
@@ -12,6 +12,7 @@ import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { StatusDot } from "@/components/StatusDot";
 import { signInWithPasskey, sendUserOperation, encodeGuardianRevoke, isPasskeySupported, isGaslessSupported } from "@/lib/aa";
+import { isPrivyConfigured } from "@/lib/privy";
 
 interface AgentCredentials {
   issuingState: string;
@@ -83,22 +84,24 @@ async function fetchVerificationStrength(
 /**
  * Paginated queryFilter to avoid eth_getLogs block-range limits on
  * RPC providers like Alchemy (free tier caps at 10-block ranges).
- * Scans backwards from latest block in 50 000-block windows.
+ * Scans backwards from latest block in 500 000-block windows.
+ * Accepts a fromBlockFloor to skip blocks before the registry was deployed.
  */
 async function paginatedQueryFilter(
   registry: ethers.Contract,
   filter: ethers.ContractEventName,
   provider: ethers.JsonRpcProvider,
+  fromBlockFloor = 0,
 ): Promise<(ethers.EventLog | ethers.Log)[]> {
   const latestBlock = await provider.getBlockNumber();
-  const blockWindow = 50_000;
+  const blockWindow = 500_000;
   const allEvents: (ethers.EventLog | ethers.Log)[] = [];
 
-  for (let toBlock = latestBlock; toBlock >= 0; toBlock -= blockWindow) {
-    const fromBlock = Math.max(0, toBlock - blockWindow + 1);
+  for (let toBlock = latestBlock; toBlock >= fromBlockFloor; toBlock -= blockWindow) {
+    const fromBlock = Math.max(fromBlockFloor, toBlock - blockWindow + 1);
     const events = await registry.queryFilter(filter, fromBlock, toBlock);
     allEvents.push(...events);
-    if (fromBlock === 0) break;
+    if (fromBlock === fromBlockFloor) break;
   }
 
   return allEvents;
@@ -119,15 +122,55 @@ export default function MyAgentsPage() {
   const [agents, setAgents] = useState<AgentEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [lookupMode, setLookupMode] = useState<"wallet" | "key" | "passkey">("wallet");
+  const [lookupMode, setLookupMode] = useState<"wallet" | "key" | "passkey" | "privy">("wallet");
   const [agentKeyInput, setAgentKeyInput] = useState("");
   const [passkeyAddress, setPasskeyAddress] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [passkeyAvailable, setPasskeyAvailable] = useState(false);
+  const [privyAvailable] = useState(() => isPrivyConfigured());
+  const [privyConnectedAddress, setPrivyConnectedAddress] = useState<string | null>(null);
+
+  // Conditionally use Privy hooks (only available when PrivyProvider is mounted)
+  let privyLogin: (() => void) | null = null;
+  let privyReady = false;
+  let privyAuthenticated = false;
+  let privyWallets: Array<{ address: string; walletClientType: string }> = [];
+  if (privyAvailable) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, react-hooks/rules-of-hooks
+      const privy = require("@privy-io/react-auth");
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      const { login, ready, authenticated } = privy.usePrivy();
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      const { wallets } = privy.useWallets();
+      privyLogin = login;
+      privyReady = ready;
+      privyAuthenticated = authenticated;
+      privyWallets = wallets;
+    } catch {
+      // Privy not available — hooks will remain null/false
+    }
+  }
 
   useEffect(() => {
     setPasskeyAvailable(isPasskeySupported());
   }, []);
+
+  // Derive embedded wallet address (stable string or undefined).
+  const privyEmbeddedAddress = privyAuthenticated
+    ? privyWallets.find((w: { walletClientType: string }) => w.walletClientType === "privy")?.address
+    : undefined;
+
+  // After async Privy sign-in completes (user clicked "Sign in with Privy"),
+  // detect the newly available embedded wallet and load agents once.
+  // Guarded by privyConnectedAddress — once set, this never re-fires.
+  useEffect(() => {
+    if (lookupMode !== "privy" || !privyEmbeddedAddress || privyConnectedAddress) return;
+    const addr = ethers.getAddress(privyEmbeddedAddress);
+    setPrivyConnectedAddress(addr);
+    loadAgentsByOwner(addr);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [privyEmbeddedAddress]);
 
   const handleConnect = async () => {
     setError("");
@@ -238,7 +281,7 @@ export default function MyAgentsPage() {
 
       // Scan Transfer events to find all minted agents, then check if guardian matches
       const mintFilter = registry.filters.Transfer(ethers.ZeroAddress, null);
-      const mintEvents = await paginatedQueryFilter(registry, mintFilter, provider);
+      const mintEvents = await paginatedQueryFilter(registry, mintFilter, provider, network.registryDeployBlock);
 
       const results: AgentEntry[] = [];
 
@@ -330,7 +373,7 @@ export default function MyAgentsPage() {
 
       // Query Transfer events where `to` is the connected wallet (mints)
       const mintFilter = registry.filters.Transfer(null, ownerAddress);
-      const mintEvents = await paginatedQueryFilter(registry, mintFilter, provider);
+      const mintEvents = await paginatedQueryFilter(registry, mintFilter, provider, network.registryDeployBlock);
 
       const results: AgentEntry[] = [];
 
@@ -402,7 +445,7 @@ export default function MyAgentsPage() {
     <div className="max-w-lg mx-auto">
       <h1 className="text-3xl font-bold text-center mb-2">My Agents</h1>
       <p className="text-muted text-center mb-8">
-        View agents registered to your wallet, look up by key, or sign in with a passkey.
+        View agents registered to your wallet, look up by key, sign in with a passkey, or use social login.
       </p>
 
       {/* Mode toggle */}
@@ -442,9 +485,104 @@ export default function MyAgentsPage() {
             Sign in with Passkey
           </button>
         )}
+        {privyAvailable && (
+          <button
+            onClick={() => {
+              setLookupMode("privy");
+              setAgents([]);
+              setError("");
+              // If already authenticated, reload agents immediately
+              if (privyConnectedAddress) {
+                loadAgentsByOwner(privyConnectedAddress);
+              } else if (privyEmbeddedAddress) {
+                // Already authenticated but address not captured yet
+                const addr = ethers.getAddress(privyEmbeddedAddress);
+                setPrivyConnectedAddress(addr);
+                loadAgentsByOwner(addr);
+              }
+            }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              lookupMode === "privy"
+                ? "bg-surface-2 border border-purple-500 text-foreground"
+                : "bg-surface-1 border border-border text-muted hover:text-foreground"
+            }`}
+          >
+            <Mail size={16} />
+            Social Login
+          </button>
+        )}
       </div>
 
-      {lookupMode === "passkey" ? (
+      {lookupMode === "privy" ? (
+        /* ── Privy (Social Login) mode ── */
+        !privyConnectedAddress ? (
+          <div className="flex flex-col items-center gap-4">
+            <Mail size={32} className="text-purple-400" />
+            <Button
+              onClick={() => privyLogin && privyLogin()}
+              variant="primary"
+              size="lg"
+              disabled={loading || !privyReady || !privyLogin}
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                <>
+                  <Mail size={18} />
+                  Sign in with Privy
+                </>
+              )}
+            </Button>
+            <p className="text-xs text-subtle text-center max-w-xs">
+              Sign in with email, Google, or Twitter to find agents owned by your Privy embedded wallet.
+            </p>
+            {error && <p className="text-sm text-accent-error text-center max-w-xs">{error}</p>}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted">
+                Privy Wallet:{" "}
+                <span className="font-mono text-foreground">
+                  {privyConnectedAddress.slice(0, 6)}...{privyConnectedAddress.slice(-4)}
+                </span>
+              </p>
+              <button
+                onClick={() => loadAgentsByOwner(privyConnectedAddress)}
+                disabled={loading}
+                className="p-2 text-muted hover:text-foreground hover:bg-surface-2 rounded-lg transition-colors disabled:opacity-50"
+                title="Refresh"
+              >
+                <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+              </button>
+            </div>
+
+            {error && <p className="text-sm text-accent-error">{error}</p>}
+
+            {loading && (
+              <div className="flex flex-col items-center py-8 gap-3">
+                <div className="w-8 h-8 border-2 border-border border-t-purple-500 rounded-full animate-spin" />
+                <p className="text-muted text-sm">Scanning for agents...</p>
+              </div>
+            )}
+
+            {!loading && agents.length === 0 && (
+              <Card className="text-center py-8">
+                <Cpu size={32} className="text-muted mx-auto mb-3" />
+                <p className="text-muted mb-4">No agents found for this Privy wallet.</p>
+                <Link href="/agents/register">
+                  <Button variant="primary">Register an Agent</Button>
+                </Link>
+              </Card>
+            )}
+
+            {renderAgentCards(agents, null, null, network)}
+          </div>
+        )
+      ) : lookupMode === "passkey" ? (
         /* ── Passkey mode ── */
         !passkeyAddress ? (
           <div className="flex flex-col items-center gap-4">
