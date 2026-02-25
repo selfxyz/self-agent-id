@@ -36,6 +36,7 @@ function createMockRegistry(
     getProofProvider: (id: bigint) => Promise<string>;
     selfProofProvider: () => Promise<string>;
     getAgentCredentials: (id: bigint) => Promise<any>;
+    isProofFresh: (id: bigint) => Promise<boolean>;
   }> = {}
 ) {
   return {
@@ -61,6 +62,7 @@ function createMockRegistry(
         olderThan: 30n,
         ofac: [true, false, false],
       })),
+    isProofFresh: overrides.isProofFresh ?? (async () => true),
   };
 }
 
@@ -560,6 +562,22 @@ describe("SelfAgentVerifier", () => {
         "Unable to verify proof provider — RPC error"
       );
       assert.equal(result.agentAddress, TEST_ADDRESS);
+    });
+  });
+
+  // ── Proof freshness ───────────────────────────────────────────────
+
+  describe("proof freshness", () => {
+    it("rejects when isProofFresh returns false", async () => {
+      const verifier = createVerifierWithMock(
+        {},
+        { isProofFresh: async () => false }
+      );
+
+      const result = await signAndVerify(verifier);
+
+      assert.equal(result.valid, false);
+      assert.match(result.error!, /proof has expired/i);
     });
   });
 
