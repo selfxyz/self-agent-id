@@ -6,10 +6,12 @@ import { IHumanProofProvider } from "./interfaces/IHumanProofProvider.sol";
 import { ISelfAgentRegistryReader } from "./interfaces/ISelfAgentRegistryReader.sol";
 
 /// @title SelfReputationSignal
+/// @author Self Protocol
 /// @notice ERC-8004 compatible reputation scoring — reads verification strength from proof providers.
 /// @dev Stateless view-only wrapper over SelfAgentRegistry + IHumanProofProvider.
 ///      Score comes from the provider that verified the agent, not computed here.
 contract SelfReputationSignal {
+    /// @notice The SelfAgentRegistry used for agent and provider lookups
     ISelfAgentRegistryReader public immutable registry;
 
     /// @param _registry Address of the deployed SelfAgentRegistry

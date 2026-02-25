@@ -5,6 +5,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 
 /**
  * @title ProxyRoot
+ * @author Self Protocol
  * @notice This contract implements an upgradeable proxy that delegates calls to an implementation
  * contract using the ERC1967 standard.
  * @dev Inherits from OpenZeppelin's ERC1967Proxy. The constructor initializes the proxy with the

@@ -7,12 +7,15 @@ import { EIP712 } from "lib/openzeppelin-contracts/contracts/utils/cryptography/
 import { ECDSA } from "lib/openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
 
 /// @title AgentDemoVerifier
+/// @author Self Protocol
 /// @notice Demo contract that verifies agents via EIP-712 meta-transactions.
 ///         A relayer submits the signed typed data on-chain; the contract recovers
 ///         the signer, checks the registry, and writes state.
 contract AgentDemoVerifier is EIP712 {
+    /// @notice The SelfAgentRegistry used for agent verification lookups
     SelfAgentRegistry public immutable registry;
 
+    /// @dev EIP-712 typehash for the MetaVerify struct
     bytes32 private constant META_VERIFY_TYPEHASH =
         keccak256("MetaVerify(bytes32 agentKey,uint256 nonce,uint256 deadline)");
 
@@ -30,9 +33,13 @@ contract AgentDemoVerifier is EIP712 {
 
     // ---- Errors ----
 
+    /// @notice Thrown when the agent key is not registered or has no active human proof
     error NotVerifiedAgent();
+    /// @notice Thrown when the meta-transaction deadline has passed
     error MetaTxExpired();
+    /// @notice Thrown when the supplied nonce does not match the expected nonce
     error MetaTxInvalidNonce();
+    /// @notice Thrown when the recovered EIP-712 signer does not match the agent address
     error MetaTxInvalidSignature();
 
     // ---- Events ----
@@ -55,6 +62,7 @@ contract AgentDemoVerifier is EIP712 {
 
     // ---- Constructor ----
 
+    /// @param _registry Address of the deployed SelfAgentRegistry
     constructor(address _registry) EIP712("AgentDemoVerifier", "1") {
         registry = SelfAgentRegistry(_registry);
     }

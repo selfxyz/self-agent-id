@@ -3,6 +3,7 @@
 pragma solidity 0.8.28;
 
 /// @title IHumanProofProvider
+/// @author Self Protocol
 /// @notice Interface for proof-of-human verification providers
 /// @dev Any identity verification protocol (Self, Worldcoin, Humanity Protocol, etc.)
 ///      can implement this interface to serve as a proof-of-human provider for ERC-8004.

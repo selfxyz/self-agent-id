@@ -5,6 +5,7 @@ import { ImplRoot } from "./upgradeable/ImplRoot.sol";
 
 /**
  * @title SelfReputationRegistry
+ * @author Self Protocol
  * @notice ERC-8004 compliant Reputation Registry scoped to SelfAgentRegistry.
  * @custom:version 1.0.0
  *
@@ -29,6 +30,7 @@ contract SelfReputationRegistry is ImplRoot {
     // Events
     // ====================================================
 
+    /// @notice Emitted when new feedback is submitted for an agent
     event NewFeedback(
         uint256 indexed agentId,
         address indexed clientAddress,
@@ -43,12 +45,14 @@ contract SelfReputationRegistry is ImplRoot {
         bytes32 feedbackHash
     );
 
+    /// @notice Emitted when a feedback entry is revoked by the original submitter
     event FeedbackRevoked(
         uint256 indexed agentId,
         address indexed clientAddress,
         uint64 indexed feedbackIndex
     );
 
+    /// @notice Emitted when an agent owner appends a response to a feedback entry
     event ResponseAppended(
         uint256 indexed agentId,
         address indexed clientAddress,
@@ -62,6 +66,7 @@ contract SelfReputationRegistry is ImplRoot {
     // Structs & Constants
     // ====================================================
 
+    /// @notice On-chain representation of a single feedback entry
     struct Feedback {
         int128 value;
         uint8 valueDecimals;
@@ -73,12 +78,14 @@ contract SelfReputationRegistry is ImplRoot {
         bytes32 feedbackHash;
     }
 
+    /// @dev Maximum absolute feedback value (prevents overflow in summation)
     int128 private constant MAX_ABS_VALUE = 1e38;
 
     // ====================================================
     // ERC-7201 Namespaced Storage
     // ====================================================
 
+    /// @notice Central storage struct for all reputation registry state (ERC-7201 namespaced)
     /// @custom:storage-location erc7201:self.storage.SelfReputationRegistry
     struct SelfReputationRegistryStorage {
         address identityRegistry;
@@ -106,6 +113,7 @@ contract SelfReputationRegistry is ImplRoot {
         _disableInitializers();
     }
 
+    /// @notice Initialize the reputation registry with the linked identity registry and owner
     /// @param identityRegistry_ Address of the deployed SelfAgentRegistry proxy
     /// @param initialOwner Address that receives SECURITY_ROLE and OPERATIONS_ROLE
     function initialize(address identityRegistry_, address initialOwner) external initializer {
@@ -203,6 +211,18 @@ contract SelfReputationRegistry is ImplRoot {
     // Read — Individual Feedback
     // ====================================================
 
+    /// @notice Read a single feedback entry by agent, client, and index
+    /// @param agentId The agent that received the feedback
+    /// @param clientAddress The address that submitted the feedback
+    /// @param feedbackIndex The 1-based index of the feedback entry
+    /// @return value The feedback value
+    /// @return valueDecimals The decimal precision of the value
+    /// @return tag1 Primary tag (e.g. "proof-of-human")
+    /// @return tag2 Secondary tag (e.g. "passport-nfc")
+    /// @return isRevoked Whether the feedback has been revoked
+    /// @return endpoint The endpoint associated with the feedback
+    /// @return feedbackURI URI pointing to off-chain feedback details
+    /// @return feedbackHash Hash of the off-chain feedback content
     function readFeedback(uint256 agentId, address clientAddress, uint64 feedbackIndex)
         external view
         returns (
@@ -224,6 +244,14 @@ contract SelfReputationRegistry is ImplRoot {
     // Read — Summary
     // ====================================================
 
+    /// @notice Aggregate feedback for an agent across multiple clients, optionally filtered by tags
+    /// @param agentId The agent to summarise feedback for
+    /// @param clientAddresses Array of client addresses to include in the summary
+    /// @param tag1 Primary tag filter (empty string = no filter)
+    /// @param tag2 Secondary tag filter (empty string = no filter)
+    /// @return count Total number of non-revoked matching feedback entries
+    /// @return summaryValue Sum of all matching feedback values
+    /// @return summaryValueDecimals Decimal precision of the summary value
     function getSummary(
         uint256 agentId,
         address[] calldata clientAddresses,
@@ -236,6 +264,7 @@ contract SelfReputationRegistry is ImplRoot {
         (count, summaryValue, summaryValueDecimals) = _summarise(agentId, clientAddresses, t1, t2);
     }
 
+    /// @dev Iterate over multiple clients and aggregate their feedback for an agent
     function _summarise(
         uint256 agentId,
         address[] calldata clientAddresses,
@@ -250,6 +279,7 @@ contract SelfReputationRegistry is ImplRoot {
         }
     }
 
+    /// @dev Aggregate feedback from a single client for an agent, filtered by tag hashes
     function _summariseClient(
         uint256 agentId,
         address client,
@@ -273,14 +303,17 @@ contract SelfReputationRegistry is ImplRoot {
     // Read — Enumeration
     // ====================================================
 
+    /// @notice Returns the list of all client addresses that have submitted feedback for an agent
     function getClients(uint256 agentId) external view returns (address[] memory) {
         return _getSelfReputationRegistryStorage().clients[agentId];
     }
 
+    /// @notice Returns the latest feedback index for a (agent, client) pair
     function getLastIndex(uint256 agentId, address clientAddress) external view returns (uint64) {
         return _getSelfReputationRegistryStorage().lastIndex[agentId][clientAddress];
     }
 
+    /// @notice Returns the number of responses appended to a specific feedback entry
     function getResponseCount(
         uint256 agentId,
         address clientAddress,
@@ -294,6 +327,7 @@ contract SelfReputationRegistry is ImplRoot {
     // Internal
     // ====================================================
 
+    /// @dev Store a feedback entry and emit the NewFeedback event
     function _recordFeedback(
         uint256 agentId,
         address client,
@@ -331,5 +365,6 @@ contract SelfReputationRegistry is ImplRoot {
 
 /// @dev Minimal interface for querying ownership/approval status on SelfAgentRegistry.
 interface ISelfAgentRegistryMinimal {
+    /// @notice Check if a spender is the owner or approved operator for the given agent
     function isAuthorizedOrOwner(address spender, uint256 agentId) external view returns (bool);
 }

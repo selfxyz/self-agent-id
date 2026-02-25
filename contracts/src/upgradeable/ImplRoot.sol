@@ -6,6 +6,8 @@ import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/acce
 
 /**
  * @title ImplRoot
+ * @author Self Protocol
+ * @notice Abstract base for UUPS-upgradeable implementations with role-based access control
  * @dev Abstract contract providing upgradeable functionality via UUPSUpgradeable,
  * along with role-based access control using AccessControlUpgradeable.
  * Serves as a base for upgradeable implementations.

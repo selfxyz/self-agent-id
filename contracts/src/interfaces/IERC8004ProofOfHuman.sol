@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import { IERC165 } from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 /// @title IERC8004ProofOfHuman
+/// @author Self Protocol
 /// @notice Optional extension for ERC-8004 Identity Registries that bind agent
 ///         identities to verified unique humans via privacy-preserving proofs.
 /// @dev Implementations MUST also implement ERC-8004 and ERC-165.

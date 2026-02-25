@@ -19,6 +19,7 @@ import { AccessControlUpgradeable } from "@openzeppelin/contracts-upgradeable/ac
 
 /**
  * @title SelfAgentRegistry
+ * @author Self Protocol
  * @notice ERC-721 registry binding AI agent identities to Self-verified unique humans
  * @custom:version 1.0.0
  *
@@ -68,12 +69,16 @@ contract SelfAgentRegistry is
         "AgentWalletSet(uint256 agentId,address newWallet,address owner,uint256 deadline)"
     );
 
-    // Action bytes in userDefinedData (Self SDK sends UTF-8 strings)
-    uint8 constant ACTION_REGISTER = 0x52;           // 'R' = simple register
-    uint8 constant ACTION_DEREGISTER = 0x44;          // 'D' = simple deregister
-    uint8 constant ACTION_REGISTER_ADVANCED = 0x4B;   // 'K' = advanced register
-    uint8 constant ACTION_DEREGISTER_ADVANCED = 0x58;  // 'X' = advanced deregister
-    uint8 constant ACTION_REGISTER_WALLETFREE = 0x57;  // 'W' = wallet-free register
+    /// @dev Action byte for simple registration ('R' = 0x52)
+    uint8 constant ACTION_REGISTER = 0x52;
+    /// @dev Action byte for simple deregistration ('D' = 0x44)
+    uint8 constant ACTION_DEREGISTER = 0x44;
+    /// @dev Action byte for advanced registration with agent signature ('K' = 0x4B)
+    uint8 constant ACTION_REGISTER_ADVANCED = 0x4B;
+    /// @dev Action byte for advanced deregistration by agent address ('X' = 0x58)
+    uint8 constant ACTION_DEREGISTER_ADVANCED = 0x58;
+    /// @dev Action byte for wallet-free registration with guardian ('W' = 0x57)
+    uint8 constant ACTION_REGISTER_WALLETFREE = 0x57;
 
     /// @notice Number of verification configs (age × OFAC combos)
     uint8 public constant NUM_CONFIGS = 6;
@@ -103,6 +108,7 @@ contract SelfAgentRegistry is
         bytes metadataValue;
     }
 
+    /// @notice Central storage struct for all registry state (ERC-7201 namespaced)
     /// @custom:storage-location erc7201:self.storage.SelfAgentRegistry
     struct SelfAgentRegistryStorage {
         bytes32[6] configIds;
@@ -142,29 +148,53 @@ contract SelfAgentRegistry is
     // Errors
     // ====================================================
 
+    /// @notice Thrown when attempting to transfer a soulbound agent NFT
     error TransferNotAllowed();
+    /// @notice Thrown when register() is called but requireHumanProof is enabled
     error ProofRequired();
+    /// @notice Thrown when registering an agent key that already has an active registration
     error AgentAlreadyRegistered(bytes32 agentKey);
+    /// @notice Thrown when deregistering an agent key that has no active registration
     error AgentNotRegistered(bytes32 agentKey);
+    /// @notice Thrown when the nullifier from the proof does not match the agent's nullifier
     error NotAgentOwner(uint256 expectedNullifier, uint256 actualNullifier);
+    /// @notice Thrown when the action byte in userDefinedData is unrecognised
     error InvalidAction(uint8 action);
+    /// @notice Thrown when userDefinedData is empty or too short for the specified action
     error InvalidUserData();
+    /// @notice Thrown when a proof provider is not on the approved whitelist
     error ProviderNotApproved(address provider);
+    /// @notice Thrown when adding a proof provider that is already approved
     error ProviderAlreadyApproved(address provider);
+    /// @notice Thrown when revoking proof for an agent that has no active human proof
     error AgentHasNoHumanProof(uint256 agentId);
+    /// @notice Thrown when the ECDSA signature in advanced registration does not match the agent address
     error InvalidAgentSignature();
+    /// @notice Thrown when guardianRevoke is called by an address that is not the agent's guardian
     error NotGuardian(uint256 agentId);
+    /// @notice Thrown when an owner-gated function is called by a non-owner
     error NotNftOwner(uint256 agentId);
+    /// @notice Thrown when guardianRevoke is called but no guardian is set for the agent
     error NoGuardianSet(uint256 agentId);
+    /// @notice Thrown when a human has reached the maximum number of registered agents
     error TooManyAgentsForHuman(uint256 nullifier, uint256 max);
+    /// @notice Thrown when the config index digit in userDefinedData is out of range [0..5]
     error InvalidConfigIndex(uint8 raw);
+    /// @notice Thrown when a proof provider's verifyHumanProof call returns false
     error VerificationFailed();
+    /// @notice Thrown when providerData is shorter than 32 bytes (missing agentKey)
     error ProviderDataTooShort();
+    /// @notice Thrown when revokeHumanProof is called with a nullifier that doesn't match the agent's
     error NotSameHuman();
+    /// @notice Thrown when setMetadata is called with the reserved "agentWallet" key
     error ReservedMetadataKey();
+    /// @notice Thrown when setAgentWallet is called after the EIP-712 deadline has passed
     error DeadlineExpired();
+    /// @notice Thrown when the EIP-712 wallet signature does not recover to the newWallet address
     error InvalidWalletSignature();
+    /// @notice Thrown when setMaxProofAge is called with a zero value
     error InvalidMaxProofAge();
+    /// @notice Thrown when metadataKeys and metadataValues arrays have different lengths
     error ArrayLengthMismatch(uint256 keysLength, uint256 valuesLength);
 
     // ====================================================
@@ -198,6 +228,7 @@ contract SelfAgentRegistry is
         _disableInitializers();
     }
 
+    /// @notice Initialize the registry with Hub V2 and owner, registering 6 verification configs
     /// @param hubV2 Address of the deployed IdentityVerificationHubV2
     /// @param initialOwner Address that receives SECURITY_ROLE and OPERATIONS_ROLE
     function initialize(address hubV2, address initialOwner) external initializer {
@@ -241,24 +272,43 @@ contract SelfAgentRegistry is
     // Explicit Getter Functions (replace auto-generated public getters)
     // ====================================================
 
+    /// @notice Returns the Hub V2 verification config ID at the given index
     function configIds(uint256 index) external view returns (bytes32) { return _getSelfAgentRegistryStorage().configIds[index]; }
+    /// @notice Returns the human nullifier associated with the given agent
     function agentNullifier(uint256 id) external view returns (uint256) { return _getSelfAgentRegistryStorage().agentNullifier[id]; }
+    /// @notice Returns the proof provider address that verified the given agent
     function agentProofProvider(uint256 id) external view returns (address) { return _getSelfAgentRegistryStorage().agentProofProvider[id]; }
+    /// @notice Returns whether the given agent has an active human proof
     function agentHasHumanProof(uint256 id) external view returns (bool) { return _getSelfAgentRegistryStorage().agentHasHumanProof[id]; }
+    /// @notice Returns the block number at which the given agent was registered
     function agentRegisteredAt(uint256 id) external view returns (uint256) { return _getSelfAgentRegistryStorage().agentRegisteredAt[id]; }
+    /// @notice Returns the number of active agents for the given nullifier
     function activeAgentCount(uint256 n) external view returns (uint256) { return _getSelfAgentRegistryStorage().activeAgentCount[n]; }
+    /// @notice Returns the agent ID mapped to the given agent key (0 if unregistered)
     function agentKeyToAgentId(bytes32 k) external view returns (uint256) { return _getSelfAgentRegistryStorage().agentKeyToAgentId[k]; }
+    /// @notice Returns the agent key mapped to the given agent ID
     function agentIdToAgentKey(uint256 id) external view returns (bytes32) { return _getSelfAgentRegistryStorage().agentIdToAgentKey[id]; }
+    /// @notice Returns whether the given address is an approved proof provider
     function approvedProviders(address p) external view returns (bool) { return _getSelfAgentRegistryStorage().approvedProviders[p]; }
+    /// @notice Returns the SelfHumanProofProvider companion address
     function selfProofProvider() external view returns (address) { return _getSelfAgentRegistryStorage().selfProofProvider; }
+    /// @notice Returns the guardian address for the given agent (address(0) if unset)
     function agentGuardian(uint256 id) external view returns (address) { return _getSelfAgentRegistryStorage().agentGuardian[id]; }
+    /// @notice Returns the delegated credential metadata JSON for the given agent
     function agentMetadata(uint256 id) external view returns (string memory) { return _getSelfAgentRegistryStorage().agentMetadata[id]; }
+    /// @notice Returns the current nonce for the given agent address (replay protection)
     function agentNonces(address a) external view returns (uint256) { return _getSelfAgentRegistryStorage().agentNonces[a]; }
+    /// @notice Returns the maximum number of agents a single human can register (0 = unlimited)
     function maxAgentsPerHuman() external view returns (uint256) { return _getSelfAgentRegistryStorage().maxAgentsPerHuman; }
+    /// @notice Returns the maximum age (seconds) of a human proof before reauthentication is required
     function maxProofAge() external view returns (uint256) { return _getSelfAgentRegistryStorage().maxProofAge; }
+    /// @notice Returns whether the base register() overloads require human proof
     function requireHumanProof() external view returns (bool) { return _getSelfAgentRegistryStorage().requireHumanProof; }
+    /// @notice Returns the linked SelfReputationRegistry address
     function reputationRegistry() external view returns (address) { return _getSelfAgentRegistryStorage().reputationRegistry; }
+    /// @notice Returns the linked SelfValidationRegistry address
     function validationRegistry() external view returns (address) { return _getSelfAgentRegistryStorage().validationRegistry; }
+    /// @notice Returns the unix timestamp at which the agent's human proof expires
     function proofExpiresAt(uint256 id) external view returns (uint256) { return _getSelfAgentRegistryStorage().proofExpiresAt[id]; }
 
     // ====================================================
@@ -832,6 +882,7 @@ contract SelfAgentRegistry is
     // Advanced Mode — Signature Verification
     // ====================================================
 
+    /// @dev Verify an ECDSA signature from the agent address, increment nonce, and return the agent key
     function _verifyAgentSignature(
         address agentAddress,
         address humanAddress,
@@ -859,6 +910,7 @@ contract SelfAgentRegistry is
     // Advanced Mode — Hex String Parsing
     // ====================================================
 
+    /// @dev Convert a single hex ASCII character to its 4-bit nibble value
     function _hexCharToNibble(uint8 c) internal pure returns (uint8) {
         if (c >= 0x30 && c <= 0x39) return c - 0x30;
         if (c >= 0x61 && c <= 0x66) return c - 0x61 + 10;
@@ -866,6 +918,7 @@ contract SelfAgentRegistry is
         revert InvalidUserData();
     }
 
+    /// @dev Parse 40 hex characters from data at offset into an address
     function _hexStringToAddress(bytes memory data, uint256 offset) internal pure returns (address) {
         uint160 result;
         for (uint256 i = 0; i < 40; i++) {
@@ -874,6 +927,7 @@ contract SelfAgentRegistry is
         return address(result);
     }
 
+    /// @dev Parse 64 hex characters from data at offset into a bytes32
     function _hexStringToBytes32(bytes memory data, uint256 offset) internal pure returns (bytes32) {
         uint256 result;
         for (uint256 i = 0; i < 64; i++) {
@@ -882,6 +936,7 @@ contract SelfAgentRegistry is
         return bytes32(result);
     }
 
+    /// @dev Parse 2 hex characters from data at offset into a uint8
     function _hexStringToUint8(bytes memory data, uint256 offset) internal pure returns (uint8) {
         return _hexCharToNibble(uint8(data[offset])) * 16 + _hexCharToNibble(uint8(data[offset + 1]));
     }
@@ -890,6 +945,7 @@ contract SelfAgentRegistry is
     // Date Parsing Utilities
     // ====================================================
 
+    /// @dev Return cumulative day count for the start of month mm (1-based), accounting for leap years
     function _daysInMonths(uint256 year, uint256 mm) internal pure returns (uint256) {
         uint256[12] memory days_ = [uint256(0), 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
         if (mm == 0 || mm > 12) return 0;
@@ -898,6 +954,7 @@ contract SelfAgentRegistry is
         return d;
     }
 
+    /// @dev Parse a 6-character YYMMDD date string into a unix timestamp (returns 0 on invalid input)
     function _parseYYMMDDToTimestamp(string memory dateStr) internal pure returns (uint256) {
         bytes memory d = bytes(dateStr);
         if (d.length != 6) return 0;
@@ -913,6 +970,7 @@ contract SelfAgentRegistry is
     // ERC-165 Interface Detection
     // ====================================================
 
+    /// @notice Returns true if the contract implements the queried interface (ERC-165)
     function supportsInterface(bytes4 interfaceId)
         public view override(ERC721Upgradeable, AccessControlUpgradeable, IERC165)
         returns (bool)
@@ -926,6 +984,7 @@ contract SelfAgentRegistry is
     // Soulbound — Block Transfers
     // ====================================================
 
+    /// @dev Soulbound enforcement: reverts on transfer (mint and burn are allowed)
     function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
         address from = _ownerOf(tokenId);
         if (from != address(0) && to != address(0)) revert TransferNotAllowed();
@@ -935,5 +994,6 @@ contract SelfAgentRegistry is
 
 /// @dev Minimal interface used by SelfAgentRegistry to call recordHumanProofFeedback
 interface ISelfReputationRegistryMinimal {
+    /// @notice Record an automatic proof-of-human feedback entry for the given agent
     function recordHumanProofFeedback(uint256 agentId) external;
 }

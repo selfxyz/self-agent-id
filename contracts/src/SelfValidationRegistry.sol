@@ -6,6 +6,7 @@ import { ISelfAgentRegistryReader } from "./interfaces/ISelfAgentRegistryReader.
 
 /**
  * @title SelfValidationRegistry
+ * @author Self Protocol
  * @notice ERC-8004 Validation Registry. Records validation requests and responses for agents.
  * @custom:version 1.0.0
  *
@@ -52,6 +53,7 @@ contract SelfValidationRegistry is ImplRoot {
     // Structs
     // ====================================================
 
+    /// @notice On-chain state of a single validation request/response pair
     struct ValidationStatus {
         address validatorAddress;
         uint256 agentId;
@@ -66,6 +68,7 @@ contract SelfValidationRegistry is ImplRoot {
     // ERC-7201 Namespaced Storage
     // ====================================================
 
+    /// @notice Central storage struct for all validation registry state (ERC-7201 namespaced)
     /// @custom:storage-location erc7201:self.storage.SelfValidationRegistry
     struct SelfValidationRegistryStorage {
         address identityRegistry;
@@ -92,6 +95,7 @@ contract SelfValidationRegistry is ImplRoot {
         _disableInitializers();
     }
 
+    /// @notice Initialize the validation registry with the linked identity registry and owner
     /// @param identityRegistry_ Address of the deployed SelfAgentRegistry proxy
     /// @param initialOwner Address that receives SECURITY_ROLE and OPERATIONS_ROLE
     function initialize(address identityRegistry_, address initialOwner) external initializer {
