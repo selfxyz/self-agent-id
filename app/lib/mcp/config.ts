@@ -11,16 +11,8 @@ export interface McpConfig {
   registryAddress: string;
 }
 
-function parseNetwork(value: string | undefined): NetworkName {
-  if (!value || value === "testnet") return "testnet";
-  if (value === "mainnet") return "mainnet";
-  throw new Error(
-    `Invalid SELF_NETWORK: "${value}". Expected "mainnet" or "testnet".`,
-  );
-}
-
 export function loadMcpConfig(): McpConfig {
-  const network = parseNetwork(process.env.SELF_NETWORK);
+  const network: NetworkName = "mainnet";
   const networkConfig = NETWORKS[network];
   const apiUrl =
     process.env.SELF_AGENT_API_BASE ||
