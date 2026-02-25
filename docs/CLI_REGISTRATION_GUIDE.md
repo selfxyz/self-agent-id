@@ -18,6 +18,7 @@ This guide covers:
 3. Access to a supported chain RPC and registry, or use `--network testnet|mainnet`.
 4. Self mobile app for passport proof.
 5. For `smart-wallet` mode: browser/device with passkey support.
+6. For service verification demos, use an agent key that is already registered on the same network as your verifier.
 
 ## Human Registration Flow (today)
 
@@ -166,13 +167,15 @@ Agent products can orchestrate CLI calls instead of asking users to run commands
 
 ## Troubleshooting
 
-1. `Session expired`:
+1. Protected API call fails with `Agent not verified on-chain`:
+   confirm the agent key is registered on that network and that verifier network matches.
+2. `Session expired`:
    run `register init` or `deregister init` again.
-2. Callback never arrives:
+3. Callback never arrives:
    keep `register wait` / `deregister wait` running and ensure browser flow reaches success screen.
-3. Need polling-only mode:
+4. Need polling-only mode:
    run `register wait --no-listener` or `deregister wait --no-listener`.
-4. Custom environments:
+5. Custom environments:
    pass `--chain`, `--registry`, and `--rpc` explicitly.
 
 ## Real End-to-End Test Commands

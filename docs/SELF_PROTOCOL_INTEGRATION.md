@@ -48,6 +48,45 @@ Self Agent ID lets you:
 
 If you set `requireSelfProvider: false`, your service accepts verification providers outside the Self-operated provider set.
 
+## Critical prerequisites for success-path verification
+
+1. Agent key must already be registered on-chain for your selected network.
+2. If not registered, protected requests should fail with `Agent not verified on-chain`.
+3. Verify both sides are on the same network (`mainnet` vs `testnet`) before debugging signatures.
+
+## Request body fidelity (raw body requirement)
+
+Signature verification is byte-sensitive.  
+Your verifier should use the exact request body bytes received by the HTTP server whenever framework tooling allows it.
+
+Guidelines:
+
+1. Prefer raw-body capture middleware (for example, JSON parser verify hooks).
+2. Avoid mutating, normalizing, or reserializing parsed JSON before verification.
+3. If you cannot use raw bytes, document and enforce a single canonical serialization strategy end-to-end.
+
+## Deterministic verification drills
+
+Use these to validate an integration quickly:
+
+1. Tamper drill:
+   - Sign body `A`.
+   - Send body `B` with the same signed headers.
+   - Expected: invalid signature rejection.
+2. Expired drill:
+   - Send a timestamp older than configured `maxAge`.
+   - Expected: timestamp freshness rejection.
+3. Replay drill:
+   - Submit identical signed request twice.
+   - Expected: first accepted, second rejected when replay protection is enabled.
+
+## Pre-demo smoke checklist
+
+1. Build and test changed components.
+2. Confirm verifier service health endpoint.
+3. Run one registered-agent success request.
+4. Run at least two deterministic failure drills and confirm expected outcomes.
+
 ## Public APIs
 
 1. `GET /api/cards/{chainId}/{agentId}`

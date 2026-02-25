@@ -48,6 +48,12 @@ const verifier = SelfAgentVerifier.create()
 app.use("/api", verifier.auth());
 ```
 
+### Quickstart Prerequisites (Important)
+
+1. Success-path verification requires an agent key that is already registered on-chain.
+2. If the key is not registered, a protected request is expected to fail with `401 Agent not verified on-chain`.
+3. Ensure signer network matches verifier network (`mainnet` vs `testnet`) before debugging signatures.
+
 ### Run the web app locally
 
 ```bash
@@ -353,6 +359,8 @@ Every signed request includes three headers:
 | `x-self-agent-address` | Agent's Ethereum address |
 | `x-self-agent-signature` | ECDSA signature of `keccak256(timestamp + METHOD + path + bodyHash)` |
 | `x-self-agent-timestamp` | Unix timestamp in milliseconds |
+
+> **Critical integration note**: verify against the exact request bytes received by your server. If middleware rewrites or reserializes JSON before verification, signatures can fail even when the client is correct.
 
 ### 6.2 Service-Side: `SelfAgentVerifier`
 
@@ -1059,6 +1067,14 @@ Agent                    Relayer                  Contract
 - Timestamp freshness check (default: 5 minutes) prevents old signatures.
 - Each agent has a monotonic nonce in the EIP-712 demo contract.
 
+### Verification Failure Drills (Recommended)
+
+Use these deterministic checks to validate your service integration:
+
+1. Tamper drill: sign body `A`, send body `B` with the same auth headers. Expected: signature failure (`401 Invalid signature`).
+2. Expired drill: send a timestamp older than your configured `maxAge`. Expected: freshness failure (`401 Timestamp expired or invalid`).
+3. Replay drill: submit the exact same signed request twice. Expected: first accepted, second rejected when replay protection is enabled.
+
 ### Rate Limiting
 
 - SDK verifiers support per-agent sliding-window rate limits.
@@ -1264,6 +1280,13 @@ cd python-sdk && pip install -e ".[dev]" && pytest
 # Rust SDK
 cd rust-sdk && cargo test
 ```
+
+### Verification Smoke Checklist (Before Demos / Releases)
+
+1. Build and test all changed components.
+2. Start your verifier service and confirm health endpoint.
+3. Run one registered-agent success request.
+4. Run at least two failure drills (`tamper`, `expired`, or `replay`) and confirm expected status/errors.
 
 ### Environment Variables
 
