@@ -10,6 +10,8 @@ import { ISelfVerificationRoot } from "@selfxyz/contracts/contracts/interfaces/I
 import { IIdentityVerificationHubV2 } from "@selfxyz/contracts/contracts/interfaces/IIdentityVerificationHubV2.sol";
 import { IERC8004ProofOfHuman } from "../src/interfaces/IERC8004ProofOfHuman.sol";
 import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import { ProxyRoot } from "../src/upgradeable/ProxyRoot.sol";
+import { IAccessControl } from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 contract SelfAgentRegistryTest is Test {
     SelfAgentRegistry registry;
@@ -48,14 +50,20 @@ contract SelfAgentRegistryTest is Test {
 
     function setUp() public {
         // Mock the hub's setVerificationConfigV2 to return a fake configId
-        // This is called in the SelfAgentRegistry constructor
+        // This is called in the SelfAgentRegistry.initialize()
         vm.mockCall(
             hubMock,
             abi.encodeWithSelector(IIdentityVerificationHubV2.setVerificationConfigV2.selector),
             abi.encode(fakeConfigId)
         );
 
-        registry = new SelfAgentRegistry(hubMock, owner);
+        // Deploy implementation + proxy
+        SelfAgentRegistry impl = new SelfAgentRegistry();
+        registry = SelfAgentRegistry(address(new ProxyRoot(
+            address(impl),
+            abi.encodeCall(SelfAgentRegistry.initialize, (hubMock, owner))
+        )));
+
         selfProvider = new SelfHumanProofProvider(hubMock, registry.scope());
         mockProvider = new MockHumanProofProvider();
 
@@ -131,10 +139,11 @@ contract SelfAgentRegistryTest is Test {
     // Constructor
     // ====================================================
 
-    function test_Constructor() public view {
+    function test_Initialize() public view {
         assertEq(registry.name(), "Self Agent ID");
         assertEq(registry.symbol(), "SAID");
-        assertEq(registry.owner(), owner);
+        assertTrue(registry.hasRole(registry.SECURITY_ROLE(), owner));
+        assertTrue(registry.hasRole(registry.OPERATIONS_ROLE(), owner));
         assertEq(registry.configIds(0), fakeConfigId);
     }
 
@@ -566,9 +575,14 @@ contract SelfAgentRegistryTest is Test {
         assertTrue(registry.isApprovedProvider(newProvider));
     }
 
-    function test_RevertWhen_AddProvider_NotOwner() public {
+    function test_RevertWhen_AddProvider_NotSecurityRole() public {
+        bytes32 secRole = registry.SECURITY_ROLE();
         vm.prank(human1);
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSelector(
+            IAccessControl.AccessControlUnauthorizedAccount.selector,
+            human1,
+            secRole
+        ));
         registry.addProofProvider(makeAddr("provider"));
     }
 
@@ -1813,9 +1827,14 @@ contract SelfAgentRegistryTest is Test {
         assertTrue(registry.isVerifiedAgent(agentKey1));
     }
 
-    function test_RevertWhen_SetMaxAgentsPerHuman_NotOwner() public {
+    function test_RevertWhen_SetMaxAgentsPerHuman_NotOperationsRole() public {
+        bytes32 opsRole = registry.OPERATIONS_ROLE();
         vm.prank(human1);
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSelector(
+            IAccessControl.AccessControlUnauthorizedAccount.selector,
+            human1,
+            opsRole
+        ));
         registry.setMaxAgentsPerHuman(5);
     }
 
@@ -2419,13 +2438,13 @@ contract SelfAgentRegistryTest is Test {
     function test_setMaxProofAgeUpdatesValue() public {
         vm.expectEmit(false, false, false, true);
         emit IERC8004ProofOfHuman.MaxProofAgeUpdated(180 days);
-        vm.prank(registry.owner());
+        vm.prank(owner);
         registry.setMaxProofAge(180 days);
         assertEq(registry.maxProofAge(), 180 days);
     }
 
     function test_setMaxProofAgeRevertsOnZero() public {
-        vm.prank(registry.owner());
+        vm.prank(owner);
         vm.expectRevert(SelfAgentRegistry.InvalidMaxProofAge.selector);
         registry.setMaxProofAge(0);
     }

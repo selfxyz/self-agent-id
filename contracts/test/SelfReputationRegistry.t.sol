@@ -7,6 +7,7 @@ import { SelfHumanProofProvider } from "../src/SelfHumanProofProvider.sol";
 import { SelfReputationRegistry } from "../src/SelfReputationRegistry.sol";
 import { ISelfVerificationRoot } from "@selfxyz/contracts/contracts/interfaces/ISelfVerificationRoot.sol";
 import { IIdentityVerificationHubV2 } from "@selfxyz/contracts/contracts/interfaces/IIdentityVerificationHubV2.sol";
+import { ProxyRoot } from "../src/upgradeable/ProxyRoot.sol";
 
 contract SelfReputationRegistryTest is Test {
     SelfAgentRegistry registry;
@@ -33,15 +34,24 @@ contract SelfReputationRegistryTest is Test {
             abi.encode(fakeConfigId)
         );
 
-        registry = new SelfAgentRegistry(hubMock, owner);
+        // Deploy registry via proxy
+        SelfAgentRegistry impl = new SelfAgentRegistry();
+        registry = SelfAgentRegistry(address(new ProxyRoot(
+            address(impl),
+            abi.encodeCall(SelfAgentRegistry.initialize, (hubMock, owner))
+        )));
         selfProvider = new SelfHumanProofProvider(hubMock, registry.scope());
 
         vm.startPrank(owner);
         registry.setSelfProofProvider(address(selfProvider));
         vm.stopPrank();
 
-        // Deploy rep registry — owner is address(this) (the test contract)
-        rep = new SelfReputationRegistry(address(registry), address(this));
+        // Deploy rep registry via proxy — address(this) receives roles
+        SelfReputationRegistry repImpl = new SelfReputationRegistry();
+        rep = SelfReputationRegistry(address(new ProxyRoot(
+            address(repImpl),
+            abi.encodeCall(SelfReputationRegistry.initialize, (address(registry), address(this)))
+        )));
 
         // Wire the rep registry into the agent registry
         vm.prank(owner);
