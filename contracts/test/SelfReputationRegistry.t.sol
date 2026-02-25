@@ -7,6 +7,7 @@ import { SelfHumanProofProvider } from "../src/SelfHumanProofProvider.sol";
 import { SelfReputationRegistry } from "../src/SelfReputationRegistry.sol";
 import { ISelfVerificationRoot } from "@selfxyz/contracts/contracts/interfaces/ISelfVerificationRoot.sol";
 import { IIdentityVerificationHubV2 } from "@selfxyz/contracts/contracts/interfaces/IIdentityVerificationHubV2.sol";
+import { ProxyRoot } from "../src/upgradeable/ProxyRoot.sol";
 
 contract SelfReputationRegistryTest is Test {
     SelfAgentRegistry registry;
@@ -33,19 +34,34 @@ contract SelfReputationRegistryTest is Test {
             abi.encode(fakeConfigId)
         );
 
-        registry = new SelfAgentRegistry(hubMock, owner);
+        // Deploy registry via proxy
+        SelfAgentRegistry impl = new SelfAgentRegistry();
+        registry = SelfAgentRegistry(address(new ProxyRoot(
+            address(impl),
+            abi.encodeCall(SelfAgentRegistry.initialize, (hubMock, owner))
+        )));
         selfProvider = new SelfHumanProofProvider(hubMock, registry.scope());
 
         vm.startPrank(owner);
         registry.setSelfProofProvider(address(selfProvider));
         vm.stopPrank();
 
-        // Deploy rep registry — owner is address(this) (the test contract)
-        rep = new SelfReputationRegistry(address(registry), address(this));
+        // Deploy rep registry via proxy — address(this) receives roles
+        SelfReputationRegistry repImpl = new SelfReputationRegistry();
+        rep = SelfReputationRegistry(address(new ProxyRoot(
+            address(repImpl),
+            abi.encodeCall(SelfReputationRegistry.initialize, (address(registry), address(this)))
+        )));
 
         // Wire the rep registry into the agent registry
         vm.prank(owner);
         registry.setReputationRegistry(address(rep));
+
+        // Configure default document weights (test contract has SECURITY_ROLE on rep)
+        rep.setDocumentWeight(bytes32(uint256(1)), 100, "passport-nfc");    // E_PASSPORT
+        rep.setDocumentWeight(bytes32(uint256(2)), 100, "id-card-nfc");     // EU_ID_CARD
+        rep.setDocumentWeight(bytes32(uint256(3)), 80, "aadhaar");          // AADHAAR
+        rep.setDocumentWeight(bytes32(uint256(4)), 50, "kyc-sumsub");       // KYC
     }
 
     // ====================================================
@@ -64,6 +80,36 @@ contract SelfReputationRegistryTest is Test {
         ISelfVerificationRoot.GenericDiscloseOutputV2 memory output = ISelfVerificationRoot
             .GenericDiscloseOutputV2({
                 attestationId: bytes32(uint256(1)),
+                userIdentifier: uint256(uint160(humanAddr)),
+                nullifier: nullifier,
+                forbiddenCountriesListPacked: [uint256(0), uint256(0), uint256(0), uint256(0)],
+                issuingState: "GBR",
+                name: names,
+                idNumber: "123456789",
+                nationality: "GBR",
+                dateOfBirth: "950101",
+                gender: "F",
+                expiryDate: "300101",
+                olderThan: 0,
+                ofac: [false, false, false]
+            });
+
+        return abi.encode(output);
+    }
+
+    function _buildEncodedOutputWithAttestation(
+        address humanAddr,
+        uint256 nullifier,
+        bytes32 attestationId
+    ) internal pure returns (bytes memory) {
+        string[] memory names = new string[](3);
+        names[0] = "ALICE";
+        names[1] = "";
+        names[2] = "SMITH";
+
+        ISelfVerificationRoot.GenericDiscloseOutputV2 memory output = ISelfVerificationRoot
+            .GenericDiscloseOutputV2({
+                attestationId: attestationId,
                 userIdentifier: uint256(uint160(humanAddr)),
                 nullifier: nullifier,
                 forbiddenCountriesListPacked: [uint256(0), uint256(0), uint256(0), uint256(0)],
@@ -171,7 +217,7 @@ contract SelfReputationRegistryTest is Test {
 
         address[] memory filter = new address[](1);
         filter[0] = clientA;
-        (uint64 count, int128 val, ) = rep.getSummary(agentId, filter, "", "");
+        (uint64 count, int256 val, ) = rep.getSummary(agentId, filter, "", "");
         assertEq(count, 1);
         assertEq(val, 100);
     }
@@ -183,6 +229,27 @@ contract SelfReputationRegistryTest is Test {
         rep.getSummary(agentId, empty, "", "");
     }
 
+    function test_getSummaryDoesNotOverflowWithMaxValues() public {
+        uint256 agentId = _mintTestAgent();
+        address clientA = address(0xA);
+        address clientB = address(0xB);
+
+        // Submit max-value feedback from two clients (would overflow int128)
+        int128 maxVal = 1e38;
+        vm.prank(clientA);
+        rep.giveFeedback(agentId, maxVal, 0, "", "", "", "", bytes32(0));
+        vm.prank(clientB);
+        rep.giveFeedback(agentId, maxVal, 0, "", "", "", "", bytes32(0));
+
+        // This should not overflow now that we use int256 internally
+        address[] memory clients = new address[](2);
+        clients[0] = clientA;
+        clients[1] = clientB;
+        (uint64 count, int256 val, ) = rep.getSummary(agentId, clients, "", "");
+        assertEq(count, 2);
+        assertEq(val, int256(maxVal) + int256(maxVal));
+    }
+
     function test_autoFeedbackSubmittedOnRegistration() public {
         // Registry already has rep set in setUp — mint and check
         uint256 agentId = _mintTestAgent();
@@ -190,8 +257,91 @@ contract SelfReputationRegistryTest is Test {
         // Self (identity registry) should have auto-submitted proof-of-human feedback
         address[] memory clients = new address[](1);
         clients[0] = address(registry);
-        (uint64 count, int128 val, ) = rep.getSummary(agentId, clients, "", "");
+        (uint64 count, int256 val, ) = rep.getSummary(agentId, clients, "", "");
         assertEq(count, 1);
         assertGt(val, 0);
+    }
+
+    function test_setDocumentWeightStoresWeightAndTag() public {
+        bytes32 ePassport = bytes32(uint256(1));
+        rep.setDocumentWeight(ePassport, 100, "passport-nfc");
+        (int128 weight, string memory tag) = rep.getDocumentWeight(ePassport);
+        assertEq(weight, 100);
+        assertEq(tag, "passport-nfc");
+    }
+
+    function test_setDocumentWeightRevertsWithoutSecurityRole() public {
+        bytes32 ePassport = bytes32(uint256(1));
+        vm.prank(address(0xBEEF));
+        vm.expectRevert();
+        rep.setDocumentWeight(ePassport, 100, "passport-nfc");
+    }
+
+    function test_setDocumentWeightRevertsOnZeroWeight() public {
+        bytes32 ePassport = bytes32(uint256(1));
+        vm.expectRevert("weight must be positive");
+        rep.setDocumentWeight(ePassport, 0, "passport-nfc");
+    }
+
+    function test_setDocumentWeightEmitsEvent() public {
+        bytes32 ePassport = bytes32(uint256(1));
+        vm.expectEmit(true, false, false, true);
+        emit SelfReputationRegistry.DocumentWeightUpdated(ePassport, 100, "passport-nfc");
+        rep.setDocumentWeight(ePassport, 100, "passport-nfc");
+    }
+
+    function test_autoFeedbackUsesPassportWeight() public {
+        uint256 agentId = _mintTestAgent(); // uses attestationId = bytes32(1) = E_PASSPORT
+
+        (int128 val, , string memory t1, string memory t2, , , , ) =
+            rep.readFeedback(agentId, address(registry), 1);
+        assertEq(val, 100);
+        assertEq(t1, "proof-of-human");
+        assertEq(t2, "passport-nfc");
+    }
+
+    function test_autoFeedbackUsesIdCardWeight() public {
+        bytes memory encodedOutput = _buildEncodedOutputWithAttestation(human1, nullifier1, bytes32(uint256(2)));
+        bytes memory userData = abi.encodePacked(uint8(0x52), uint8(0));
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+
+        bytes32 agentKey = bytes32(uint256(uint160(human1)));
+        uint256 agentId = registry.agentKeyToAgentId(agentKey);
+
+        (int128 val, , , string memory t2, , , , ) =
+            rep.readFeedback(agentId, address(registry), 1);
+        assertEq(val, 100);
+        assertEq(t2, "id-card-nfc");
+    }
+
+    function test_autoFeedbackUsesAadhaarWeight() public {
+        bytes memory encodedOutput = _buildEncodedOutputWithAttestation(human1, nullifier1, bytes32(uint256(3)));
+        bytes memory userData = abi.encodePacked(uint8(0x52), uint8(0));
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+
+        bytes32 agentKey = bytes32(uint256(uint160(human1)));
+        uint256 agentId = registry.agentKeyToAgentId(agentKey);
+
+        (int128 val, , , string memory t2, , , , ) =
+            rep.readFeedback(agentId, address(registry), 1);
+        assertEq(val, 80);
+        assertEq(t2, "aadhaar");
+    }
+
+    function test_autoFeedbackUsesKycWeight() public {
+        bytes memory encodedOutput = _buildEncodedOutputWithAttestation(human1, nullifier1, bytes32(uint256(4)));
+        bytes memory userData = abi.encodePacked(uint8(0x52), uint8(0));
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(encodedOutput, userData);
+
+        bytes32 agentKey = bytes32(uint256(uint160(human1)));
+        uint256 agentId = registry.agentKeyToAgentId(agentKey);
+
+        (int128 val, , , string memory t2, , , , ) =
+            rep.readFeedback(agentId, address(registry), 1);
+        assertEq(val, 50);
+        assertEq(t2, "kyc-sumsub");
     }
 }

@@ -54,7 +54,7 @@ export function getChain(network: NetworkConfig): Chain {
 /**
  * Get the WebAuthn Relying Party ID.
  * Uses NEXT_PUBLIC_PASSKEY_RP_ID if set, otherwise falls back to the
- * current browser hostname.  For production deploy on ai.app.self.xyz
+ * current browser hostname.  For production deploy on app.ai.self.xyz
  * set the env var so passkeys are always bound to the canonical domain.
  */
 function getPasskeyRpId(): string {

@@ -258,6 +258,14 @@ Browser posts JSON to local callback URL:
 
 CLI must reject mismatched `sessionId` / `stateToken` and replay callbacks.
 
+## Proof expiry considerations
+
+Human proofs set `proofExpiresAt = min(passport_document_expiry, block.timestamp + maxProofAge)` at registration time (`maxProofAge` defaults to 365 days). After expiry, `isProofFresh(agentId)` returns `false`.
+
+To refresh an expired proof, the CLI user must run the full deregister flow followed by a new register flow. This produces a new agentId. There is no in-place refresh or renewal command.
+
+CLIs should surface `proofExpiresAt` in `register status` output and warn when expiry is within 30 days.
+
 ## Security requirements
 
 1. Export of agent private key is blocked unless `--unsafe` is explicit.

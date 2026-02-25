@@ -6,11 +6,13 @@ import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { ISelfAgentRegistryReader } from "./interfaces/ISelfAgentRegistryReader.sol";
 
 /// @title SelfFreshnessChecker
+/// @author Self Protocol
 /// @notice ERC-8004 compatible real-time proof validation with freshness checks.
 /// @dev Stateless view-only wrapper over SelfAgentRegistry.
 ///      Freshness is measured in blocks since registration.
 ///      Celo ~5s/block -> ~6.3M blocks/year.
 contract SelfFreshnessChecker is Ownable {
+    /// @notice The SelfAgentRegistry used for proof and registration lookups
     ISelfAgentRegistryReader public immutable registry;
 
     /// @notice Configurable freshness threshold (blocks). Default: ~1 year of Celo blocks.

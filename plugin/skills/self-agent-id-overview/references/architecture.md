@@ -246,7 +246,7 @@ The `@selfxyz/mcp-server` package implements the Model Context Protocol for AI c
 
 - Storage: in-memory (no persistence across restarts)
 - Maximum concurrent sessions: 50
-- Session TTL: 10 minutes (auto-cleanup)
+- Session TTL: 30 minutes (auto-cleanup)
 - Transport: stdio (standard for MCP servers)
 
 ## REST API Endpoints
@@ -258,8 +258,8 @@ Base URL: `https://self-agent-id.vercel.app` (override via `SELF_AGENT_API_BASE`
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/api/agent/register` | Start registration (returns session ID) |
-| `GET` | `/api/agent/register/status?sessionId=X` | Poll registration status |
-| `GET` | `/api/agent/register/qr?sessionId=X` | Get QR code for Self app scanning |
+| `GET` | `/api/agent/register/status?token=X` | Poll registration status |
+| `GET` | `/api/agent/register/qr?token=X` | Get QR code for Self app scanning |
 | `POST` | `/api/agent/register/callback` | Hub V2 callback (internal) |
 
 ### Deregistration
@@ -267,7 +267,7 @@ Base URL: `https://self-agent-id.vercel.app` (override via `SELF_AGENT_API_BASE`
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/api/agent/deregister` | Start deregistration |
-| `GET` | `/api/agent/deregister/status?sessionId=X` | Poll deregistration status |
+| `GET` | `/api/agent/deregister/status?token=X` | Poll deregistration status |
 | `POST` | `/api/agent/deregister/callback` | Hub V2 callback (internal) |
 
 ### Agent Info & Discovery
@@ -295,7 +295,7 @@ Base URL: `https://self-agent-id.vercel.app` (override via `SELF_AGENT_API_BASE`
    └── dApp: User clicks "Register" button
 
 2. Backend creates registration session
-   └── POST /api/agent/register → returns { sessionId, qrUrl }
+   └── POST /api/agent/register → returns { sessionToken, qrData, deepLink }
 
 3. Human scans QR code with Self app
    └── Self app reads passport NFC chip

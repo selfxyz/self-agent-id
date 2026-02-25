@@ -5,6 +5,7 @@ pragma solidity 0.8.28;
 import { IHumanProofProvider } from "./IHumanProofProvider.sol";
 
 /// @title ISelfHumanProofProvider
+/// @author Self Protocol
 /// @notice Self Protocol implementation of IHumanProofProvider
 /// @dev Wraps Self's Identity Verification Hub V2 to verify ZK proofs
 ///      from passport NFC chips. Verification strength = 100 (government document + biometric).

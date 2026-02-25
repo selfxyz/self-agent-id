@@ -9,7 +9,6 @@ import dynamic from "next/dynamic";
 import { Fingerprint, Loader2, AlertTriangle, CheckCircle2, Smartphone } from "lucide-react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
-import MatrixText from "@/components/MatrixText";
 import { createPasskeyWallet, isPasskeySupported } from "@/lib/aa";
 import { NETWORKS, type NetworkConfig } from "@/lib/network";
 
@@ -257,7 +256,9 @@ export default function CliRegisterHandoffPage() {
     setLoading(true);
     setError("");
     try {
-      const { walletAddress } = await createPasskeyWallet("Self Agent ID", network);
+      const passkeySuffix = crypto.getRandomValues(new Uint8Array(2))
+        .reduce((s, b) => s + b.toString(16).padStart(2, "0"), "");
+      const { walletAddress } = await createPasskeyWallet(`Self Agent ID (${passkeySuffix})`, network);
       setGuardianAddress(walletAddress);
 
       const userDefinedData = buildSmartWalletUserDefinedData(
@@ -298,9 +299,9 @@ export default function CliRegisterHandoffPage() {
 
   return (
     <main className="min-h-screen max-w-xl mx-auto px-6 pt-20 pb-12">
-      <div className="flex justify-center mb-6">
-        <MatrixText text={payload?.operation === "deregister" ? "CLI Deregistration" : "CLI Registration"} fontSize={38} />
-      </div>
+      <h1 className="text-3xl font-bold text-center mb-6">
+        {payload?.operation === "deregister" ? "CLI Deregistration" : "CLI Registration"}
+      </h1>
 
       {!payload || !network ? (
         <Card variant="error">

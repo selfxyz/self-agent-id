@@ -523,7 +523,7 @@ async fn main() {
         .with_state(state);
 
     println!("Server running on port 3000 (network: {network})");
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 ```
@@ -594,7 +594,7 @@ const agentAuth = async (c: any, next: any) => {
 
   if (!result.valid) {
     return c.json(
-      { error: "Agent verification failed", reason: result.reason },
+      { error: "Agent verification failed", reason: result.error },
       401
     );
   }
@@ -699,7 +699,7 @@ export async function GET(req: NextRequest) {
 
   if (!result.valid) {
     return NextResponse.json(
-      { error: "Agent verification failed", reason: result.reason },
+      { error: "Agent verification failed", reason: result.error },
       { status: 401 }
     );
   }
@@ -737,7 +737,7 @@ export async function POST(req: NextRequest) {
 
   if (!result.valid) {
     return NextResponse.json(
-      { error: "Agent verification failed", reason: result.reason },
+      { error: "Agent verification failed", reason: result.error },
       { status: 401 }
     );
   }
@@ -801,7 +801,7 @@ export async function verifyAgent(
   if (!result.valid) {
     return {
       error: NextResponse.json(
-        { error: "Agent verification failed", reason: result.reason },
+        { error: "Agent verification failed", reason: result.error },
         { status: 401 }
       ),
     };

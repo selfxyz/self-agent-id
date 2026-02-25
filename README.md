@@ -449,7 +449,7 @@ async fn main() {
         .route("/api/data", post(handle))
         .layer(middleware::from_fn_with_state(verifier, self_agent_auth));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -1170,6 +1170,49 @@ console.log(creds.nationality, creds.olderThan);
 ```
 GET /api/agent/info/{chainId}/{agentId}
 → response.credentials.nationality, response.credentials.olderThan
+```
+
+---
+
+## 13.1 Proof Expiry & Refresh
+
+Human proofs have a limited validity period. The on-chain `proofExpiresAt` timestamp is set at registration time as:
+
+```
+proofExpiresAt = min(passport_document_expiry, block.timestamp + maxProofAge)
+```
+
+- **`maxProofAge`** defaults to **365 days** (configurable by the registry owner via `setMaxProofAge()`).
+- **`isProofFresh(agentId)`** returns `true` only if `block.timestamp < proofExpiresAt[agentId]`.
+- **`hasHumanProof(agentId)`** returns `true` as long as the proof exists (regardless of expiry) — use `isProofFresh()` for time-sensitive checks.
+- **`proofExpiresAt(agentId)`** returns the raw expiry timestamp (unix seconds).
+
+### Checking Expiry (SDK)
+
+```typescript
+// TypeScript SDK — check if proof is expiring soon
+const info = await agent.getInfo();
+const expiresAt = info.proofExpiresAt; // unix timestamp (seconds)
+const THIRTY_DAYS = 30 * 24 * 60 * 60;
+if (expiresAt > 0 && expiresAt - Math.floor(Date.now() / 1000) < THIRTY_DAYS) {
+  console.warn("Proof expiring soon — consider refreshing registration");
+}
+```
+
+### Refreshing an Expired Proof
+
+There is no in-place "refresh" function. To renew an expired proof, the agent must **deregister and re-register**:
+
+1. **Deregister** — call `self_deregister_agent` (MCP), `agent.requestDeregistration()` (SDK), or the CLI `deregister` flow. This burns the soulbound NFT and clears all on-chain state.
+2. **Re-register** — initiate a new registration with the same agent key. The human scans their passport again via the Self app. A new agentId is minted with a fresh `proofExpiresAt`.
+
+The old agentId is permanently burned. The new agentId is monotonically higher. Services using `isProofFresh()` will automatically accept the refreshed agent.
+
+### On-Chain (Solidity)
+
+```solidity
+// Gate on fresh proof, not just existence
+require(registry.isProofFresh(agentId), "Proof expired — agent must re-verify");
 ```
 
 ---

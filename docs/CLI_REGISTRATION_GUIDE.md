@@ -156,6 +156,55 @@ Agent products can orchestrate CLI calls instead of asking users to run commands
 2. Keeps deterministic CLI behavior for automation and fleet workflows.
 3. Allows future migration to richer in-product embedded browser handoff without changing core registration protocol.
 
+## Proof Expiry & Refreshing Registration
+
+Human proofs are not permanent. Each registration sets a `proofExpiresAt` timestamp on-chain, calculated as `min(passport_document_expiry, now + maxProofAge)` where `maxProofAge` defaults to 365 days.
+
+### Detecting Expiry
+
+Use the SDK or on-chain query to check whether a proof is still fresh:
+
+```bash
+# Check via REST API
+curl https://self-agent-id.vercel.app/api/agent/verify/{chainId}/{agentId}
+# Response includes proofExpiresAt and isProofFresh fields
+```
+
+### Refresh Flow via CLI
+
+To refresh an expired proof, deregister then re-register:
+
+```bash
+# Step 1: Deregister the expired agent
+self-agent deregister init \
+  --mode agent-identity \
+  --human-address 0x... \
+  --agent-address 0x... \
+  --network mainnet \
+  --out .self/session-deregister.json
+
+self-agent deregister open --session .self/session-deregister.json
+# Complete Self app proof flow
+self-agent deregister wait --session .self/session-deregister.json
+
+# Step 2: Re-register with the same mode
+self-agent register init \
+  --mode agent-identity \
+  --human-address 0x... \
+  --network mainnet \
+  --out .self/session-refresh.json
+
+self-agent register open --session .self/session-refresh.json
+# Complete Self app proof flow
+self-agent register wait --session .self/session-refresh.json
+```
+
+The new registration produces a **new agentId** (the old one is burned). Update any stored agentId references after refresh.
+
+### Proactive Monitoring
+
+SDKs include a 30-day warning threshold. Monitor `proofExpiresAt` in automated agents and trigger re-registration before expiry to avoid service disruption.
+
 ## Security Guidelines
 
 1. Treat session files as sensitive local state.

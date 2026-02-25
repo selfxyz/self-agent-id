@@ -102,6 +102,17 @@ Agent identity NFTs are non-transferable. The ERC-721 `_update` function reverts
 ### Guardian System
 For wallet-free and smart-wallet registration modes, agents can have a designated guardian address. The guardian serves as a safety mechanism — if an agent's private key is compromised, the guardian can force-revoke the agent's identity by calling `guardianRevoke()`. This is particularly important for autonomous agents that may operate unsupervised for extended periods.
 
+## Proof Expiry
+
+Human proofs have a limited validity period. Each registration sets `proofExpiresAt = min(passport_document_expiry, block.timestamp + maxProofAge)`, where `maxProofAge` defaults to 365 days.
+
+Key functions:
+- **`isProofFresh(agentId)`** — returns `true` only while `block.timestamp < proofExpiresAt`. Use this for time-sensitive access control.
+- **`hasHumanProof(agentId)`** — returns `true` as long as a proof was ever submitted. Does NOT check expiry.
+- **`proofExpiresAt(agentId)`** — raw expiry timestamp (unix seconds).
+
+To refresh an expired proof, the agent must deregister (burn NFT) and re-register (mint new NFT with new agentId and fresh expiry). There is no in-place renewal. SDKs include a 30-day warning threshold for proactive monitoring.
+
 ## Quick Reference
 
 ### Registration Modes

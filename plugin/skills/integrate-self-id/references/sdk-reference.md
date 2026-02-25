@@ -309,12 +309,12 @@ let session = agent.request_registration(18, true).await?;
 
 | Field | Type | Description |
 |---|---|---|
-| `sessionId` | `string` | Unique session identifier for polling |
-| `qrUrl` | `string` | URL to render as QR code |
+| `sessionToken` | `string` | Encrypted session token for polling/export |
+| `qrData` | `object` | Self app QR configuration |
 | `deepLink` | `string` | Direct link to open Self app (mobile) |
 | `agentAddress` | `string` | The agent's Ethereum address |
-| `privateKeyHex` | `string` | The agent's private key (SAVE IMMEDIATELY) |
-| `expiresAt` | `number` | Unix timestamp when session expires (10 min) |
+| `expiresAt` | `string` | ISO timestamp when session expires (30 min) |
+| `timeRemainingMs` | `number` | Milliseconds until session expiry |
 
 ---
 
@@ -543,6 +543,75 @@ Rust: fields use snake_case, `Option<T>` for optional fields.
 
 ---
 
+### Proof Expiry Handling
+
+Human proofs expire after `maxProofAge` (default: 365 days) or at passport document expiry, whichever is sooner. SDKs provide tools to detect and handle expiry.
+
+#### Checking Proof Freshness
+
+```typescript
+// TypeScript — check via on-chain call
+const info = await agent.getInfo();
+console.log(info.proofExpiresAt); // unix timestamp (seconds), 0 if no proof
+```
+
+```python
+# Python
+info = agent.get_info()
+print(info.proof_expires_at)
+```
+
+```rust
+// Rust
+let info = agent.get_info().await?;
+println!("{}", info.proof_expires_at);
+```
+
+#### Expiry Warning Threshold
+
+The TypeScript SDK includes a built-in 30-day warning threshold:
+
+```typescript
+import { isProofExpiringSoon, EXPIRY_WARNING_THRESHOLD_SECS } from "@selfxyz/agent-sdk";
+// EXPIRY_WARNING_THRESHOLD_SECS = 2_592_000 (30 days)
+
+if (isProofExpiringSoon(proofExpiresAt)) {
+  console.warn("Proof expires within 30 days — prompt human to re-verify");
+}
+```
+
+#### VerifyResult Expiry States
+
+The verifier checks `isProofFresh()` on-chain and returns an error when an agent's proof has lapsed:
+
+```typescript
+const result = await verifier.verify({ address, signature, timestamp, method, path, body });
+if (!result.valid && result.error?.includes("proof has expired")) {
+  // Agent must deregister and re-register to refresh
+}
+```
+
+#### Refreshing a Proof
+
+There is no in-place refresh. The agent must deregister (burn NFT, clear state) then re-register (new passport scan, new agentId, fresh `proofExpiresAt`).
+
+```typescript
+// TypeScript
+await agent.requestDeregistration(); // human confirms via Self app
+// ... after deregistration completes:
+const session = await agent.requestRegistration({ minimumAge: 18, ofac: true });
+// human scans passport again
+```
+
+```python
+# Python
+agent.request_deregistration()
+# ... after deregistration:
+session = agent.request_registration(minimum_age=18, ofac=True)
+```
+
+---
+
 ### Verification Pipeline
 
 The verifier executes checks in this order, short-circuiting on failure:
@@ -564,23 +633,23 @@ Helper functions for constructing `userDefinedData` payloads and handling regist
 
 ### getRegistrationConfigIndex
 
-Map age and OFAC requirements to a config digit.
+Map age and OFAC requirements to a config index number.
 
 ```typescript
 import { getRegistrationConfigIndex } from "@selfxyz/agent-sdk";
 
-const digit: string = getRegistrationConfigIndex(minimumAge: 0 | 18 | 21, ofac: boolean);
-// Returns: "0" through "5"
+const index: number = getRegistrationConfigIndex({ minimumAge: 18, ofac: true });
+// Returns: 0 through 5
 ```
 
 | minimumAge | ofac | Result |
 |---|---|---|
-| 0 | false | `"0"` |
-| 0 | true | `"1"` |
-| 18 | false | `"2"` |
-| 18 | true | `"3"` |
-| 21 | false | `"4"` |
-| 21 | true | `"5"` |
+| 0 | false | `0` |
+| 18 | false | `1` |
+| 21 | false | `2` |
+| 0 | true | `3` |
+| 18 | true | `4` |
+| 21 | true | `5` |
 
 ---
 
@@ -617,8 +686,8 @@ Build the `userDefinedData` payload for verified-wallet (simple) mode.
 ```typescript
 import { buildSimpleRegisterUserDataAscii } from "@selfxyz/agent-sdk";
 
-const data: string = buildSimpleRegisterUserDataAscii(configDigit: string);
-// Returns: "R" + configDigit (e.g., "R3")
+const data: string = buildSimpleRegisterUserDataAscii({ minimumAge: 18, ofac: true });
+// Returns: "R" + configDigit (e.g., "R4" for age 18+ with OFAC)
 ```
 
 ---
@@ -630,13 +699,12 @@ Build the `userDefinedData` payload for agent-identity (advanced) mode.
 ```typescript
 import { buildAdvancedRegisterUserDataAscii } from "@selfxyz/agent-sdk";
 
-const data: string = buildAdvancedRegisterUserDataAscii(
-  pubkey: string,          // Agent address without 0x prefix (40 hex chars)
-  configDigit: string,     // "0" through "5"
-  challenge: string,       // Registration challenge
-  signature: string        // ECDSA signature over challenge
-);
-// Returns: "K" + configDigit + address + r + s + v (172 characters total)
+const data: string = buildAdvancedRegisterUserDataAscii({
+  agentAddress: string,                       // Agent Ethereum address (0x-prefixed)
+  signature: string | RegistrationSignatureParts, // ECDSA signature over challenge
+  disclosures?: RegistrationDisclosures,      // { minimumAge?: 0|18|21, ofac?: boolean }
+});
+// Returns: "K" + configDigit + address(40) + r(64) + s(64) + v(2) (172 characters total)
 ```
 
 ---
@@ -648,13 +716,13 @@ Build the `userDefinedData` payload for wallet-free mode.
 ```typescript
 import { buildWalletFreeRegisterUserDataAscii } from "@selfxyz/agent-sdk";
 
-const data: string = buildWalletFreeRegisterUserDataAscii(
-  guardian: string,        // Guardian address without 0x prefix (40 hex chars)
-  configDigit: string,     // "0" through "5"
-  challenge: string,       // Registration challenge
-  signature: string        // ECDSA signature over challenge
-);
-// Returns: "W" + configDigit + agentAddress + guardianAddress + r + s + v (212 characters total)
+const data: string = buildWalletFreeRegisterUserDataAscii({
+  agentAddress: string,                       // Agent Ethereum address (0x-prefixed)
+  guardianAddress?: string,                   // Guardian address (zero-padded if absent)
+  signature: string | RegistrationSignatureParts, // ECDSA signature over challenge
+  disclosures?: RegistrationDisclosures,      // { minimumAge?: 0|18|21, ofac?: boolean }
+});
+// Returns: "W" + configDigit + agentAddress(40) + guardianAddress(40) + r(64) + s(64) + v(2) (212 characters total)
 ```
 
 ---
@@ -793,7 +861,7 @@ import { REGISTRY_ABI, PROVIDER_ABI } from "@selfxyz/agent-sdk";
 
 ### ExpiredSessionError
 
-Thrown when a registration or deregistration session has exceeded the 10-minute timeout.
+Thrown when a registration or deregistration session has exceeded the 30-minute timeout.
 
 ```typescript
 import { ExpiredSessionError } from "@selfxyz/agent-sdk";
@@ -844,15 +912,15 @@ The SDK calls these endpoints internally. They are also available for direct use
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/api/agent/register` | Start a registration session |
-| `GET` | `/api/agent/register/status?sessionId=X` | Poll registration status |
-| `GET` | `/api/agent/register/qr?sessionId=X` | Get QR code image |
+| `GET` | `/api/agent/register/status?token=X` | Poll registration status |
+| `GET` | `/api/agent/register/qr?token=X` | Get QR code data |
 
 ### Deregistration
 
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/api/agent/deregister` | Start a deregistration session |
-| `GET` | `/api/agent/deregister/status?sessionId=X` | Poll deregistration status |
+| `GET` | `/api/agent/deregister/status?token=X` | Poll deregistration status |
 
 ### Agent Cards
 

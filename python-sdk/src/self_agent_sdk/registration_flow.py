@@ -114,9 +114,9 @@ class RegistrationSession:
         Only available for modes that created a new keypair (e.g. agent-identity,
         wallet-free). Raises RuntimeError if the server refuses.
         """
-        resp = httpx.get(
+        resp = httpx.post(
             f"{self._api_base}/api/agent/register/export",
-            params={"token": self.session_token},
+            json={"token": self.session_token},
         )
         data = resp.json()
         if "error" in data:

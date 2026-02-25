@@ -3,16 +3,13 @@
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
 import Link from "next/link";
-import MatrixText from "@/components/MatrixText";
 import { Card } from "@/components/Card";
 import { Bot } from "lucide-react";
 
 export default function CliQuickstartPage() {
   return (
     <main className="min-h-screen max-w-4xl mx-auto px-6 pt-24 pb-12">
-      <div className="flex justify-center mb-8">
-        <MatrixText text="CLI Quickstart" fontSize={44} />
-      </div>
+      <h1 className="text-4xl font-bold text-center mb-8">CLI Quickstart</h1>
 
       <div className="space-y-6">
         <Card>

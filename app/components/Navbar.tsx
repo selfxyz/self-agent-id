@@ -12,14 +12,14 @@ import { useNetwork } from "@/lib/NetworkContext";
 import { getNetwork, isNetworkReady } from "@/lib/network";
 
 const directLinks = [
-  { href: "/agents", label: "Manage Agents", match: "/agents" },
+  { href: "/agents/register", label: "Manage Agents", match: "/agents" },
   { href: "/demo", label: "Demo" },
 ];
 
 const developerLinks = [
   { href: "/cli", label: "CLI" },
   { href: "/api-docs", label: "API Docs" },
-  { href: "/integration", label: "Integrate" },
+  { href: "/integration", label: "Integration Guide" },
 ];
 
 const learnLinks = [

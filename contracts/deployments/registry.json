@@ -1,0 +1,81 @@
+{
+  "contracts": {
+    "SelfAgentRegistry": {
+      "1.0.0": {
+        "initializerVersion": 1,
+        "initializerFunction": "initialize",
+        "changelog": "Initial UUPS deployment with governance roles and document-type weighted reputation"
+      }
+    },
+    "SelfReputationRegistry": {
+      "1.0.0": {
+        "initializerVersion": 1,
+        "initializerFunction": "initialize",
+        "changelog": "Initial UUPS deployment with configurable document weights"
+      }
+    },
+    "SelfValidationRegistry": {
+      "1.0.0": {
+        "initializerVersion": 1,
+        "initializerFunction": "initialize",
+        "changelog": "Initial UUPS deployment"
+      }
+    }
+  },
+  "networks": {
+    "celo": {
+      "chainId": 42220,
+      "deployer": "0x551775463D338c0c406b3266c63AF6EDA8b3e47a",
+      "hubV2": "0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF",
+      "governance": {
+        "securityMultisig": "0x738f0bb37FD3b6C4Cdf8eb6FcdFaAA0CA208CB4A",
+        "operationsMultisig": "0x067b18e09A10Fa03d027c1D60A098CEbbE5637f0",
+        "securityThreshold": "3/5",
+        "operationsThreshold": "2/5"
+      },
+      "contracts": {
+        "SelfAgentRegistry": {
+          "proxy": "0xaC3DF9ABf80d0F5c020C06B04Cced27763355944",
+          "implementation": "0xDDf99679100da4C4917eDA1987b5Fe9Be31287c4"
+        },
+        "SelfHumanProofProvider": "0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d",
+        "SelfReputationRegistry": {
+          "proxy": "0x69Da18CF4Ac27121FD99cEB06e38c3DC78F363f4",
+          "implementation": "0x42CEA1b318557aDE212bED74FC3C7f06Ec52bd5b"
+        },
+        "SelfValidationRegistry": {
+          "proxy": "0x71a025e0e338EAbcB45154F8b8CA50b41e7A0577",
+          "implementation": "0x476689D1FE87686aecBA702ca8aD784Ce430E15d"
+        },
+        "AgentDemoVerifier": "0xD8ec054FD869A762bC977AC328385142303c7def",
+        "AgentGate": "0x26e05bF632fb5bACB665ab014240EAC1413dAE35"
+      }
+    },
+    "celoSepolia": {
+      "chainId": 11142220,
+      "deployer": "0x551775463D338c0c406b3266c63AF6EDA8b3e47a",
+      "hubV2": "0x16ECBA51e18a4a7e61fdC417f0d47AFEeDfbed74",
+      "governance": {
+        "securityMultisig": "N/A (deployer only)",
+        "operationsMultisig": "N/A (deployer only)"
+      },
+      "contracts": {
+        "SelfAgentRegistry": {
+          "proxy": "0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379",
+          "implementation": "0x1AD34a2a34556f6CFEB9da8CB788Ab38F2130Be0"
+        },
+        "SelfHumanProofProvider": "0x5E61c3051Bf4115F90AacEAE6212bc419f8aBB6c",
+        "SelfReputationRegistry": {
+          "proxy": "0x3Bb0A898C1C0918763afC22ff624131b8F420CC2",
+          "implementation": "0x072835888a3a69Be0af3a5a4c48c64eA96A6137c"
+        },
+        "SelfValidationRegistry": {
+          "proxy": "0x84cA20B8A1559F136dA03913dbe6A7F68B6B240B",
+          "implementation": "0xA8E96a59032977f4E5B1aA86F7ca2D11343220fb"
+        },
+        "AgentDemoVerifier": "0xc31BAe8f2d7FCd19f737876892f05d9bDB294241",
+        "AgentGate": "0x86Af07e30Aa42367cbcA7f2B1764Be346598bbc2"
+      }
+    }
+  }
+}

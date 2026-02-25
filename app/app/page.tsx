@@ -34,6 +34,7 @@ import {
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
+import CodeBlock from "@/components/CodeBlock";
 
 const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
@@ -478,7 +479,8 @@ export default function Home() {
           </div>
           <p className="text-center text-muted mb-6 max-w-xl mx-auto">
             Add agent verification to your service with a few lines of code.
-            SDKs available for TypeScript, Python, and Rust.
+            SDKs available for TypeScript, Python, and Rust. Building with AI agents?
+            Use the MCP server to give your agent identity directly from your IDE.
           </p>
 
           {/* Package badges */}
@@ -503,39 +505,50 @@ export default function Home() {
               <p className="text-xs text-muted mb-4">
                 Add middleware to verify incoming agent requests
               </p>
-              <pre className="bg-surface-2 border border-border rounded-lg p-4 text-xs overflow-auto font-mono">
-{`import { SelfAgentVerifier } from
-  "@selfxyz/agent-sdk";
+              <CodeBlock
+                tabs={[
+                  {
+                    label: "TypeScript",
+                    language: "typescript",
+                    code: `import { SelfAgentVerifier } from "@selfxyz/agent-sdk";
 
-const verifier = new SelfAgentVerifier({
-  rpcUrl: "https://forno.celo.org",
-});
+const verifier = SelfAgentVerifier.create()
+  .requireAge(18)
+  .requireOFAC()
+  .build();
 
 // One line of middleware
-app.use(verifier.auth());`}
-              </pre>
+app.use(verifier.auth());`,
+                  },
+                ]}
+              />
             </Card>
             <Card>
               <h3 className="font-bold text-sm mb-1">Sign Requests</h3>
               <p className="text-xs text-muted mb-4">
                 Authenticate your agent with any service
               </p>
-              <pre className="bg-surface-2 border border-border rounded-lg p-4 text-xs overflow-auto font-mono">
-{`import { SelfAgentClient } from
-  "@selfxyz/agent-sdk";
+              <CodeBlock
+                tabs={[
+                  {
+                    label: "TypeScript",
+                    language: "typescript",
+                    code: `import { SelfAgentClient } from "@selfxyz/agent-sdk";
 
 const agent = new SelfAgentClient({
   privateKey: process.env.AGENT_KEY,
 });
 
 // Requests are signed automatically
-const res = await agent.fetch(url);`}
-              </pre>
+const res = await agent.fetch(url);`,
+                  },
+                ]}
+              />
             </Card>
           </div>
 
           <div className="flex justify-center mt-8">
-            <Link href="/explainer">
+            <Link href="/integration">
               <Button variant="primary">
                 See the full integration guide <ArrowRight size={14} />
               </Button>

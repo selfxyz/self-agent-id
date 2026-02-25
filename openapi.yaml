@@ -639,15 +639,26 @@ paths:
                 $ref: "#/components/schemas/Error"
 
   /api/agent/register/export:
-    get:
+    post:
       tags: [Registration]
       summary: Export agent private key
       operationId: exportAgentKey
       description: >
         After registration completes, export the agent's private key.
         Only available for "agent-identity" and "wallet-free" modes.
-      parameters:
-        - $ref: "#/components/parameters/sessionToken"
+        The session token is sent in the request body (not as a query parameter)
+        to avoid leaking it in server logs and browser history.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  description: Encrypted session token
       responses:
         "200":
           description: Private key exported

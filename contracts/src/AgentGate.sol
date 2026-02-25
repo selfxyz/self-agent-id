@@ -5,17 +5,24 @@ pragma solidity 0.8.28;
 import { SelfAgentRegistry } from "./SelfAgentRegistry.sol";
 
 /// @title AgentGate
+/// @author Self Protocol
 /// @notice Demo contract that gates access behind Self Agent ID verification
 /// @dev Queries the SelfAgentRegistry on-chain to check agent status and credentials
 contract AgentGate {
+    /// @notice The SelfAgentRegistry used for verification lookups
     SelfAgentRegistry public immutable registry;
 
+    /// @notice Thrown when the agent key is not registered or has no active human proof
     error NotVerifiedAgent();
+    /// @notice Thrown when the agent's verified age is below the minimum requirement
     error AgeRequirementNotMet(uint256 actual, uint256 required);
+    /// @notice Thrown when msg.sender does not match the address derived from the agent key
     error NotAgentCaller();
 
+    /// @notice Emitted when an agent passes the age-gated access check
     event AccessGranted(bytes32 indexed agentKey, uint256 agentId, uint256 olderThan);
 
+    /// @param _registry Address of the deployed SelfAgentRegistry
     constructor(address _registry) {
         registry = SelfAgentRegistry(_registry);
     }

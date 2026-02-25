@@ -115,6 +115,32 @@ const verifier = SelfAgentVerifier.fromConfig({
 });
 ```
 
+## Proof Expiry & Refresh
+
+Human proofs expire after `maxProofAge` (default: 365 days) or at passport document expiry, whichever is sooner. The expiry timestamp is set on-chain at registration.
+
+```typescript
+// Check proof freshness
+const info = await agent.getInfo();
+console.log(info.proofExpiresAt); // unix seconds, 0 if unregistered
+
+// Built-in 30-day warning
+import { isProofExpiringSoon } from "@selfxyz/agent-sdk";
+if (isProofExpiringSoon(info.proofExpiresAt)) {
+  console.warn("Proof expiring soon — prompt human to re-verify");
+}
+```
+
+**Verifier-side:** The verifier returns `reason: "PROOF_EXPIRED"` when an agent's proof has lapsed. Services should return a clear error guiding the agent to re-register.
+
+**Refreshing:** There is no in-place refresh. Deregister (burn NFT) → re-register (new passport scan, new agentId, fresh expiry):
+
+```typescript
+await agent.requestDeregistration(); // human confirms via Self app
+// ... after completion:
+const session = await agent.requestRegistration({ minimumAge: 18, ofac: true });
+```
+
 ## A2A Agent Card
 
 Publish machine-readable identity metadata for agent-to-agent discovery:

@@ -298,8 +298,10 @@ export default function RegisterPage() {
 
     try {
       // 1. Create passkey → Kernel smart wallet (counterfactual)
+      const passkeySuffix = crypto.getRandomValues(new Uint8Array(2))
+        .reduce((s, b) => s + b.toString(16).padStart(2, "0"), "");
       const { credentialId, walletAddress: swAddress } =
-        await createPasskeyWallet("Self Agent ID", network);
+        await createPasskeyWallet(`Self Agent ID (${passkeySuffix})`, network);
       setSmartWalletAddress(swAddress);
 
       // 2. Generate agent keypair

@@ -6,7 +6,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import MatrixText from "@/components/MatrixText";
 import { Card } from "@/components/Card";
 import CodeBlock from "@/components/CodeBlock";
 import { Badge } from "@/components/Badge";
@@ -665,9 +664,7 @@ export default function ApiDocsPage() {
   return (
     <main className="min-h-screen max-w-4xl mx-auto px-6 pt-24 pb-12">
       {/* Hero */}
-      <div className="flex justify-center mb-8">
-        <MatrixText text="REST API" fontSize={44} />
-      </div>
+      <h1 className="text-4xl font-bold text-center mb-8">REST API</h1>
 
       <div className="space-y-6">
         {/* Overview */}

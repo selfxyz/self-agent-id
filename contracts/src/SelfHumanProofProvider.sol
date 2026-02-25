@@ -6,6 +6,7 @@ import { IHumanProofProvider } from "./interfaces/IHumanProofProvider.sol";
 import { ISelfHumanProofProvider } from "./interfaces/ISelfHumanProofProvider.sol";
 
 /// @title SelfHumanProofProvider
+/// @author Self Protocol
 /// @notice Lightweight metadata wrapper describing Self Protocol as a proof-of-human provider
 /// @dev Because Self Hub V2 uses an async callback pattern (verifySelfProof -> Hub -> onVerificationSuccess),
 ///      verifyHumanProof cannot work as a synchronous call-and-return. The actual verification flow

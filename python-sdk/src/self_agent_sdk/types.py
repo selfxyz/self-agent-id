@@ -2,11 +2,24 @@
 # SPDX-License-Identifier: BUSL-1.1
 # NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
+"""Data types for agent identity, credentials, and verification results."""
+
 from dataclasses import dataclass, field
 
 
 @dataclass
 class AgentInfo:
+    """On-chain agent identity information retrieved from the registry.
+
+    Attributes:
+        address: The agent's Ethereum address.
+        agent_key: 32-byte key derived from the agent address.
+        agent_id: The agent's ERC-721 token ID in the registry.
+        is_verified: Whether the agent has a valid human proof.
+        nullifier: The human's nullifier (unique per human, shared across agents).
+        agent_count: Number of agents registered by the same human.
+    """
+
     address: str
     agent_key: bytes            # 32 bytes
     agent_id: int
@@ -17,6 +30,24 @@ class AgentInfo:
 
 @dataclass
 class AgentCredentials:
+    """Disclosed passport/identity credentials for a registered agent.
+
+    All fields default to empty/zero values when not disclosed during
+    registration. The ``ofac`` list contains three booleans corresponding
+    to the three OFAC screening tiers.
+
+    Attributes:
+        issuing_state: ISO 3166-1 alpha-3 country code of the issuing state.
+        name: List of name components (e.g. [first, last]).
+        id_number: Document ID number (if disclosed).
+        nationality: ISO 3166-1 alpha-3 nationality code.
+        date_of_birth: Date of birth as a string (YYMMDD format).
+        gender: Gender field from the identity document.
+        expiry_date: Document expiry date as a string (YYMMDD format).
+        older_than: Minimum age verified (0, 18, or 21).
+        ofac: Three-element OFAC screening result flags.
+    """
+
     issuing_state: str = ""
     name: list[str] = field(default_factory=list)
     id_number: str = ""
@@ -30,6 +61,23 @@ class AgentCredentials:
 
 @dataclass
 class VerificationResult:
+    """Result of verifying an agent's signed request.
+
+    Returned by the middleware after validating the signature, checking
+    on-chain registration, and optionally fetching credentials.
+
+    Attributes:
+        valid: Whether the verification succeeded.
+        agent_address: Ethereum address recovered from the request signature.
+        agent_key: 32-byte key derived from agent_address.
+        agent_id: The agent's ERC-721 token ID (0 if not registered).
+        agent_count: Number of agents registered by the same human.
+        nullifier: The human's nullifier for rate-limiting by identity.
+        credentials: Disclosed credentials, if available.
+        error: Human-readable error message on failure.
+        retry_after_ms: Backoff hint in milliseconds when rate-limited.
+    """
+
     valid: bool
     agent_address: str          # Recovered from signature
     agent_key: bytes            # 32 bytes, derived from agent_address

@@ -7,6 +7,7 @@ import { SelfHumanProofProvider } from "../src/SelfHumanProofProvider.sol";
 import { SelfValidationRegistry } from "../src/SelfValidationRegistry.sol";
 import { ISelfVerificationRoot } from "@selfxyz/contracts/contracts/interfaces/ISelfVerificationRoot.sol";
 import { IIdentityVerificationHubV2 } from "@selfxyz/contracts/contracts/interfaces/IIdentityVerificationHubV2.sol";
+import { ProxyRoot } from "../src/upgradeable/ProxyRoot.sol";
 
 contract SelfValidationRegistryTest is Test {
     SelfAgentRegistry registry;
@@ -35,15 +36,24 @@ contract SelfValidationRegistryTest is Test {
             abi.encode(fakeConfigId)
         );
 
-        registry = new SelfAgentRegistry(hubMock, owner);
+        // Deploy registry via proxy
+        SelfAgentRegistry impl = new SelfAgentRegistry();
+        registry = SelfAgentRegistry(address(new ProxyRoot(
+            address(impl),
+            abi.encodeCall(SelfAgentRegistry.initialize, (hubMock, owner))
+        )));
         selfProvider = new SelfHumanProofProvider(hubMock, registry.scope());
 
         vm.startPrank(owner);
         registry.setSelfProofProvider(address(selfProvider));
         vm.stopPrank();
 
-        // Deploy val registry — owner is address(this) (the test contract)
-        val = new SelfValidationRegistry(address(registry), address(this));
+        // Deploy val registry via proxy — address(this) receives roles
+        SelfValidationRegistry valImpl = new SelfValidationRegistry();
+        val = SelfValidationRegistry(address(new ProxyRoot(
+            address(valImpl),
+            abi.encodeCall(SelfValidationRegistry.initialize, (address(registry), address(this)))
+        )));
     }
 
     // ====================================================
@@ -266,6 +276,11 @@ contract SelfValidationRegistryTest is Test {
         // Should fall back to yesterday's entry (still fresh since < 365 days total)
         assertTrue(fresh, "should fall back to yesterday's fresh result");
         assertGt(lastUpdated, 0, "lastUpdated from yesterday must be non-zero");
+    }
+
+    function test_submitFreshnessValidationRevertsForNonexistentAgent() public {
+        vm.expectRevert(bytes("agent does not exist"));
+        val.submitFreshnessValidation(99999);
     }
 
     function test_getSummaryAveragesMultipleValidators() public {

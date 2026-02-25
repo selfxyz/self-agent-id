@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-// GET /api/agent/register/export?token=<encrypted_token>
+// POST /api/agent/register/export
 //
 // Export agent private key after successful registration.
 // Only available for modes that generate a keypair (agent-identity, wallet-free).
+// Token is sent in the request body (not query string) to avoid leaking via
+// server logs, browser history, and Referer headers.
 
 import { NextRequest } from "next/server";
 import {
@@ -15,10 +17,17 @@ import {
   corsResponse,
 } from "@/lib/agent-api-helpers";
 
-export async function GET(req: NextRequest) {
-  const token = req.nextUrl.searchParams.get("token");
+export async function POST(req: NextRequest) {
+  let body: { token?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return errorResponse("Invalid JSON body", 400);
+  }
+
+  const token = body.token;
   if (!token) {
-    return errorResponse("Missing token query parameter", 400);
+    return errorResponse("Missing token in request body", 400);
   }
 
   let session;
@@ -30,7 +39,7 @@ export async function GET(req: NextRequest) {
     if (msg.includes("expired")) {
       return errorResponse("Session expired", 410);
     }
-    return errorResponse(`Invalid session token: ${msg}`, 401);
+    return errorResponse("Invalid session token", 401);
   }
 
   if (session.type !== "register") {

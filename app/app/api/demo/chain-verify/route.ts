@@ -108,23 +108,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 4. Replay protection on the request signature (prevents resubmitting the same meta-tx)
-  const replay = await checkAndRecordReplay({
-    signature,
-    timestamp,
-    method: "POST",
-    url: req.url,
-    body: bodyText || undefined,
-    scope: "demo-chain-verify",
-  });
-  if (!replay.ok) {
-    return NextResponse.json(
-      { error: replay.error || "Replay detected" },
-      { status: 409 },
-    );
-  }
-
-  // 5. Set up provider + contracts
+  // 4. Set up provider + contracts
   const provider = new ethers.JsonRpcProvider(network.rpcUrl);
   const relayerWallet = new ethers.Wallet(RELAYER_PK, provider);
   const contract = new ethers.Contract(
@@ -167,7 +151,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: reason }, { status: 400 });
   }
 
-  // 7. Rate limit by human nullifier (only reachable if agent is verified)
+  // 7. Replay protection — recorded AFTER validation to prevent cache poisoning
+  const replay = await checkAndRecordReplay({
+    signature,
+    timestamp,
+    method: "POST",
+    url: req.url,
+    body: bodyText || undefined,
+    scope: "demo-chain-verify",
+  });
+  if (!replay.ok) {
+    return NextResponse.json(
+      { error: replay.error || "Replay detected" },
+      { status: 409 },
+    );
+  }
+
+  // 8. Rate limit by human nullifier (only reachable if agent is verified)
   let rateLimitResult: { allowed: boolean; remaining: number; retryAfterMs?: number };
   try {
     const agentId = await registryContract.getAgentId(agentKey);

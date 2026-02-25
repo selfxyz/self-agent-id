@@ -8,8 +8,11 @@ import { SelfHumanProofProvider } from "../src/SelfHumanProofProvider.sol";
 import { MockHumanProofProvider } from "./mocks/MockHumanProofProvider.sol";
 import { ISelfVerificationRoot } from "@selfxyz/contracts/contracts/interfaces/ISelfVerificationRoot.sol";
 import { IIdentityVerificationHubV2 } from "@selfxyz/contracts/contracts/interfaces/IIdentityVerificationHubV2.sol";
+import { IERC8004 } from "../src/interfaces/IERC8004.sol";
 import { IERC8004ProofOfHuman } from "../src/interfaces/IERC8004ProofOfHuman.sol";
 import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import { ProxyRoot } from "../src/upgradeable/ProxyRoot.sol";
+import { IAccessControl } from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 contract SelfAgentRegistryTest is Test {
     SelfAgentRegistry registry;
@@ -48,14 +51,20 @@ contract SelfAgentRegistryTest is Test {
 
     function setUp() public {
         // Mock the hub's setVerificationConfigV2 to return a fake configId
-        // This is called in the SelfAgentRegistry constructor
+        // This is called in the SelfAgentRegistry.initialize()
         vm.mockCall(
             hubMock,
             abi.encodeWithSelector(IIdentityVerificationHubV2.setVerificationConfigV2.selector),
             abi.encode(fakeConfigId)
         );
 
-        registry = new SelfAgentRegistry(hubMock, owner);
+        // Deploy implementation + proxy
+        SelfAgentRegistry impl = new SelfAgentRegistry();
+        registry = SelfAgentRegistry(address(new ProxyRoot(
+            address(impl),
+            abi.encodeCall(SelfAgentRegistry.initialize, (hubMock, owner))
+        )));
+
         selfProvider = new SelfHumanProofProvider(hubMock, registry.scope());
         mockProvider = new MockHumanProofProvider();
 
@@ -131,10 +140,11 @@ contract SelfAgentRegistryTest is Test {
     // Constructor
     // ====================================================
 
-    function test_Constructor() public view {
+    function test_Initialize() public view {
         assertEq(registry.name(), "Self Agent ID");
         assertEq(registry.symbol(), "SAID");
-        assertEq(registry.owner(), owner);
+        assertTrue(registry.hasRole(registry.SECURITY_ROLE(), owner));
+        assertTrue(registry.hasRole(registry.OPERATIONS_ROLE(), owner));
         assertEq(registry.configIds(0), fakeConfigId);
     }
 
@@ -566,9 +576,14 @@ contract SelfAgentRegistryTest is Test {
         assertTrue(registry.isApprovedProvider(newProvider));
     }
 
-    function test_RevertWhen_AddProvider_NotOwner() public {
+    function test_RevertWhen_AddProvider_NotSecurityRole() public {
+        bytes32 secRole = registry.SECURITY_ROLE();
         vm.prank(human1);
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSelector(
+            IAccessControl.AccessControlUnauthorizedAccount.selector,
+            human1,
+            secRole
+        ));
         registry.addProofProvider(makeAddr("provider"));
     }
 
@@ -1813,9 +1828,14 @@ contract SelfAgentRegistryTest is Test {
         assertTrue(registry.isVerifiedAgent(agentKey1));
     }
 
-    function test_RevertWhen_SetMaxAgentsPerHuman_NotOwner() public {
+    function test_RevertWhen_SetMaxAgentsPerHuman_NotOperationsRole() public {
+        bytes32 opsRole = registry.OPERATIONS_ROLE();
         vm.prank(human1);
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSelector(
+            IAccessControl.AccessControlUnauthorizedAccount.selector,
+            human1,
+            opsRole
+        ));
         registry.setMaxAgentsPerHuman(5);
     }
 
@@ -1829,7 +1849,7 @@ contract SelfAgentRegistryTest is Test {
 
         // also verifies agentURI is empty string ""
         vm.expectEmit(true, true, false, true);
-        emit IERC8004ProofOfHuman.Registered(1, "", human1);
+        emit IERC8004.Registered(1, "", human1);
 
         vm.prank(hubMock);
         registry.onVerificationSuccess(encodedOutput, userData);
@@ -1843,7 +1863,7 @@ contract SelfAgentRegistryTest is Test {
 
         // Advanced mode: NFT minted to humanAddress (human1), agentId = 1; also verifies agentURI is empty string ""
         vm.expectEmit(true, true, false, true);
-        emit IERC8004ProofOfHuman.Registered(1, "", human1);
+        emit IERC8004.Registered(1, "", human1);
 
         vm.prank(hubMock);
         registry.onVerificationSuccess(encodedOutput, userData);
@@ -1857,7 +1877,7 @@ contract SelfAgentRegistryTest is Test {
 
         // Wallet-free: NFT minted to agentAddr, agentId = 1; also verifies agentURI is empty string ""
         vm.expectEmit(true, true, false, true);
-        emit IERC8004ProofOfHuman.Registered(1, "", agentAddr);
+        emit IERC8004.Registered(1, "", agentAddr);
 
         vm.prank(hubMock);
         registry.onVerificationSuccess(encodedOutput, userData);
@@ -1881,7 +1901,7 @@ contract SelfAgentRegistryTest is Test {
         mockProvider.setNextNullifier(nullifier1);
 
         vm.expectEmit(true, true, false, true);
-        emit IERC8004ProofOfHuman.Registered(1, uri, human1);
+        emit IERC8004.Registered(1, uri, human1);
 
         vm.prank(human1);
         registry.registerWithHumanProof(uri, address(mockProvider), "", providerData);
@@ -1942,7 +1962,7 @@ contract SelfAgentRegistryTest is Test {
         string memory newURI = "ipfs://QmURIUpdatedEvent";
 
         vm.expectEmit(true, false, true, true);
-        emit IERC8004ProofOfHuman.URIUpdated(agentId, newURI, human1);
+        emit IERC8004.URIUpdated(agentId, newURI, human1);
 
         vm.prank(human1);
         registry.setAgentURI(agentId, newURI);
@@ -2095,7 +2115,7 @@ contract SelfAgentRegistryTest is Test {
         bytes memory value = bytes("gpt-4o");
 
         vm.expectEmit(true, true, false, true);
-        emit IERC8004ProofOfHuman.MetadataSet(agentId, "model", "model", value);
+        emit IERC8004.MetadataSet(agentId, "model", "model", value);
 
         vm.prank(human1);
         registry.setMetadata(agentId, "model", value);
@@ -2156,11 +2176,13 @@ contract SelfAgentRegistryTest is Test {
         uint256 deadline
     ) internal view returns (bytes memory sig) {
         address walletAddr = vm.addr(walletPrivKey);
+        uint256 nonce = registry.walletSetNonces(agentId);
         bytes32 structHash = keccak256(abi.encode(
             registry.AGENT_WALLET_SET_TYPEHASH(),
             agentId,
             walletAddr,
             ownerAddr,
+            nonce,
             deadline
         ));
         bytes32 digest = keccak256(abi.encodePacked(
@@ -2199,7 +2221,7 @@ contract SelfAgentRegistryTest is Test {
         bytes memory sig = _signAgentWalletSet(walletPrivKey, agentId, human1, deadline);
 
         vm.expectEmit(true, true, false, true);
-        emit IERC8004ProofOfHuman.MetadataSet(agentId, "agentWallet", "agentWallet", abi.encode(walletAddr));
+        emit IERC8004.MetadataSet(agentId, "agentWallet", "agentWallet", abi.encode(walletAddr));
 
         vm.prank(human1);
         registry.setAgentWallet(agentId, walletAddr, deadline, sig);
@@ -2296,7 +2318,7 @@ contract SelfAgentRegistryTest is Test {
 
         // Expect MetadataSet event with empty data on unset
         vm.expectEmit(true, true, false, true);
-        emit IERC8004ProofOfHuman.MetadataSet(agentId, "agentWallet", "agentWallet", bytes(""));
+        emit IERC8004.MetadataSet(agentId, "agentWallet", "agentWallet", bytes(""));
 
         vm.prank(human1);
         registry.unsetAgentWallet(agentId);
@@ -2330,6 +2352,11 @@ contract SelfAgentRegistryTest is Test {
 
     function test_supportsERC721() public view {
         assertTrue(registry.supportsInterface(0x80ac58cd)); // ERC-721
+    }
+
+    function test_supportsERC8004() public view {
+        bytes4 id = type(IERC8004).interfaceId;
+        assertTrue(registry.supportsInterface(id));
     }
 
     function test_supportsERC8004ProofOfHuman() public view {
@@ -2419,13 +2446,13 @@ contract SelfAgentRegistryTest is Test {
     function test_setMaxProofAgeUpdatesValue() public {
         vm.expectEmit(false, false, false, true);
         emit IERC8004ProofOfHuman.MaxProofAgeUpdated(180 days);
-        vm.prank(registry.owner());
+        vm.prank(owner);
         registry.setMaxProofAge(180 days);
         assertEq(registry.maxProofAge(), 180 days);
     }
 
     function test_setMaxProofAgeRevertsOnZero() public {
-        vm.prank(registry.owner());
+        vm.prank(owner);
         vm.expectRevert(SelfAgentRegistry.InvalidMaxProofAge.selector);
         registry.setMaxProofAge(0);
     }
@@ -2456,5 +2483,157 @@ contract SelfAgentRegistryTest is Test {
 
         // Also confirm the expiry is strictly less than the age-based cap
         assertLt(actualExpiry, ageExpiry);
+    }
+
+    function test_refreshExpiredProof_DeregisterAndReRegister() public {
+        // Full lifecycle: register → proof expires → isProofFresh false → deregister → re-register → fresh again
+        _registerViaHub(human1, nullifier1);
+        uint256 firstAgentId = registry.getAgentId(agentKey1);
+        uint256 firstExpiry = registry.proofExpiresAt(firstAgentId);
+        assertTrue(registry.isProofFresh(firstAgentId), "proof should be fresh right after registration");
+
+        // Fast-forward past expiry
+        vm.warp(firstExpiry + 1);
+        assertFalse(registry.isProofFresh(firstAgentId), "proof should be stale after expiry");
+        assertTrue(registry.hasHumanProof(firstAgentId), "hasHumanProof should still be true (historical)");
+
+        // Attempting to re-register without deregistering should revert
+        bytes memory encodedOutput = _buildEncodedOutput(human1, nullifier1);
+        bytes memory userData = _buildUserData(0x52); // 'R'
+        vm.prank(hubMock);
+        vm.expectRevert(abi.encodeWithSelector(SelfAgentRegistry.AgentAlreadyRegistered.selector, agentKey1));
+        registry.onVerificationSuccess(encodedOutput, userData);
+
+        // Deregister the expired agent
+        _deregisterViaHub(human1, nullifier1);
+        assertEq(registry.getAgentId(agentKey1), 0, "agent key mapping should be cleared");
+        assertEq(registry.proofExpiresAt(firstAgentId), 0, "expiry should be cleared on deregister");
+
+        // Re-register with the same key — gets a new agentId and fresh proof
+        _registerViaHub(human1, nullifier1);
+        uint256 secondAgentId = registry.getAgentId(agentKey1);
+        assertGt(secondAgentId, firstAgentId, "new agentId should be higher (monotonic)");
+        assertTrue(registry.isProofFresh(secondAgentId), "re-registered proof should be fresh");
+        assertApproxEqAbs(
+            registry.proofExpiresAt(secondAgentId),
+            block.timestamp + registry.maxProofAge(),
+            60,
+            "new expiry should be ~now + maxProofAge"
+        );
+
+        // Old agentId should be fully cleaned up
+        assertFalse(registry.hasHumanProof(firstAgentId), "old agentId hasHumanProof should be false");
+        assertFalse(registry.isProofFresh(firstAgentId), "old agentId isProofFresh should be false");
+    }
+
+    function test_refreshExpiredProof_ViaRevokeHumanProof() public {
+        // Same lifecycle but using the synchronous registerWithHumanProof + revokeHumanProof path
+        bytes32 syncKey = bytes32(uint256(0xbeef));
+        bytes memory providerData = abi.encodePacked(syncKey);
+
+        mockProvider.setShouldVerify(true);
+        mockProvider.setNextNullifier(nullifier1);
+        vm.prank(human1);
+        uint256 firstId = registry.registerWithHumanProof("", address(mockProvider), "", providerData);
+        assertTrue(registry.isProofFresh(firstId), "proof should be fresh after sync registration");
+
+        // Fast-forward past expiry
+        vm.warp(block.timestamp + registry.maxProofAge() + 1);
+        assertFalse(registry.isProofFresh(firstId), "proof should be stale after maxProofAge");
+
+        // Revoke and re-register
+        vm.prank(human1);
+        registry.revokeHumanProof(firstId, address(mockProvider), "", "");
+
+        mockProvider.setShouldVerify(true);
+        mockProvider.setNextNullifier(nullifier1);
+        vm.prank(human1);
+        uint256 secondId = registry.registerWithHumanProof("", address(mockProvider), "", providerData);
+        assertGt(secondId, firstId, "new agentId should be higher");
+        assertTrue(registry.isProofFresh(secondId), "refreshed proof should be fresh");
+    }
+
+    // ====================================================
+    // Security Audit Fixes — SC-1: setAgentWallet nonce replay
+    // ====================================================
+
+    function test_setAgentWalletNonceIncrementsOnSet() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        assertEq(registry.walletSetNonces(agentId), 0, "nonce starts at 0");
+
+        uint256 walletPrivKey = 0xB0B;
+        address walletAddr = vm.addr(walletPrivKey);
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes memory sig = _signAgentWalletSet(walletPrivKey, agentId, human1, deadline);
+
+        vm.prank(human1);
+        registry.setAgentWallet(agentId, walletAddr, deadline, sig);
+
+        assertEq(registry.walletSetNonces(agentId), 1, "nonce should be 1 after first set");
+    }
+
+    function test_setAgentWalletReplayAfterUnsetReverts() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        uint256 walletPrivKey = 0xB0B;
+        address walletAddr = vm.addr(walletPrivKey);
+        uint256 deadline = block.timestamp + 1 hours;
+
+        // Sign at nonce=0
+        bytes memory sig = _signAgentWalletSet(walletPrivKey, agentId, human1, deadline);
+
+        // Set wallet (consumes nonce 0)
+        vm.prank(human1);
+        registry.setAgentWallet(agentId, walletAddr, deadline, sig);
+
+        // Unset wallet
+        vm.prank(human1);
+        registry.unsetAgentWallet(agentId);
+
+        // Replay the same signature — should revert because nonce is now 1
+        vm.prank(human1);
+        vm.expectRevert(SelfAgentRegistry.InvalidWalletSignature.selector);
+        registry.setAgentWallet(agentId, walletAddr, deadline, sig);
+    }
+
+    // ====================================================
+    // Security Audit Fixes — SC-5/SC-6: Nullifier/provider cleanup on revocation
+    // ====================================================
+
+    function test_revokeAgentClearsNullifierAndProvider() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+
+        // Before revocation: nullifier and provider are set
+        assertEq(registry.agentNullifier(agentId), nullifier1);
+        assertTrue(registry.agentProofProvider(agentId) != address(0));
+
+        // Revoke
+        vm.prank(human1);
+        registry.selfDeregister(agentId);
+
+        // After revocation: nullifier and provider should be cleared
+        assertEq(registry.agentNullifier(agentId), 0, "nullifier should be cleared after revocation");
+        assertEq(registry.agentProofProvider(agentId), address(0), "provider should be cleared after revocation");
+    }
+
+    // ====================================================
+    // Security Audit Fixes — SC-12: ProofProviderRemoved event on setSelfProofProvider
+    // ====================================================
+
+    function test_setSelfProofProviderEmitsRemovedEventForOldProvider() public {
+        address oldProvider = address(selfProvider);
+
+        // Deploy a new mock provider
+        SelfHumanProofProvider newProvider = new SelfHumanProofProvider(hubMock, registry.scope());
+
+        vm.prank(owner);
+        // Expect the old provider to be removed
+        vm.expectEmit(true, false, false, false);
+        emit IERC8004ProofOfHuman.ProofProviderRemoved(oldProvider);
+        registry.setSelfProofProvider(address(newProvider));
     }
 }

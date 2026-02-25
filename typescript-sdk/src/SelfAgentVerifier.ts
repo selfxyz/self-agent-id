@@ -116,6 +116,7 @@ export interface VerificationResult {
 
 interface CacheEntry {
   isVerified: boolean;
+  isProofFresh: boolean;
   agentId: bigint;
   agentCount: bigint;
   nullifier: bigint;
@@ -494,7 +495,7 @@ export class SelfAgentVerifier {
     const agentKey = ethers.zeroPadValue(signerAddress, 32);
 
     // 6. Check on-chain status (with cache)
-    const { isVerified, agentId, agentCount, nullifier, providerAddress } =
+    const { isVerified, isProofFresh, agentId, agentCount, nullifier, providerAddress } =
       await this.checkOnChain(agentKey);
 
     if (!isVerified) {
@@ -506,6 +507,19 @@ export class SelfAgentVerifier {
         agentCount,
         nullifier,
         error: "Agent not verified on-chain",
+      };
+    }
+
+    // 6b. Check proof freshness (expired proofs should not pass verification)
+    if (!isProofFresh) {
+      return {
+        valid: false,
+        agentAddress: signerAddress,
+        agentKey,
+        agentId,
+        agentCount,
+        nullifier,
+        error: "Agent's human proof has expired",
       };
     }
 
@@ -627,11 +641,12 @@ export class SelfAgentVerifier {
    */
   private async checkOnChain(
     agentKey: string
-  ): Promise<{ isVerified: boolean; agentId: bigint; agentCount: bigint; nullifier: bigint; providerAddress: string }> {
+  ): Promise<{ isVerified: boolean; isProofFresh: boolean; agentId: bigint; agentCount: bigint; nullifier: bigint; providerAddress: string }> {
     const cached = this.cache.get(agentKey);
     if (cached && cached.expiresAt > Date.now()) {
       return {
         isVerified: cached.isVerified,
+        isProofFresh: cached.isProofFresh,
         agentId: cached.agentId,
         agentCount: cached.agentCount,
         nullifier: cached.nullifier,
@@ -644,12 +659,20 @@ export class SelfAgentVerifier {
       this.registry.getAgentId(agentKey) as Promise<bigint>,
     ]);
 
-    // Fetch sybil data and provider address if agent exists
+    // Fetch sybil data, provider address, and proof freshness if agent exists
     let agentCount = 0n;
     let nullifier = 0n;
     let providerAddress = "";
+    let isProofFresh = false;
     if (agentId > 0n) {
       const promises: Promise<unknown>[] = [];
+
+      // Always check proof freshness
+      promises.push(
+        (this.registry.isProofFresh(agentId) as Promise<boolean>).then((fresh) => {
+          isProofFresh = fresh;
+        })
+      );
 
       if (this.maxAgentsPerHuman > 0) {
         promises.push(
@@ -673,6 +696,7 @@ export class SelfAgentVerifier {
 
     this.cache.set(agentKey, {
       isVerified,
+      isProofFresh,
       agentId,
       agentCount,
       nullifier,
@@ -680,7 +704,7 @@ export class SelfAgentVerifier {
       expiresAt: Date.now() + this.cacheTtlMs,
     });
 
-    return { isVerified, agentId, agentCount, nullifier, providerAddress };
+    return { isVerified, isProofFresh, agentId, agentCount, nullifier, providerAddress };
   }
 
   /**
