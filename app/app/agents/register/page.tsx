@@ -453,8 +453,6 @@ export default function RegisterPage() {
 
     setStep("success");
     window.scrollTo({ top: 0, behavior: "smooth" });
-    // Auto-trigger Agent Card writing after a short delay
-    setTimeout(() => writeAgentCard(), 500);
   };
 
   const handleError = (error: unknown) => {
@@ -1090,20 +1088,27 @@ export default function RegisterPage() {
               <span>Step 1/2: Agent Registered</span>
             </div>
             <div className="flex items-center gap-3 text-sm mt-2">
-              {cardStep === "pending" || cardStep === "writing" ? (
+              {cardStep === "writing" ? (
                 <Loader2 size={16} className="text-accent animate-spin shrink-0" />
               ) : cardStep === "done" ? (
                 <CheckCircle2 size={16} className="text-accent-success shrink-0" />
-              ) : (
+              ) : cardStep === "skipped" ? (
                 <XCircle size={16} className="text-muted shrink-0" />
+              ) : (
+                <Bot size={16} className="text-muted shrink-0" />
               )}
               <span>
-                {cardStep === "pending" ? "Step 2/2: Preparing Agent Card..." :
-                 cardStep === "writing" ? "Step 2/2: Setting Agent Card (confirm in wallet)..." :
+                {cardStep === "writing" ? "Step 2/2: Setting Agent Card (confirm in wallet)..." :
                  cardStep === "done" ? "Step 2/2: Agent Card Set" :
-                 "Step 2/2: Agent Card skipped — you can set it later via SDK or updateAgentMetadata()"}
+                 cardStep === "skipped" ? "Step 2/2: Agent Card skipped — set it later via updateAgentMetadata()" :
+                 "Step 2/2: Set Agent Card"}
               </span>
             </div>
+            {cardStep === "pending" && (
+              <Button className="mt-3 w-full" onClick={() => writeAgentCard()}>
+                Set Agent Card (on-chain)
+              </Button>
+            )}
           </Card>
 
           {/* Verification Strength Badge */}
