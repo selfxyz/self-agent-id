@@ -9,6 +9,7 @@ import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { NetworkBanner } from "@/components/NetworkBanner";
 import { ClientProviders } from "@/components/ClientProviders";
+import { Analytics } from "@vercel/analytics/react";
 
 const geist = localFont({
   src: "./fonts/GeistVF.woff",
@@ -38,6 +39,7 @@ export default function RootLayout({
           <NetworkBanner />
           {children}
           <Footer />
+          <Analytics />
         </ClientProviders>
       </body>
     </html>
