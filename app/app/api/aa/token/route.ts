@@ -4,6 +4,7 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { rateLimitedResponse } from "@/lib/http/response";
 import {
   getClientIp,
   issueAaProxyToken,
@@ -40,12 +41,12 @@ export async function POST(req: NextRequest) {
     windowMs: WINDOW_MS,
   });
   if (!limit.allowed) {
-    return NextResponse.json(
+    return rateLimitedResponse(
       {
         error: "Rate limit exceeded",
         retryAfterMs: limit.retryAfterMs,
       },
-      { status: 429 },
+      limit.retryAfterMs,
     );
   }
 

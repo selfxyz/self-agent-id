@@ -4,6 +4,9 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { readTextBodyWithLimit } from "@/lib/http/body";
+import { fetchWithTimeout, UpstreamTimeoutError } from "@/lib/http/fetch";
+import { rateLimitedResponse } from "@/lib/http/response";
 import {
   getClientIp,
   validateAllowedOrigin,
@@ -29,6 +32,9 @@ const RATE_LIMIT_PER_MINUTE = Number(
   process.env.AA_PROXY_MAX_REQ_PER_MINUTE || 60,
 );
 const WINDOW_MS = 60_000;
+const UPSTREAM_TIMEOUT_MS = Number(
+  process.env.AA_PROXY_UPSTREAM_TIMEOUT_MS || 8000,
+);
 
 type JsonRpcRequest = {
   jsonrpc: "2.0";
@@ -111,19 +117,20 @@ export async function POST(req: NextRequest) {
     windowMs: WINDOW_MS,
   });
   if (!limit.allowed) {
-    return NextResponse.json(
+    return rateLimitedResponse(
       {
         error: "Rate limit exceeded",
         retryAfterMs: limit.retryAfterMs,
       },
-      { status: 429 },
+      limit.retryAfterMs,
     );
   }
 
-  const body = await req.text();
-  if (body.length > MAX_BODY_BYTES) {
+  const bodyResult = await readTextBodyWithLimit(req, MAX_BODY_BYTES);
+  if (!bodyResult.ok) {
     return NextResponse.json({ error: "Request too large" }, { status: 413 });
   }
+  const body = bodyResult.body;
 
   const rpcCheck = parseAndValidateRpc(body);
   if (!rpcCheck.ok) {
@@ -132,11 +139,26 @@ export async function POST(req: NextRequest) {
 
   const pimlicoUrl = `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${PIMLICO_API_KEY}`;
 
-  const upstream = await fetch(pimlicoUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body,
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetchWithTimeout(
+      pimlicoUrl,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      },
+      UPSTREAM_TIMEOUT_MS,
+    );
+  } catch (err) {
+    if (err instanceof UpstreamTimeoutError) {
+      return NextResponse.json({ error: "Upstream timeout" }, { status: 504 });
+    }
+    return NextResponse.json(
+      { error: "Upstream request failed" },
+      { status: 502 },
+    );
+  }
 
   const data = await upstream.text();
   return new NextResponse(data, {

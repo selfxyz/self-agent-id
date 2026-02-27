@@ -4,9 +4,11 @@
 // Exposes Self Agent ID tools for identity management, verification, and auth.
 
 import { z } from "zod";
-import { createMcpHandler } from "mcp-handler";
+import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { NETWORKS } from "@selfxyz/agent-sdk";
 import { loadMcpConfig } from "@/lib/mcp/config";
+import { toolError } from "@/lib/mcp/utils";
+import { hasPrivilegedScope, verifyMcpBearerToken } from "@/lib/mcp/authz";
 import {
   handleLookupAgent,
   handleListAgentsForHuman,
@@ -26,7 +28,41 @@ import {
   handleVerifyRequest,
 } from "@/lib/mcp/handlers/verify";
 
-const handler = createMcpHandler(
+type McpExtra = {
+  authInfo?: {
+    scopes?: string[];
+  };
+};
+
+function requirePrivilegedToolAccess(toolName: string, extra?: McpExtra) {
+  if (hasPrivilegedScope(extra?.authInfo)) return null;
+  return toolError(
+    `Tool "${toolName}" requires privileged MCP authorization. ` +
+      "Provide Authorization: Bearer <token>.",
+  );
+}
+
+function privilegedResourceError(uri: URL) {
+  return {
+    contents: [
+      {
+        uri: uri.href,
+        text: JSON.stringify(
+          {
+            error: true,
+            message:
+              "This MCP resource requires privileged authorization. " +
+              "Provide Authorization: Bearer <token>.",
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  };
+}
+
+const baseHandler = createMcpHandler(
   (server) => {
     const config = loadMcpConfig();
 
@@ -84,7 +120,11 @@ const handler = createMcpHandler(
           .default(config.network)
           .describe("Network to query"),
       },
-      async (args) => handleGetIdentity(args, config),
+      async (args, extra) => {
+        const denied = requirePrivilegedToolAccess("self_get_identity", extra);
+        if (denied) return denied;
+        return handleGetIdentity(args, config);
+      },
     );
 
     server.tool(
@@ -111,7 +151,14 @@ const handler = createMcpHandler(
           .default(config.network)
           .describe("Network to register on"),
       },
-      async (args) => handleRegisterAgent(args, config),
+      async (args, extra) => {
+        const denied = requirePrivilegedToolAccess(
+          "self_register_agent",
+          extra,
+        );
+        if (denied) return denied;
+        return handleRegisterAgent(args, config);
+      },
     );
 
     server.tool(
@@ -122,7 +169,14 @@ const handler = createMcpHandler(
           .string()
           .describe("The session_token returned from self_register_agent"),
       },
-      async (args) => handleCheckRegistration(args, config),
+      async (args, extra) => {
+        const denied = requirePrivilegedToolAccess(
+          "self_check_registration",
+          extra,
+        );
+        if (denied) return denied;
+        return handleCheckRegistration(args, config);
+      },
     );
 
     server.tool(
@@ -134,7 +188,14 @@ const handler = createMcpHandler(
           .default(config.network)
           .describe("Network to deregister from"),
       },
-      async (args) => handleDeregisterAgent(args, config),
+      async (args, extra) => {
+        const denied = requirePrivilegedToolAccess(
+          "self_deregister_agent",
+          extra,
+        );
+        if (denied) return denied;
+        return handleDeregisterAgent(args, config);
+      },
     );
 
     // ── Auth tools ──────────────────────────────────────────────────────
@@ -152,7 +213,11 @@ const handler = createMcpHandler(
           .optional()
           .describe("Optional request body (for POST/PUT)"),
       },
-      async (args) => handleSignRequest(args, config),
+      async (args, extra) => {
+        const denied = requirePrivilegedToolAccess("self_sign_request", extra);
+        if (denied) return denied;
+        return handleSignRequest(args, config);
+      },
     );
 
     server.tool(
@@ -172,7 +237,14 @@ const handler = createMcpHandler(
           .default("application/json")
           .describe("Content-Type header value"),
       },
-      async (args) => handleAuthenticatedFetch(args, config),
+      async (args, extra) => {
+        const denied = requirePrivilegedToolAccess(
+          "self_authenticated_fetch",
+          extra,
+        );
+        if (denied) return denied;
+        return handleAuthenticatedFetch(args, config);
+      },
     );
 
     // ── Verify tools ────────────────────────────────────────────────────
@@ -278,7 +350,10 @@ const handler = createMcpHandler(
           "On-chain identity of the configured agent (requires SELF_AGENT_PRIVATE_KEY).",
         mimeType: "application/json",
       },
-      async (uri) => {
+      async (uri, extra) => {
+        if (!hasPrivilegedScope(extra?.authInfo)) {
+          return privilegedResourceError(uri);
+        }
         if (!config.privateKey) {
           return {
             contents: [
@@ -435,5 +510,9 @@ Generate a complete ${framework} middleware that:
   {},
   { basePath: "/api", maxDuration: 60 },
 );
+
+const handler = withMcpAuth(baseHandler, verifyMcpBearerToken, {
+  required: false,
+});
 
 export { handler as GET, handler as POST, handler as DELETE };

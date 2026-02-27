@@ -107,6 +107,7 @@ describe("AA token route", () => {
       error: "Rate limit exceeded",
       retryAfterMs: 2000,
     });
+    expect(res.headers.get("Retry-After")).toBe("2");
   });
 
   it("returns 503 when token signing fails", async () => {
@@ -240,14 +241,41 @@ describe("AA bundler route", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.pimlico.io/v2/11142220/rpc?apikey=pimlico-test-key",
-      {
+      expect.objectContaining({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,
-      },
+        signal: expect.any(AbortSignal),
+      }),
     );
     expect(res.status).toBe(201);
     await expect(res.text()).resolves.toBe('{"upstream":"ok"}');
+  });
+
+  it("returns 504 when the bundler upstream times out", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        const err = new Error("aborted");
+        err.name = "AbortError";
+        throw err;
+      }),
+    );
+    const { POST } = await loadRoute("@/app/api/aa/bundler/route");
+    const res = await POST(
+      makeNextRequest("https://example.com/api/aa/bundler?chainId=42220", {
+        method: "POST",
+        headers: { "x-aa-proxy-token": "ok-token" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "eth_chainId",
+          params: [],
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(504);
+    expect(await jsonBody(res)).toEqual({ error: "Upstream timeout" });
   });
 
   it("returns 429 when bundler rate limit is exceeded", async () => {
@@ -274,18 +302,18 @@ describe("AA bundler route", () => {
       error: "Rate limit exceeded",
       retryAfterMs: 3000,
     });
+    expect(res.headers.get("Retry-After")).toBe("3");
   });
 
-  // SECURITY_GAP: Finding A2 — body.length uses character count, not byte count.
-  // Multi-byte characters can bypass the 200k limit. When hardened to use
-  // Buffer.byteLength, this test should fail and be updated.
-  it("enforces max body size by character count", async () => {
+  // SECURITY_FIX: Finding A2 — byte-based body limit enforcement is applied.
+  it("enforces max body size by UTF-8 bytes", async () => {
     const { POST } = await loadRoute("@/app/api/aa/bundler/route");
+    const oversizedByBytes = "é".repeat(150_000);
     const res = await POST(
       makeNextRequest("https://example.com/api/aa/bundler?chainId=42220", {
         method: "POST",
         headers: { "x-aa-proxy-token": "ok-token" },
-        body: "x".repeat(200001),
+        body: oversizedByBytes,
       }),
     );
 
@@ -493,14 +521,41 @@ describe("AA paymaster route", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.pimlico.io/v2/42220/rpc?apikey=pimlico-test-key",
-      {
+      expect.objectContaining({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,
-      },
+        signal: expect.any(AbortSignal),
+      }),
     );
     expect(res.status).toBe(200);
     await expect(res.text()).resolves.toBe('{"result":"ok"}');
+  });
+
+  it("returns 504 when the paymaster upstream times out", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        const err = new Error("aborted");
+        err.name = "AbortError";
+        throw err;
+      }),
+    );
+    const { POST } = await loadRoute("@/app/api/aa/paymaster/route");
+    const res = await POST(
+      makeNextRequest("https://example.com/api/aa/paymaster?chainId=42220", {
+        method: "POST",
+        headers: { "x-aa-proxy-token": "ok-token" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "pm_getPaymasterData",
+          params: [],
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(504);
+    expect(await jsonBody(res)).toEqual({ error: "Upstream timeout" });
   });
 
   it("returns 503 when Pimlico key is missing", async () => {
@@ -574,5 +629,6 @@ describe("AA paymaster route", () => {
       error: "Rate limit exceeded",
       retryAfterMs: 4000,
     });
+    expect(res.headers.get("Retry-After")).toBe("4");
   });
 });
