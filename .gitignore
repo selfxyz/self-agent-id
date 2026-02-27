@@ -47,3 +47,6 @@ docs
 # Yarn PnP
 .pnp.cjs
 .pnp.loader.mjs
+
+# Override global gitignore for repo config files
+!eslint.config.mjs
