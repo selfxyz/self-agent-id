@@ -4,12 +4,12 @@ import { ethers } from "ethers";
 import {
   SelfAgentVerifier,
   NETWORKS,
-  REGISTRY_ABI,
   isProofExpiringSoon,
 } from "@selfxyz/agent-sdk";
 import type { McpConfig } from "../config";
 import { toolError, toolSuccess } from "../utils";
 
+import { typedRegistry } from "@/lib/contract-types";
 interface VerifyAgentArgs {
   agent_address: string;
   network?: "mainnet" | "testnet";
@@ -46,11 +46,7 @@ export async function handleVerifyAgent(
     const registryAddress = networkConfig.registryAddress;
 
     const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const registry = new ethers.Contract(
-      registryAddress,
-      REGISTRY_ABI,
-      provider,
-    );
+    const registry = typedRegistry(registryAddress, provider);
 
     const agentKey = ethers.zeroPadValue(agent_address, 32);
     const isVerified: boolean = await registry.isVerifiedAgent(agentKey);

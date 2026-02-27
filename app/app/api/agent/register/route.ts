@@ -28,7 +28,6 @@ import {
   jsonResponse,
   errorResponse,
   corsResponse,
-  type ApiNetwork,
 } from "@/lib/agent-api-helpers";
 import { checkRateLimit } from "@/lib/rateLimit";
 
@@ -254,6 +253,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function OPTIONS() {
+export function OPTIONS() {
   return corsResponse();
 }

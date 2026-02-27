@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import {
   CORS_HEADERS,
   corsResponse,
@@ -48,6 +48,6 @@ export async function GET(
   });
 }
 
-export async function OPTIONS() {
+export function OPTIONS() {
   return corsResponse();
 }

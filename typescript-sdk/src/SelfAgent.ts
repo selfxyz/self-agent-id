@@ -3,13 +3,7 @@
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
 import { ethers } from "ethers";
-import {
-  REGISTRY_ABI,
-  PROVIDER_ABI,
-  HEADERS,
-  NETWORKS,
-  DEFAULT_NETWORK,
-} from "./constants";
+import { HEADERS, NETWORKS, DEFAULT_NETWORK } from "./constants";
 import type { NetworkName } from "./constants";
 import type { A2AAgentCard, AgentSkill } from "./agentCard";
 import { buildAgentCard } from "./agentCard";
@@ -17,7 +11,6 @@ import { computeSigningMessage } from "./signing";
 import type {
   RegistrationRequest,
   RegistrationSession,
-  DeregistrationRequest,
   DeregistrationSession,
   ApiAgentInfo,
   ApiAgentsForHuman,
@@ -29,6 +22,11 @@ import {
   getAgentsForHuman as _getAgentsForHuman,
 } from "./registration-flow";
 
+import {
+  typedProvider,
+  typedRegistry,
+  type TypedRegistryContract,
+} from "./contract-types";
 export interface SelfAgentConfig {
   /** Agent's private key (hex, with or without 0x). Required unless signer is provided. */
   privateKey?: string;
@@ -74,7 +72,7 @@ export interface AgentInfo {
  */
 export class SelfAgent {
   private wallet: ethers.Signer & { address: string };
-  private registry: ethers.Contract;
+  private registry: TypedRegistryContract;
   private _agentKey: string;
 
   constructor(config: SelfAgentConfig) {
@@ -86,14 +84,13 @@ export class SelfAgent {
     const provider = new ethers.JsonRpcProvider(config.rpcUrl ?? net.rpcUrl);
 
     if (config.signer) {
-      this.wallet = config.signer;
+      this.wallet = config.signer as ethers.Signer & { address: string };
     } else {
       this.wallet = new ethers.Wallet(config.privateKey!, provider);
     }
 
-    this.registry = new ethers.Contract(
+    this.registry = typedRegistry(
       config.registryAddress ?? net.registryAddress,
-      REGISTRY_ABI,
       provider,
     );
     // Agent key = address zero-padded to 32 bytes (matches on-chain derivation)
@@ -130,8 +127,8 @@ export class SelfAgent {
     }
 
     const [isVerified, nullifier] = await Promise.all([
-      this.registry.hasHumanProof(agentId) as Promise<boolean>,
-      this.registry.getHumanNullifier(agentId) as Promise<bigint>,
+      this.registry.hasHumanProof(agentId),
+      this.registry.getHumanNullifier(agentId),
     ]);
 
     const agentCount: bigint =
@@ -232,11 +229,7 @@ export class SelfAgent {
     if (!providerAddr || providerAddr === ethers.ZeroAddress) {
       throw new Error("Agent has no proof provider — cannot build card");
     }
-    const provider = new ethers.Contract(
-      providerAddr,
-      PROVIDER_ABI,
-      this.registry.runner,
-    );
+    const provider = typedProvider(providerAddr, this.registry.runner!);
 
     const card = await buildAgentCard(
       Number(agentId),
@@ -271,7 +264,9 @@ export class SelfAgent {
     if (agentId === 0n) return undefined;
 
     try {
-      return await this.registry.getAgentCredentials(agentId);
+      return (await this.registry.getAgentCredentials(
+        agentId,
+      )) as unknown as Record<string, unknown>;
     } catch {
       return undefined;
     }
@@ -285,11 +280,7 @@ export class SelfAgent {
     const providerAddr: string = await this.registry.getProofProvider(agentId);
     if (providerAddr === ethers.ZeroAddress) return 0;
 
-    const provider = new ethers.Contract(
-      providerAddr,
-      PROVIDER_ABI,
-      this.registry.runner,
-    );
+    const provider = typedProvider(providerAddr, this.registry.runner!);
     const strength: number = await provider.verificationStrength();
     return Number(strength);
   }

@@ -3,7 +3,12 @@
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
 import { http } from "@google-cloud/functions-framework";
-import { SelfAgent, SelfAgentVerifier, HEADERS } from "@selfxyz/agent-sdk";
+import {
+  SelfAgent,
+  SelfAgentVerifier,
+  HEADERS,
+  typedRegistry,
+} from "@selfxyz/agent-sdk";
 import { ethers } from "ethers";
 
 const REGISTRY = process.env.REGISTRY_ADDRESS!;
@@ -120,18 +125,10 @@ http("demoAgent", async (req, res) => {
   });
 
   const provider = new ethers.JsonRpcProvider(RPC);
-  const registry = new ethers.Contract(
-    REGISTRY,
-    [
-      "function getAgentId(bytes32) view returns (uint256)",
-      "function sameHuman(uint256, uint256) view returns (bool)",
-      "function isVerifiedAgent(bytes32) view returns (bool)",
-    ],
-    provider,
-  );
+  const registry = typedRegistry(REGISTRY, provider);
 
   const demoKey = ethers.zeroPadValue(demoAgent.address, 32);
-  const callerKey = verifyResult.agentKey!;
+  const callerKey = verifyResult.agentKey;
 
   const [demoVerified, demoId, callerId, callerVerified] = await Promise.all([
     registry.isVerifiedAgent(demoKey),

@@ -4,11 +4,7 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
-import {
-  REGISTRY_ABI,
-  PROVIDER_ABI,
-  getProviderLabel,
-} from "@selfxyz/agent-sdk";
+import { getProviderLabel } from "@selfxyz/agent-sdk";
 import { CHAIN_CONFIG } from "@/lib/chain-config";
 import {
   CORS_HEADERS,
@@ -17,6 +13,7 @@ import {
   validateAgentId,
 } from "@/lib/api-helpers";
 
+import { typedProvider, typedRegistry } from "@/lib/contract-types";
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ chainId: string; agentId: string }> },
@@ -30,15 +27,15 @@ export async function GET(
 
   try {
     const rpc = new ethers.JsonRpcProvider(config.rpc);
-    const registry = new ethers.Contract(config.registry, REGISTRY_ABI, rpc);
+    const registry = typedRegistry(config.registry, rpc);
 
     // Fetch verification data in parallel
     const [hasProof, providerAddr, nullifier, selfProvider] = await Promise.all(
       [
-        registry.hasHumanProof(id) as Promise<boolean>,
-        registry.getProofProvider(id) as Promise<string>,
-        registry.getHumanNullifier(id) as Promise<bigint>,
-        registry.selfProofProvider() as Promise<string>,
+        registry.hasHumanProof(id),
+        registry.getProofProvider(id),
+        registry.getHumanNullifier(id),
+        registry.selfProofProvider(),
       ],
     );
 
@@ -60,11 +57,11 @@ export async function GET(
     }
 
     // Fetch provider strength and agent count in parallel
-    const provider = new ethers.Contract(providerAddr, PROVIDER_ABI, rpc);
+    const provider = typedProvider(providerAddr, rpc);
     const [strength, agentCount] = await Promise.all([
-      provider.verificationStrength() as Promise<number>,
+      provider.verificationStrength(),
       nullifier !== 0n
-        ? (registry.getAgentCountForHuman(nullifier) as Promise<bigint>)
+        ? registry.getAgentCountForHuman(nullifier)
         : Promise.resolve(0n),
     ]);
 
@@ -98,6 +95,6 @@ export async function GET(
   }
 }
 
-export async function OPTIONS() {
+export function OPTIONS() {
   return corsResponse();
 }

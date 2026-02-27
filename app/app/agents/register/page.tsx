@@ -28,7 +28,7 @@ import {
   Bot,
 } from "lucide-react";
 import { connectWallet } from "@/lib/wallet";
-import { REGISTRY_ABI, PROVIDER_ABI } from "@/lib/constants";
+import {} from "@/lib/constants";
 import { useNetwork } from "@/lib/NetworkContext";
 import { getAgentSnippets, AGENT_FEATURES } from "@/lib/snippets";
 import CodeBlock from "@/components/CodeBlock";
@@ -39,6 +39,7 @@ import { isPasskeySupported, createPasskeyWallet } from "@/lib/aa";
 import { savePasskey } from "@/lib/passkey-storage";
 import { saveAgentPrivateKey } from "@/lib/agentKeyVault";
 
+import { typedProvider, typedRegistry } from "@/lib/contract-types";
 // Dynamic import to avoid SSR issues with Self QR SDK
 const SelfQRcodeWrapper = dynamic(
   () => import("@selfxyz/qrcode").then((mod) => mod.SelfQRcodeWrapper),
@@ -143,19 +144,21 @@ export default function RegisterPage() {
       mode === "simple" ? walletAddress : agentWallet?.address;
     if (!addressToCheck) return;
 
-    const interval = setInterval(async () => {
-      try {
-        const registered = await checkIfRegistered(addressToCheck);
-        if (registered) {
-          console.log(
-            "[on-chain poll] Agent registered on-chain, triggering success",
-          );
-          clearInterval(interval);
-          handleSuccess();
+    const interval = setInterval(() => {
+      void (async () => {
+        try {
+          const registered = await checkIfRegistered(addressToCheck);
+          if (registered) {
+            console.log(
+              "[on-chain poll] Agent registered on-chain, triggering success",
+            );
+            clearInterval(interval);
+            handleSuccess();
+          }
+        } catch (err) {
+          console.warn("[on-chain poll] Check failed:", err);
         }
-      } catch (err) {
-        console.warn("[on-chain poll] Check failed:", err);
-      }
+      })();
     }, 5000); // poll every 5 seconds
 
     return () => clearInterval(interval);
@@ -185,11 +188,7 @@ export default function RegisterPage() {
   const checkIfRegistered = async (address: string): Promise<boolean> => {
     try {
       const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-      const registry = new ethers.Contract(
-        network.registryAddress,
-        REGISTRY_ABI,
-        provider,
-      );
+      const registry = typedRegistry(network.registryAddress, provider);
       const agentKey = ethers.zeroPadValue(address, 32);
       const isVerified = await registry.isVerifiedAgent(agentKey);
       return isVerified;
@@ -230,11 +229,7 @@ export default function RegisterPage() {
     // Read per-agent nonce from registry to prevent signature replay attacks.
     // New agents have nonce = 0; nonce increments on each successful registration.
     const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-    const registry = new ethers.Contract(
-      network.registryAddress,
-      ["function agentNonces(address) view returns (uint256)"],
-      provider,
-    );
+    const registry = typedRegistry(network.registryAddress, provider);
     const nonce: bigint = await registry.agentNonces(newWallet.address);
 
     // Challenge format matches _verifyAgentSignature in SelfAgentRegistry:
@@ -405,11 +400,7 @@ export default function RegisterPage() {
       const agentKey = ethers.zeroPadValue(agentAddress, 32);
 
       const provider = new ethers.BrowserProvider(window.ethereum!);
-      const registry = new ethers.Contract(
-        network.registryAddress,
-        REGISTRY_ABI,
-        provider,
-      );
+      const registry = typedRegistry(network.registryAddress, provider);
 
       const agentId: bigint = await registry.getAgentId(agentKey);
       if (agentId === 0n) {
@@ -422,7 +413,7 @@ export default function RegisterPage() {
       let resolvedVerificationStrength: number | null = null;
       const providerAddr: string = await registry.agentProofProvider(agentId);
       if (providerAddr && providerAddr !== ethers.ZeroAddress) {
-        const prov = new ethers.Contract(providerAddr, PROVIDER_ABI, provider);
+        const prov = typedProvider(providerAddr, provider);
         const strength: number = await prov.verificationStrength();
         resolvedVerificationStrength = Number(strength);
         setVerificationStrength(resolvedVerificationStrength);
@@ -478,11 +469,7 @@ export default function RegisterPage() {
 
       // Write on-chain
       const signer = await provider.getSigner();
-      const registryWrite = new ethers.Contract(
-        network.registryAddress,
-        REGISTRY_ABI,
-        signer,
-      );
+      const registryWrite = typedRegistry(network.registryAddress, signer);
       const tx = await registryWrite.updateAgentMetadata(
         agentId,
         JSON.stringify(card),
@@ -526,7 +513,7 @@ export default function RegisterPage() {
   };
 
   const copyToClipboard = (text: string, field: string) => {
-    navigator.clipboard.writeText(text);
+    void navigator.clipboard.writeText(text);
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
   };
@@ -936,13 +923,17 @@ export default function RegisterPage() {
           </Card>
 
           {mode === "walletfree" ? (
-            <Button onClick={handleWalletFreeStart} variant="primary" size="lg">
+            <Button
+              onClick={() => void handleWalletFreeStart()}
+              variant="primary"
+              size="lg"
+            >
               <Smartphone size={18} />
               Generate Agent &amp; Scan Passport
             </Button>
           ) : mode === "smartwallet" ? (
             <Button
-              onClick={handleSmartWalletStart}
+              onClick={() => void handleSmartWalletStart()}
               variant="primary"
               size="lg"
               disabled={loading}
@@ -1033,7 +1024,11 @@ export default function RegisterPage() {
                   ? "Connect your browser wallet (MetaMask, etc.). Your wallet address will become your agent\u2019s on-chain identity."
                   : "Connect your browser wallet (MetaMask, etc.). A new agent keypair will be generated and linked to your wallet."}
               </p>
-              <Button onClick={handleConnect} variant="primary" size="lg">
+              <Button
+                onClick={() => void handleConnect()}
+                variant="primary"
+                size="lg"
+              >
                 <Wallet size={18} />
                 Connect Wallet
               </Button>
@@ -1073,7 +1068,7 @@ export default function RegisterPage() {
               <p className="text-sm text-muted">
                 Wallet connected but Self SDK is loading...
               </p>
-              <Button onClick={handleConnect} variant="primary">
+              <Button onClick={() => void handleConnect()} variant="primary">
                 Retry
               </Button>
             </>
@@ -1304,7 +1299,10 @@ export default function RegisterPage() {
               </span>
             </div>
             {cardStep === "pending" && (
-              <Button className="mt-3 w-full" onClick={() => writeAgentCard()}>
+              <Button
+                className="mt-3 w-full"
+                onClick={() => void writeAgentCard()}
+              >
                 Set Agent Card (on-chain)
               </Button>
             )}

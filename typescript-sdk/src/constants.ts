@@ -20,6 +20,7 @@ export const REGISTRY_ABI = [
   "function agentRegisteredAt(uint256 agentId) view returns (uint256)",
   // ERC-8004: proof expiry
   "function proofExpiresAt(uint256 agentId) view returns (uint256)",
+  "function isProofFresh(uint256 agentId) view returns (bool)",
 ] as const;
 
 /** ABI for IHumanProofProvider — used to query provider metadata */

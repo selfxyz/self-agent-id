@@ -1,111 +1,137 @@
 # ESLint 9 + Prettier for TypeScript — Implementation Status
 
 Branch: `justin/add-ts-linting-prettier`
-Last updated: 2025-02-25
+Last updated: 2026-02-26
 
 ## Scope
 
-TypeScript only (`app/`, `typescript-sdk/`, `functions/`). No Python/Rust/Solidity/Shell.
+TypeScript only (`app/`, `typescript-sdk/`, `functions/`). Python/Rust/Solidity planned for a future PR.
 
 ---
 
-## What's Done
+## Current Status
 
-### Config files created at root
+| Check                           | Result                 |
+| ------------------------------- | ---------------------- |
+| `npx eslint .`                  | 0 errors, 247 warnings |
+| `npx prettier --check .`        | All files pass         |
+| `cd app && npm run build`       | Next.js build succeeds |
+| `cd app && npm test`            | 205/205 pass           |
+| `cd typescript-sdk && npm test` | 84/84 pass             |
 
-| File | Purpose |
-|---|---|
-| `package.json` | Shared devDeps: eslint 9, typescript-eslint 8, prettier 3, react plugins |
+### Warning breakdown (247 total — all `no-unsafe-*`)
+
+| Rule                      | Count |
+| ------------------------- | ----- |
+| `no-unsafe-member-access` | 109   |
+| `no-unsafe-assignment`    | 62    |
+| `no-unsafe-argument`      | 37    |
+| `no-unsafe-call`          | 32    |
+| `no-unsafe-return`        | 7     |
+
+All remaining warnings are `no-unsafe-*` from typed contract return values and REST API response parsing in the app layer. These will be resolved as the codebase is incrementally typed.
+
+---
+
+## What Was Done
+
+### Phase 0: Config setup (prior work)
+
+| File                | Purpose                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------- |
+| `package.json`      | Shared devDeps: eslint 9, typescript-eslint 8, prettier 3, react plugins              |
 | `eslint.config.mjs` | Flat config with `recommendedTypeChecked`, React overlay for `.tsx`, test relaxations |
-| `.prettierrc` | Codifies existing style (double quotes, semis, 2-space indent, trailing commas) |
-| `.prettierignore` | Excludes contracts/, python-sdk/, rust-sdk/, lock files, binaries |
-| `.editorconfig` | 2-space indent, UTF-8, LF, trailing newline |
+| `.prettierrc`       | Codifies existing style (double quotes, semis, 2-space indent, trailing commas)       |
+| `.prettierignore`   | Excludes contracts/, python-sdk/, rust-sdk/, lock files, binaries                     |
+| `.editorconfig`     | 2-space indent, UTF-8, LF, trailing newline                                           |
 
-### Changes to existing files
+### Phase 1: Fix warnings (1063 → 247)
 
-- `app/package.json` — removed `eslint` + `eslint-config-next` devDeps, removed `"lint": "next lint"` script
-- `app/.eslintrc.json` — deleted (replaced by root flat config)
-- 10 files — removed stale `{/* eslint-disable-next-line @next/next/no-img-element */}` comments
+**Rules fixed to zero (now promoted to `error`):**
 
-### Auto-fixes applied
+| Rule                             | Was | Fix approach                                            |
+| -------------------------------- | --- | ------------------------------------------------------- |
+| `no-unused-vars`                 | 10  | Removed/prefixed with `_`                               |
+| `require-await`                  | 63  | Removed `async` from 15 OPTIONS route handlers + others |
+| `no-floating-promises`           | 120 | Script-automated `void` prefix; test override           |
+| `no-misused-promises`            | 24  | Script-automated handler wrapping + manual fixes        |
+| `no-redundant-type-constituents` | 7   | Changed to `(string & {})` pattern                      |
+| `restrict-template-expressions`  | 1   | Wrapped with `String()`                                 |
+| `prefer-promise-reject-errors`   | 1   | Used `new Error()`                                      |
+| `unbound-method`                 | 3   | Test override                                           |
 
-- `eslint --fix` — `consistent-type-imports` (56), `no-unnecessary-type-assertion` (17), `no-import-type-side-effects` (1)
-- `prettier --write .` — formatted all TS/JSON/MD files
+**`no-unsafe-*` reduction (830 → 247):**
 
-### Verification (all pass)
+- Created typed contract interfaces (`TypedRegistryContract`, `TypedProviderContract`, etc.) in `typescript-sdk/src/contract-types.ts` and `app/lib/contract-types.ts`
+- Added `typedRegistry()`, `typedProvider()`, `typedDemoVerifier()`, `typedGate()` helper constructors
+- Replaced 38 `new ethers.Contract(...)` calls with typed helpers across all packages
+- Removed unnecessary `as Promise<>` type assertions
+- Removed numeric index fallbacks on typed `AgentCredentials`
 
-| Check | Result |
-|---|---|
-| `npx eslint .` | 0 errors, 1367 warnings |
-| `npx prettier --check .` | All files pass |
-| `cd app && npm run build` | Next.js build succeeds |
-| `cd app && npm test` | 205/205 pass |
-| `cd typescript-sdk && npm test` | Pre-existing type errors (unrelated to linting changes) |
+### Phase 2: Re-enable `.well-known/`
 
----
-
-## Current Warning Breakdown (1367 total)
-
-All set to `"warn"` in `eslint.config.mjs`. To be promoted to `"error"` as the codebase improves.
-
-| Rule | Count | Root cause |
-|---|---|---|
-| `no-unsafe-member-access` | 558 | Untyped ethers contract return values |
-| `no-unsafe-assignment` | 357 | `any` propagation from contract calls and SDK imports |
-| `no-unsafe-call` | 247 | Calling methods on `any`-typed values |
-| `require-await` | 64 | `async` functions that don't `await` anything |
-| `no-unsafe-argument` | 59 | Passing `any` to typed parameters |
-| `no-unsafe-return` | 25 | Returning `any` from typed functions |
-| `no-misused-promises` | 23 | Async functions in React event handlers (`onClick={async () => ...}`) |
-| `no-floating-promises` | 11 | Unhandled promise return values |
-| `no-unused-vars` | 10 | Assigned but unused variables |
-| `no-redundant-type-constituents` | 8 | Redundant union/intersection members |
-| `restrict-template-expressions` | 1 | Unsafe value in template literal |
-| `prefer-promise-reject-errors` | 1 | Rejecting with non-Error value |
-
----
-
-## Remaining Work
-
-### Phase 1: Fix warnings, promote to errors
-
-The bulk (1246) are `no-unsafe-*` from untyped contract/SDK responses. Fix by:
-
-1. **Type ethers contract calls** — define return types for `contract.isVerifiedAgent()`, `contract.getAgentCredentials()`, etc. instead of relying on `any`. This is the biggest win and overlaps with the API security refactor.
-2. **Type Self SDK dynamic imports** — `SelfAppBuilder`, `SelfQRcodeWrapper` produce `any` via `import().then()`
-3. **Fix `require-await` (64)** — remove `async` keyword from functions that don't `await`, or add the missing `await`
-4. **Fix `no-misused-promises` (23)** — wrap async React event handlers: `onClick={() => void handleClick()}` or extract to named handler
-5. **Fix `no-floating-promises` (11)** — add `void` operator or `.catch()` to fire-and-forget promises
-6. **Fix `no-unused-vars` (10)** — prefix with `_` or remove
-
-Once a package is clean, flip its warnings to errors via override in `eslint.config.mjs`.
-
-### Phase 2: Re-enable ignored paths
-
-- **`app/app/.well-known/`** — ignored because `[agentId]` brackets in directory names confuse `projectService`. Revisit after typescript-eslint update or restructure those routes.
-- **`@next/eslint-plugin-next`** — dropped because flat config support is unreliable with Next 14. Re-add when upgrading to Next 15.
+- Removed from global ignores in `eslint.config.mjs`
+- Added targeted `disableTypeChecked` override (bracket paths not found by TS project service)
+- Fixed `consistent-type-imports` error and removed unnecessary `async`
+- `@next/eslint-plugin-next` remains deferred until Next 15 upgrade
 
 ### Phase 3: CI integration
 
-- Add `npm run lint` and `npm run format:check` to CI pipeline
-- Add `--max-warnings 0` once all warnings are resolved
+- Created `.github/workflows/lint.yml` with TypeScript lint & format job
+- Runs `prettier --check .` and `eslint .` on PRs to main
+
+---
+
+## Rules Summary
+
+### Errors (enforced — zero violations)
+
+| Rule                             | Scope        |
+| -------------------------------- | ------------ |
+| `consistent-type-imports`        | All TS files |
+| `no-import-type-side-effects`    | All TS files |
+| `no-require-imports`             | All TS files |
+| `require-await`                  | All TS files |
+| `no-floating-promises`           | All TS files |
+| `no-misused-promises`            | All TS files |
+| `no-redundant-type-constituents` | All TS files |
+| `unbound-method`                 | All TS files |
+| `restrict-template-expressions`  | All TS files |
+| `prefer-promise-reject-errors`   | All TS files |
+| `prefer-const`                   | All TS files |
+
+### Warnings (to be promoted as violations reach zero)
+
+| Rule                      | Count | Root cause                               |
+| ------------------------- | ----- | ---------------------------------------- |
+| `no-unsafe-member-access` | 109   | Untyped REST API / SDK response parsing  |
+| `no-unsafe-assignment`    | 62    | `any` propagation from API responses     |
+| `no-unsafe-argument`      | 37    | Passing `any` to typed parameters        |
+| `no-unsafe-call`          | 32    | Calling methods on `any`-typed values    |
+| `no-unsafe-return`        | 7     | Returning `any` from typed functions     |
+| `no-explicit-any`         | warn  | Gradual typing in progress               |
+| `ban-ts-comment`          | warn  | Some legitimate `@ts-expect-error` usage |
+
+### Test file overrides (relaxed)
+
+Tests (`**/*.test.ts`, `**/*.spec.ts`) disable: `no-explicit-any`, `no-unsafe-*`, `require-await`, `no-floating-promises`, `await-thenable`, `unbound-method`.
 
 ---
 
 ## ESLint Config Design Decisions
 
-| Decision | Rationale |
-|---|---|
+| Decision                                          | Rationale                                                                                     |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `recommendedTypeChecked` (not just `recommended`) | Catches real bugs (`no-floating-promises`, `no-misused-promises`), worth the slower first run |
-| `projectService: true` | Auto-discovers each package's tsconfig, no manual per-package config |
-| `no-unsafe-*` as warn (not error) | Codebase has ~1200 `any` usages, blocking on these would prevent adoption |
-| `consistent-type-imports` as error | Auto-fixable, enforces clean import hygiene going forward |
-| `disallowTypeAnnotations: false` | Allows `import("module").Type` syntax which can't be auto-fixed |
-| `allowEmptyCatch: true` | Codebase uses intentional empty catches for optional contract reads |
-| `no-control-regex: off` | Binary data parsing uses control characters in regexes intentionally |
-| React rules scoped to `app/**/*.tsx` only | Avoids false positives in non-React packages |
-| Test files relax `no-unsafe-*` to off | Tests legitimately use `any` for mocking |
-| `.well-known/` in global ignores | Bracket notation in Next.js dynamic routes breaks `projectService` |
+| `projectService: true`                            | Auto-discovers each package's tsconfig, no manual per-package config                          |
+| `no-unsafe-*` as warn (not error)                 | 247 remaining violations, blocking on these would prevent adoption                            |
+| `consistent-type-imports` as error                | Auto-fixable, enforces clean import hygiene going forward                                     |
+| `disallowTypeAnnotations: false`                  | Allows `import("module").Type` syntax which can't be auto-fixed                               |
+| `allowEmptyCatch: true`                           | Codebase uses intentional empty catches for optional contract reads                           |
+| `no-control-regex: off`                           | Binary data parsing uses control characters in regexes intentionally                          |
+| React rules scoped to `app/**/*.tsx` only         | Avoids false positives in non-React packages                                                  |
+| Test files relax `no-unsafe-*` to off             | Tests legitimately use `any` for mocking                                                      |
+| `.well-known/` uses `disableTypeChecked`          | Bracket notation in Next.js dynamic routes breaks `projectService`                            |
 
 ---
 
@@ -118,3 +144,25 @@ npm run lint:fix      # eslint . --fix
 npm run format        # prettier --write .
 npm run format:check  # prettier --check .
 ```
+
+---
+
+## Files Created/Modified
+
+### New files
+
+| File                                   | Purpose                                     |
+| -------------------------------------- | ------------------------------------------- |
+| `typescript-sdk/src/contract-types.ts` | Typed contract interfaces + helper fns      |
+| `app/lib/contract-types.ts`            | App-layer typed contract interfaces         |
+| `.github/workflows/lint.yml`           | CI lint & format pipeline                   |
+| `scripts/fix-lint-warnings.mjs`        | Automated void/handler wrapping             |
+| `scripts/apply-typed-contracts.mjs`    | Automated Contract → typed helper migration |
+
+### Key modified files
+
+- `eslint.config.mjs` — test overrides, .well-known override, rule promotions
+- `typescript-sdk/src/constants.ts` — added `isProofFresh` to REGISTRY_ABI
+- `app/lib/constants.ts` — added missing methods to app REGISTRY_ABI
+- `typescript-sdk/src/index.ts` — exported typed contract helpers
+- ~30 route/page files — typed contracts, void wrappers, handler fixes

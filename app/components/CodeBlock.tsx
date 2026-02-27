@@ -36,7 +36,7 @@ export default function CodeBlock({ tabs }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(tabs[activeTab].code);
+    void navigator.clipboard.writeText(tabs[activeTab].code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

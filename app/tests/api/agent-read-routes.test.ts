@@ -53,6 +53,13 @@ function installCommonMocks() {
       ZeroAddress: "0x0000000000000000000000000000000000000000",
     },
   }));
+
+  vi.doMock("@/lib/contract-types", () => ({
+    typedRegistry: (_addr: string, _runner: unknown) => mockContract(),
+    typedProvider: (_addr: string, _runner: unknown) => mockContract(),
+    typedDemoVerifier: (_addr: string, _runner: unknown) => mockContract(),
+    typedGate: (_addr: string, _runner: unknown) => mockContract(),
+  }));
 }
 
 function setDefaultMocks() {
@@ -140,20 +147,17 @@ describe("agent info route", () => {
   });
 
   it("returns 404 when agent key is zero hash", async () => {
-    mockContract
-      .mockImplementationOnce(() => ({
-        hasHumanProof: vi.fn(),
-        getProofProvider: vi.fn(),
-        agentRegisteredAt: vi.fn(),
-        getAgentCredentials: vi.fn(),
-      }))
-      .mockImplementationOnce(() => ({
-        agentIdToAgentKey: vi
-          .fn()
-          .mockResolvedValue(
-            "0x0000000000000000000000000000000000000000000000000000000000000000",
-          ),
-      }));
+    mockContract.mockImplementationOnce(() => ({
+      agentIdToAgentKey: vi
+        .fn()
+        .mockResolvedValue(
+          "0x0000000000000000000000000000000000000000000000000000000000000000",
+        ),
+      hasHumanProof: vi.fn(),
+      getProofProvider: vi.fn(),
+      agentRegisteredAt: vi.fn(),
+      getAgentCredentials: vi.fn(),
+    }));
 
     const { GET } = await loadInfoRoute();
     const res = await GET(makeNextRequest("https://example.com"), {
@@ -166,6 +170,11 @@ describe("agent info route", () => {
   it("returns on-chain info for a verified agent", async () => {
     mockContract
       .mockImplementationOnce(() => ({
+        agentIdToAgentKey: vi
+          .fn()
+          .mockResolvedValue(
+            "0x0000000000000000000000001111111111111111111111111111111111111111",
+          ),
         hasHumanProof: vi.fn().mockResolvedValue(true),
         getProofProvider: vi.fn().mockResolvedValue("0xprovider"),
         agentRegisteredAt: vi.fn().mockResolvedValue(1234n),
@@ -174,13 +183,6 @@ describe("agent info route", () => {
           olderThan: 21n,
           ofac: [true, false, true],
         }),
-      }))
-      .mockImplementationOnce(() => ({
-        agentIdToAgentKey: vi
-          .fn()
-          .mockResolvedValue(
-            "0x0000000000000000000000001111111111111111111111111111111111111111",
-          ),
       }))
       .mockImplementationOnce(() => ({
         verificationStrength: vi.fn().mockResolvedValue(3),

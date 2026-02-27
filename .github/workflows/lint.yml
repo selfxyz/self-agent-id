@@ -1,0 +1,38 @@
+name: Lint & Format
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  typescript:
+    name: TypeScript Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install app dependencies
+        run: npm ci
+        working-directory: app
+
+      - name: Install SDK dependencies
+        run: npm ci
+        working-directory: typescript-sdk
+
+      - name: Install functions dependencies
+        run: npm ci
+        working-directory: functions
+
+      - name: Check formatting
+        run: npx prettier --check .
+
+      - name: Lint
+        run: npx eslint .

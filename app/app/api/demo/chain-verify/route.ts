@@ -5,11 +5,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { HEADERS } from "@selfxyz/agent-sdk";
-import { AGENT_DEMO_VERIFIER_ABI, REGISTRY_ABI } from "@/lib/constants";
+import {} from "@/lib/constants";
 import { getNetwork, NETWORKS, type NetworkId } from "@/lib/network";
 import { getCachedVerifier } from "@/lib/selfVerifier";
 import { checkAndRecordReplay } from "@/lib/replayGuard";
 
+import { typedDemoVerifier, typedRegistry } from "@/lib/contract-types";
 const RELAYER_PK = process.env.RELAYER_PRIVATE_KEY;
 
 // ---------------------------------------------------------------------------
@@ -112,16 +113,11 @@ export async function POST(req: NextRequest) {
   // 4. Set up provider + contracts
   const provider = new ethers.JsonRpcProvider(network.rpcUrl);
   const relayerWallet = new ethers.Wallet(RELAYER_PK, provider);
-  const contract = new ethers.Contract(
+  const contract = typedDemoVerifier(
     network.agentDemoVerifierAddress,
-    AGENT_DEMO_VERIFIER_ABI,
     relayerWallet,
   );
-  const registryContract = new ethers.Contract(
-    network.registryAddress,
-    REGISTRY_ABI,
-    provider,
-  );
+  const registryContract = typedRegistry(network.registryAddress, provider);
 
   // 6. Simulate via staticCall — the CONTRACT verifies the agent on-chain:
   //    ecrecover(EIP-712 digest) → derive agentKey → isVerifiedAgent(agentKey)
@@ -129,8 +125,8 @@ export async function POST(req: NextRequest) {
   try {
     await contract.metaVerifyAgent.staticCall(
       agentKey,
-      nonce,
-      deadline,
+      BigInt(nonce),
+      BigInt(deadline),
       eip712Signature,
     );
   } catch (simErr) {
@@ -217,8 +213,8 @@ export async function POST(req: NextRequest) {
   try {
     const tx = await contract.metaVerifyAgent(
       agentKey,
-      nonce,
-      deadline,
+      BigInt(nonce),
+      BigInt(deadline),
       eip712Signature,
     );
     txHash = tx.hash;
@@ -230,6 +226,14 @@ export async function POST(req: NextRequest) {
         setTimeout(() => reject(new Error("TIMEOUT")), 8_000),
       ),
     ]);
+
+    if (!receipt) {
+      return NextResponse.json({
+        txHash,
+        status: "pending",
+        message: "Transaction submitted but receipt not available yet",
+      });
+    }
 
     // Read counters after tx
     const [verCount, totalCount] = await Promise.all([

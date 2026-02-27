@@ -18,9 +18,10 @@ import {
   corsResponse,
   type ApiNetwork,
 } from "@/lib/agent-api-helpers";
-import { REGISTRY_ABI } from "@/lib/constants";
+import {} from "@/lib/constants";
 import { ethers } from "ethers";
 
+import { typedRegistry } from "@/lib/contract-types";
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token");
   if (!token) {
@@ -72,11 +73,7 @@ export async function GET(req: NextRequest) {
       let credentials = null;
       try {
         const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
-        const registry = new ethers.Contract(
-          networkConfig.registryAddress,
-          REGISTRY_ABI,
-          provider,
-        );
+        const registry = typedRegistry(networkConfig.registryAddress, provider);
         const rawCreds = await registry.getAgentCredentials(agentId);
         credentials = {
           nationality: rawCreds.nationality || undefined,
@@ -115,6 +112,6 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function OPTIONS() {
+export function OPTIONS() {
   return corsResponse();
 }

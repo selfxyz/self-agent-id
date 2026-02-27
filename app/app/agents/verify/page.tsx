@@ -34,7 +34,7 @@ import {
   AGENT_FEATURES,
 } from "@/lib/snippets";
 import { connectWallet } from "@/lib/wallet";
-import { REGISTRY_ABI, PROVIDER_ABI } from "@/lib/constants";
+import {} from "@/lib/constants";
 import type { A2AAgentCard } from "@selfxyz/agent-sdk";
 import { useNetwork } from "@/lib/NetworkContext";
 import { Card } from "@/components/Card";
@@ -49,6 +49,7 @@ import {
 
 import { getPasskey } from "@/lib/passkey-storage";
 
+import { typedProvider, typedRegistry } from "@/lib/contract-types";
 const SelfQRcodeWrapper = dynamic(
   () => import("@selfxyz/qrcode").then((mod) => mod.SelfQRcodeWrapper),
   { ssr: false },
@@ -151,7 +152,7 @@ function VerifyContent() {
   const [showCardJsonVerify, setShowCardJsonVerify] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const copyToClipboard = (text: string, field: string) => {
-    navigator.clipboard.writeText(text);
+    void navigator.clipboard.writeText(text);
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
   };
@@ -178,11 +179,7 @@ function VerifyContent() {
         setResolvedKey(keyHash);
 
         const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-        const contract = new ethers.Contract(
-          network.registryAddress,
-          REGISTRY_ABI,
-          provider,
-        );
+        const contract = typedRegistry(network.registryAddress, provider);
 
         const isVerified = await contract.isVerifiedAgent(keyHash);
         const agentId = await contract.getAgentId(keyHash);
@@ -226,15 +223,15 @@ function VerifyContent() {
           try {
             const raw = await contract.getAgentCredentials(agentId);
             const creds: AgentCredentials = {
-              issuingState: raw.issuingState || raw[0] || "",
-              name: raw.name || raw[1] || [],
-              idNumber: raw.idNumber || raw[2] || "",
-              nationality: raw.nationality || raw[3] || "",
-              dateOfBirth: raw.dateOfBirth || raw[4] || "",
-              gender: raw.gender || raw[5] || "",
-              expiryDate: raw.expiryDate || raw[6] || "",
-              olderThan: raw.olderThan ?? raw[7] ?? 0n,
-              ofac: raw.ofac || raw[8] || [false, false, false],
+              issuingState: raw.issuingState || "",
+              name: raw.name || [],
+              idNumber: raw.idNumber || "",
+              nationality: raw.nationality || "",
+              dateOfBirth: raw.dateOfBirth || "",
+              gender: raw.gender || "",
+              expiryDate: raw.expiryDate || "",
+              olderThan: raw.olderThan ?? 0n,
+              ofac: raw.ofac || [false, false, false],
             };
             // Only set if at least one field is non-empty
             if (
@@ -263,11 +260,7 @@ function VerifyContent() {
           try {
             const provAddr: string = await contract.agentProofProvider(agentId);
             if (provAddr && provAddr !== ethers.ZeroAddress) {
-              const provContract = new ethers.Contract(
-                provAddr,
-                PROVIDER_ABI,
-                provider,
-              );
+              const provContract = typedProvider(provAddr, provider);
               const s: number = await provContract.verificationStrength();
               verificationStrength = Number(s);
             }
@@ -311,12 +304,12 @@ function VerifyContent() {
     const key = searchParams.get("key");
     if (key) {
       setAgentKey(key);
-      lookupAgent(key);
+      void lookupAgent(key);
     }
   }, [searchParams, lookupAgent]);
 
   useEffect(() => {
-    import("@selfxyz/qrcode").then((mod) => {
+    void import("@selfxyz/qrcode").then((mod) => {
       SelfAppBuilder = mod.SelfAppBuilder;
     });
   }, []);
@@ -367,12 +360,12 @@ function VerifyContent() {
   const handleDeregisterSuccess = () => {
     setShowDeregister(false);
     setSelfApp(null);
-    lookupAgent(agentKey);
+    void lookupAgent(agentKey);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    lookupAgent(agentKey);
+    void lookupAgent(agentKey);
   };
 
   const snippets = useMemo(
@@ -681,27 +674,29 @@ function VerifyContent() {
               return (
                 <div className="w-full mt-2">
                   <button
-                    onClick={async () => {
-                      setPasskeyRevoking(true);
-                      try {
-                        const callData = encodeGuardianRevoke(
-                          agentInfo.agentId,
-                        );
-                        await sendUserOperation(
-                          network.registryAddress as `0x${string}`,
-                          callData,
-                          network,
-                        );
-                        lookupAgent(agentKey);
-                      } catch (err) {
-                        alert(
-                          err instanceof Error
-                            ? err.message
-                            : "Revocation failed",
-                        );
-                      } finally {
-                        setPasskeyRevoking(false);
-                      }
+                    onClick={() => {
+                      void (async () => {
+                        setPasskeyRevoking(true);
+                        try {
+                          const callData = encodeGuardianRevoke(
+                            agentInfo.agentId,
+                          );
+                          await sendUserOperation(
+                            network.registryAddress as `0x${string}`,
+                            callData,
+                            network,
+                          );
+                          void lookupAgent(agentKey);
+                        } catch (err) {
+                          alert(
+                            err instanceof Error
+                              ? err.message
+                              : "Revocation failed",
+                          );
+                        } finally {
+                          setPasskeyRevoking(false);
+                        }
+                      })();
                     }}
                     disabled={passkeyRevoking}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-accent-error/10 text-accent-error border border-accent-error/20 hover:bg-accent-error/20 transition-colors disabled:opacity-50"
@@ -770,7 +765,7 @@ function VerifyContent() {
                 )
               ) : !walletAddress ? (
                 <Button
-                  onClick={handleConnectForDeregister}
+                  onClick={() => void handleConnectForDeregister()}
                   variant="danger"
                   size="sm"
                 >

@@ -45,7 +45,7 @@ export default function Home() {
   const trustGapTweetUrl = "https://x.com/galnagli/status/2017585025475092585";
 
   useEffect(() => {
-    fetch("/lottie_agents.json")
+    void fetch("/lottie_agents.json")
       .then((res) => res.json())
       .then(setAnimationData);
   }, []);

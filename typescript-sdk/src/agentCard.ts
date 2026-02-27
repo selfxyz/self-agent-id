@@ -3,7 +3,10 @@
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
 import type { ethers } from "ethers";
-import { REGISTRY_ABI, PROVIDER_ABI } from "./constants";
+import type {
+  TypedRegistryContract,
+  TypedProviderContract,
+} from "./contract-types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -70,7 +73,15 @@ export interface A2ASecurityScheme {
 
 /** A service endpoint entry in the ERC-8004 agent document. */
 export interface ERC8004Service {
-  name: "web" | "A2A" | "MCP" | "OASF" | "ENS" | "DID" | "email" | string;
+  name:
+    | "web"
+    | "A2A"
+    | "MCP"
+    | "OASF"
+    | "ENS"
+    | "DID"
+    | "email"
+    | (string & {});
   endpoint: string;
   version?: string;
 }
@@ -175,8 +186,8 @@ export function getStrengthColor(
  */
 export async function buildAgentCard(
   agentId: number,
-  registry: ethers.Contract,
-  provider: ethers.Contract,
+  registry: TypedRegistryContract,
+  provider: TypedProviderContract,
   userFields: {
     name: string;
     description?: string;
@@ -198,16 +209,16 @@ export async function buildAgentCard(
     chainId,
     proofProviderAddress,
   ] = await Promise.all([
-    provider.providerName() as Promise<string>,
-    provider.verificationStrength() as Promise<number>,
-    registry.getAgentCredentials(agentId).catch(() => null),
-    registry.getAddress() as Promise<string>,
+    provider.providerName(),
+    provider.verificationStrength(),
+    registry.getAgentCredentials(BigInt(agentId)).catch(() => null),
+    registry.getAddress(),
     (
       registry.runner?.provider
         ?.getNetwork()
         .then((n: ethers.Network) => Number(n.chainId)) ?? Promise.resolve(0)
     ).catch(() => 0),
-    provider.getAddress() as Promise<string>,
+    provider.getAddress(),
   ]);
 
   const proofType = getProviderLabel(Number(verificationStrength));

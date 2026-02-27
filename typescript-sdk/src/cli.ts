@@ -13,7 +13,6 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { ethers } from "ethers";
 import {
-  REGISTRY_ABI,
   NETWORKS,
   getRegistrationConfigIndex,
   signRegistrationChallenge,
@@ -27,6 +26,7 @@ import {
   type RegistrationSignatureParts,
 } from "./index";
 
+import { typedRegistry } from "./contract-types";
 /** Registration mode alias used throughout the CLI. */
 type CliMode = RegistrationMode;
 
@@ -816,7 +816,7 @@ async function commandInit(
  * to "handoff_opened".
  * @param flags - Parsed CLI flags (requires --session).
  */
-async function commandOpen(flags: FlagMap): Promise<void> {
+function commandOpen(flags: FlagMap): void {
   const sessionPath = getSessionPath(flags);
   const session = readSession(sessionPath);
 
@@ -856,11 +856,7 @@ async function pollOnChain(
   session: CliSession,
 ): Promise<{ verified: boolean; agentId: string }> {
   const provider = new ethers.JsonRpcProvider(session.network.rpcUrl);
-  const registry = new ethers.Contract(
-    session.network.registryAddress,
-    REGISTRY_ABI,
-    provider,
-  );
+  const registry = typedRegistry(session.network.registryAddress, provider);
   const agentKey = expectedAgentKeyHex(session.registration.agentAddress);
   const [verified, agentIdRaw] = await Promise.all([
     registry.isVerifiedAgent(agentKey),
@@ -884,7 +880,7 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
         const text = Buffer.concat(chunks).toString("utf8");
         resolveBody(text ? JSON.parse(text) : {});
       } catch (err) {
-        rejectBody(err);
+        rejectBody(err instanceof Error ? err : new Error(String(err)));
       }
     });
     req.on("error", rejectBody);
@@ -963,68 +959,70 @@ async function commandWait(flags: FlagMap): Promise<void> {
   let callbackSuccess = false;
   let listenerEnabled = !flags["no-listener"];
 
-  const server = createServer(async (req, res) => {
-    try {
-      const url = req.url || "/";
-      if (req.method === "OPTIONS") {
-        sendJson(res, 204, { ok: true });
-        return;
-      }
-      if (
-        req.method !== "POST" ||
-        url.split("?")[0] !== session.callback.path
-      ) {
-        sendJson(res, 404, { error: "Not found" });
-        return;
-      }
-
-      const body = (await readJsonBody(req)) as {
-        sessionId?: string;
-        stateToken?: string;
-        status?: "success" | "error";
-        error?: string;
-        guardianAddress?: string;
-      };
-
-      if (body.sessionId !== session.sessionId) {
-        sendJson(res, 400, { error: "Session mismatch" });
-        return;
-      }
-      if (body.stateToken !== session.callback.stateToken) {
-        sendJson(res, 401, { error: "Invalid state token" });
-        return;
-      }
-      if (session.callback.used) {
-        sendJson(res, 409, { error: "Callback already used" });
-        return;
-      }
-
-      session.callback.used = true;
-      session.callback.lastStatus =
-        body.status === "error" ? "error" : "success";
-
-      if (body.status === "error") {
-        callbackError = body.error || "Browser reported flow error";
-        session.callback.lastError = callbackError;
-        session.state.stage = "failed";
-        session.state.lastError = callbackError;
-      } else {
-        callbackSuccess = true;
-        session.state.stage = "callback_received";
-        if (body.guardianAddress) {
-          session.state.guardianAddress = ethers.getAddress(
-            body.guardianAddress,
-          );
+  const server = createServer((req, res) => {
+    void (async () => {
+      try {
+        const url = req.url || "/";
+        if (req.method === "OPTIONS") {
+          sendJson(res, 204, { ok: true });
+          return;
         }
-      }
+        if (
+          req.method !== "POST" ||
+          url.split("?")[0] !== session.callback.path
+        ) {
+          sendJson(res, 404, { error: "Not found" });
+          return;
+        }
 
-      saveSession(sessionPath, session);
-      sendJson(res, 200, { ok: true });
-    } catch (err) {
-      sendJson(res, 400, {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+        const body = (await readJsonBody(req)) as {
+          sessionId?: string;
+          stateToken?: string;
+          status?: "success" | "error";
+          error?: string;
+          guardianAddress?: string;
+        };
+
+        if (body.sessionId !== session.sessionId) {
+          sendJson(res, 400, { error: "Session mismatch" });
+          return;
+        }
+        if (body.stateToken !== session.callback.stateToken) {
+          sendJson(res, 401, { error: "Invalid state token" });
+          return;
+        }
+        if (session.callback.used) {
+          sendJson(res, 409, { error: "Callback already used" });
+          return;
+        }
+
+        session.callback.used = true;
+        session.callback.lastStatus =
+          body.status === "error" ? "error" : "success";
+
+        if (body.status === "error") {
+          callbackError = body.error || "Browser reported flow error";
+          session.callback.lastError = callbackError;
+          session.state.stage = "failed";
+          session.state.lastError = callbackError;
+        } else {
+          callbackSuccess = true;
+          session.state.stage = "callback_received";
+          if (body.guardianAddress) {
+            session.state.guardianAddress = ethers.getAddress(
+              body.guardianAddress,
+            );
+          }
+        }
+
+        saveSession(sessionPath, session);
+        sendJson(res, 200, { ok: true });
+      } catch (err) {
+        sendJson(res, 400, {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    })();
   });
 
   if (listenerEnabled) {
@@ -1099,7 +1097,7 @@ async function commandWait(flags: FlagMap): Promise<void> {
 
   if (callbackError) {
     die(
-      `${operation === "register" ? "Registration" : "Deregistration"} failed via browser callback: ${callbackError}`,
+      `${operation === "register" ? "Registration" : "Deregistration"} failed via browser callback: ${String(callbackError)}`,
     );
   }
 

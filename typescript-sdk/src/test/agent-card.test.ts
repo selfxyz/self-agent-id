@@ -9,11 +9,6 @@ import {
   getStrengthColor,
   generateRegistrationJSON,
   buildAgentCard,
-  PROVIDER_LABELS,
-} from "../agentCard";
-import type {
-  ERC8004AgentDocument,
-  GenerateRegistrationJSONOptions,
 } from "../agentCard";
 import { isProofExpiringSoon, EXPIRY_WARNING_THRESHOLD_SECS } from "../types";
 

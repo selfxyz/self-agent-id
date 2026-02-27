@@ -36,7 +36,7 @@ import TestCard, { type StepEntry } from "@/components/TestCard";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
-import { REGISTRY_ABI, AGENT_DEMO_VERIFIER_ABI } from "@/lib/constants";
+import {} from "@/lib/constants";
 import { signInWithPasskey, isPasskeySupported } from "@/lib/aa";
 import {
   getAgentPrivateKeyByAgent,
@@ -47,6 +47,7 @@ import { useNetwork } from "@/lib/NetworkContext";
 import type { NetworkConfig } from "@/lib/network";
 import { TESTS } from "@/lib/demo-constants";
 
+import { typedDemoVerifier, typedRegistry } from "@/lib/contract-types";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -1162,9 +1163,8 @@ async function runGateTest(
 
     const agentKey = ethers.zeroPadValue(agent.address, 32);
     const provider = new ethers.JsonRpcProvider(net.rpcUrl);
-    const verifierContract = new ethers.Contract(
+    const verifierContract = typedDemoVerifier(
       net.agentDemoVerifierAddress,
-      AGENT_DEMO_VERIFIER_ABI,
       provider,
     );
 
@@ -1481,11 +1481,7 @@ export default function DemoPage() {
 
       // Check proof provider
       const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-      const contract = new ethers.Contract(
-        network.registryAddress,
-        REGISTRY_ABI,
-        provider,
-      );
+      const contract = typedRegistry(network.registryAddress, provider);
 
       try {
         const providerAddr = await contract.agentProofProvider(info.agentId);
@@ -1500,14 +1496,14 @@ export default function DemoPage() {
       try {
         const raw = await contract.getAgentCredentials(info.agentId);
         const creds: AgentCredentials = {
-          issuingState: raw.issuingState ?? raw[0] ?? "",
-          name: raw.name ?? raw[1] ?? [],
-          nationality: raw.nationality ?? raw[3] ?? "",
-          dateOfBirth: raw.dateOfBirth ?? raw[4] ?? "",
-          gender: raw.gender ?? raw[5] ?? "",
-          expiryDate: raw.expiryDate ?? raw[6] ?? "",
-          olderThan: raw.olderThan ?? raw[7] ?? 0n,
-          ofac: raw.ofac ?? raw[8] ?? [false, false, false],
+          issuingState: raw.issuingState ?? "",
+          name: raw.name ?? [],
+          nationality: raw.nationality ?? "",
+          dateOfBirth: raw.dateOfBirth ?? "",
+          gender: raw.gender ?? "",
+          expiryDate: raw.expiryDate ?? "",
+          olderThan: raw.olderThan ?? 0n,
+          ofac: raw.ofac ?? [false, false, false],
         };
         if (creds.nationality || creds.olderThan > 0n) {
           credentials = creds;
@@ -1599,11 +1595,7 @@ export default function DemoPage() {
       bootLog(`Passkey smart wallet: ${shortAddr(walletAddress)}`);
 
       const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-      const registry = new ethers.Contract(
-        network.registryAddress,
-        REGISTRY_ABI,
-        provider,
-      );
+      const registry = typedRegistry(network.registryAddress, provider);
 
       bootLog("Scanning registry for guardian-managed agents...");
       const mintFilter = registry.filters.Transfer(ethers.ZeroAddress, null);
@@ -1651,14 +1643,14 @@ export default function DemoPage() {
             try {
               const raw = await registry.getAgentCredentials(agentId);
               const creds: AgentCredentials = {
-                issuingState: raw.issuingState ?? raw[0] ?? "",
-                name: raw.name ?? raw[1] ?? [],
-                nationality: raw.nationality ?? raw[3] ?? "",
-                dateOfBirth: raw.dateOfBirth ?? raw[4] ?? "",
-                gender: raw.gender ?? raw[5] ?? "",
-                expiryDate: raw.expiryDate ?? raw[6] ?? "",
-                olderThan: raw.olderThan ?? raw[7] ?? 0n,
-                ofac: raw.ofac ?? raw[8] ?? [false, false, false],
+                issuingState: raw.issuingState ?? "",
+                name: raw.name ?? [],
+                nationality: raw.nationality ?? "",
+                dateOfBirth: raw.dateOfBirth ?? "",
+                gender: raw.gender ?? "",
+                expiryDate: raw.expiryDate ?? "",
+                olderThan: raw.olderThan ?? 0n,
+                ofac: raw.ofac ?? [false, false, false],
               };
               if (creds.nationality || creds.olderThan > 0n)
                 credentials = creds;
@@ -1821,11 +1813,7 @@ export default function DemoPage() {
 
       // Check on-chain
       const rpcProvider = new ethers.JsonRpcProvider(network.rpcUrl);
-      const registry = new ethers.Contract(
-        network.registryAddress,
-        REGISTRY_ABI,
-        rpcProvider,
-      );
+      const registry = typedRegistry(network.registryAddress, rpcProvider);
       const isVerified = await registry.isVerifiedAgent(agentKey);
 
       if (!isVerified) {
@@ -2134,7 +2122,7 @@ export default function DemoPage() {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  handleLoadAgent();
+                  void handleLoadAgent();
                 }}
                 className="space-y-3"
               >
@@ -2184,7 +2172,7 @@ export default function DemoPage() {
               </p>
               <Button
                 type="button"
-                onClick={handleLoadAgentWithPasskey}
+                onClick={() => void handleLoadAgentWithPasskey()}
                 disabled={state.loading || passkeyLoading || !passkeyAvailable}
                 className="w-full"
               >
@@ -2214,7 +2202,7 @@ export default function DemoPage() {
                 </div>
               )}
               <Button
-                onClick={handleConnectWallet}
+                onClick={() => void handleConnectWallet()}
                 disabled={walletLoading}
                 className="w-full"
               >
@@ -2330,7 +2318,7 @@ export default function DemoPage() {
       {/* Test buttons */}
       <div className="flex items-center justify-center gap-3">
         <Button
-          onClick={runAllTests}
+          onClick={() => void runAllTests()}
           disabled={
             state.loading ||
             Object.values(state.tests).some((t) => t.status === "running") ||
@@ -2353,7 +2341,7 @@ export default function DemoPage() {
           )}
         </Button>
         <Button
-          onClick={runFakeAgent}
+          onClick={() => void runFakeAgent()}
           disabled={
             state.loading ||
             Object.values(state.tests).some((t) => t.status === "running")
@@ -2406,7 +2394,7 @@ export default function DemoPage() {
         unlocked={state.chatUnlocked}
         isOpen={state.chatOpen}
         dispatch={dispatch}
-        onSend={sendChatMessage}
+        onSend={(query: string) => void sendChatMessage(query)}
       />
     </main>
   );

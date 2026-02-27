@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { describe, it, beforeEach } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { ethers } from "ethers";
 import { SelfAgentVerifier } from "../SelfAgentVerifier";
@@ -622,7 +622,7 @@ describe("SelfAgentVerifier", () => {
       };
 
       let statusCode: number | undefined;
-      let jsonBody: any;
+      let _jsonBody: any;
       let nextCalled = false;
 
       const res: any = {
@@ -631,7 +631,7 @@ describe("SelfAgentVerifier", () => {
           return this;
         },
         json(body: any) {
-          jsonBody = body;
+          _jsonBody = body;
         },
       };
 

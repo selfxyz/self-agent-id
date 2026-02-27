@@ -30,7 +30,7 @@ export default function MatrixText({
     if (!canvas || !glowCanvas) return;
 
     // Wait for Orbitron to load before measuring
-    document.fonts.ready.then(() => {
+    void document.fonts.ready.then(() => {
       const ctx = canvas.getContext("2d");
       const glowCtx = glowCanvas.getContext("2d");
       if (!ctx || !glowCtx) return;

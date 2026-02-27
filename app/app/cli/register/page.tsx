@@ -415,7 +415,7 @@ export default function CliRegisterHandoffPage() {
                 for this agent.
               </p>
               <Button
-                onClick={handleSmartWalletPrepare}
+                onClick={() => void handleSmartWalletPrepare()}
                 variant="primary"
                 size="lg"
                 disabled={loading || !passkeySupported}
@@ -452,8 +452,8 @@ export default function CliRegisterHandoffPage() {
                 <div className="rounded-xl p-4 bg-white mx-auto w-fit">
                   <SelfQRcodeWrapper
                     selfApp={selfApp}
-                    onSuccess={onSuccess}
-                    onError={onError}
+                    onSuccess={() => void onSuccess()}
+                    onError={(err: unknown) => void onError(err)}
                   />
                 </div>
               ) : (

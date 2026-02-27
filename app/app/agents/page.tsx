@@ -15,7 +15,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { connectWallet } from "@/lib/wallet";
-import { REGISTRY_ABI, PROVIDER_ABI } from "@/lib/constants";
+import {} from "@/lib/constants";
 import { useNetwork } from "@/lib/NetworkContext";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
@@ -29,6 +29,11 @@ import {
   isGaslessSupported,
 } from "@/lib/aa";
 
+import {
+  typedProvider,
+  typedRegistry,
+  type TypedRegistryContract,
+} from "@/lib/contract-types";
 interface AgentCredentials {
   issuingState: string;
   nationality: string;
@@ -51,16 +56,16 @@ interface AgentEntry {
 }
 
 async function fetchCredentials(
-  registry: ethers.Contract,
+  registry: TypedRegistryContract,
   agentId: bigint,
 ): Promise<AgentCredentials | undefined> {
   try {
     const raw = await registry.getAgentCredentials(agentId);
     const creds: AgentCredentials = {
-      issuingState: raw.issuingState || raw[0] || "",
-      nationality: raw.nationality || raw[3] || "",
-      olderThan: raw.olderThan ?? raw[7] ?? 0n,
-      ofac: raw.ofac || raw[8] || [false, false, false],
+      issuingState: raw.issuingState || "",
+      nationality: raw.nationality || "",
+      olderThan: raw.olderThan ?? 0n,
+      ofac: raw.ofac || [false, false, false],
     };
     if (
       creds.nationality ||
@@ -77,7 +82,7 @@ async function fetchCredentials(
 }
 
 async function fetchVerificationStrength(
-  registry: ethers.Contract,
+  registry: TypedRegistryContract,
   agentId: bigint,
   provider: ethers.JsonRpcProvider,
 ): Promise<{ strength?: number; hasA2ACard: boolean }> {
@@ -86,7 +91,7 @@ async function fetchVerificationStrength(
   try {
     const provAddr: string = await registry.agentProofProvider(agentId);
     if (provAddr && provAddr !== ethers.ZeroAddress) {
-      const prov = new ethers.Contract(provAddr, PROVIDER_ABI, provider);
+      const prov = typedProvider(provAddr, provider);
       const s: number = await prov.verificationStrength();
       strength = Number(s);
     }
@@ -108,7 +113,7 @@ async function fetchVerificationStrength(
  * starts at 50 000 blocks and halves on RPC block-range errors.
  */
 async function paginatedQueryFilter(
-  registry: ethers.Contract,
+  registry: TypedRegistryContract,
   filter: ethers.ContractEventName,
   provider: ethers.JsonRpcProvider,
 ): Promise<(ethers.EventLog | ethers.Log)[]> {
@@ -148,7 +153,7 @@ async function paginatedQueryFilter(
 }
 
 async function buildAgentEntry(
-  registry: ethers.Contract,
+  registry: TypedRegistryContract,
   provider: ethers.JsonRpcProvider,
   agentId: bigint,
   agentKey: string,
@@ -257,11 +262,7 @@ export default function MyAgentsPage() {
 
     try {
       const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-      const registry = new ethers.Contract(
-        network.registryAddress,
-        REGISTRY_ABI,
-        provider,
-      );
+      const registry = typedRegistry(network.registryAddress, provider);
 
       const agentId: bigint = await registry.getAgentId(agentKey);
       if (agentId === 0n) {
@@ -342,11 +343,7 @@ export default function MyAgentsPage() {
 
     try {
       const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-      const registry = new ethers.Contract(
-        network.registryAddress,
-        REGISTRY_ABI,
-        provider,
-      );
+      const registry = typedRegistry(network.registryAddress, provider);
 
       // Scan Transfer events to find all minted agents, then check if guardian matches
       const mintFilter = registry.filters.Transfer(ethers.ZeroAddress, null);
@@ -448,11 +445,7 @@ export default function MyAgentsPage() {
 
     try {
       const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-      const registry = new ethers.Contract(
-        network.registryAddress,
-        REGISTRY_ABI,
-        provider,
-      );
+      const registry = typedRegistry(network.registryAddress, provider);
 
       const results: AgentEntry[] = [];
 
@@ -591,7 +584,7 @@ export default function MyAgentsPage() {
           <div className="flex flex-col items-center gap-4">
             <Fingerprint size={32} className="text-accent-success" />
             <Button
-              onClick={handlePasskeySignIn}
+              onClick={() => void handlePasskeySignIn()}
               variant="primary"
               size="lg"
               disabled={loading}
@@ -629,7 +622,7 @@ export default function MyAgentsPage() {
               </p>
               <button
                 onClick={() =>
-                  passkeyAddress && loadAgentsByGuardian(passkeyAddress)
+                  passkeyAddress && void loadAgentsByGuardian(passkeyAddress)
                 }
                 disabled={loading}
                 className="p-2 text-muted hover:text-foreground hover:bg-surface-2 rounded-lg transition-colors disabled:opacity-50"
@@ -663,7 +656,13 @@ export default function MyAgentsPage() {
               </Card>
             )}
 
-            {renderAgentCards(agents, handlePasskeyRevoke, revoking, network)}
+            {renderAgentCards(
+              agents,
+              (...args: Parameters<typeof handlePasskeyRevoke>) =>
+                void handlePasskeyRevoke(...args),
+              revoking,
+              network,
+            )}
           </div>
         )
       ) : lookupMode === "wallet" ? (
@@ -671,7 +670,11 @@ export default function MyAgentsPage() {
         !walletAddress ? (
           <div className="flex flex-col items-center gap-4">
             <Wallet size={32} className="text-muted" />
-            <Button onClick={handleConnect} variant="primary" size="lg">
+            <Button
+              onClick={() => void handleConnect()}
+              variant="primary"
+              size="lg"
+            >
               <Wallet size={18} />
               Connect Wallet
             </Button>
@@ -689,7 +692,7 @@ export default function MyAgentsPage() {
                 </span>
               </p>
               <button
-                onClick={() => loadAgentsByOwner(walletAddress)}
+                onClick={() => void loadAgentsByOwner(walletAddress)}
                 disabled={loading}
                 className="p-2 text-muted hover:text-foreground hover:bg-surface-2 rounded-lg transition-colors disabled:opacity-50"
                 title="Refresh"
@@ -740,10 +743,12 @@ export default function MyAgentsPage() {
                 onChange={(e) => setAgentKeyInput(e.target.value)}
                 placeholder="0x... (agent address)"
                 className="flex-1 bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm font-mono placeholder:text-subtle focus:border-accent focus:outline-none transition-colors"
-                onKeyDown={(e) => e.key === "Enter" && handleKeyLookup()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void handleKeyLookup();
+                }}
               />
               <Button
-                onClick={handleKeyLookup}
+                onClick={() => void handleKeyLookup()}
                 variant="primary"
                 size="sm"
                 disabled={loading}

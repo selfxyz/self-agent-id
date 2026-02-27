@@ -4,7 +4,6 @@
 
 import { ethers } from "ethers";
 import {
-  REGISTRY_ABI,
   HEADERS,
   DEFAULT_MAX_AGE_MS,
   DEFAULT_CACHE_TTL_MS,
@@ -16,6 +15,7 @@ import type { NetworkName } from "./constants";
 import { canonicalizeSigningUrl, computeSigningMessage } from "./signing";
 import type { VerifyResult } from "./types";
 
+import { typedRegistry, type TypedRegistryContract } from "./contract-types";
 export interface VerifierConfig {
   /** Network to use: "mainnet" (default) or "testnet" */
   network?: NetworkName;
@@ -371,7 +371,7 @@ export class VerifierBuilder {
  * ```
  */
 export class SelfAgentVerifier {
-  private registry: ethers.Contract;
+  private registry: TypedRegistryContract;
   private maxAgeMs: number;
   private cacheTtlMs: number;
   private maxAgentsPerHuman: number;
@@ -391,9 +391,8 @@ export class SelfAgentVerifier {
   constructor(config: VerifierConfig = {}) {
     const net = NETWORKS[config.network ?? DEFAULT_NETWORK];
     const provider = new ethers.JsonRpcProvider(config.rpcUrl ?? net.rpcUrl);
-    this.registry = new ethers.Contract(
+    this.registry = typedRegistry(
       config.registryAddress ?? net.registryAddress,
-      REGISTRY_ABI,
       provider,
     );
     this.maxAgeMs = config.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
@@ -689,8 +688,8 @@ export class SelfAgentVerifier {
     }
 
     const [isVerified, agentId] = await Promise.all([
-      this.registry.isVerifiedAgent(agentKey) as Promise<boolean>,
-      this.registry.getAgentId(agentKey) as Promise<bigint>,
+      this.registry.isVerifiedAgent(agentKey),
+      this.registry.getAgentId(agentKey),
     ]);
 
     // Fetch sybil data, provider address, and proof freshness if agent exists
@@ -703,11 +702,9 @@ export class SelfAgentVerifier {
 
       // Always check proof freshness
       promises.push(
-        (this.registry.isProofFresh(agentId) as Promise<boolean>).then(
-          (fresh) => {
-            isProofFresh = fresh;
-          },
-        ),
+        this.registry.isProofFresh(agentId).then((fresh) => {
+          isProofFresh = fresh;
+        }),
       );
 
       if (this.maxAgentsPerHuman > 0) {
@@ -721,11 +718,9 @@ export class SelfAgentVerifier {
 
       if (this.requireSelfProvider) {
         promises.push(
-          (this.registry.getProofProvider(agentId) as Promise<string>).then(
-            (addr) => {
-              providerAddress = addr;
-            },
-          ),
+          this.registry.getProofProvider(agentId).then((addr) => {
+            providerAddress = addr;
+          }),
         );
       }
 
@@ -782,15 +777,15 @@ export class SelfAgentVerifier {
     try {
       const raw = await this.registry.getAgentCredentials(agentId);
       return {
-        issuingState: raw.issuingState ?? raw[0] ?? "",
-        name: raw.name ?? raw[1] ?? [],
-        idNumber: raw.idNumber ?? raw[2] ?? "",
-        nationality: raw.nationality ?? raw[3] ?? "",
-        dateOfBirth: raw.dateOfBirth ?? raw[4] ?? "",
-        gender: raw.gender ?? raw[5] ?? "",
-        expiryDate: raw.expiryDate ?? raw[6] ?? "",
-        olderThan: raw.olderThan ?? raw[7] ?? 0n,
-        ofac: raw.ofac ?? raw[8] ?? [false, false, false],
+        issuingState: raw.issuingState ?? "",
+        name: raw.name ?? [],
+        idNumber: raw.idNumber ?? "",
+        nationality: raw.nationality ?? "",
+        dateOfBirth: raw.dateOfBirth ?? "",
+        gender: raw.gender ?? "",
+        expiryDate: raw.expiryDate ?? "",
+        olderThan: raw.olderThan ?? 0n,
+        ofac: raw.ofac ?? [false, false, false],
       };
     } catch {
       return undefined;
@@ -988,26 +983,22 @@ export async function verifyAgent(
     NETWORKS[DEFAULT_NETWORK].rpcUrl;
 
   const provider = new ethers.JsonRpcProvider(resolvedRpcUrl);
-  const registry = new ethers.Contract(
-    options.registryAddress,
-    REGISTRY_ABI,
-    provider,
-  );
+  const registry = typedRegistry(options.registryAddress, provider);
 
   // Step 1: resolve agent key → agentId
-  const agentId = (await registry.getAgentId(agentKey)) as bigint;
+  const agentId = await registry.getAgentId(agentKey);
   if (agentId === 0n) {
     return { verified: false, reason: "NOT_REGISTERED" };
   }
 
   // Step 2: check whether the agent has a human proof at all
-  const hasProof = (await registry.hasHumanProof(agentId)) as boolean;
+  const hasProof = await registry.hasHumanProof(agentId);
   if (!hasProof) {
     return { verified: false, reason: "NO_HUMAN_PROOF" };
   }
 
   // Step 3: check expiry (proofExpiresAt returns 0 if the proof never expires)
-  const expiresAtSecs = (await registry.proofExpiresAt(agentId)) as bigint;
+  const expiresAtSecs = await registry.proofExpiresAt(agentId);
   const nowSecs = BigInt(Math.floor(Date.now() / 1000));
   if (expiresAtSecs > 0n && nowSecs >= expiresAtSecs) {
     return {

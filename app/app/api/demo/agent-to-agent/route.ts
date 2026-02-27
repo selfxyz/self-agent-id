@@ -9,6 +9,7 @@ import { getNetwork, NETWORKS, type NetworkId } from "@/lib/network";
 import { getCachedVerifier } from "@/lib/selfVerifier";
 import { checkAndRecordReplay } from "@/lib/replayGuard";
 
+import { typedRegistry } from "@/lib/contract-types";
 // Per-network demo agent private keys
 const DEMO_KEYS: Record<NetworkId, string | undefined> = {
   "celo-sepolia": process.env.DEMO_AGENT_PRIVATE_KEY_SEPOLIA,
@@ -102,15 +103,7 @@ export async function POST(req: NextRequest) {
   });
 
   const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-  const registry = new ethers.Contract(
-    network.registryAddress,
-    [
-      "function getAgentId(bytes32) view returns (uint256)",
-      "function sameHuman(uint256, uint256) view returns (bool)",
-      "function isVerifiedAgent(bytes32) view returns (bool)",
-    ],
-    provider,
-  );
+  const registry = typedRegistry(network.registryAddress, provider);
 
   const demoKey = ethers.zeroPadValue(demoAgent.address, 32);
   const callerKey = verifyResult.agentKey;

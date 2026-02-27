@@ -82,6 +82,6 @@ export async function POST(req: NextRequest) {
   return errorResponse("Empty callback payload", 400);
 }
 
-export async function OPTIONS() {
+export function OPTIONS() {
   return corsResponse();
 }

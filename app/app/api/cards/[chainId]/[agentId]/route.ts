@@ -4,7 +4,7 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
-import { REGISTRY_ABI } from "@selfxyz/agent-sdk";
+import {} from "@selfxyz/agent-sdk";
 import { CHAIN_CONFIG } from "@/lib/chain-config";
 import {
   CORS_HEADERS,
@@ -13,6 +13,7 @@ import {
   validateAgentId,
 } from "@/lib/api-helpers";
 
+import { typedRegistry } from "@/lib/contract-types";
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ chainId: string; agentId: string }> },
@@ -26,11 +27,7 @@ export async function GET(
 
   try {
     const provider = new ethers.JsonRpcProvider(config.rpc);
-    const registry = new ethers.Contract(
-      config.registry,
-      REGISTRY_ABI,
-      provider,
-    );
+    const registry = typedRegistry(config.registry, provider);
     const raw: string = await registry.getAgentMetadata(id);
 
     if (!raw) return errorResponse("No agent card set", 404);
@@ -42,6 +39,6 @@ export async function GET(
   }
 }
 
-export async function OPTIONS() {
+export function OPTIONS() {
   return corsResponse();
 }

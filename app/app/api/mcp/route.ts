@@ -237,7 +237,7 @@ const handler = createMcpHandler(
         description: "Available networks with contract addresses and RPC URLs.",
         mimeType: "application/json",
       },
-      async (uri) => ({
+      (uri) => ({
         contents: [
           {
             uri: uri.href,

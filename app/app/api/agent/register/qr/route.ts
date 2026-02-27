@@ -18,7 +18,7 @@ import {
   corsResponse,
 } from "@/lib/agent-api-helpers";
 
-export async function GET(req: NextRequest) {
+export function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token");
   if (!token) {
     return errorResponse("Missing token query parameter", 400);
@@ -68,6 +68,6 @@ export async function GET(req: NextRequest) {
   });
 }
 
-export async function OPTIONS() {
+export function OPTIONS() {
   return corsResponse();
 }

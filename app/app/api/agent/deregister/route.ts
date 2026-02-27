@@ -17,7 +17,7 @@ import {
 } from "@selfxyz/agent-sdk";
 import { SelfAppBuilder, getUniversalLink } from "@selfxyz/qrcode";
 import { createSessionToken, encryptSession } from "@/lib/session-token";
-import { REGISTRY_ABI } from "@/lib/constants";
+import {} from "@/lib/constants";
 import {
   getSessionSecret,
   getNetworkConfig,
@@ -27,10 +27,10 @@ import {
   jsonResponse,
   errorResponse,
   corsResponse,
-  type ApiNetwork,
 } from "@/lib/agent-api-helpers";
 import { checkRateLimit } from "@/lib/rateLimit";
 
+import { typedRegistry } from "@/lib/contract-types";
 interface DeregisterRequestBody {
   network: string;
   agentAddress: string;
@@ -110,11 +110,7 @@ export async function POST(req: NextRequest) {
     // If the agentPubKey == zeroPadValue(humanAddress), it was a simple registration.
     // Otherwise it was advanced or wallet-free.
     const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
-    const registry = new ethers.Contract(
-      networkConfig.registryAddress,
-      REGISTRY_ABI,
-      provider,
-    );
+    const registry = typedRegistry(networkConfig.registryAddress, provider);
     const nftOwner: string = await registry.ownerOf(agentId);
 
     // Determine the userId for the QR: the human who originally registered.
@@ -224,6 +220,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function OPTIONS() {
+export function OPTIONS() {
   return corsResponse();
 }

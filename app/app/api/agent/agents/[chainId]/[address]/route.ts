@@ -4,10 +4,11 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
-import { REGISTRY_ABI } from "@selfxyz/agent-sdk";
+import {} from "@selfxyz/agent-sdk";
 import { CHAIN_CONFIG } from "@/lib/chain-config";
 import { CORS_HEADERS, corsResponse, errorResponse } from "@/lib/api-helpers";
 
+import { typedRegistry } from "@/lib/contract-types";
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ chainId: string; address: string }> },
@@ -25,7 +26,7 @@ export async function GET(
 
   try {
     const rpc = new ethers.JsonRpcProvider(config.rpc);
-    const registry = new ethers.Contract(config.registry, REGISTRY_ABI, rpc);
+    const registry = typedRegistry(config.registry, rpc);
 
     // Derive agent key: simple mode = zeroPadValue(address, 32)
     const agentKey = ethers.zeroPadValue(checksumAddress, 32);
@@ -48,8 +49,8 @@ export async function GET(
 
     // Agent exists — fetch its verification status and related info
     const [isVerified, nullifier] = await Promise.all([
-      registry.hasHumanProof(agentIdRaw) as Promise<boolean>,
-      registry.getHumanNullifier(agentIdRaw) as Promise<bigint>,
+      registry.hasHumanProof(agentIdRaw),
+      registry.getHumanNullifier(agentIdRaw),
     ]);
 
     // Get total agent count for this human (same nullifier)
@@ -87,6 +88,6 @@ export async function GET(
   }
 }
 
-export async function OPTIONS() {
+export function OPTIONS() {
   return corsResponse();
 }

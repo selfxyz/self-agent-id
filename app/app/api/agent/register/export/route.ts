@@ -69,6 +69,6 @@ export async function POST(req: NextRequest) {
   });
 }
 
-export async function OPTIONS() {
+export function OPTIONS() {
   return corsResponse();
 }

@@ -173,15 +173,15 @@ http("demoService", async (req, res) => {
 
     const creds = result.credentials;
     const entry: CensusEntry = {
-      agentAddress: result.agentAddress!,
-      agentId: result.agentId!.toString(),
+      agentAddress: result.agentAddress,
+      agentId: result.agentId.toString(),
       nationality: creds?.nationality || "",
       olderThan: Number(creds?.olderThan || 0),
       ofac: creds?.ofac ? creds.ofac.map(Boolean) : [false, false, false],
       timestamp: Date.now(),
     };
 
-    census.set(result.agentAddress!.toLowerCase(), entry);
+    census.set(result.agentAddress.toLowerCase(), entry);
 
     res.status(200).json({
       recorded: true,
