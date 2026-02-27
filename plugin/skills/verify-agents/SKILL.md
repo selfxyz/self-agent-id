@@ -36,9 +36,9 @@ Every verification flow MUST confirm that the agent's proof provider is the Self
 
 **Provider addresses:**
 
-| Network | SelfHumanProofProvider Address |
-|---|---|
-| Mainnet (42220) | `0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d` |
+| Network            | SelfHumanProofProvider Address               |
+| ------------------ | -------------------------------------------- |
+| Mainnet (42220)    | `0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d` |
 | Testnet (11142220) | `0x5E61c3051Bf4115F90AacEAE6212bc419f8aBB6c` |
 
 **How to check:**
@@ -57,13 +57,13 @@ Use the `self_verify_agent` tool to perform a one-off verification of any agent.
 
 ### Input Parameters
 
-| Parameter | Required | Type | Description |
-|---|---|---|---|
-| `agent_address` | Yes | `string` | Ethereum address of the agent to verify |
-| `network` | No | `string` | `"mainnet"` or `"testnet"` (defaults to `"mainnet"`) |
-| `require_age` | No | `0 \| 18 \| 21` | Minimum age threshold to require |
-| `require_ofac` | No | `bool` | Require OFAC sanctions screening clearance |
-| `require_self_provider` | No | `bool` | Require the proof provider to be Self Protocol |
+| Parameter               | Required | Type            | Description                                          |
+| ----------------------- | -------- | --------------- | ---------------------------------------------------- |
+| `agent_address`         | Yes      | `string`        | Ethereum address of the agent to verify              |
+| `network`               | No       | `string`        | `"mainnet"` or `"testnet"` (defaults to `"mainnet"`) |
+| `require_age`           | No       | `0 \| 18 \| 21` | Minimum age threshold to require                     |
+| `require_ofac`          | No       | `bool`          | Require OFAC sanctions screening clearance           |
+| `require_self_provider` | No       | `bool`          | Require the proof provider to be Self Protocol       |
 
 ### Output
 
@@ -101,14 +101,14 @@ Use the `self_verify_request` tool to validate an incoming HTTP request signed b
 
 ### Input Parameters
 
-| Parameter | Required | Type | Description |
-|---|---|---|---|
-| `agent_address` | Yes | `string` | From `x-self-agent-address` header |
-| `agent_signature` | Yes | `string` | From `x-self-agent-signature` header |
-| `agent_timestamp` | Yes | `string` | From `x-self-agent-timestamp` header |
-| `method` | Yes | `string` | HTTP method (e.g., `"POST"`) |
-| `path` | Yes | `string` | Request path (e.g., `"/api/data"`) |
-| `body` | No | `string` | Request body (empty string if no body) |
+| Parameter         | Required | Type     | Description                            |
+| ----------------- | -------- | -------- | -------------------------------------- |
+| `agent_address`   | Yes      | `string` | From `x-self-agent-address` header     |
+| `agent_signature` | Yes      | `string` | From `x-self-agent-signature` header   |
+| `agent_timestamp` | Yes      | `string` | From `x-self-agent-timestamp` header   |
+| `method`          | Yes      | `string` | HTTP method (e.g., `"POST"`)           |
+| `path`            | Yes      | `string` | Request path (e.g., `"/api/data"`)     |
+| `body`            | No       | `string` | Request body (empty string if no body) |
 
 ### Output
 
@@ -148,12 +148,12 @@ Returns a score from 0 to 100. The score is derived directly from the proof prov
 
 **Score tiers:**
 
-| Score | Meaning | Provider Type |
-|---|---|---|
-| 0 | No human proof or unverified agent | None / unknown |
-| 40 | Video liveness check | Video verification provider |
-| 60 | Government ID without NFC chip (e.g., Aadhaar scan) | Document-based provider |
-| 100 | Passport NFC chip + biometric verification | Self Protocol |
+| Score | Meaning                                             | Provider Type               |
+| ----- | --------------------------------------------------- | --------------------------- |
+| 0     | No human proof or unverified agent                  | None / unknown              |
+| 40    | Video liveness check                                | Video verification provider |
+| 60    | Government ID without NFC chip (e.g., Aadhaar scan) | Document-based provider     |
+| 100   | Passport NFC chip + biometric verification          | Self Protocol               |
 
 Self Protocol agents always score **100** because the `SelfHumanProofProvider` reports `verificationStrength() = 100`.
 
@@ -169,6 +169,7 @@ function getReputation(uint256 agentId) external view returns (
 ```
 
 Returns full reputation details:
+
 - `score` — The 0-100 reputation score
 - `providerName` — The provider's self-reported name (e.g., `"self"`)
 - `hasProof` — Whether the agent has an active human proof
@@ -209,6 +210,7 @@ function validateAgent(uint256 agentId) external view returns (
 ```
 
 Full validation details:
+
 - `valid` — Whether the agent has a human proof at all
 - `fresh` — Whether the proof is within the freshness window
 - `registeredAt` — Block number of registration
@@ -267,11 +269,11 @@ The `SelfAgentVerifier` class provides a builder pattern for configuring verific
 import { SelfAgentVerifier } from "@selfxyz/agent-sdk";
 
 const verifier = SelfAgentVerifier.create()
-  .network("mainnet")                              // Select network (sets chain ID, RPC, contract addresses)
-  .requireAge(18)                                   // Reject agents without age 18+ credential
-  .requireOFAC()                                    // Reject agents without OFAC clearance
-  .requireSelfProvider()                            // CRITICAL: reject agents not verified by Self Protocol
-  .sybilLimit(3)                                    // Max 3 agents per human
+  .network("mainnet") // Select network (sets chain ID, RPC, contract addresses)
+  .requireAge(18) // Reject agents without age 18+ credential
+  .requireOFAC() // Reject agents without OFAC clearance
+  .requireSelfProvider() // CRITICAL: reject agents not verified by Self Protocol
+  .sybilLimit(3) // Max 3 agents per human
   .rateLimit({ windowMs: 60000, maxRequests: 100 }) // 100 requests per minute per agent
   .build();
 ```
@@ -286,7 +288,10 @@ app.use("/api", verifier.auth());
 app.get("/api/profile", (req, res) => {
   const agent = req.verifiedAgent;
   // { agentId, address, credentials, agentCount }
-  res.json({ agentId: agent.agentId, nationality: agent.credentials.nationality });
+  res.json({
+    agentId: agent.agentId,
+    nationality: agent.credentials.nationality,
+  });
 });
 ```
 
@@ -331,6 +336,7 @@ Each check short-circuits on failure, returning `{ valid: false, error: "..." }`
 The same API surface exists in Python and Rust:
 
 **Python:**
+
 ```python
 from self_agent_sdk import SelfAgentVerifier
 
@@ -344,6 +350,7 @@ verifier = (SelfAgentVerifier.create()
 ```
 
 **Rust:**
+
 ```rust
 use self_agent_sdk::SelfAgentVerifier;
 
@@ -360,25 +367,25 @@ let verifier = SelfAgentVerifier::builder()
 
 ## Contract Addresses for Verification
 
-| Contract | Mainnet (42220) | Testnet (11142220) |
-|---|---|---|
-| SelfAgentRegistry | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` |
+| Contract               | Mainnet (42220)                              | Testnet (11142220)                           |
+| ---------------------- | -------------------------------------------- | -------------------------------------------- |
+| SelfAgentRegistry      | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` |
 | SelfHumanProofProvider | `0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d` | `0x5E61c3051Bf4115F90AacEAE6212bc419f8aBB6c` |
-| SelfReputationProvider | Deployed alongside registry | Deployed alongside registry |
-| SelfValidationProvider | Deployed alongside registry | Deployed alongside registry |
+| SelfReputationProvider | Deployed alongside registry                  | Deployed alongside registry                  |
+| SelfValidationProvider | Deployed alongside registry                  | Deployed alongside registry                  |
 
 ---
 
 ## Troubleshooting
 
-| Symptom | Cause | Resolution |
-|---|---|---|
-| Verification returns "Wrong provider" | Agent was verified by a non-Self provider | Confirm the agent registered through Self Protocol. Check `getProofProvider(agentId)` against the known Self provider address. |
-| Verification returns "No human proof" | Agent is registered but has no active proof | The agent may have been deregistered or the proof revoked. Re-register the agent. |
-| `isValidAgent` returns false but agent is registered | Freshness threshold exceeded | The agent's registration is older than the freshness window (~1 year default). Re-register or adjust the freshness threshold. |
-| Middleware rejects all requests with 401 | Missing or incorrect header extraction | Verify the middleware reads `x-self-agent-address`, `x-self-agent-signature`, and `x-self-agent-timestamp` (case-insensitive). Some frameworks lowercase headers. |
-| Sybil check fails unexpectedly | `sybilLimit` set too low | If the human legitimately has multiple agents, increase the `sybilLimit()` value in the verifier config. |
-| RPC errors during on-chain verification | Wrong network or RPC endpoint | Ensure the verifier's `network` matches the network the agent registered on. Check RPC URL connectivity. |
+| Symptom                                              | Cause                                       | Resolution                                                                                                                                                        |
+| ---------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Verification returns "Wrong provider"                | Agent was verified by a non-Self provider   | Confirm the agent registered through Self Protocol. Check `getProofProvider(agentId)` against the known Self provider address.                                    |
+| Verification returns "No human proof"                | Agent is registered but has no active proof | The agent may have been deregistered or the proof revoked. Re-register the agent.                                                                                 |
+| `isValidAgent` returns false but agent is registered | Freshness threshold exceeded                | The agent's registration is older than the freshness window (~1 year default). Re-register or adjust the freshness threshold.                                     |
+| Middleware rejects all requests with 401             | Missing or incorrect header extraction      | Verify the middleware reads `x-self-agent-address`, `x-self-agent-signature`, and `x-self-agent-timestamp` (case-insensitive). Some frameworks lowercase headers. |
+| Sybil check fails unexpectedly                       | `sybilLimit` set too low                    | If the human legitimately has multiple agents, increase the `sybilLimit()` value in the verifier config.                                                          |
+| RPC errors during on-chain verification              | Wrong network or RPC endpoint               | Ensure the verifier's `network` matches the network the agent registered on. Check RPC URL connectivity.                                                          |
 
 ## Reference Documentation
 

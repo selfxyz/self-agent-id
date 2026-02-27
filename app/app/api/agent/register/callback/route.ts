@@ -7,7 +7,7 @@
 // Receives the callback from the Self app after passport scan.
 // Updates session stage based on the callback payload.
 
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import {
   decryptAndValidateSession,
   sessionResponse,
@@ -57,11 +57,11 @@ export async function POST(req: NextRequest) {
   }
 
   // Check for error field first (before treating as successful proof)
-  if (callbackData && (callbackData as Record<string, unknown>).error) {
+  if (callbackData && callbackData.error) {
     session.stage = "failed";
     return sessionResponse(session, secret, {
       agentAddress: session.agentAddress,
-      error: (callbackData as Record<string, unknown>).error,
+      error: callbackData.error,
       humanInstructions: humanInstructions("failed"),
     });
   }
@@ -82,6 +82,6 @@ export async function POST(req: NextRequest) {
   return errorResponse("Empty callback payload", 400);
 }
 
-export async function OPTIONS() {
+export function OPTIONS() {
   return corsResponse();
 }

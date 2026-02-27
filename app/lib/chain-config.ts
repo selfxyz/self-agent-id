@@ -18,5 +18,5 @@ export const CHAIN_CONFIG: Record<string, ChainConfig> = Object.fromEntries(
   Object.values(NETWORKS).map((net: NetworkConfig) => [
     String(net.chainId),
     { rpc: net.rpcUrl, registry: net.registryAddress },
-  ])
+  ]),
 );

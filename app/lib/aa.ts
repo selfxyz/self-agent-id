@@ -11,8 +11,17 @@ import {
   encodeFunctionData,
 } from "viem";
 import { entryPoint07Address } from "viem/account-abstraction";
-import { createKernelAccount, createKernelAccountClient, createZeroDevPaymasterClient } from "@zerodev/sdk";
-import { toPasskeyValidator, PasskeyValidatorContractVersion, toWebAuthnKey, WebAuthnMode } from "@zerodev/passkey-validator";
+import {
+  createKernelAccount,
+  createKernelAccountClient,
+  createZeroDevPaymasterClient,
+} from "@zerodev/sdk";
+import {
+  toPasskeyValidator,
+  PasskeyValidatorContractVersion,
+  toWebAuthnKey,
+  WebAuthnMode,
+} from "@zerodev/passkey-validator";
 import { KERNEL_V3_1 } from "@zerodev/sdk/constants";
 import type { NetworkConfig } from "./network";
 
@@ -73,7 +82,8 @@ function getPaymasterUrl(chain: Chain): string {
   return `/api/aa/paymaster?chainId=${chain.id}`;
 }
 
-let aaTokenCache: { token: string; expiresAt: number; chainId: number } | null = null;
+let aaTokenCache: { token: string; expiresAt: number; chainId: number } | null =
+  null;
 
 async function getAaProxyToken(chain: Chain): Promise<string> {
   const now = Date.now();
@@ -91,21 +101,30 @@ async function getAaProxyToken(chain: Chain): Promise<string> {
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: "AA token request failed" }));
+    const body = await res
+      .json()
+      .catch(() => ({ error: "AA token request failed" }));
     throw new Error(body.error || `AA token request failed (${res.status})`);
   }
 
-  const data = await res.json() as { token?: string; expiresAt?: number };
+  const data = (await res.json()) as { token?: string; expiresAt?: number };
   if (!data.token || !data.expiresAt) {
     throw new Error("AA token response missing fields");
   }
-  aaTokenCache = { token: data.token, expiresAt: data.expiresAt, chainId: chain.id };
+  aaTokenCache = {
+    token: data.token,
+    expiresAt: data.expiresAt,
+    chainId: chain.id,
+  };
   return data.token;
 }
 
 function getPasskeyServerUrl(): string {
   const id = getZeroDevProjectId();
-  if (!id) throw new Error("NEXT_PUBLIC_ZERODEV_PROJECT_ID not set — passkey server unavailable");
+  if (!id)
+    throw new Error(
+      "NEXT_PUBLIC_ZERODEV_PROJECT_ID not set — passkey server unavailable",
+    );
   return `https://passkeys.zerodev.app/api/v3/${id}`;
 }
 
@@ -143,7 +162,10 @@ const ENTRYPOINT = {
 };
 
 // ── Create passkey wallet (Register) ──────────────────────────────────
-export async function createPasskeyWallet(passkeyName: string, network?: NetworkConfig): Promise<{
+export async function createPasskeyWallet(
+  passkeyName: string,
+  network?: NetworkConfig,
+): Promise<{
   credentialId: string;
   walletAddress: Address;
 }> {
@@ -221,7 +243,7 @@ export async function sendUserOperation(
   if (chain.testnet) {
     throw new Error(
       "Gasless operations are not available on this network. " +
-      "On testnet, use passport scan to deregister your agent instead."
+        "On testnet, use passport scan to deregister your agent instead.",
     );
   }
 

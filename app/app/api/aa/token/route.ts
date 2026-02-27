@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/rateLimit";
 import {
   getClientIp,
@@ -12,7 +12,9 @@ import {
 
 const ALLOWED_CHAINS = new Set(["42220", "11142220"]);
 const WINDOW_MS = 60_000;
-const MAX_TOKEN_REQ_PER_MINUTE = Number(process.env.AA_TOKEN_MAX_REQ_PER_MINUTE || 30);
+const MAX_TOKEN_REQ_PER_MINUTE = Number(
+  process.env.AA_TOKEN_MAX_REQ_PER_MINUTE || 30,
+);
 
 export async function POST(req: NextRequest) {
   const originCheck = validateAllowedOrigin(req);
@@ -60,4 +62,3 @@ export async function POST(req: NextRequest) {
     expiresAt: issued.expiresAt,
   });
 }
-

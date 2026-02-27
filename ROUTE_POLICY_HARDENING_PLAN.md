@@ -8,6 +8,7 @@ Status: Phase 0 complete (205 tests, 14 files); ready for Phase 1
 Yes, this is worth it for this codebase.
 
 Current routes repeat security-critical logic (body parsing, limits, auth checks, replay/rate limit behavior, error mapping). That creates drift risk: one route gets a fix, sibling routes miss it. A shared RoutePolicy layer gives:
+
 - Consistent security defaults
 - Fewer one-off bugs
 - Easier audits and onboarding
@@ -39,7 +40,12 @@ export const POST = createApiRoute(policy, async (ctx) => {
 ### 4.1 Core types
 
 ```ts
-type AuthMode = "none" | "sessionToken" | "aaProxyToken" | "agentHeaders" | "mcpAuth";
+type AuthMode =
+  | "none"
+  | "sessionToken"
+  | "aaProxyToken"
+  | "agentHeaders"
+  | "mcpAuth";
 
 interface RoutePolicy {
   name: string;
@@ -54,9 +60,9 @@ interface RoutePolicy {
     maxBytes?: number;
   };
   validation?: {
-    querySchema?: unknown;   // zod schema
-    paramsSchema?: unknown;  // zod schema
-    bodySchema?: unknown;    // zod schema
+    querySchema?: unknown; // zod schema
+    paramsSchema?: unknown; // zod schema
+    bodySchema?: unknown; // zod schema
   };
   rateLimit?: {
     key: (ctx: RouteContext) => string;
@@ -79,6 +85,7 @@ interface RoutePolicy {
 ## 5. Shared modules to add
 
 Suggested file layout:
+
 - `app/lib/http/createApiRoute.ts`
 - `app/lib/http/errors.ts`
 - `app/lib/http/response.ts`
@@ -104,11 +111,13 @@ Suggested file layout:
 ## 7. Explicit anti-over-DRY boundaries
 
 Keep these out of generic middleware:
+
 1. Register/deregister stage machine transitions.
 2. On-chain state transition decisions.
 3. Route-specific human-facing messages/instructions.
 
 Instead, put those in focused domain helpers:
+
 - `registrationStateMachine.ts`
 - `deregistrationStateMachine.ts`
 
@@ -136,27 +145,33 @@ Instead, put those in focused domain helpers:
 ## 9. Migration plan (phased)
 
 ### Phase 0: Tests first (complete)
+
 1. Lock behavior with integration tests per route family.
 2. Add negative tests: auth bypass, replay, oversized body, invalid content-type, timeout handling.
 3. **Important:** Add explicit gap-tracking markers in Phase 0 tests for known security issues (e.g., `body.length` char-count instead of byte-count, wildcard CORS, missing MCP auth), using comments like `// SECURITY_GAP: Finding #N — ...`. These tests may assert **current insecure behavior** during baseline capture. When the corresponding hardening fix lands, the test should fail and then be updated to assert the new secure behavior; replace the marker with `// SECURITY_FIX: Finding #N — hardened in Phase N`.
 
 ### Phase 1: Build primitives without changing route behavior
+
 1. Implement `createApiRoute` + body/error/timeout helpers.
 2. Add policy presets and no-op wrappers.
 
 ### Phase 2: Pilot on AA routes (best first migration)
+
 1. Migrate `/api/aa/token`, `/api/aa/bundler`, `/api/aa/paymaster`.
 2. Validate no behavior regression and improved consistency.
 
 ### Phase 3: Migrate callback/status routes
+
 1. Add strict body schemas and byte limits.
 2. Keep state transitions in local route/domain helpers.
 
 ### Phase 4: Migrate demo + MCP routes
+
 1. Add mandatory MCP auth adapter.
 2. Add replay defaults and egress restrictions.
 
 ### Phase 5: Cleanup
+
 1. Remove duplicated inline guard logic.
 2. Update security docs and threat model references.
 

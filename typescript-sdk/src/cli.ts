@@ -3,13 +3,16 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { ethers } from "ethers";
 import {
-  REGISTRY_ABI,
   NETWORKS,
   getRegistrationConfigIndex,
   signRegistrationChallenge,
@@ -23,6 +26,7 @@ import {
   type RegistrationSignatureParts,
 } from "./index";
 
+import { typedRegistry } from "./contract-types";
 /** Registration mode alias used throughout the CLI. */
 type CliMode = RegistrationMode;
 
@@ -206,7 +210,8 @@ type FlagValue = string | boolean;
 type FlagMap = Record<string, FlagValue | FlagValue[]>;
 
 /** Base URL for the browser handoff app. Override via SELF_AGENT_APP_URL env var. */
-const DEFAULT_APP_URL = process.env.SELF_AGENT_APP_URL || "https://self-agent-id.vercel.app";
+const DEFAULT_APP_URL =
+  process.env.SELF_AGENT_APP_URL || "https://self-agent-id.vercel.app";
 
 /** Application name shown during Self verification. Override via SELF_AGENT_APP_NAME env var. */
 const DEFAULT_APP_NAME = process.env.SELF_AGENT_APP_NAME || "Self Agent ID";
@@ -369,10 +374,15 @@ function parseIntFlag(name: string, value: string | undefined): number {
  */
 function parseNetwork(flags: FlagMap): CliNetwork {
   const networkRaw = String(flags.network || "testnet").toLowerCase();
-  const chainFlag = flags.chain ? parseIntFlag("chain", String(flags.chain)) : undefined;
+  const chainFlag = flags.chain
+    ? parseIntFlag("chain", String(flags.chain))
+    : undefined;
   const registryFlag = flags.registry ? String(flags.registry) : undefined;
   const rpcFlag = flags.rpc ? String(flags.rpc) : undefined;
-  const appUrl = String(flags["app-url"] || DEFAULT_APP_URL).replace(/\/+$/, "");
+  const appUrl = String(flags["app-url"] || DEFAULT_APP_URL).replace(
+    /\/+$/,
+    "",
+  );
   const appName = String(flags["app-name"] || DEFAULT_APP_NAME);
   const scope = String(flags.scope || DEFAULT_SCOPE);
 
@@ -414,14 +424,16 @@ function parseNetwork(flags: FlagMap): CliNetwork {
  * @returns Disclosure settings for the verification request.
  */
 function parseDisclosures(flags: FlagMap): CliSession["disclosures"] {
-  const minimumAgeRaw = flags["minimum-age"] ? String(flags["minimum-age"]) : "0";
+  const minimumAgeRaw = flags["minimum-age"]
+    ? String(flags["minimum-age"])
+    : "0";
   const minimumAge = parseIntFlag("minimum-age", minimumAgeRaw);
   if (minimumAge !== 0 && minimumAge !== 18 && minimumAge !== 21) {
     die("--minimum-age must be 0, 18, or 21");
   }
 
   return {
-    minimumAge: minimumAge as 0 | 18 | 21,
+    minimumAge: minimumAge,
     ofac: Boolean(flags.ofac),
     nationality: Boolean(flags.nationality),
     name: Boolean(flags.name),
@@ -488,7 +500,9 @@ function getSessionPath(flags: FlagMap, required = true): string {
  * @returns Absolute path for session output.
  */
 function getOutPath(flags: FlagMap): string {
-  const outRaw = flags.out ? String(flags.out) : `.self/session-${randomIdHex(8)}.json`;
+  const outRaw = flags.out
+    ? String(flags.out)
+    : `.self/session-${randomIdHex(8)}.json`;
   return resolve(outRaw);
 }
 
@@ -499,7 +513,8 @@ function getOutPath(flags: FlagMap): string {
  * @returns Port number for the local callback HTTP server.
  */
 function getCallbackPort(flags: FlagMap): number {
-  if (flags["callback-port"]) return parseIntFlag("callback-port", String(flags["callback-port"]));
+  if (flags["callback-port"])
+    return parseIntFlag("callback-port", String(flags["callback-port"]));
   const min = 37100;
   const max = 37999;
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -616,12 +631,17 @@ async function commandDeregisterInit(flags: FlagMap): Promise<void> {
  * @param flags - Parsed CLI flags.
  * @param operation - Whether to initialize a registration or deregistration session.
  */
-async function commandInit(flags: FlagMap, operation: CliOperation): Promise<void> {
+async function commandInit(
+  flags: FlagMap,
+  operation: CliOperation,
+): Promise<void> {
   const mode = parseMode(flags.mode ? String(flags.mode) : undefined);
   const network = parseNetwork(flags);
   const disclosures = parseDisclosures(flags);
   const configIndex = getRegistrationConfigIndex(disclosures);
-  const ttlMinutes = flags["ttl-minutes"] ? parseIntFlag("ttl-minutes", String(flags["ttl-minutes"])) : 30;
+  const ttlMinutes = flags["ttl-minutes"]
+    ? parseIntFlag("ttl-minutes", String(flags["ttl-minutes"]))
+    : 30;
   const outPath = getOutPath(flags);
 
   if (ttlMinutes <= 0) die("--ttl-minutes must be > 0");
@@ -631,8 +651,12 @@ async function commandInit(flags: FlagMap, operation: CliOperation): Promise<voi
   const createdAt = nowIso();
   const expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
 
-  const humanAddressRaw = flags["human-address"] ? String(flags["human-address"]) : undefined;
-  const agentAddressRaw = flags["agent-address"] ? String(flags["agent-address"]) : undefined;
+  const humanAddressRaw = flags["human-address"]
+    ? String(flags["human-address"])
+    : undefined;
+  const agentAddressRaw = flags["agent-address"]
+    ? String(flags["agent-address"])
+    : undefined;
 
   let humanIdentifier = "";
   let agentAddress = "";
@@ -643,7 +667,10 @@ async function commandInit(flags: FlagMap, operation: CliOperation): Promise<voi
   let agentPrivateKey: string | undefined;
 
   if (mode === "verified-wallet" || mode === "agent-identity") {
-    if (!humanAddressRaw) die("--human-address is required for verified-wallet and agent-identity modes");
+    if (!humanAddressRaw)
+      die(
+        "--human-address is required for verified-wallet and agent-identity modes",
+      );
     humanIdentifier = ethers.getAddress(humanAddressRaw);
   }
 
@@ -715,14 +742,18 @@ async function commandInit(flags: FlagMap, operation: CliOperation): Promise<voi
       agentAddress = humanIdentifier;
       userDefinedData = buildSimpleDeregisterUserDataAscii(disclosures);
     } else if (mode === "agent-identity") {
-      if (!agentAddressRaw) die("--agent-address is required for agent-identity deregistration");
+      if (!agentAddressRaw)
+        die("--agent-address is required for agent-identity deregistration");
       agentAddress = ethers.getAddress(agentAddressRaw);
       userDefinedData = buildAdvancedDeregisterUserDataAscii({
         agentAddress,
         disclosures,
       });
     } else if (mode === "wallet-free" || mode === "smart-wallet") {
-      if (!agentAddressRaw) die("--agent-address is required for wallet-free and smart-wallet deregistration");
+      if (!agentAddressRaw)
+        die(
+          "--agent-address is required for wallet-free and smart-wallet deregistration",
+        );
       agentAddress = ethers.getAddress(agentAddressRaw);
       humanIdentifier = agentAddress;
       userDefinedData = buildSimpleDeregisterUserDataAscii(disclosures);
@@ -769,7 +800,8 @@ async function commandInit(flags: FlagMap, operation: CliOperation): Promise<voi
     operation,
     mode,
     agentAddress,
-    requiresHumanAddress: mode === "verified-wallet" || mode === "agent-identity",
+    requiresHumanAddress:
+      mode === "verified-wallet" || mode === "agent-identity",
     callbackUrl: callbackUrl(session),
     next: [
       `self-agent ${operation} open --session ${outPath}`,
@@ -784,7 +816,7 @@ async function commandInit(flags: FlagMap, operation: CliOperation): Promise<voi
  * to "handoff_opened".
  * @param flags - Parsed CLI flags (requires --session).
  */
-async function commandOpen(flags: FlagMap): Promise<void> {
+function commandOpen(flags: FlagMap): void {
   const sessionPath = getSessionPath(flags);
   const session = readSession(sessionPath);
 
@@ -808,7 +840,9 @@ async function commandOpen(flags: FlagMap): Promise<void> {
   });
 
   if (flags.launch) {
-    printText("Browser launch is not automatic in this build. Open the URL above manually.");
+    printText(
+      "Browser launch is not automatic in this build. Open the URL above manually.",
+    );
   }
 }
 
@@ -818,9 +852,11 @@ async function commandOpen(flags: FlagMap): Promise<void> {
  * @param session - CLI session containing network and agent address info.
  * @returns Object with `verified` status and `agentId` token ID string.
  */
-async function pollOnChain(session: CliSession): Promise<{ verified: boolean; agentId: string }> {
+async function pollOnChain(
+  session: CliSession,
+): Promise<{ verified: boolean; agentId: string }> {
   const provider = new ethers.JsonRpcProvider(session.network.rpcUrl);
-  const registry = new ethers.Contract(session.network.registryAddress, REGISTRY_ABI, provider);
+  const registry = typedRegistry(session.network.registryAddress, provider);
   const agentKey = expectedAgentKeyHex(session.registration.agentAddress);
   const [verified, agentIdRaw] = await Promise.all([
     registry.isVerifiedAgent(agentKey),
@@ -844,7 +880,7 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
         const text = Buffer.concat(chunks).toString("utf8");
         resolveBody(text ? JSON.parse(text) : {});
       } catch (err) {
-        rejectBody(err);
+        rejectBody(err instanceof Error ? err : new Error(String(err)));
       }
     });
     req.on("error", rejectBody);
@@ -894,8 +930,12 @@ async function commandWait(flags: FlagMap): Promise<void> {
   const sessionPath = getSessionPath(flags);
   const session = readSession(sessionPath);
   const operation = getSessionOperation(session);
-  const timeoutSeconds = flags["timeout-seconds"] ? parseIntFlag("timeout-seconds", String(flags["timeout-seconds"])) : 1800;
-  const pollMs = flags["poll-ms"] ? parseIntFlag("poll-ms", String(flags["poll-ms"])) : 4000;
+  const timeoutSeconds = flags["timeout-seconds"]
+    ? parseIntFlag("timeout-seconds", String(flags["timeout-seconds"]))
+    : 1800;
+  const pollMs = flags["poll-ms"]
+    ? parseIntFlag("poll-ms", String(flags["poll-ms"]))
+    : 4000;
   const shouldOpen = Boolean(flags.open);
 
   if (timeoutSeconds <= 0) die("--timeout-seconds must be > 0");
@@ -917,81 +957,102 @@ async function commandWait(flags: FlagMap): Promise<void> {
 
   let callbackError: string | null = null;
   let callbackSuccess = false;
-  let listenerEnabled = !Boolean(flags["no-listener"]);
+  let listenerEnabled = !flags["no-listener"];
 
-  const server = createServer(async (req, res) => {
-    try {
-      const url = req.url || "/";
-      if (req.method === "OPTIONS") {
-        sendJson(res, 204, { ok: true });
-        return;
-      }
-      if (req.method !== "POST" || url.split("?")[0] !== session.callback.path) {
-        sendJson(res, 404, { error: "Not found" });
-        return;
-      }
-
-      const body = (await readJsonBody(req)) as {
-        sessionId?: string;
-        stateToken?: string;
-        status?: "success" | "error";
-        error?: string;
-        guardianAddress?: string;
-      };
-
-      if (body.sessionId !== session.sessionId) {
-        sendJson(res, 400, { error: "Session mismatch" });
-        return;
-      }
-      if (body.stateToken !== session.callback.stateToken) {
-        sendJson(res, 401, { error: "Invalid state token" });
-        return;
-      }
-      if (session.callback.used) {
-        sendJson(res, 409, { error: "Callback already used" });
-        return;
-      }
-
-      session.callback.used = true;
-      session.callback.lastStatus = body.status === "error" ? "error" : "success";
-
-      if (body.status === "error") {
-        callbackError = body.error || "Browser reported flow error";
-        session.callback.lastError = callbackError;
-        session.state.stage = "failed";
-        session.state.lastError = callbackError;
-      } else {
-        callbackSuccess = true;
-        session.state.stage = "callback_received";
-        if (body.guardianAddress) {
-          session.state.guardianAddress = ethers.getAddress(body.guardianAddress);
+  const server = createServer((req, res) => {
+    void (async () => {
+      try {
+        const url = req.url || "/";
+        if (req.method === "OPTIONS") {
+          sendJson(res, 204, { ok: true });
+          return;
         }
-      }
+        if (
+          req.method !== "POST" ||
+          url.split("?")[0] !== session.callback.path
+        ) {
+          sendJson(res, 404, { error: "Not found" });
+          return;
+        }
 
-      saveSession(sessionPath, session);
-      sendJson(res, 200, { ok: true });
-    } catch (err) {
-      sendJson(res, 400, { error: err instanceof Error ? err.message : String(err) });
-    }
+        const body = (await readJsonBody(req)) as {
+          sessionId?: string;
+          stateToken?: string;
+          status?: "success" | "error";
+          error?: string;
+          guardianAddress?: string;
+        };
+
+        if (body.sessionId !== session.sessionId) {
+          sendJson(res, 400, { error: "Session mismatch" });
+          return;
+        }
+        if (body.stateToken !== session.callback.stateToken) {
+          sendJson(res, 401, { error: "Invalid state token" });
+          return;
+        }
+        if (session.callback.used) {
+          sendJson(res, 409, { error: "Callback already used" });
+          return;
+        }
+
+        session.callback.used = true;
+        session.callback.lastStatus =
+          body.status === "error" ? "error" : "success";
+
+        if (body.status === "error") {
+          callbackError = body.error || "Browser reported flow error";
+          session.callback.lastError = callbackError;
+          session.state.stage = "failed";
+          session.state.lastError = callbackError;
+        } else {
+          callbackSuccess = true;
+          session.state.stage = "callback_received";
+          if (body.guardianAddress) {
+            session.state.guardianAddress = ethers.getAddress(
+              body.guardianAddress,
+            );
+          }
+        }
+
+        saveSession(sessionPath, session);
+        sendJson(res, 200, { ok: true });
+      } catch (err) {
+        sendJson(res, 400, {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    })();
   });
 
   if (listenerEnabled) {
     await new Promise<void>((resolveListen, rejectListen) => {
       server.once("error", rejectListen);
-      server.listen(session.callback.listenPort, session.callback.listenHost, () => {
-        resolveListen();
-      });
+      server.listen(
+        session.callback.listenPort,
+        session.callback.listenHost,
+        () => {
+          resolveListen();
+        },
+      );
     }).catch((err: unknown) => {
       const code = (err as { code?: string } | undefined)?.code || "";
       const message = String(err);
       const permissionLike =
-        code === "EPERM" || code === "EACCES" || code === "EADDRNOTAVAIL" || message.includes("operation not permitted");
+        code === "EPERM" ||
+        code === "EACCES" ||
+        code === "EADDRNOTAVAIL" ||
+        message.includes("operation not permitted");
       if (permissionLike) {
         listenerEnabled = false;
-        printText(`Callback listener unavailable (${message}). Continuing with on-chain polling only.`);
+        printText(
+          `Callback listener unavailable (${message}). Continuing with on-chain polling only.`,
+        );
         return;
       }
-      die(`Failed to start callback listener on ${callbackUrl(session)}: ${message}`);
+      die(
+        `Failed to start callback listener on ${callbackUrl(session)}: ${message}`,
+      );
     });
   }
 
@@ -1013,7 +1074,9 @@ async function commandWait(flags: FlagMap): Promise<void> {
         operation === "register" ? onchainVerified : onchainDeregistered;
       if (reachedTarget) {
         session.state.stage =
-          operation === "register" ? "onchain_verified" : "onchain_deregistered";
+          operation === "register"
+            ? "onchain_verified"
+            : "onchain_deregistered";
         session.state.agentId = operation === "register" ? agentId : undefined;
         session.state.lastError = undefined;
         saveSession(sessionPath, session);
@@ -1033,7 +1096,9 @@ async function commandWait(flags: FlagMap): Promise<void> {
   }
 
   if (callbackError) {
-    die(`${operation === "register" ? "Registration" : "Deregistration"} failed via browser callback: ${callbackError}`);
+    die(
+      `${operation === "register" ? "Registration" : "Deregistration"} failed via browser callback: ${String(callbackError)}`,
+    );
   }
 
   const completed =
@@ -1042,9 +1107,12 @@ async function commandWait(flags: FlagMap): Promise<void> {
       : !verified && BigInt(agentId) === 0n;
   if (!completed) {
     session.state.stage = Date.now() >= deadline ? "expired" : "failed";
-    session.state.lastError = lastPollError || `Timed out waiting for on-chain ${operation}`;
+    session.state.lastError =
+      lastPollError || `Timed out waiting for on-chain ${operation}`;
     saveSession(sessionPath, session);
-    die(`Timed out waiting for on-chain ${operation}. Last poll error: ${lastPollError || "none"}`);
+    die(
+      `Timed out waiting for on-chain ${operation}. Last poll error: ${lastPollError || "none"}`,
+    );
   }
 
   printJson({
@@ -1096,7 +1164,10 @@ function commandRegisterExport(flags: FlagMap): void {
   const session = readSession(sessionPath);
   const key = session.secrets?.agentPrivateKey;
 
-  if (!key) die("No agent private key in this session (verified-wallet mode has no generated key).");
+  if (!key)
+    die(
+      "No agent private key in this session (verified-wallet mode has no generated key).",
+    );
   if (!flags.unsafe) die("Export blocked. Re-run with --unsafe.");
 
   const printKey = Boolean(flags["print-private-key"]);
@@ -1138,9 +1209,15 @@ async function main(): Promise<void> {
 
   const family = positionals[0] as CliOperation;
   const sub = positionals[1];
-  if (sub === "init") return family === "register" ? commandRegisterInit(flags) : commandDeregisterInit(flags);
+  if (sub === "init")
+    return family === "register"
+      ? commandRegisterInit(flags)
+      : commandDeregisterInit(flags);
   if (sub === "open") return commandOpen(flags);
-  if (sub === "wait") return family === "register" ? commandRegisterWait(flags) : commandDeregisterWait(flags);
+  if (sub === "wait")
+    return family === "register"
+      ? commandRegisterWait(flags)
+      : commandDeregisterWait(flags);
   if (sub === "status") return commandStatus(flags);
   if (sub === "export") {
     if (family !== "register") die("`deregister export` is not supported.");

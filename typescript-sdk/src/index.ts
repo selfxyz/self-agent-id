@@ -5,7 +5,11 @@
 export { SelfAgent } from "./SelfAgent";
 export type { SelfAgentConfig, AgentInfo } from "./SelfAgent";
 
-export { SelfAgentVerifier, VerifierBuilder, verifyAgent } from "./SelfAgentVerifier";
+export {
+  SelfAgentVerifier,
+  VerifierBuilder,
+  verifyAgent,
+} from "./SelfAgentVerifier";
 export type {
   VerifierConfig,
   VerificationResult,
@@ -72,6 +76,12 @@ export {
   DEFAULT_RPC_URL,
 } from "./constants";
 export type { NetworkName } from "./constants";
+
+export { typedRegistry, typedProvider } from "./contract-types";
+export type {
+  TypedRegistryContract,
+  TypedProviderContract,
+} from "./contract-types";
 
 export {
   requestRegistration,

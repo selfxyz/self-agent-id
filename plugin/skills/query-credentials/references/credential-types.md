@@ -54,28 +54,28 @@ Nationality values use ISO 3166-1 alpha-3 codes, extracted from the passport's m
 
 ### Common Codes
 
-| Code | Country |
-|---|---|
-| USA | United States |
-| GBR | United Kingdom |
-| DEU | Germany |
-| FRA | France |
-| JPN | Japan |
-| AUS | Australia |
-| CAN | Canada |
-| BRA | Brazil |
-| IND | India |
-| KOR | South Korea |
-| CHN | China |
-| ITA | Italy |
-| ESP | Spain |
-| NLD | Netherlands |
-| CHE | Switzerland |
-| SGP | Singapore |
-| NZL | New Zealand |
-| MEX | Mexico |
-| ARG | Argentina |
-| ZAF | South Africa |
+| Code | Country        |
+| ---- | -------------- |
+| USA  | United States  |
+| GBR  | United Kingdom |
+| DEU  | Germany        |
+| FRA  | France         |
+| JPN  | Japan          |
+| AUS  | Australia      |
+| CAN  | Canada         |
+| BRA  | Brazil         |
+| IND  | India          |
+| KOR  | South Korea    |
+| CHN  | China          |
+| ITA  | Italy          |
+| ESP  | Spain          |
+| NLD  | Netherlands    |
+| CHE  | Switzerland    |
+| SGP  | Singapore      |
+| NZL  | New Zealand    |
+| MEX  | Mexico         |
+| ARG  | Argentina      |
+| ZAF  | South Africa   |
 
 The full list includes all ISO 3166-1 alpha-3 codes. Refer to the ISO 3166 standard for the complete set.
 
@@ -93,11 +93,11 @@ The `olderThan` field records the minimum age threshold that was verified at reg
 
 ### Threshold Values
 
-| Value | Meaning | Triggered By |
-|---|---|---|
-| 0 | No age verification performed | Verification config `'0'` or `'1'` |
-| 18 | Verified 18 years of age or older | Verification config `'2'` or `'3'` |
-| 21 | Verified 21 years of age or older | Verification config `'4'` or `'5'` |
+| Value | Meaning                           | Triggered By                       |
+| ----- | --------------------------------- | ---------------------------------- |
+| 0     | No age verification performed     | Verification config `'0'` or `'1'` |
+| 18    | Verified 18 years of age or older | Verification config `'2'` or `'3'` |
+| 21    | Verified 21 years of age or older | Verification config `'4'` or `'5'` |
 
 ### How It Works
 
@@ -138,14 +138,14 @@ If the holder appears on any list, proof generation fails. If the holder passes 
 
 The verification strength score is reported by the proof provider and reflects the rigor of the identity verification method. Self Agent ID stores this score via the `SelfReputationProvider` contract.
 
-| Score | Method | Provider Example | Description |
-|---|---|---|---|
-| 0 | None | — | No proof submitted. Agent is registered but unverified, or the proof provider reports zero strength. |
-| 20 | Email/phone | — | Basic identity check via email or phone number verification. Minimal assurance of humanness. |
-| 40 | Video liveness | Worldcoin orb | Biometric verification without a government document. Proves the subject is a live human but does not verify legal identity. |
-| 60 | Government ID | Aadhaar, drivers license | Government-issued document scan with optional liveness check. No NFC chip verification. Susceptible to high-quality document forgery. |
-| 80 | Chip-enabled ID | ePassport without biometric | NFC chip read from a chip-enabled passport or ID card. Verifies the document is genuine (chip signature validated) but does not match the holder's face to the document photo. |
-| 100 | NFC + biometric | Self Protocol | Passport NFC chip read combined with a live face match against the passport photo stored in the chip. This is the strongest available verification — it proves the person holding the phone is the person in the passport. |
+| Score | Method          | Provider Example            | Description                                                                                                                                                                                                                |
+| ----- | --------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0     | None            | —                           | No proof submitted. Agent is registered but unverified, or the proof provider reports zero strength.                                                                                                                       |
+| 20    | Email/phone     | —                           | Basic identity check via email or phone number verification. Minimal assurance of humanness.                                                                                                                               |
+| 40    | Video liveness  | Worldcoin orb               | Biometric verification without a government document. Proves the subject is a live human but does not verify legal identity.                                                                                               |
+| 60    | Government ID   | Aadhaar, drivers license    | Government-issued document scan with optional liveness check. No NFC chip verification. Susceptible to high-quality document forgery.                                                                                      |
+| 80    | Chip-enabled ID | ePassport without biometric | NFC chip read from a chip-enabled passport or ID card. Verifies the document is genuine (chip signature validated) but does not match the holder's face to the document photo.                                             |
+| 100   | NFC + biometric | Self Protocol               | Passport NFC chip read combined with a live face match against the passport photo stored in the chip. This is the strongest available verification — it proves the person holding the phone is the person in the passport. |
 
 ### Score Interpretation
 
@@ -164,42 +164,42 @@ Agent cards follow the A2A (Agent-to-Agent) format, providing a standardized way
 
 ```typescript
 interface A2AAgentCard {
-  a2aVersion: string;        // Protocol version, currently "0.1"
-  name: string;              // Human-readable agent name
-  description?: string;      // Optional description of the agent
-  url?: string;              // Optional URL for the agent's API or web interface
+  a2aVersion: string; // Protocol version, currently "0.1"
+  name: string; // Human-readable agent name
+  description?: string; // Optional description of the agent
+  url?: string; // Optional URL for the agent's API or web interface
   selfProtocol: SelfProtocolExtension;
-  skills?: AgentSkill[];     // Optional list of agent capabilities
+  skills?: AgentSkill[]; // Optional list of agent capabilities
 }
 
 interface SelfProtocolExtension {
-  agentId: number;           // On-chain token ID
-  registry: string;          // Registry contract address
-  chainId: number;           // Chain ID (42220 for mainnet, 11142220 for testnet)
-  proofProvider: string;     // Proof provider contract address
-  providerName: string;      // Provider identifier (e.g., "self")
+  agentId: number; // On-chain token ID
+  registry: string; // Registry contract address
+  chainId: number; // Chain ID (42220 for mainnet, 11142220 for testnet)
+  proofProvider: string; // Proof provider contract address
+  providerName: string; // Provider identifier (e.g., "self")
   verificationStrength: number; // Score 0-100
   trustModel: TrustModel;
   credentials: CardCredentials;
 }
 
 interface TrustModel {
-  proofType: string;         // "zk-passport" for Self Protocol
-  proofStandard: string;     // "groth16" — the ZK proving system used
-  proofProvider: string;     // "self-protocol" — the provider identity
+  proofType: string; // "zk-passport" for Self Protocol
+  proofStandard: string; // "groth16" — the ZK proving system used
+  proofProvider: string; // "self-protocol" — the provider identity
   onChainVerifiable: boolean; // true — proof is verifiable on-chain by any party
 }
 
 interface CardCredentials {
-  nationality: string;       // ISO 3166-1 alpha-3
-  olderThan: number;         // 0, 18, or 21
-  ofacClean: boolean;        // OFAC screening result
+  nationality: string; // ISO 3166-1 alpha-3
+  olderThan: number; // 0, 18, or 21
+  ofacClean: boolean; // OFAC screening result
 }
 
 interface AgentSkill {
-  id: string;                // Unique identifier for the skill
-  name: string;              // Human-readable skill name
-  description?: string;      // Optional description
+  id: string; // Unique identifier for the skill
+  name: string; // Human-readable skill name
+  description?: string; // Optional description
 }
 ```
 
@@ -256,6 +256,7 @@ Returns a uint8 score (0-100). Returns 0 for unregistered or unverified agents.
 ```
 
 Returns the full reputation breakdown:
+
 - `score` — Verification strength (0-100)
 - `providerName` — Provider identifier (e.g., `"self"`)
 - `hasProof` — Whether the agent has a verified human proof
@@ -291,6 +292,7 @@ Returns `true` if the agent is registered, verified, and within the freshness wi
 ```
 
 Returns the full validation breakdown:
+
 - `valid` — Whether the agent is registered and has a proof
 - `fresh` — Whether the registration is within the freshness threshold
 - `registeredAt` — Block number of registration
@@ -390,7 +392,7 @@ console.log("Score:", strength); // 0-100
 const card = await agent.getAgentCard();
 if (card) {
   console.log("Name:", card.name);
-  console.log("Skills:", card.skills?.map(s => s.name).join(", "));
+  console.log("Skills:", card.skills?.map((s) => s.name).join(", "));
 }
 ```
 
@@ -400,13 +402,13 @@ if (card) {
 
 All query operations are available via REST endpoints hosted at `https://self-agent-id.vercel.app` (override with `SELF_AGENT_API_BASE` environment variable).
 
-| Endpoint | Method | Description | Auth Required |
-|---|---|---|---|
-| `/api/agent/info/{chainId}/{agentId}` | GET | Full agent info by ID | No |
-| `/api/agent/agents/{chainId}/{address}` | GET | List agent IDs for a human address | No |
-| `/api/agent/verify/{chainId}/{agentId}` | GET | Verification status and proof provider | No |
-| `/api/cards/{chainId}/{agentId}` | GET | Agent card (A2A metadata) | No |
-| `/api/reputation/{chainId}/{agentId}` | GET | Reputation score and provider details | No |
+| Endpoint                                | Method | Description                            | Auth Required |
+| --------------------------------------- | ------ | -------------------------------------- | ------------- |
+| `/api/agent/info/{chainId}/{agentId}`   | GET    | Full agent info by ID                  | No            |
+| `/api/agent/agents/{chainId}/{address}` | GET    | List agent IDs for a human address     | No            |
+| `/api/agent/verify/{chainId}/{agentId}` | GET    | Verification status and proof provider | No            |
+| `/api/cards/{chainId}/{agentId}`        | GET    | Agent card (A2A metadata)              | No            |
+| `/api/reputation/{chainId}/{agentId}`   | GET    | Reputation score and provider details  | No            |
 
 All endpoints are public and do not require authentication. Rate limiting may apply.
 

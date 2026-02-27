@@ -59,7 +59,10 @@ describe("AA token route", () => {
   });
 
   it("rejects when origin validation fails", async () => {
-    mockValidateAllowedOrigin.mockReturnValue({ ok: false, error: "Origin blocked" });
+    mockValidateAllowedOrigin.mockReturnValue({
+      ok: false,
+      error: "Origin blocked",
+    });
     const { POST } = await loadRoute("@/app/api/aa/token/route");
 
     const res = await POST(
@@ -81,7 +84,9 @@ describe("AA token route", () => {
     );
 
     expect(res.status).toBe(400);
-    expect(await jsonBody(res)).toEqual({ error: "Unsupported or missing chain" });
+    expect(await jsonBody(res)).toEqual({
+      error: "Unsupported or missing chain",
+    });
   });
 
   it("returns 429 when token issuance rate limit is exceeded", async () => {
@@ -167,7 +172,11 @@ describe("AA bundler route", () => {
     const res = await POST(
       makeNextRequest("https://example.com/api/aa/bundler?chainId=42220", {
         method: "POST",
-        body: JSON.stringify({ jsonrpc: "2.0", method: "eth_chainId", params: [] }),
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "eth_chainId",
+          params: [],
+        }),
       }),
     );
 
@@ -180,7 +189,11 @@ describe("AA bundler route", () => {
     const res = await POST(
       makeNextRequest("https://example.com/api/aa/bundler?chainId=42220", {
         method: "POST",
-        body: JSON.stringify({ jsonrpc: "2.0", method: "eth_chainId", params: [] }),
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "eth_chainId",
+          params: [],
+        }),
       }),
     );
 
@@ -194,12 +207,18 @@ describe("AA bundler route", () => {
       makeNextRequest("https://example.com/api/aa/bundler?chainId=42220", {
         method: "POST",
         headers: { "x-aa-proxy-token": "ok-token" },
-        body: JSON.stringify({ jsonrpc: "2.0", method: "eth_blockNumber", params: [] }),
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "eth_blockNumber",
+          params: [],
+        }),
       }),
     );
 
     expect(res.status).toBe(400);
-    expect(await jsonBody(res)).toEqual({ error: "Method not allowed: eth_blockNumber" });
+    expect(await jsonBody(res)).toEqual({
+      error: "Method not allowed: eth_blockNumber",
+    });
   });
 
   it("proxies valid requests to Pimlico", async () => {
@@ -242,7 +261,11 @@ describe("AA bundler route", () => {
       makeNextRequest("https://example.com/api/aa/bundler?chainId=42220", {
         method: "POST",
         headers: { "x-aa-proxy-token": "ok-token" },
-        body: JSON.stringify({ jsonrpc: "2.0", method: "eth_chainId", params: [] }),
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "eth_chainId",
+          params: [],
+        }),
       }),
     );
 
@@ -290,12 +313,16 @@ describe("AA bundler route", () => {
       makeNextRequest("https://example.com/api/aa/bundler?chainId=42220", {
         method: "POST",
         headers: { "x-aa-proxy-token": "ok-token" },
-        body: JSON.stringify([{ jsonrpc: "2.0", method: "eth_chainId", params: [] }]),
+        body: JSON.stringify([
+          { jsonrpc: "2.0", method: "eth_chainId", params: [] },
+        ]),
       }),
     );
 
     expect(res.status).toBe(400);
-    expect(await jsonBody(res)).toEqual({ error: "Batch requests are not supported" });
+    expect(await jsonBody(res)).toEqual({
+      error: "Batch requests are not supported",
+    });
   });
 
   it("rejects invalid jsonrpc field", async () => {
@@ -304,7 +331,11 @@ describe("AA bundler route", () => {
       makeNextRequest("https://example.com/api/aa/bundler?chainId=42220", {
         method: "POST",
         headers: { "x-aa-proxy-token": "ok-token" },
-        body: JSON.stringify({ jsonrpc: "1.0", method: "eth_chainId", params: [] }),
+        body: JSON.stringify({
+          jsonrpc: "1.0",
+          method: "eth_chainId",
+          params: [],
+        }),
       }),
     );
 
@@ -318,7 +349,11 @@ describe("AA bundler route", () => {
       makeNextRequest("https://example.com/api/aa/bundler?chainId=42220", {
         method: "POST",
         headers: { "x-aa-proxy-token": "ok-token" },
-        body: JSON.stringify({ jsonrpc: "2.0", method: "eth_chainId", params: "bad" }),
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "eth_chainId",
+          params: "bad",
+        }),
       }),
     );
 
@@ -327,12 +362,19 @@ describe("AA bundler route", () => {
   });
 
   it("rejects when origin validation fails", async () => {
-    mockValidateAllowedOrigin.mockReturnValue({ ok: false, error: "Origin check failed" });
+    mockValidateAllowedOrigin.mockReturnValue({
+      ok: false,
+      error: "Origin check failed",
+    });
     const { POST } = await loadRoute("@/app/api/aa/bundler/route");
     const res = await POST(
       makeNextRequest("https://example.com/api/aa/bundler?chainId=42220", {
         method: "POST",
-        body: JSON.stringify({ jsonrpc: "2.0", method: "eth_chainId", params: [] }),
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "eth_chainId",
+          params: [],
+        }),
       }),
     );
 
@@ -341,13 +383,20 @@ describe("AA bundler route", () => {
   });
 
   it("rejects when token verification fails", async () => {
-    mockVerifyAaProxyToken.mockReturnValue({ ok: false, error: "Invalid AA token" });
+    mockVerifyAaProxyToken.mockReturnValue({
+      ok: false,
+      error: "Invalid AA token",
+    });
     const { POST } = await loadRoute("@/app/api/aa/bundler/route");
     const res = await POST(
       makeNextRequest("https://example.com/api/aa/bundler?chainId=42220", {
         method: "POST",
         headers: { "x-aa-proxy-token": "bad-token" },
-        body: JSON.stringify({ jsonrpc: "2.0", method: "eth_chainId", params: [] }),
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "eth_chainId",
+          params: [],
+        }),
       }),
     );
 
@@ -386,7 +435,9 @@ describe("AA paymaster route", () => {
     );
 
     expect(res.status).toBe(400);
-    expect(await jsonBody(res)).toEqual({ error: "Unsupported or missing chain" });
+    expect(await jsonBody(res)).toEqual({
+      error: "Unsupported or missing chain",
+    });
   });
 
   it("rejects invalid proxy tokens", async () => {
@@ -396,7 +447,11 @@ describe("AA paymaster route", () => {
       makeNextRequest("https://example.com/api/aa/paymaster?chainId=42220", {
         method: "POST",
         headers: { "x-aa-proxy-token": "bad" },
-        body: JSON.stringify({ jsonrpc: "2.0", method: "pm_getPaymasterData", params: [] }),
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "pm_getPaymasterData",
+          params: [],
+        }),
       }),
     );
 
@@ -475,12 +530,19 @@ describe("AA paymaster route", () => {
   });
 
   it("rejects when origin validation fails", async () => {
-    mockValidateAllowedOrigin.mockReturnValue({ ok: false, error: "Origin check failed" });
+    mockValidateAllowedOrigin.mockReturnValue({
+      ok: false,
+      error: "Origin check failed",
+    });
     const { POST } = await loadRoute("@/app/api/aa/paymaster/route");
     const res = await POST(
       makeNextRequest("https://example.com/api/aa/paymaster?chainId=42220", {
         method: "POST",
-        body: JSON.stringify({ jsonrpc: "2.0", method: "pm_getPaymasterData", params: [] }),
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "pm_getPaymasterData",
+          params: [],
+        }),
       }),
     );
 
@@ -499,7 +561,11 @@ describe("AA paymaster route", () => {
       makeNextRequest("https://example.com/api/aa/paymaster?chainId=42220", {
         method: "POST",
         headers: { "x-aa-proxy-token": "ok-token" },
-        body: JSON.stringify({ jsonrpc: "2.0", method: "pm_getPaymasterData", params: [] }),
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "pm_getPaymasterData",
+          params: [],
+        }),
       }),
     );
 

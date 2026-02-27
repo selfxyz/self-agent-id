@@ -13,12 +13,11 @@ export interface McpConfig {
 
 export function loadMcpConfig(overrideNetwork?: NetworkName): McpConfig {
   const envNetwork = process.env.SELF_AGENT_NETWORK;
-  const network: NetworkName = overrideNetwork
-    ?? (envNetwork === "testnet" ? "testnet" : "mainnet");
+  const network: NetworkName =
+    overrideNetwork ?? (envNetwork === "testnet" ? "testnet" : "mainnet");
   const networkConfig = NETWORKS[network];
   const apiUrl =
-    process.env.SELF_AGENT_API_BASE ||
-    "https://self-agent-id.vercel.app";
+    process.env.SELF_AGENT_API_BASE || "https://self-agent-id.vercel.app";
 
   return {
     privateKey: process.env.SELF_AGENT_PRIVATE_KEY || undefined,

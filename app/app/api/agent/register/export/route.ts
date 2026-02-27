@@ -9,7 +9,7 @@
 // Token is sent in the request body (not query string) to avoid leaking via
 // server logs, browser history, and Referer headers.
 
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import {
   decryptAndValidateSession,
   jsonResponse,
@@ -69,6 +69,6 @@ export async function POST(req: NextRequest) {
   });
 }
 
-export async function OPTIONS() {
+export function OPTIONS() {
   return corsResponse();
 }

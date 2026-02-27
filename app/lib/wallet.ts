@@ -7,14 +7,22 @@ import type { NetworkConfig } from "./network";
 declare global {
   interface Window {
     ethereum?: {
-      request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+      request: (args: {
+        method: string;
+        params?: unknown[];
+      }) => Promise<unknown>;
       on: (event: string, callback: (...args: unknown[]) => void) => void;
-      removeListener: (event: string, callback: (...args: unknown[]) => void) => void;
+      removeListener: (
+        event: string,
+        callback: (...args: unknown[]) => void,
+      ) => void;
     };
   }
 }
 
-export async function connectWallet(network: NetworkConfig): Promise<string | null> {
+export async function connectWallet(
+  network: NetworkConfig,
+): Promise<string | null> {
   if (typeof window === "undefined" || !window.ethereum) {
     alert("Please install MetaMask or another wallet");
     return null;

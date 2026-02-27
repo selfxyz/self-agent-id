@@ -56,7 +56,9 @@ const CELO_SEPOLIA: NetworkConfig = {
   label: "Sepolia",
   chainId: 11142220,
   chainIdHex: "0xaa044c",
-  rpcUrl: process.env.NEXT_PUBLIC_RPC_CELO_SEPOLIA || "https://forno.celo-sepolia.celo-testnet.org",
+  rpcUrl:
+    process.env.NEXT_PUBLIC_RPC_CELO_SEPOLIA ||
+    "https://forno.celo-sepolia.celo-testnet.org",
   blockExplorer: "https://celo-sepolia.blockscout.com",
   registryAddress: "0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379",
   providerAddress: "0x5E61c3051Bf4115F90AacEAE6212bc419f8aBB6c",

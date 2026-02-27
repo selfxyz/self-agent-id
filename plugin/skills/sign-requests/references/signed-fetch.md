@@ -99,7 +99,7 @@ async function manualSignExample(): Promise<void> {
 async function fetchWithRetry<T>(
   fn: () => Promise<T>,
   maxRetries: number = 3,
-  delayMs: number = 1000
+  delayMs: number = 1000,
 ): Promise<T> {
   let lastError: Error | undefined;
 
@@ -109,7 +109,7 @@ async function fetchWithRetry<T>(
     } catch (err) {
       lastError = err as Error;
       console.warn(
-        `Attempt ${attempt}/${maxRetries} failed: ${lastError.message}`
+        `Attempt ${attempt}/${maxRetries} failed: ${lastError.message}`,
       );
 
       if (attempt < maxRetries) {
@@ -127,7 +127,9 @@ async function main(): Promise<void> {
   // Verify registration before making requests
   const registered = await agent.isRegistered();
   if (!registered) {
-    console.error("Agent is not registered. Register first using the register-agent skill.");
+    console.error(
+      "Agent is not registered. Register first using the register-agent skill.",
+    );
     process.exit(1);
   }
 
@@ -441,6 +443,7 @@ Note: The `cast` commands above use Foundry's cast CLI. The `cast keccak` comman
 Generate headers to attach to a request manually.
 
 **Example input:**
+
 ```json
 {
   "method": "POST",
@@ -450,6 +453,7 @@ Generate headers to attach to a request manually.
 ```
 
 **Example output:**
+
 ```json
 {
   "headers": {
@@ -463,6 +467,7 @@ Generate headers to attach to a request manually.
 ```
 
 **Usage in a Claude Code session:**
+
 ```
 User: Sign a POST request to https://api.example.com/agents/verify
       with body {"agentId": 5, "action": "check"}
@@ -480,6 +485,7 @@ Claude: [calls self_sign_request tool]
 Have the MCP server send the signed request directly.
 
 **Example input (GET):**
+
 ```json
 {
   "method": "GET",
@@ -488,6 +494,7 @@ Have the MCP server send the signed request directly.
 ```
 
 **Example output:**
+
 ```json
 {
   "status": 200,
@@ -497,6 +504,7 @@ Have the MCP server send the signed request directly.
 ```
 
 **Example input (POST with body):**
+
 ```json
 {
   "method": "POST",
@@ -507,6 +515,7 @@ Have the MCP server send the signed request directly.
 ```
 
 **Example output:**
+
 ```json
 {
   "status": 201,
@@ -516,6 +525,7 @@ Have the MCP server send the signed request directly.
 ```
 
 **Usage in a Claude Code session:**
+
 ```
 User: Call the protected endpoint at https://api.example.com/tasks/create
       to create a new task with title "Analyze dataset"
@@ -529,12 +539,12 @@ Claude: [calls self_authenticated_fetch tool]
 
 Common error responses from protected APIs:
 
-| Status | Meaning | Resolution |
-|---|---|---|
-| 401 | Signature invalid or missing headers | Verify `SELF_AGENT_PRIVATE_KEY` is set correctly in the MCP server environment |
-| 403 | Agent not registered or not verified | Register the agent first using the `self_register_agent` tool |
-| 408 | Timestamp expired (outside 5-minute window) | Retry — the tool generates a fresh timestamp on each call |
-| 429 | Rate limited | Wait and retry after the backoff period |
+| Status | Meaning                                     | Resolution                                                                     |
+| ------ | ------------------------------------------- | ------------------------------------------------------------------------------ |
+| 401    | Signature invalid or missing headers        | Verify `SELF_AGENT_PRIVATE_KEY` is set correctly in the MCP server environment |
+| 403    | Agent not registered or not verified        | Register the agent first using the `self_register_agent` tool                  |
+| 408    | Timestamp expired (outside 5-minute window) | Retry — the tool generates a fresh timestamp on each call                      |
+| 429    | Rate limited                                | Wait and retry after the backoff period                                        |
 
 ## Agent-to-Agent Communication
 

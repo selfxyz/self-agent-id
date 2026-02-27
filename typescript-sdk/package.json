@@ -4,7 +4,9 @@
   "description": "TypeScript SDK for Self Agent ID — agent signing + service verification",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "bin": {
     "self-agent": "dist/cli.js",
     "self-agent-cli": "dist/cli.js"
@@ -19,7 +21,19 @@
   "publishConfig": {
     "access": "public"
   },
-  "keywords": ["self", "agent", "identity", "proof-of-human", "erc-8004", "blockchain", "celo", "ai-agent", "verification", "sybil-resistance", "zk-proof"],
+  "keywords": [
+    "self",
+    "agent",
+    "identity",
+    "proof-of-human",
+    "erc-8004",
+    "blockchain",
+    "celo",
+    "ai-agent",
+    "verification",
+    "sybil-resistance",
+    "zk-proof"
+  ],
   "author": "Self Protocol",
   "license": "BUSL-1.1",
   "repository": {

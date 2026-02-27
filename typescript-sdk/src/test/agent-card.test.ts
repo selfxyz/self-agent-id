@@ -9,11 +9,6 @@ import {
   getStrengthColor,
   generateRegistrationJSON,
   buildAgentCard,
-  PROVIDER_LABELS,
-} from "../agentCard";
-import type {
-  ERC8004AgentDocument,
-  GenerateRegistrationJSONOptions,
 } from "../agentCard";
 import { isProofExpiringSoon, EXPIRY_WARNING_THRESHOLD_SECS } from "../types";
 
@@ -111,7 +106,7 @@ describe("generateRegistrationJSON", () => {
 
     assert.equal(
       doc.type,
-      "https://eips.ethereum.org/EIPS/eip-8004#registration-v1"
+      "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
     );
     assert.equal(doc.name, "TestAgent");
     assert.equal(doc.description, "A test agent");
@@ -135,7 +130,11 @@ describe("generateRegistrationJSON", () => {
       description: "An A2A-capable agent",
       image: "https://example.com/a2a.png",
       services: [
-        { name: "A2A", endpoint: "https://agent.example.com/a2a", version: "1.0" },
+        {
+          name: "A2A",
+          endpoint: "https://agent.example.com/a2a",
+          version: "1.0",
+        },
       ],
       a2a: {
         version: "0.1.0",
@@ -148,7 +147,7 @@ describe("generateRegistrationJSON", () => {
     // ERC-8004 fields
     assert.equal(
       doc.type,
-      "https://eips.ethereum.org/EIPS/eip-8004#registration-v1"
+      "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
     );
     assert.equal(doc.name, "A2AAgent");
     assert.equal(doc.description, "An A2A-capable agent");
@@ -184,7 +183,8 @@ describe("generateRegistrationJSON", () => {
       registrations: [
         {
           agentId: 42,
-          agentRegistry: "eip155:42220:0xABCDEF1234567890abcdef1234567890ABCDEF12",
+          agentRegistry:
+            "eip155:42220:0xABCDEF1234567890abcdef1234567890ABCDEF12",
         },
       ],
       supportedTrust: ["reputation", "crypto-economic"],
@@ -194,7 +194,8 @@ describe("generateRegistrationJSON", () => {
     assert.deepEqual(doc.registrations, [
       {
         agentId: 42,
-        agentRegistry: "eip155:42220:0xABCDEF1234567890abcdef1234567890ABCDEF12",
+        agentRegistry:
+          "eip155:42220:0xABCDEF1234567890abcdef1234567890ABCDEF12",
       },
     ]);
     assert.deepEqual(doc.supportedTrust, ["reputation", "crypto-economic"]);
@@ -262,10 +263,15 @@ describe("buildAgentCard", () => {
   }
 
   it("builds a complete card with credentials from on-chain data", async () => {
-    const card = await buildAgentCard(1, createMockRegistry(), createMockProvider(), {
-      name: "TestAgent",
-      description: "A test agent",
-    });
+    const card = await buildAgentCard(
+      1,
+      createMockRegistry(),
+      createMockProvider(),
+      {
+        name: "TestAgent",
+        description: "A test agent",
+      },
+    );
 
     // selfProtocol identity
     assert.equal(card.selfProtocol?.agentId, 1);
@@ -298,7 +304,7 @@ describe("buildAgentCard", () => {
       2,
       createMockRegistry({ throwOnCredentials: true }),
       createMockProvider(),
-      { name: "NoCredsAgent" }
+      { name: "NoCredsAgent" },
     );
 
     assert.equal(card.selfProtocol?.agentId, 2);
@@ -315,10 +321,15 @@ describe("buildAgentCard", () => {
   });
 
   it("auto-populates services with A2A entry when url is provided", async () => {
-    const card = await buildAgentCard(3, createMockRegistry(), createMockProvider(), {
-      name: "UrlAgent",
-      url: "https://agent.example.com/a2a",
-    });
+    const card = await buildAgentCard(
+      3,
+      createMockRegistry(),
+      createMockProvider(),
+      {
+        name: "UrlAgent",
+        url: "https://agent.example.com/a2a",
+      },
+    );
 
     assert.ok(Array.isArray(card.services));
     assert.equal(card.services.length, 1);
@@ -334,11 +345,16 @@ describe("buildAgentCard", () => {
       { name: "MCP" as const, endpoint: "https://example.com/mcp" },
     ];
 
-    const card = await buildAgentCard(4, createMockRegistry(), createMockProvider(), {
-      name: "ExplicitSvcAgent",
-      url: "https://agent.example.com/a2a",
-      services: explicitServices,
-    });
+    const card = await buildAgentCard(
+      4,
+      createMockRegistry(),
+      createMockProvider(),
+      {
+        name: "ExplicitSvcAgent",
+        url: "https://agent.example.com/a2a",
+        services: explicitServices,
+      },
+    );
 
     assert.deepEqual(card.services, explicitServices);
     assert.equal(card.services.length, 2);
@@ -407,7 +423,7 @@ describe("ERC-8004 Agent Card schema validation", () => {
 
     assert.equal(
       doc.type,
-      "https://eips.ethereum.org/EIPS/eip-8004#registration-v1"
+      "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
     );
   });
 

@@ -10,7 +10,10 @@ interface GetIdentityArgs {
   network?: "mainnet" | "testnet";
 }
 
-export async function handleGetIdentity(args: GetIdentityArgs, config: McpConfig) {
+export async function handleGetIdentity(
+  args: GetIdentityArgs,
+  config: McpConfig,
+) {
   if (!config.privateKey) {
     return toolError(
       "No agent identity configured. Set SELF_AGENT_PRIVATE_KEY in your MCP server configuration, " +
@@ -47,17 +50,30 @@ export async function handleGetIdentity(args: GetIdentityArgs, config: McpConfig
     ]);
 
     const credentialsSummary = formatCredentialsSummary(
-      credentials as { nationality?: string; olderThan?: bigint | number; ofac?: boolean[] } | undefined,
+      credentials as
+        | {
+            nationality?: string;
+            olderThan?: bigint | number;
+            ofac?: boolean[];
+          }
+        | undefined,
     );
 
     return toolSuccess({
       registered: true,
       address: info.address,
       agentKey: info.agentKey,
-      agentId: typeof info.agentId === "bigint" ? Number(info.agentId) : info.agentId,
+      agentId:
+        typeof info.agentId === "bigint" ? Number(info.agentId) : info.agentId,
       isVerified: info.isVerified,
-      nullifier: typeof info.nullifier === "bigint" ? Number(info.nullifier) : info.nullifier,
-      agentCount: typeof info.agentCount === "bigint" ? Number(info.agentCount) : info.agentCount,
+      nullifier:
+        typeof info.nullifier === "bigint"
+          ? Number(info.nullifier)
+          : info.nullifier,
+      agentCount:
+        typeof info.agentCount === "bigint"
+          ? Number(info.agentCount)
+          : info.agentCount,
       verificationStrength,
       credentials_summary: credentialsSummary,
       network,
@@ -77,7 +93,10 @@ interface RegisterAgentArgs {
   network?: "mainnet" | "testnet";
 }
 
-export async function handleRegisterAgent(args: RegisterAgentArgs, config: McpConfig) {
+export async function handleRegisterAgent(
+  args: RegisterAgentArgs,
+  config: McpConfig,
+) {
   const network = args.network ?? config.network;
 
   try {
@@ -96,8 +115,12 @@ export async function handleRegisterAgent(args: RegisterAgentArgs, config: McpCo
     });
 
     if (!response.ok) {
-      const err = await response.json().catch(() => ({ error: response.statusText }));
-      return toolError(`Registration failed: ${err.error || response.statusText}`);
+      const err = await response
+        .json()
+        .catch(() => ({ error: response.statusText }));
+      return toolError(
+        `Registration failed: ${err.error || response.statusText}`,
+      );
     }
 
     const data = await response.json();
@@ -108,7 +131,9 @@ export async function handleRegisterAgent(args: RegisterAgentArgs, config: McpCo
       qr_data: data.qrData,
       deep_link: data.deepLink,
       expires_at: data.expiresAt,
-      instructions: data.humanInstructions?.join("\n") || "Scan the QR code with the Self app.",
+      instructions:
+        data.humanInstructions?.join("\n") ||
+        "Scan the QR code with the Self app.",
       next_step:
         "Have the human scan the QR/deep link, then call self_check_registration " +
         "with this session_token. The private key will be returned only after verification completes.",
@@ -125,20 +150,26 @@ interface CheckRegistrationArgs {
   session_token: string;
 }
 
-export async function handleCheckRegistration(args: CheckRegistrationArgs, config: McpConfig) {
+export async function handleCheckRegistration(
+  args: CheckRegistrationArgs,
+  config: McpConfig,
+) {
   try {
     const response = await fetch(
       `${config.apiUrl}/api/agent/register/status?token=${encodeURIComponent(args.session_token)}`,
     );
 
     if (!response.ok) {
-      const err = await response.json().catch(() => ({ error: response.statusText }));
+      const err = await response
+        .json()
+        .catch(() => ({ error: response.statusText }));
       const msg = err.error || response.statusText;
 
       if (response.status === 410) {
         return toolSuccess({
           status: "expired",
-          message: "Registration session expired. Use self_register_agent to start a new registration.",
+          message:
+            "Registration session expired. Use self_register_agent to start a new registration.",
         });
       }
 
@@ -179,7 +210,10 @@ interface DeregisterAgentArgs {
   network?: "mainnet" | "testnet";
 }
 
-export async function handleDeregisterAgent(args: DeregisterAgentArgs, config: McpConfig) {
+export async function handleDeregisterAgent(
+  args: DeregisterAgentArgs,
+  config: McpConfig,
+) {
   if (!config.privateKey) {
     return toolError(
       "No agent identity configured. Set SELF_AGENT_PRIVATE_KEY in your MCP server configuration " +
@@ -196,7 +230,9 @@ export async function handleDeregisterAgent(args: DeregisterAgentArgs, config: M
       rpcUrl: config.rpcUrl,
     });
 
-    const session = await agent.requestDeregistration({ apiBase: config.apiUrl });
+    const session = await agent.requestDeregistration({
+      apiBase: config.apiUrl,
+    });
     const qrUrl = `${config.apiUrl}/qr/${session.sessionToken}`;
 
     return toolSuccess({

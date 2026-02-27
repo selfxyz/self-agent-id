@@ -30,25 +30,36 @@
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: var(--font-geist), system-ui, -apple-system, sans-serif;
+  font-family:
+    var(--font-geist),
+    system-ui,
+    -apple-system,
+    sans-serif;
 }
 
-code, pre, .font-mono {
+code,
+pre,
+.font-mono {
   font-family: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-input, select, textarea {
+input,
+select,
+textarea {
   background-color: var(--surface-2);
   border: 1px solid var(--border);
   color: var(--foreground);
   border-radius: 0.5rem;
 }
 
-input::placeholder, textarea::placeholder {
+input::placeholder,
+textarea::placeholder {
   color: var(--text-subtle);
 }
 
-input:focus, select:focus, textarea:focus {
+input:focus,
+select:focus,
+textarea:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
@@ -99,7 +110,11 @@ input:focus, select:focus, textarea:focus {
     transform: translateX(-50%);
     width: 700px;
     height: 700px;
-    background: radial-gradient(circle, rgba(99, 102, 241, 0.06) 0%, transparent 70%);
+    background: radial-gradient(
+      circle,
+      rgba(99, 102, 241, 0.06) 0%,
+      transparent 70%
+    );
     pointer-events: none;
     z-index: 0;
   }
@@ -111,7 +126,11 @@ input:focus, select:focus, textarea:focus {
     right: -5%;
     width: 500px;
     height: 500px;
-    background: radial-gradient(circle, rgba(14, 165, 233, 0.04) 0%, transparent 70%);
+    background: radial-gradient(
+      circle,
+      rgba(14, 165, 233, 0.04) 0%,
+      transparent 70%
+    );
     pointer-events: none;
     z-index: 0;
   }

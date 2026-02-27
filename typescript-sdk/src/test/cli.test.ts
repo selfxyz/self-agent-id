@@ -13,7 +13,11 @@ import { ethers } from "ethers";
 
 const CLI_PATH = resolve(__dirname, "..", "cli.js");
 const REPO_ROOT = resolve(__dirname, "..", "..", "..");
-const HARNESS_SCRIPT = resolve(REPO_ROOT, "scripts", "local-registry-harness.sh");
+const HARNESS_SCRIPT = resolve(
+  REPO_ROOT,
+  "scripts",
+  "local-registry-harness.sh",
+);
 const DEMO_VERIFIED_ADDRESS = "0x83fa4380903fecb801F4e123835664973001ff00";
 const ANVIL_ALT_HUMAN_ADDRESS = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 const LIVE = process.env.SELF_AGENT_LIVE_TEST === "1";
@@ -37,7 +41,9 @@ interface LocalHarness {
 let harness: LocalHarness | null = null;
 
 function runCli(args: string[]): CliResult {
-  const out = spawnSync(process.execPath, [CLI_PATH, ...args], { encoding: "utf8" });
+  const out = spawnSync(process.execPath, [CLI_PATH, ...args], {
+    encoding: "utf8",
+  });
   return {
     status: out.status,
     stdout: out.stdout || "",
@@ -68,7 +74,11 @@ function requireHarness(): LocalHarness {
   return harness;
 }
 
-function setHarnessAgent(agentAddress: string, agentId: number, verified = true): void {
+function setHarnessAgent(
+  agentAddress: string,
+  agentId: number,
+  verified = true,
+): void {
   const local = requireHarness();
   const key = ethers.zeroPadValue(ethers.getAddress(agentAddress), 32);
   const set = runHarness([
@@ -89,7 +99,10 @@ function setHarnessAgent(agentAddress: string, agentId: number, verified = true)
   assert.strictEqual(set.status, 0, set.stderr || set.stdout);
 }
 
-async function waitForPort(url: string, payload: Record<string, unknown>): Promise<void> {
+async function waitForPort(
+  url: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
   for (let i = 0; i < 60; i += 1) {
     try {
       const res = await fetch(url, {
@@ -155,7 +168,11 @@ describe("CLI registration", () => {
     assert.strictEqual(init.status, 0, init.stderr);
 
     const blocked = runCli(["register", "export", "--session", sessionPath]);
-    assert.notStrictEqual(blocked.status, 0, "export without --unsafe must fail");
+    assert.notStrictEqual(
+      blocked.status,
+      0,
+      "export without --unsafe must fail",
+    );
 
     const keyPath = join(resolve(sessionPath, ".."), "agent.key");
     const ok = runCli([
@@ -192,7 +209,10 @@ describe("CLI registration", () => {
     }>(sessionPath);
     assert.strictEqual(session.operation, "register");
     assert.strictEqual(session.mode, "smart-wallet");
-    assert.ok(session.registration.smartWalletTemplate, "smart-wallet template required");
+    assert.ok(
+      session.registration.smartWalletTemplate,
+      "smart-wallet template required",
+    );
     assert.strictEqual(session.registration.userDefinedData, undefined);
   });
 
@@ -222,7 +242,10 @@ describe("CLI registration", () => {
     }>(sessionPath);
     assert.strictEqual(session.operation, "deregister");
     assert.strictEqual(session.mode, "agent-identity");
-    assert.match(session.registration.userDefinedData || "", /^X[0-5][0-9a-f]{40}$/i);
+    assert.match(
+      session.registration.userDefinedData || "",
+      /^X[0-5][0-9a-f]{40}$/i,
+    );
     assert.strictEqual(session.secrets, undefined);
   });
 
@@ -244,7 +267,10 @@ describe("CLI registration", () => {
 
     const open = runCli(["register", "open", "--session", sessionPath]);
     assert.strictEqual(open.status, 0, open.stderr);
-    assert.match(open.stdout, /"url":\s*"https:\/\/self-agent-id\.vercel\.app\/cli\/register\?payload=/);
+    assert.match(
+      open.stdout,
+      /"url":\s*"https:\/\/self-agent-id\.vercel\.app\/cli\/register\?payload=/,
+    );
   });
 
   it("wait succeeds on live chain for known verified address", () => {
@@ -270,7 +296,9 @@ describe("CLI registration", () => {
     ]);
     assert.strictEqual(init.status, 0, init.stderr);
 
-    const session = readJson<{ registration: { agentAddress: string } }>(sessionPath);
+    const session = readJson<{ registration: { agentAddress: string } }>(
+      sessionPath,
+    );
     setHarnessAgent(session.registration.agentAddress, 101);
 
     const wait = runCli([
@@ -320,22 +348,30 @@ describe("CLI registration", () => {
       registration: { agentAddress: string };
     }>(sessionPath);
 
-    const child = spawn(process.execPath, [
-      CLI_PATH,
-      "register",
-      "wait",
-      "--session",
-      sessionPath,
-      "--timeout-seconds",
-      "40",
-      "--poll-ms",
-      "2000",
-    ], { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(
+      process.execPath,
+      [
+        CLI_PATH,
+        "register",
+        "wait",
+        "--session",
+        sessionPath,
+        "--timeout-seconds",
+        "40",
+        "--poll-ms",
+        "2000",
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
 
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (buf) => { stdout += String(buf); });
-    child.stderr.on("data", (buf) => { stderr += String(buf); });
+    child.stdout.on("data", (buf) => {
+      stdout += String(buf);
+    });
+    child.stderr.on("data", (buf) => {
+      stderr += String(buf);
+    });
 
     const cbUrl = `http://127.0.0.1:${session.callback.listenPort}${session.callback.path}`;
     await waitForPort(cbUrl, {
@@ -378,7 +414,9 @@ describe("CLI registration", () => {
     ]);
     assert.strictEqual(init.status, 0, init.stderr);
 
-    const session = readJson<{ registration: { agentAddress: string } }>(sessionPath);
+    const session = readJson<{ registration: { agentAddress: string } }>(
+      sessionPath,
+    );
     setHarnessAgent(session.registration.agentAddress, 0, false);
 
     const wait = runCli([

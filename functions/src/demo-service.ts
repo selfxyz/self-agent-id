@@ -37,9 +37,14 @@ const census = new Map<string, CensusEntry>();
 // Helpers
 // ---------------------------------------------------------------------------
 
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "").split(",").filter(Boolean);
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .filter(Boolean);
 
-function setCors(req: Parameters<Parameters<typeof http>[1]>[0], res: Parameters<Parameters<typeof http>[1]>[1]) {
+function setCors(
+  req: Parameters<Parameters<typeof http>[1]>[0],
+  res: Parameters<Parameters<typeof http>[1]>[1],
+) {
   const origin = req.headers.origin || "";
   if (ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGINS.includes("*")) {
     res.set("Access-Control-Allow-Origin", origin);
@@ -168,15 +173,15 @@ http("demoService", async (req, res) => {
 
     const creds = result.credentials;
     const entry: CensusEntry = {
-      agentAddress: result.agentAddress!,
-      agentId: result.agentId!.toString(),
+      agentAddress: result.agentAddress,
+      agentId: result.agentId.toString(),
       nationality: creds?.nationality || "",
       olderThan: Number(creds?.olderThan || 0),
       ofac: creds?.ofac ? creds.ofac.map(Boolean) : [false, false, false],
       timestamp: Date.now(),
     };
 
-    census.set(result.agentAddress!.toLowerCase(), entry);
+    census.set(result.agentAddress.toLowerCase(), entry);
 
     res.status(200).json({
       recorded: true,

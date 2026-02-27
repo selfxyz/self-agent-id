@@ -6,7 +6,13 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { Fingerprint, Loader2, AlertTriangle, CheckCircle2, Smartphone } from "lucide-react";
+import {
+  Fingerprint,
+  Loader2,
+  AlertTriangle,
+  CheckCircle2,
+  Smartphone,
+} from "lucide-react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { createPasskeyWallet, isPasskeySupported } from "@/lib/aa";
@@ -14,12 +20,18 @@ import { NETWORKS, type NetworkConfig } from "@/lib/network";
 
 const SelfQRcodeWrapper = dynamic(
   () => import("@selfxyz/qrcode").then((mod) => mod.SelfQRcodeWrapper),
-  { ssr: false }
+  { ssr: false },
 );
 
-let SelfAppBuilderClass: typeof import("@selfxyz/qrcode").SelfAppBuilder | null = null;
+let SelfAppBuilderClass:
+  | typeof import("@selfxyz/qrcode").SelfAppBuilder
+  | null = null;
 
-type HandoffMode = "verified-wallet" | "agent-identity" | "wallet-free" | "smart-wallet";
+type HandoffMode =
+  | "verified-wallet"
+  | "agent-identity"
+  | "wallet-free"
+  | "smart-wallet";
 type HandoffOperation = "register" | "deregister";
 
 interface CliDisclosures {
@@ -66,7 +78,7 @@ function decodeBase64UrlJson<T>(value: string): T {
   const json = decodeURIComponent(
     Array.from(atob(padded))
       .map((ch) => `%${ch.charCodeAt(0).toString(16).padStart(2, "0")}`)
-      .join("")
+      .join(""),
   );
   return JSON.parse(json) as T;
 }
@@ -76,7 +88,9 @@ function getNetworkByChainId(chainId: number): NetworkConfig | null {
   return all.find((n) => n.chainId === chainId) ?? null;
 }
 
-function buildDisclosures(input?: CliDisclosures): Record<string, boolean | number> {
+function buildDisclosures(
+  input?: CliDisclosures,
+): Record<string, boolean | number> {
   if (!input) return {};
   const out: Record<string, boolean | number> = {};
   if (input.nationality) out.nationality = true;
@@ -90,13 +104,14 @@ function buildDisclosures(input?: CliDisclosures): Record<string, boolean | numb
 }
 
 function configIndexDigit(idx: number): string {
-  if (!Number.isInteger(idx) || idx < 0 || idx > 5) throw new Error("Invalid config index");
+  if (!Number.isInteger(idx) || idx < 0 || idx > 5)
+    throw new Error("Invalid config index");
   return String(idx);
 }
 
 function buildSmartWalletUserDefinedData(
   tpl: SmartWalletTemplate,
-  guardianAddress: string
+  guardianAddress: string,
 ): string {
   const cfg = configIndexDigit(tpl.configIndex);
   const agentHex = tpl.agentAddress.slice(2).toLowerCase();
@@ -150,7 +165,9 @@ export default function CliRegisterHandoffPage() {
         return;
       }
       if (Date.now() > parsed.expiresAt) {
-        setError("This CLI session has expired. Re-run `register init` or `deregister init` in the CLI.");
+        setError(
+          "This CLI session has expired. Re-run `register init` or `deregister init` in the CLI.",
+        );
         return;
       }
 
@@ -159,15 +176,22 @@ export default function CliRegisterHandoffPage() {
         setError(`Unsupported chain ID: ${String(parsed.chainId)}`);
         return;
       }
-      if (net.registryAddress.toLowerCase() !== parsed.registryAddress.toLowerCase()) {
-        setError("Payload registry does not match supported network configuration.");
+      if (
+        net.registryAddress.toLowerCase() !==
+        parsed.registryAddress.toLowerCase()
+      ) {
+        setError(
+          "Payload registry does not match supported network configuration.",
+        );
         return;
       }
 
       setPayload(parsed);
       setNetwork(net);
     } catch (err) {
-      setError(`Invalid payload: ${err instanceof Error ? err.message : String(err)}`);
+      setError(
+        `Invalid payload: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }, []);
 
@@ -199,11 +223,16 @@ export default function CliRegisterHandoffPage() {
       }).build();
       setSelfApp(built);
     } catch (err) {
-      setError(`Failed to build Self app payload: ${err instanceof Error ? err.message : String(err)}`);
+      setError(
+        `Failed to build Self app payload: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }, [canBuildSimpleFlow, payload]);
 
-  const postCallback = async (status: "success" | "error", callbackError?: string): Promise<void> => {
+  const postCallback = async (
+    status: "success" | "error",
+    callbackError?: string,
+  ): Promise<void> => {
     if (!payload || callbackPosted) return;
 
     try {
@@ -233,7 +262,9 @@ export default function CliRegisterHandoffPage() {
 
       setCallbackPosted(true);
     } catch (err) {
-      setError(`Callback error: ${err instanceof Error ? err.message : String(err)}`);
+      setError(
+        `Callback error: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   };
 
@@ -256,14 +287,18 @@ export default function CliRegisterHandoffPage() {
     setLoading(true);
     setError("");
     try {
-      const passkeySuffix = crypto.getRandomValues(new Uint8Array(2))
+      const passkeySuffix = crypto
+        .getRandomValues(new Uint8Array(2))
         .reduce((s, b) => s + b.toString(16).padStart(2, "0"), "");
-      const { walletAddress } = await createPasskeyWallet(`Self Agent ID (${passkeySuffix})`, network);
+      const { walletAddress } = await createPasskeyWallet(
+        `Self Agent ID (${passkeySuffix})`,
+        network,
+      );
       setGuardianAddress(walletAddress);
 
       const userDefinedData = buildSmartWalletUserDefinedData(
         payload.smartWalletTemplate,
-        walletAddress
+        walletAddress,
       );
 
       const built = new SelfAppBuilderClass({
@@ -280,7 +315,9 @@ export default function CliRegisterHandoffPage() {
       }).build();
       setSelfApp(built);
     } catch (err) {
-      setError(`Failed to prepare smart wallet flow: ${err instanceof Error ? err.message : String(err)}`);
+      setError(
+        `Failed to prepare smart wallet flow: ${err instanceof Error ? err.message : String(err)}`,
+      );
     } finally {
       setLoading(false);
     }
@@ -300,14 +337,18 @@ export default function CliRegisterHandoffPage() {
   return (
     <main className="min-h-screen max-w-xl mx-auto px-6 pt-20 pb-12">
       <h1 className="text-3xl font-bold text-center mb-6">
-        {payload?.operation === "deregister" ? "CLI Deregistration" : "CLI Registration"}
+        {payload?.operation === "deregister"
+          ? "CLI Deregistration"
+          : "CLI Registration"}
       </h1>
 
       {!payload || !network ? (
         <Card variant="error">
           <div className="flex items-center gap-2">
             <AlertTriangle size={16} className="text-accent-error shrink-0" />
-            <p className="text-sm text-accent-error">{error || "Preparing registration session..."}</p>
+            <p className="text-sm text-accent-error">
+              {error || "Preparing registration session..."}
+            </p>
           </div>
         </Card>
       ) : completed ? (
@@ -315,13 +356,17 @@ export default function CliRegisterHandoffPage() {
           <div className="flex items-center gap-2 mb-2">
             <CheckCircle2 size={18} className="text-accent-success shrink-0" />
             <p className="font-bold text-accent-success">
-              {payload.operation === "deregister" ? "Deregistration Submitted" : "Registration Submitted"}
+              {payload.operation === "deregister"
+                ? "Deregistration Submitted"
+                : "Registration Submitted"}
             </p>
           </div>
           <p className="text-sm text-muted">
             Passport proof submission succeeded. Return to your terminal and run{" "}
             <code className="bg-surface-2 px-1 rounded text-accent-2">
-              {payload.operation === "deregister" ? "deregister wait" : "register wait"}
+              {payload.operation === "deregister"
+                ? "deregister wait"
+                : "register wait"}
             </code>{" "}
             (or keep it running) to confirm on-chain {payload.operation}.
           </p>
@@ -331,13 +376,20 @@ export default function CliRegisterHandoffPage() {
           <Card>
             <p className="font-bold text-sm mb-2">Session</p>
             <p className="text-xs text-muted mb-1">
-              Operation: <span className="text-foreground font-mono">{payload.operation}</span>
+              Operation:{" "}
+              <span className="text-foreground font-mono">
+                {payload.operation}
+              </span>
             </p>
             <p className="text-xs text-muted mb-1">
-              Mode: <span className="text-foreground font-mono">{payload.mode}</span>
+              Mode:{" "}
+              <span className="text-foreground font-mono">{payload.mode}</span>
             </p>
             <p className="text-xs text-muted mb-1">
-              Chain: <span className="text-foreground">{network.label} ({payload.chainId})</span>
+              Chain:{" "}
+              <span className="text-foreground">
+                {network.label} ({payload.chainId})
+              </span>
             </p>
             <p className="text-xs text-muted">
               Agent:{" "}
@@ -347,17 +399,23 @@ export default function CliRegisterHandoffPage() {
             </p>
           </Card>
 
-          {payload.mode === "smart-wallet" && payload.operation === "register" && !selfApp ? (
+          {payload.mode === "smart-wallet" &&
+          payload.operation === "register" &&
+          !selfApp ? (
             <Card>
               <div className="flex items-center gap-2 mb-2">
-                <Fingerprint size={16} className="text-accent-success shrink-0" />
+                <Fingerprint
+                  size={16}
+                  className="text-accent-success shrink-0"
+                />
                 <p className="font-bold text-sm">Smart Wallet Setup</p>
               </div>
               <p className="text-sm text-muted mb-3">
-                Create the passkey smart wallet first. It becomes the guardian for this agent.
+                Create the passkey smart wallet first. It becomes the guardian
+                for this agent.
               </p>
               <Button
-                onClick={handleSmartWalletPrepare}
+                onClick={() => void handleSmartWalletPrepare()}
                 variant="primary"
                 size="lg"
                 disabled={loading || !passkeySupported}
@@ -387,11 +445,16 @@ export default function CliRegisterHandoffPage() {
                 <p className="font-bold text-sm">Scan with the Self App</p>
               </div>
               <p className="text-sm text-muted mb-3">
-                Complete your passport disclosure proof. This page will notify your local CLI when successful.
+                Complete your passport disclosure proof. This page will notify
+                your local CLI when successful.
               </p>
               {selfApp ? (
                 <div className="rounded-xl p-4 bg-white mx-auto w-fit">
-                  <SelfQRcodeWrapper selfApp={selfApp} onSuccess={onSuccess} onError={onError} />
+                  <SelfQRcodeWrapper
+                    selfApp={selfApp}
+                    onSuccess={() => void onSuccess()}
+                    onError={(err: unknown) => void onError(err)}
+                  />
                 </div>
               ) : (
                 <div className="w-64 h-64 bg-surface-2 animate-pulse rounded-lg flex items-center justify-center mx-auto">
@@ -404,7 +467,10 @@ export default function CliRegisterHandoffPage() {
           {error && (
             <Card variant="error">
               <div className="flex items-center gap-2">
-                <AlertTriangle size={16} className="text-accent-error shrink-0" />
+                <AlertTriangle
+                  size={16}
+                  className="text-accent-error shrink-0"
+                />
                 <p className="text-sm text-accent-error">{error}</p>
               </div>
             </Card>

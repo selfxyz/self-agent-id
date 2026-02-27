@@ -52,7 +52,8 @@ function installCommonMocks() {
 
   vi.doMock("@selfxyz/agent-sdk", () => ({
     buildSimpleDeregisterUserDataAscii: mockBuildSimpleDeregisterUserDataAscii,
-    buildAdvancedDeregisterUserDataAscii: mockBuildAdvancedDeregisterUserDataAscii,
+    buildAdvancedDeregisterUserDataAscii:
+      mockBuildAdvancedDeregisterUserDataAscii,
     getRegistrationConfigIndex: mockGetRegistrationConfigIndex,
     REGISTRY_ABI: [],
   }));
@@ -86,7 +87,9 @@ function setDefaultMocks() {
     retryAfterMs: 1000,
   });
   mockBuildSimpleDeregisterUserDataAscii.mockReturnValue("simple-deregister");
-  mockBuildAdvancedDeregisterUserDataAscii.mockReturnValue("advanced-deregister");
+  mockBuildAdvancedDeregisterUserDataAscii.mockReturnValue(
+    "advanced-deregister",
+  );
   mockGetRegistrationConfigIndex.mockReturnValue(4);
   mockCreateSessionToken.mockReturnValue({
     data: {
@@ -107,13 +110,19 @@ function setDefaultMocks() {
     (_session: unknown, _secret: string, extra: Record<string, unknown>) =>
       NextResponse.json({ sessionToken: "rotated", ...extra }, { status: 200 }),
   );
-  mockHelpers.humanInstructions.mockImplementation((stage: string) => [`instruction:${stage}`]);
-  mockHelpers.errorResponse.mockImplementation((message: string, status: number) =>
-    NextResponse.json({ error: message }, { status }),
+  mockHelpers.humanInstructions.mockImplementation((stage: string) => [
+    `instruction:${stage}`,
+  ]);
+  mockHelpers.errorResponse.mockImplementation(
+    (message: string, status: number) =>
+      NextResponse.json({ error: message }, { status }),
   );
-  mockHelpers.corsResponse.mockImplementation(() => new NextResponse(null, { status: 204 }));
-  mockHelpers.jsonResponse.mockImplementation((body: Record<string, unknown>, status = 200) =>
-    NextResponse.json(body, { status }),
+  mockHelpers.corsResponse.mockImplementation(
+    () => new NextResponse(null, { status: 204 }),
+  );
+  mockHelpers.jsonResponse.mockImplementation(
+    (body: Record<string, unknown>, status = 200) =>
+      NextResponse.json(body, { status }),
   );
   mockHelpers.getSessionSecret.mockReturnValue("session-secret");
   mockHelpers.getNetworkConfig.mockReturnValue({
@@ -129,10 +138,14 @@ function setDefaultMocks() {
   });
 
   mockGetAddress.mockImplementation((value: string) => value.toLowerCase());
-  mockZeroPadValue.mockImplementation((value: string) => `pad:${value.toLowerCase()}`);
+  mockZeroPadValue.mockImplementation(
+    (value: string) => `pad:${value.toLowerCase()}`,
+  );
   mockJsonRpcProvider.mockImplementation(() => ({ kind: "provider" }));
   mockContract.mockImplementation(() => ({
-    ownerOf: vi.fn().mockResolvedValue("0x00000000000000000000000000000000000000ab"),
+    ownerOf: vi
+      .fn()
+      .mockResolvedValue("0x00000000000000000000000000000000000000ab"),
   }));
 }
 
@@ -211,7 +224,9 @@ describe("agent deregister init route", () => {
       }),
     );
     expect(badAge.status).toBe(400);
-    expect(await jsonBody(badAge)).toEqual({ error: "minimumAge must be 0, 18, or 21" });
+    expect(await jsonBody(badAge)).toEqual({
+      error: "minimumAge must be 0, 18, or 21",
+    });
   });
 
   it("returns 404 when the agent is not currently on-chain", async () => {
@@ -227,7 +242,9 @@ describe("agent deregister init route", () => {
       }),
     );
     expect(res.status).toBe(404);
-    expect(await jsonBody(res)).toEqual({ error: "Agent is not currently registered on-chain" });
+    expect(await jsonBody(res)).toEqual({
+      error: "Agent is not currently registered on-chain",
+    });
   });
 
   it("creates a simple-mode deregistration session when owner matches agent", async () => {
@@ -295,19 +312,29 @@ describe("agent deregister callback route", () => {
   it("requires token and supports failed/success callback payloads", async () => {
     const { POST } = await loadDeregisterCallbackRoute();
     const missingToken = await POST(
-      makeNextRequest("https://example.com/api/agent/deregister/callback", { method: "POST" }),
+      makeNextRequest("https://example.com/api/agent/deregister/callback", {
+        method: "POST",
+      }),
     );
     expect(missingToken.status).toBe(400);
 
     mockHelpers.decryptAndValidateSession.mockReturnValue({
-      session: { type: "deregister", stage: "pending", agentAddress: "0xabc", agentId: 1 },
+      session: {
+        type: "deregister",
+        stage: "pending",
+        agentAddress: "0xabc",
+        agentId: 1,
+      },
       secret: "session-secret",
     });
     const failed = await POST(
-      makeNextRequest("https://example.com/api/agent/deregister/callback?token=t", {
-        method: "POST",
-        body: JSON.stringify({ error: "rejected" }),
-      }),
+      makeNextRequest(
+        "https://example.com/api/agent/deregister/callback?token=t",
+        {
+          method: "POST",
+          body: JSON.stringify({ error: "rejected" }),
+        },
+      ),
     );
     expect(failed.status).toBe(200);
     expect(mockHelpers.sessionResponse).toHaveBeenCalledWith(
@@ -317,18 +344,29 @@ describe("agent deregister callback route", () => {
     );
 
     mockHelpers.decryptAndValidateSession.mockReturnValue({
-      session: { type: "deregister", stage: "pending", agentAddress: "0xabc", agentId: 1 },
+      session: {
+        type: "deregister",
+        stage: "pending",
+        agentAddress: "0xabc",
+        agentId: 1,
+      },
       secret: "session-secret",
     });
     const success = await POST(
-      makeNextRequest("https://example.com/api/agent/deregister/callback?token=t", {
-        method: "POST",
-        body: JSON.stringify({ proof: "ok" }),
-      }),
+      makeNextRequest(
+        "https://example.com/api/agent/deregister/callback?token=t",
+        {
+          method: "POST",
+          body: JSON.stringify({ proof: "ok" }),
+        },
+      ),
     );
     expect(success.status).toBe(200);
     expect(mockHelpers.sessionResponse).toHaveBeenCalledWith(
-      expect.objectContaining({ stage: "proof-received", proof: { proof: "ok" } }),
+      expect.objectContaining({
+        stage: "proof-received",
+        proof: { proof: "ok" },
+      }),
       "session-secret",
       expect.objectContaining({ agentAddress: "0xabc" }),
     );
@@ -342,27 +380,40 @@ describe("agent deregister callback route", () => {
     });
     const { POST } = await loadDeregisterCallbackRoute();
     const res = await POST(
-      makeNextRequest("https://example.com/api/agent/deregister/callback?token=t", {
-        method: "POST",
-        body: JSON.stringify({ proof: "ok" }),
-      }),
+      makeNextRequest(
+        "https://example.com/api/agent/deregister/callback?token=t",
+        {
+          method: "POST",
+          body: JSON.stringify({ proof: "ok" }),
+        },
+      ),
     );
 
     expect(res.status).toBe(400);
-    expect(await jsonBody(res)).toEqual({ error: "Token is not for a deregistration session" });
+    expect(await jsonBody(res)).toEqual({
+      error: "Token is not for a deregistration session",
+    });
   });
 
   it("short-circuits with 200 for already-completed session", async () => {
     mockHelpers.decryptAndValidateSession.mockReturnValue({
-      session: { type: "deregister", stage: "completed", agentAddress: "0xdone", agentId: 88 },
+      session: {
+        type: "deregister",
+        stage: "completed",
+        agentAddress: "0xdone",
+        agentId: 88,
+      },
       secret: "session-secret",
     });
     const { POST } = await loadDeregisterCallbackRoute();
     const res = await POST(
-      makeNextRequest("https://example.com/api/agent/deregister/callback?token=t", {
-        method: "POST",
-        body: JSON.stringify({ proof: "ok" }),
-      }),
+      makeNextRequest(
+        "https://example.com/api/agent/deregister/callback?token=t",
+        {
+          method: "POST",
+          body: JSON.stringify({ proof: "ok" }),
+        },
+      ),
     );
 
     expect(res.status).toBe(200);
@@ -375,15 +426,23 @@ describe("agent deregister callback route", () => {
 
   it("returns 400 for empty callback body", async () => {
     mockHelpers.decryptAndValidateSession.mockReturnValue({
-      session: { type: "deregister", stage: "pending", agentAddress: "0xabc", agentId: 1 },
+      session: {
+        type: "deregister",
+        stage: "pending",
+        agentAddress: "0xabc",
+        agentId: 1,
+      },
       secret: "session-secret",
     });
     const { POST } = await loadDeregisterCallbackRoute();
     const res = await POST(
-      makeNextRequest("https://example.com/api/agent/deregister/callback?token=t", {
-        method: "POST",
-        body: JSON.stringify({}),
-      }),
+      makeNextRequest(
+        "https://example.com/api/agent/deregister/callback?token=t",
+        {
+          method: "POST",
+          body: JSON.stringify({}),
+        },
+      ),
     );
 
     expect(res.status).toBe(400);
@@ -396,9 +455,12 @@ describe("agent deregister callback route", () => {
     });
     const { POST } = await loadDeregisterCallbackRoute();
     const res = await POST(
-      makeNextRequest("https://example.com/api/agent/deregister/callback?token=t", {
-        method: "POST",
-      }),
+      makeNextRequest(
+        "https://example.com/api/agent/deregister/callback?token=t",
+        {
+          method: "POST",
+        },
+      ),
     );
 
     expect(res.status).toBe(410);
@@ -435,7 +497,10 @@ describe("agent deregister status route", () => {
     });
     const { GET } = await loadDeregisterStatusRoute();
     const res = await GET(
-      makeNextRequest("https://example.com/api/agent/deregister/status?token=t", { method: "GET" }),
+      makeNextRequest(
+        "https://example.com/api/agent/deregister/status?token=t",
+        { method: "GET" },
+      ),
     );
 
     expect(res.status).toBe(200);
@@ -463,7 +528,10 @@ describe("agent deregister status route", () => {
     });
     const { GET } = await loadDeregisterStatusRoute();
     const res = await GET(
-      makeNextRequest("https://example.com/api/agent/deregister/status?token=t", { method: "GET" }),
+      makeNextRequest(
+        "https://example.com/api/agent/deregister/status?token=t",
+        { method: "GET" },
+      ),
     );
 
     expect(res.status).toBe(200);

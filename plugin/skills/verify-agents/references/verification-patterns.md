@@ -8,12 +8,12 @@ This document provides complete, production-ready code patterns for verifying Se
 
 Reference these addresses throughout all verification code:
 
-| Contract | Mainnet (42220) | Testnet (11142220) |
-|---|---|---|
-| SelfAgentRegistry | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` |
+| Contract               | Mainnet (42220)                              | Testnet (11142220)                           |
+| ---------------------- | -------------------------------------------- | -------------------------------------------- |
+| SelfAgentRegistry      | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` |
 | SelfHumanProofProvider | `0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d` | `0x5E61c3051Bf4115F90AacEAE6212bc419f8aBB6c` |
-| AgentGate | `0x26e05bF632fb5bACB665ab014240EAC1413dAE35` | `0x86Af07e30Aa42367cbcA7f2B1764Be346598bbc2` |
-| Hub V2 | `0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF` | `0x16ECBA51e18a4a7e61fdC417f0d47AFEeDfbed74` |
+| AgentGate              | `0x26e05bF632fb5bACB665ab014240EAC1413dAE35` | `0x86Af07e30Aa42367cbcA7f2B1764Be346598bbc2` |
+| Hub V2                 | `0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF` | `0x16ECBA51e18a4a7e61fdC417f0d47AFEeDfbed74` |
 
 ---
 
@@ -122,6 +122,7 @@ The middleware returns a 401 response with a JSON body when verification fails:
 ```
 
 Possible rejection reasons:
+
 - `"Missing x-self-agent-address header"`
 - `"Missing x-self-agent-signature header"`
 - `"Missing x-self-agent-timestamp header"`
@@ -734,8 +735,8 @@ const verifier = SelfAgentVerifier.create()
   .network("mainnet")
   .requireSelfProvider()
   .rateLimit({
-    windowMs: 60_000,    // 1-minute window
-    maxRequests: 100,    // Max 100 requests per agent per window
+    windowMs: 60_000, // 1-minute window
+    maxRequests: 100, // Max 100 requests per agent per window
   })
   .build();
 ```
@@ -792,7 +793,7 @@ const redis = new Redis(process.env.REDIS_URL);
 async function rateLimitAgent(
   agentAddress: string,
   windowMs: number,
-  maxRequests: number
+  maxRequests: number,
 ): Promise<{ allowed: boolean; remaining: number; resetAt: number }> {
   const key = `ratelimit:agent:${agentAddress}`;
   const now = Date.now();
@@ -804,7 +805,10 @@ async function rateLimitAgent(
 
   if (count >= maxRequests) {
     const oldestEntry = await redis.zrange(key, 0, 0, "WITHSCORES");
-    const resetAt = oldestEntry.length >= 2 ? parseInt(oldestEntry[1]) + windowMs : now + windowMs;
+    const resetAt =
+      oldestEntry.length >= 2
+        ? parseInt(oldestEntry[1]) + windowMs
+        : now + windowMs;
     return { allowed: false, remaining: 0, resetAt };
   }
 
@@ -851,7 +855,7 @@ async function verifyAgentRequest(
   },
   method: string,
   path: string,
-  body: string
+  body: string,
 ): Promise<{ valid: boolean; agentId?: number; error?: string }> {
   // 1. Check timestamp freshness (5-minute window, timestamps are milliseconds)
   const now = Date.now();
@@ -866,7 +870,10 @@ async function verifyAgentRequest(
   const messageHash = ethers.keccak256(ethers.toUtf8Bytes(message));
 
   // 3. Recover signer from signature
-  const recoveredAddress = ethers.recoverAddress(messageHash, headers.signature);
+  const recoveredAddress = ethers.recoverAddress(
+    messageHash,
+    headers.signature,
+  );
 
   if (recoveredAddress.toLowerCase() !== headers.address.toLowerCase()) {
     return { valid: false, error: "Signature does not match claimed address" };
@@ -874,7 +881,11 @@ async function verifyAgentRequest(
 
   // 4. Check on-chain state
   const provider = new ethers.JsonRpcProvider("https://forno.celo.org");
-  const registry = new ethers.Contract(REGISTRY_MAINNET, REGISTRY_ABI, provider);
+  const registry = new ethers.Contract(
+    REGISTRY_MAINNET,
+    REGISTRY_ABI,
+    provider,
+  );
 
   const agentKey = ethers.zeroPadValue(headers.address, 32);
   const isVerified = await registry.isVerifiedAgent(agentKey);
@@ -901,18 +912,18 @@ async function verifyAgentRequest(
 
 A summary of all checks to consider when building a verification integration. Not all checks are required for every use case — select based on the security requirements of the service.
 
-| # | Check | Required | How |
-|---|---|---|---|
-| 1 | Timestamp freshness | Yes | Reject if > 5 minutes old |
-| 2 | Signature validity | Yes | ECDSA recover, compare to claimed address |
-| 3 | On-chain proof exists | Yes | `registry.isVerifiedAgent(agentKey)` |
-| 4 | Provider is Self Protocol | **Strongly recommended** | `registry.getProofProvider(agentId) == SELF_PROVIDER` |
-| 5 | Reputation score meets threshold | Optional | `reputation.getReputationScore(agentId) >= N` |
-| 6 | Proof is fresh | Optional | `validation.isValidAgent(agentId)` |
-| 7 | Age credential meets minimum | Optional | `credentials.olderThan >= N` |
-| 8 | OFAC screening passed | Optional | `credentials.ofac[0] && ofac[1] && ofac[2]` |
-| 9 | Sybil limit not exceeded | Optional | `getAgentCountForHuman(nullifier) <= N` |
-| 10 | Rate limit not exceeded | Optional | Per-agent or per-nullifier rate tracking |
+| #   | Check                            | Required                 | How                                                   |
+| --- | -------------------------------- | ------------------------ | ----------------------------------------------------- |
+| 1   | Timestamp freshness              | Yes                      | Reject if > 5 minutes old                             |
+| 2   | Signature validity               | Yes                      | ECDSA recover, compare to claimed address             |
+| 3   | On-chain proof exists            | Yes                      | `registry.isVerifiedAgent(agentKey)`                  |
+| 4   | Provider is Self Protocol        | **Strongly recommended** | `registry.getProofProvider(agentId) == SELF_PROVIDER` |
+| 5   | Reputation score meets threshold | Optional                 | `reputation.getReputationScore(agentId) >= N`         |
+| 6   | Proof is fresh                   | Optional                 | `validation.isValidAgent(agentId)`                    |
+| 7   | Age credential meets minimum     | Optional                 | `credentials.olderThan >= N`                          |
+| 8   | OFAC screening passed            | Optional                 | `credentials.ofac[0] && ofac[1] && ofac[2]`           |
+| 9   | Sybil limit not exceeded         | Optional                 | `getAgentCountForHuman(nullifier) <= N`               |
+| 10  | Rate limit not exceeded          | Optional                 | Per-agent or per-nullifier rate tracking              |
 
 Checks 1-3 are the minimum viable verification. Check 4 (provider verification) should always be included in production — omitting it is the most dangerous security gap. Checks 5-10 are policy decisions that depend on the service's requirements.
 
@@ -920,13 +931,13 @@ Checks 1-3 are the minimum viable verification. Check 4 (provider verification) 
 
 ## Common Mistakes
 
-| Mistake | Impact | Fix |
-|---|---|---|
-| Not checking proof provider | Agents verified by fake providers pass all checks | Always check `getProofProvider(agentId) == SELF_PROVIDER` |
-| Using `bytes32(bytes20(addr))` for agent key | Wrong key — lookups return no match | Use `bytes32(uint256(uint160(addr)))` |
-| Hardcoding testnet addresses in production | Verification fails on mainnet | Use network-aware configuration |
-| Not validating timestamp | Replay attacks within unbounded window | Reject timestamps older than 5 minutes |
-| Trusting `x-self-agent-address` without signature check | Header spoofing — anyone claims to be any agent | Always recover signer from signature |
-| Ignoring sybil limits | Single human floods service with many agents | Set `.sybilLimit(n)` in verifier config |
-| Skipping OFAC check for regulated services | Compliance violations | Add `.requireOFAC()` for any financial or regulated service |
-| Not handling verification errors gracefully | 500 errors when chain RPC is down | Wrap on-chain calls in try-catch, return 503 on RPC failure |
+| Mistake                                                 | Impact                                            | Fix                                                         |
+| ------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------- |
+| Not checking proof provider                             | Agents verified by fake providers pass all checks | Always check `getProofProvider(agentId) == SELF_PROVIDER`   |
+| Using `bytes32(bytes20(addr))` for agent key            | Wrong key — lookups return no match               | Use `bytes32(uint256(uint160(addr)))`                       |
+| Hardcoding testnet addresses in production              | Verification fails on mainnet                     | Use network-aware configuration                             |
+| Not validating timestamp                                | Replay attacks within unbounded window            | Reject timestamps older than 5 minutes                      |
+| Trusting `x-self-agent-address` without signature check | Header spoofing — anyone claims to be any agent   | Always recover signer from signature                        |
+| Ignoring sybil limits                                   | Single human floods service with many agents      | Set `.sybilLimit(n)` in verifier config                     |
+| Skipping OFAC check for regulated services              | Compliance violations                             | Add `.requireOFAC()` for any financial or regulated service |
+| Not handling verification errors gracefully             | 500 errors when chain RPC is down                 | Wrap on-chain calls in try-catch, return 503 on RPC failure |

@@ -8,7 +8,7 @@
 // Provides the deep link plus a URL to a public QR image API
 // so the caller can display a scannable QR without extra dependencies.
 
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import { getUniversalLink } from "@selfxyz/qrcode";
 import type { SelfApp } from "@selfxyz/qrcode";
 import {
@@ -18,7 +18,7 @@ import {
   corsResponse,
 } from "@/lib/agent-api-helpers";
 
-export async function GET(req: NextRequest) {
+export function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token");
   if (!token) {
     return errorResponse("Missing token query parameter", 400);
@@ -37,7 +37,10 @@ export async function GET(req: NextRequest) {
   }
 
   if (session.type !== "register" && session.type !== "deregister") {
-    return errorResponse("Token is not for a registration/deregistration session", 400);
+    return errorResponse(
+      "Token is not for a registration/deregistration session",
+      400,
+    );
   }
 
   if (session.stage !== "qr-ready") {
@@ -49,7 +52,10 @@ export async function GET(req: NextRequest) {
 
   const qrData = session.qrData as SelfApp | undefined;
   if (!qrData) {
-    return errorResponse("No QR data in session. Re-initiate registration.", 400);
+    return errorResponse(
+      "No QR data in session. Re-initiate registration.",
+      400,
+    );
   }
 
   const deepLink = getUniversalLink(qrData);
@@ -62,6 +68,6 @@ export async function GET(req: NextRequest) {
   });
 }
 
-export async function OPTIONS() {
+export function OPTIONS() {
   return corsResponse();
 }

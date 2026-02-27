@@ -48,7 +48,9 @@ export function saveAgentPrivateKey(params: {
   if (typeof window === "undefined") return;
   const agentAddress = normalizeAddress(params.agentAddress);
   const privateKey = normalizePrivateKey(params.privateKey);
-  const guardianAddress = params.guardianAddress ? normalizeAddress(params.guardianAddress) : undefined;
+  const guardianAddress = params.guardianAddress
+    ? normalizeAddress(params.guardianAddress)
+    : undefined;
 
   const vault = readVault();
   vault[agentAddress] = {
@@ -66,7 +68,9 @@ export function getAgentPrivateKeyByAgent(agentAddress: string): string | null {
   return vault[key]?.privateKey ?? null;
 }
 
-export function getAgentPrivateKeyByGuardian(guardianAddress: string): string | null {
+export function getAgentPrivateKeyByGuardian(
+  guardianAddress: string,
+): string | null {
   const key = normalizeAddress(guardianAddress);
   const vault = readVault();
 
@@ -78,4 +82,3 @@ export function getAgentPrivateKeyByGuardian(guardianAddress: string): string | 
   }
   return latest?.privateKey ?? null;
 }
-

@@ -12,8 +12,9 @@ import {
   rotateSessionToken,
 } from "./session-token";
 import { NETWORKS, type NetworkConfig, type NetworkId } from "./network";
-import { REGISTRY_ABI } from "./constants";
+import {} from "./constants";
 
+import { typedRegistry } from "@/lib/contract-types";
 // ── Types ────────────────────────────────────────────────────────────────────
 
 /** User-facing network identifier used in API requests (maps to a Celo chain). */
@@ -175,11 +176,7 @@ export async function checkAgentOnChain(
   agentId: bigint;
 }> {
   const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
-  const registry = new ethers.Contract(
-    networkConfig.registryAddress,
-    REGISTRY_ABI,
-    provider,
-  );
+  const registry = typedRegistry(networkConfig.registryAddress, provider);
   const agentKey = ethers.zeroPadValue(agentAddress, 32);
   const isVerified: boolean = await registry.isVerifiedAgent(agentKey);
   let agentId = 0n;
@@ -215,9 +212,7 @@ export function humanInstructions(stage: RegistrationStage): string[] {
     case "completed":
       return ["Registration complete. Your agent is now verified on-chain."];
     case "failed":
-      return [
-        "Registration failed. Check the error details and try again.",
-      ];
+      return ["Registration failed. Check the error details and try again."];
     case "expired":
       return ["Session expired. Please start a new registration."];
     default:

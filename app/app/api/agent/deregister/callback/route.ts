@@ -7,7 +7,7 @@
 // Receives the callback from the Self app after passport scan for deregistration.
 // Updates session stage based on the callback payload.
 
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import {
   decryptAndValidateSession,
   sessionResponse,
@@ -82,6 +82,6 @@ export async function POST(req: NextRequest) {
   return errorResponse("Empty callback payload", 400);
 }
 
-export async function OPTIONS() {
+export function OPTIONS() {
   return corsResponse();
 }

@@ -23,8 +23,13 @@ export function Footer() {
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 hover:text-foreground transition-colors"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/self-icon.png" alt="Self" width={20} height={20} className="rounded" />
+            <img
+              src="/self-icon.png"
+              alt="Self"
+              width={20}
+              height={20}
+              className="rounded"
+            />
             <span>Self Protocol</span>
             <ExternalLink size={10} />
           </a>

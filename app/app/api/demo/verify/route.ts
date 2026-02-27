@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { HEADERS } from "@selfxyz/agent-sdk";
 import { NETWORKS, type NetworkId } from "@/lib/network";
 import { getCachedVerifier } from "@/lib/selfVerifier";
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   if (!signature || !timestamp) {
     return NextResponse.json(
       { valid: false, error: "Missing agent authentication headers" },
-      { status: 401 }
+      { status: 401 },
     );
   }
 

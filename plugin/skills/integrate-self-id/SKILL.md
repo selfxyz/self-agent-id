@@ -72,7 +72,10 @@ const agent = new SelfAgent({
 const info = await agent.getInfo();
 if (!info.registered) {
   // Initiate registration — human scans QR with Self app
-  const session = await agent.requestRegistration({ minimumAge: 18, ofac: true });
+  const session = await agent.requestRegistration({
+    minimumAge: 18,
+    ofac: true,
+  });
   console.log("Scan QR:", session.qrUrl);
 }
 
@@ -297,11 +300,11 @@ Add to `.cursor/mcp.json`:
 
 ### Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `SELF_AGENT_PRIVATE_KEY` | No | Agent's hex private key (0x-prefixed). Enables identity and auth tools. If omitted, only read-only tools (lookup, list, verify) are available. |
-| `SELF_NETWORK` | No | `mainnet` or `testnet`. Default: `testnet`. |
-| `SELF_AGENT_API_BASE` | No | API base URL override. Default: `https://self-agent-id.vercel.app`. |
+| Variable                 | Required | Description                                                                                                                                    |
+| ------------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SELF_AGENT_PRIVATE_KEY` | No       | Agent's hex private key (0x-prefixed). Enables identity and auth tools. If omitted, only read-only tools (lookup, list, verify) are available. |
+| `SELF_NETWORK`           | No       | `mainnet` or `testnet`. Default: `testnet`.                                                                                                    |
+| `SELF_AGENT_API_BASE`    | No       | API base URL override. Default: `https://self-agent-id.vercel.app`.                                                                            |
 
 `SELF_AGENT_API_BASE` is the canonical environment variable. The previous `SELF_API_URL` has been removed.
 
@@ -309,18 +312,18 @@ Add to `.cursor/mcp.json`:
 
 Once configured, the MCP server exposes 10 tools:
 
-| Category | Tool | Description |
-|---|---|---|
-| Identity | `self_register_agent` | Start agent registration flow |
-| Identity | `self_check_registration` | Poll registration status |
-| Identity | `self_get_identity` | Get own agent info |
-| Identity | `self_deregister_agent` | Start deregistration flow |
-| Auth | `self_sign_request` | Generate auth headers |
-| Auth | `self_authenticated_fetch` | Make signed HTTP request |
-| Discovery | `self_lookup_agent` | Look up any agent by address or ID |
-| Discovery | `self_list_agents_for_human` | List agents for a human address |
-| Verification | `self_verify_agent` | Verify agent on-chain |
-| Verification | `self_verify_request` | Validate signed HTTP request |
+| Category     | Tool                         | Description                        |
+| ------------ | ---------------------------- | ---------------------------------- |
+| Identity     | `self_register_agent`        | Start agent registration flow      |
+| Identity     | `self_check_registration`    | Poll registration status           |
+| Identity     | `self_get_identity`          | Get own agent info                 |
+| Identity     | `self_deregister_agent`      | Start deregistration flow          |
+| Auth         | `self_sign_request`          | Generate auth headers              |
+| Auth         | `self_authenticated_fetch`   | Make signed HTTP request           |
+| Discovery    | `self_lookup_agent`          | Look up any agent by address or ID |
+| Discovery    | `self_list_agents_for_human` | List agents for a human address    |
+| Verification | `self_verify_agent`          | Verify agent on-chain              |
+| Verification | `self_verify_request`        | Validate signed HTTP request       |
 
 ---
 
@@ -378,11 +381,11 @@ The `--evm-version cancun` flag is required because Hub V2 uses the PUSH0 opcode
 
 ### Contract Addresses
 
-| Contract | Mainnet (42220) | Testnet (11142220) |
-|---|---|---|
-| SelfAgentRegistry | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` |
+| Contract               | Mainnet (42220)                              | Testnet (11142220)                           |
+| ---------------------- | -------------------------------------------- | -------------------------------------------- |
+| SelfAgentRegistry      | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` |
 | SelfHumanProofProvider | `0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d` | `0x5E61c3051Bf4115F90AacEAE6212bc419f8aBB6c` |
-| Hub V2 | `0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF` | `0x16ECBA51e18a4a7e61fdC417f0d47AFEeDfbed74` |
+| Hub V2                 | `0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF` | `0x16ECBA51e18a4a7e61fdC417f0d47AFEeDfbed74` |
 
 ---
 
@@ -396,7 +399,14 @@ The `SelfAgentVerifier` checks proof freshness via `isProofFresh()` as part of i
 
 ```typescript
 // TypeScript
-const result = await verifier.verify({ address, signature, timestamp, method, path, body });
+const result = await verifier.verify({
+  address,
+  signature,
+  timestamp,
+  method,
+  path,
+  body,
+});
 if (!result.valid && result.error?.includes("proof has expired")) {
   return res.status(401).json({
     error: "Agent proof has expired",
@@ -434,18 +444,18 @@ To refresh: deregister (burn NFT) → re-register (mint new NFT). The agentId ch
 
 These are the most frequently encountered issues during integration. Read through all of them before starting.
 
-| Gotcha | Detail |
-|---|---|
-| **userDefinedData is UTF-8** | The Self SDK passes `userDefinedData` as a UTF-8 string, NOT raw bytes. All hex values in the payload are ASCII hex characters. An address is 40 ASCII characters, not 20 raw bytes. |
-| **Use `--evm-version cancun`** | Foundry builds referencing Hub V2 must use `forge build --evm-version cancun`. Hub V2 uses the PUSH0 opcode which requires the Cancun EVM version. |
+| Gotcha                                | Detail                                                                                                                                                                                                                                                                |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **userDefinedData is UTF-8**          | The Self SDK passes `userDefinedData` as a UTF-8 string, NOT raw bytes. All hex values in the payload are ASCII hex characters. An address is 40 ASCII characters, not 20 raw bytes.                                                                                  |
+| **Use `--evm-version cancun`**        | Foundry builds referencing Hub V2 must use `forge build --evm-version cancun`. Hub V2 uses the PUSH0 opcode which requires the Cancun EVM version.                                                                                                                    |
 | **Provider verification is CRITICAL** | Without checking `getProofProvider()`, a fake provider could deploy a malicious contract that always returns `true` and register illegitimate agents. Always call `.requireSelfProvider()` in the SDK or check `getProofProvider(agentId) == SELF_PROVIDER` on-chain. |
-| **bytes32 positioning** | Use `bytes32(bytes1(uint8(x)))` not `bytes32(uint256(x))` for byte positioning in bytes32. Use `bytes32(uint256(uint160(addr)))` for address-to-agentKey conversion (right-padded, not left-padded). |
-| **NEXT_PUBLIC_SELF_ENDPOINT** | The `.env.local` variable `NEXT_PUBLIC_SELF_ENDPOINT` must be lowercase. A scope mismatch occurs if casing differs. |
-| **SELF_AGENT_API_BASE** | `SELF_AGENT_API_BASE` is the canonical env var. `SELF_API_URL` has been removed. Default: `https://self-agent-id.vercel.app`. The old `selfagentid.xyz` domain is retired. |
-| **Celo Sepolia chain ID** | Celo Sepolia is chain `11142220`, NOT `44787` (deprecated Alfajores). RPC: `https://forno.celo-sepolia.celo-testnet.org`. |
-| **Blockscout verification** | Blockscout does not need an API key for contract verification. Celoscan verification should use the Sourcify verifier (not etherscan verifier) as the Celoscan API endpoint is flaky. |
-| **Timestamp precision** | Auth headers use millisecond timestamps (e.g., `"1708704000000"`), not seconds. |
-| **Signature message format** | The signed message is `keccak256(timestamp + METHOD + pathWithQuery + bodyHash)`, where bodyHash is `keccak256(body)` as a hex string including the `0x` prefix. |
+| **bytes32 positioning**               | Use `bytes32(bytes1(uint8(x)))` not `bytes32(uint256(x))` for byte positioning in bytes32. Use `bytes32(uint256(uint160(addr)))` for address-to-agentKey conversion (right-padded, not left-padded).                                                                  |
+| **NEXT_PUBLIC_SELF_ENDPOINT**         | The `.env.local` variable `NEXT_PUBLIC_SELF_ENDPOINT` must be lowercase. A scope mismatch occurs if casing differs.                                                                                                                                                   |
+| **SELF_AGENT_API_BASE**               | `SELF_AGENT_API_BASE` is the canonical env var. `SELF_API_URL` has been removed. Default: `https://self-agent-id.vercel.app`. The old `selfagentid.xyz` domain is retired.                                                                                            |
+| **Celo Sepolia chain ID**             | Celo Sepolia is chain `11142220`, NOT `44787` (deprecated Alfajores). RPC: `https://forno.celo-sepolia.celo-testnet.org`.                                                                                                                                             |
+| **Blockscout verification**           | Blockscout does not need an API key for contract verification. Celoscan verification should use the Sourcify verifier (not etherscan verifier) as the Celoscan API endpoint is flaky.                                                                                 |
+| **Timestamp precision**               | Auth headers use millisecond timestamps (e.g., `"1708704000000"`), not seconds.                                                                                                                                                                                       |
+| **Signature message format**          | The signed message is `keccak256(timestamp + METHOD + pathWithQuery + bodyHash)`, where bodyHash is `keccak256(body)` as a hex string including the `0x` prefix.                                                                                                      |
 
 ---
 

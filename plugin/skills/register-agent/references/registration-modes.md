@@ -47,13 +47,13 @@ The soulbound NFT is minted to the human's wallet address. The human directly ow
 
 ### Characteristics
 
-| Property | Value |
-|---|---|
-| Agent key source | Human's wallet address |
-| NFT owner | Human's wallet |
+| Property           | Value                               |
+| ------------------ | ----------------------------------- |
+| Agent key source   | Human's wallet address              |
+| NFT owner          | Human's wallet                      |
 | Keypair management | None — uses human's existing wallet |
-| Guardian | Not applicable |
-| Gas payment | Human pays gas directly |
+| Guardian           | Not applicable                      |
+| Gas payment        | Human pays gas directly             |
 
 ### When to Use
 
@@ -105,14 +105,14 @@ The soulbound NFT is minted to the human's wallet address (the `userIdentifier` 
 
 ### Characteristics
 
-| Property | Value |
-|---|---|
-| Agent key source | Agent's own ECDSA keypair |
-| NFT owner | Human's wallet |
-| Keypair management | Agent generates and stores private key |
-| Guardian | Not applicable (human can deregister via NFT ownership) |
-| Gas payment | Human pays gas for registration; agent signs HTTP requests off-chain |
-| On-chain verification | ECDSA recovery verifies agent keypair ownership |
+| Property              | Value                                                                |
+| --------------------- | -------------------------------------------------------------------- |
+| Agent key source      | Agent's own ECDSA keypair                                            |
+| NFT owner             | Human's wallet                                                       |
+| Keypair management    | Agent generates and stores private key                               |
+| Guardian              | Not applicable (human can deregister via NFT ownership)              |
+| Gas payment           | Human pays gas for registration; agent signs HTTP requests off-chain |
+| On-chain verification | ECDSA recovery verifies agent keypair ownership                      |
 
 ### When to Use
 
@@ -166,14 +166,14 @@ The soulbound NFT is minted to the **agent's address**, not the human's wallet. 
 
 ### Characteristics
 
-| Property | Value |
-|---|---|
-| Agent key source | Agent's own ECDSA keypair |
-| NFT owner | Agent's address |
-| Keypair management | Agent generates and stores private key |
-| Guardian | Designated address (e.g., Self app) with revocation authority |
-| Gas payment | Agent pays gas or uses a relayer |
-| Revocation | Guardian calls `guardianRevoke()`, or agent calls `selfDeregister()` |
+| Property           | Value                                                                |
+| ------------------ | -------------------------------------------------------------------- |
+| Agent key source   | Agent's own ECDSA keypair                                            |
+| NFT owner          | Agent's address                                                      |
+| Keypair management | Agent generates and stores private key                               |
+| Guardian           | Designated address (e.g., Self app) with revocation authority        |
+| Gas payment        | Agent pays gas or uses a relayer                                     |
+| Revocation         | Guardian calls `guardianRevoke()`, or agent calls `selfDeregister()` |
 
 ### When to Use
 
@@ -225,23 +225,23 @@ Pimlico paymaster → sponsors gas (mainnet only)
 
 ### Key Components
 
-| Component | Details |
-|---|---|
-| Smart account | ZeroDev Kernel v3 (ERC-4337 compatible) |
-| Bundler | Pimlico (`https://api.pimlico.io/v2/{chainId}/rpc`) |
-| Paymaster | Pimlico (mainnet gasless sponsorship) |
+| Component      | Details                                                    |
+| -------------- | ---------------------------------------------------------- |
+| Smart account  | ZeroDev Kernel v3 (ERC-4337 compatible)                    |
+| Bundler        | Pimlico (`https://api.pimlico.io/v2/{chainId}/rpc`)        |
+| Paymaster      | Pimlico (mainnet gasless sponsorship)                      |
 | Passkey server | `https://passkeys.zerodev.app/api/v3/{projectId}` (NOT v4) |
-| Authentication | WebAuthn (FIDO2) — fingerprint, face, or security key |
+| Authentication | WebAuthn (FIDO2) — fingerprint, face, or security key      |
 
 ### Characteristics
 
-| Property | Value |
-|---|---|
-| Agent key source | Smart account address (derived from passkey) |
-| NFT owner | Smart account |
-| Key management | Passkey stored by browser/OS — no seed phrase |
-| Guardian | Smart account can designate a guardian |
-| Gas payment | Paymaster on mainnet (gasless); counterfactual only on testnet |
+| Property         | Value                                                          |
+| ---------------- | -------------------------------------------------------------- |
+| Agent key source | Smart account address (derived from passkey)                   |
+| NFT owner        | Smart account                                                  |
+| Key management   | Passkey stored by browser/OS — no seed phrase                  |
+| Guardian         | Smart account can designate a guardian                         |
+| Gas payment      | Paymaster on mainnet (gasless); counterfactual only on testnet |
 
 ### When to Use
 
@@ -251,15 +251,16 @@ Pimlico paymaster → sponsors gas (mainnet only)
 
 ### Network Differences
 
-| Behavior | Testnet (Celo Sepolia) | Mainnet (Celo) |
-|---|---|---|
-| Smart account deployment | Counterfactual only | Deployed by first UserOperation |
-| Gas sponsorship | Not available | Pimlico paymaster covers gas |
-| Passkey registration | Works (for testing) | Works (production) |
+| Behavior                 | Testnet (Celo Sepolia) | Mainnet (Celo)                  |
+| ------------------------ | ---------------------- | ------------------------------- |
+| Smart account deployment | Counterfactual only    | Deployed by first UserOperation |
+| Gas sponsorship          | Not available          | Pimlico paymaster covers gas    |
+| Passkey registration     | Works (for testing)    | Works (production)              |
 
 ### WebAuthn Requirements
 
 WebAuthn passkey authentication has specific browser requirements:
+
 - **HTTPS** is required in production
 - **Chrome** supports WebAuthn on `http://localhost` for development
 - **Firefox** blocks WebAuthn on `http://localhost` — use Chrome for local development
@@ -304,14 +305,14 @@ Start
 
 The config digit at `userDefinedData[1]` selects one of 6 verification configs registered with Hub V2 at deployment time. Each config defines an age threshold and OFAC screening combination.
 
-| Digit | Age Requirement | OFAC Check | Description |
-|---|---|---|---|
-| `'0'` | None | No | Minimum verification — data disclosures only |
-| `'1'` | 18+ | No | Age-gated (18+), no sanctions check |
-| `'2'` | 21+ | No | Age-gated (21+), no sanctions check |
-| `'3'` | None | Yes | OFAC sanctions screening, no age gate |
-| `'4'` | 18+ | Yes | Age 18+ with OFAC — most common for production |
-| `'5'` | 21+ | Yes | Strictest — age 21+ with OFAC sanctions screening |
+| Digit | Age Requirement | OFAC Check | Description                                       |
+| ----- | --------------- | ---------- | ------------------------------------------------- |
+| `'0'` | None            | No         | Minimum verification — data disclosures only      |
+| `'1'` | 18+             | No         | Age-gated (18+), no sanctions check               |
+| `'2'` | 21+             | No         | Age-gated (21+), no sanctions check               |
+| `'3'` | None            | Yes        | OFAC sanctions screening, no age gate             |
+| `'4'` | 18+             | Yes        | Age 18+ with OFAC — most common for production    |
+| `'5'` | 21+             | Yes        | Strictest — age 21+ with OFAC sanctions screening |
 
 The digit is an ASCII character (`'0'` = 0x30, `'5'` = 0x35), not a raw byte value. The registry's `_parseConfigIndex()` function accepts both ASCII (`0x30-0x35`) and raw (`0x00-0x05`) encodings, but the Self SDK always sends ASCII.
 
@@ -373,27 +374,27 @@ Override by setting the `SELF_AGENT_API_BASE` environment variable. The previous
 
 ### Registration Endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/api/agent/register` | Start a registration session |
-| `GET` | `/api/agent/register/status?token=X` | Poll registration status |
-| `GET` | `/api/agent/register/qr?token=X` | Get QR code for Self app |
-| `POST` | `/api/agent/register/callback` | Hub V2 callback (internal) |
+| Method | Path                                 | Description                  |
+| ------ | ------------------------------------ | ---------------------------- |
+| `POST` | `/api/agent/register`                | Start a registration session |
+| `GET`  | `/api/agent/register/status?token=X` | Poll registration status     |
+| `GET`  | `/api/agent/register/qr?token=X`     | Get QR code for Self app     |
+| `POST` | `/api/agent/register/callback`       | Hub V2 callback (internal)   |
 
 ### Deregistration Endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/api/agent/deregister` | Start a deregistration session |
-| `GET` | `/api/agent/deregister/status?token=X` | Poll deregistration status |
-| `POST` | `/api/agent/deregister/callback` | Hub V2 callback (internal) |
+| Method | Path                                   | Description                    |
+| ------ | -------------------------------------- | ------------------------------ |
+| `POST` | `/api/agent/deregister`                | Start a deregistration session |
+| `GET`  | `/api/agent/deregister/status?token=X` | Poll deregistration status     |
+| `POST` | `/api/agent/deregister/callback`       | Hub V2 callback (internal)     |
 
 ---
 
 ## Contract Addresses
 
-| Contract | Mainnet (42220) | Testnet (11142220) |
-|---|---|---|
-| SelfAgentRegistry | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` |
+| Contract               | Mainnet (42220)                              | Testnet (11142220)                           |
+| ---------------------- | -------------------------------------------- | -------------------------------------------- |
+| SelfAgentRegistry      | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` |
 | SelfHumanProofProvider | `0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d` | `0x5E61c3051Bf4115F90AacEAE6212bc419f8aBB6c` |
-| Hub V2 | `0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF` | `0x16ECBA51e18a4a7e61fdC417f0d47AFEeDfbed74` |
+| Hub V2                 | `0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF` | `0x16ECBA51e18a4a7e61fdC417f0d47AFEeDfbed74` |

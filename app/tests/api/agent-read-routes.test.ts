@@ -48,14 +48,24 @@ function installCommonMocks() {
       isAddress: mockIsAddress,
       getAddress: mockGetAddress,
       zeroPadValue: mockZeroPadValue,
-      ZeroHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      ZeroHash:
+        "0x0000000000000000000000000000000000000000000000000000000000000000",
       ZeroAddress: "0x0000000000000000000000000000000000000000",
     },
+  }));
+
+  vi.doMock("@/lib/contract-types", () => ({
+    typedRegistry: (_addr: string, _runner: unknown) => mockContract(),
+    typedProvider: (_addr: string, _runner: unknown) => mockContract(),
+    typedDemoVerifier: (_addr: string, _runner: unknown) => mockContract(),
+    typedGate: (_addr: string, _runner: unknown) => mockContract(),
   }));
 }
 
 function setDefaultMocks() {
-  mockCorsResponse.mockImplementation(() => new NextResponse(null, { status: 204 }));
+  mockCorsResponse.mockImplementation(
+    () => new NextResponse(null, { status: 204 }),
+  );
   mockErrorResponse.mockImplementation((message: string, status: number) =>
     NextResponse.json({ error: message }, { status }),
   );
@@ -67,14 +77,18 @@ function setDefaultMocks() {
       return null;
     }
   });
-  mockGetProviderLabel.mockImplementation((strength: number) => `label-${strength}`);
+  mockGetProviderLabel.mockImplementation(
+    (strength: number) => `label-${strength}`,
+  );
 
   mockJsonRpcProvider.mockImplementation(() => ({ kind: "provider" }));
   mockContract.mockReset();
 
   mockIsAddress.mockReturnValue(true);
   mockGetAddress.mockImplementation((value: string) => value.toLowerCase());
-  mockZeroPadValue.mockImplementation((value: string) => `pad:${value.toLowerCase()}`);
+  mockZeroPadValue.mockImplementation(
+    (value: string) => `pad:${value.toLowerCase()}`,
+  );
 }
 
 async function loadInfoRoute() {
@@ -121,38 +135,34 @@ describe("agent info route", () => {
 
   it("returns 400 for unsupported chain or invalid IDs", async () => {
     const { GET } = await loadInfoRoute();
-    const unsupported = await GET(
-      makeNextRequest("https://example.com"),
-      { params: Promise.resolve({ chainId: "999", agentId: "1" }) },
-    );
+    const unsupported = await GET(makeNextRequest("https://example.com"), {
+      params: Promise.resolve({ chainId: "999", agentId: "1" }),
+    });
     expect(unsupported.status).toBe(400);
 
-    const invalid = await GET(
-      makeNextRequest("https://example.com"),
-      { params: Promise.resolve({ chainId: "42220", agentId: "0" }) },
-    );
+    const invalid = await GET(makeNextRequest("https://example.com"), {
+      params: Promise.resolve({ chainId: "42220", agentId: "0" }),
+    });
     expect(invalid.status).toBe(400);
   });
 
   it("returns 404 when agent key is zero hash", async () => {
-    mockContract
-      .mockImplementationOnce(() => ({
-        hasHumanProof: vi.fn(),
-        getProofProvider: vi.fn(),
-        agentRegisteredAt: vi.fn(),
-        getAgentCredentials: vi.fn(),
-      }))
-      .mockImplementationOnce(() => ({
-        agentIdToAgentKey: vi.fn().mockResolvedValue(
+    mockContract.mockImplementationOnce(() => ({
+      agentIdToAgentKey: vi
+        .fn()
+        .mockResolvedValue(
           "0x0000000000000000000000000000000000000000000000000000000000000000",
         ),
-      }));
+      hasHumanProof: vi.fn(),
+      getProofProvider: vi.fn(),
+      agentRegisteredAt: vi.fn(),
+      getAgentCredentials: vi.fn(),
+    }));
 
     const { GET } = await loadInfoRoute();
-    const res = await GET(
-      makeNextRequest("https://example.com"),
-      { params: Promise.resolve({ chainId: "42220", agentId: "11" }) },
-    );
+    const res = await GET(makeNextRequest("https://example.com"), {
+      params: Promise.resolve({ chainId: "42220", agentId: "11" }),
+    });
     expect(res.status).toBe(404);
     expect(await jsonBody(res)).toEqual({ error: "Agent not found" });
   });
@@ -160,6 +170,11 @@ describe("agent info route", () => {
   it("returns on-chain info for a verified agent", async () => {
     mockContract
       .mockImplementationOnce(() => ({
+        agentIdToAgentKey: vi
+          .fn()
+          .mockResolvedValue(
+            "0x0000000000000000000000001111111111111111111111111111111111111111",
+          ),
         hasHumanProof: vi.fn().mockResolvedValue(true),
         getProofProvider: vi.fn().mockResolvedValue("0xprovider"),
         agentRegisteredAt: vi.fn().mockResolvedValue(1234n),
@@ -170,17 +185,13 @@ describe("agent info route", () => {
         }),
       }))
       .mockImplementationOnce(() => ({
-        agentIdToAgentKey: vi.fn().mockResolvedValue("0x0000000000000000000000001111111111111111111111111111111111111111"),
-      }))
-      .mockImplementationOnce(() => ({
         verificationStrength: vi.fn().mockResolvedValue(3),
       }));
 
     const { GET } = await loadInfoRoute();
-    const res = await GET(
-      makeNextRequest("https://example.com"),
-      { params: Promise.resolve({ chainId: "42220", agentId: "11" }) },
-    );
+    const res = await GET(makeNextRequest("https://example.com"), {
+      params: Promise.resolve({ chainId: "42220", agentId: "11" }),
+    });
     const body = await jsonBody<{
       isVerified: boolean;
       verificationStrength: number;
@@ -212,10 +223,9 @@ describe("agents-by-human route", () => {
       getAgentId: vi.fn().mockResolvedValue(0n),
     }));
     const { GET } = await loadAgentsRoute();
-    const res = await GET(
-      makeNextRequest("https://example.com"),
-      { params: Promise.resolve({ chainId: "42220", address: "0xabc" }) },
-    );
+    const res = await GET(makeNextRequest("https://example.com"), {
+      params: Promise.resolve({ chainId: "42220", address: "0xabc" }),
+    });
 
     expect(res.status).toBe(200);
     expect(await jsonBody(res)).toEqual({
@@ -235,11 +245,13 @@ describe("agents-by-human route", () => {
     }));
 
     const { GET } = await loadAgentsRoute();
-    const res = await GET(
-      makeNextRequest("https://example.com"),
-      { params: Promise.resolve({ chainId: "42220", address: "0xAbC" }) },
-    );
-    const body = await jsonBody<{ totalCount: number; agents: Array<{ agentId: number }> }>(res);
+    const res = await GET(makeNextRequest("https://example.com"), {
+      params: Promise.resolve({ chainId: "42220", address: "0xAbC" }),
+    });
+    const body = await jsonBody<{
+      totalCount: number;
+      agents: Array<{ agentId: number }>;
+    }>(res);
 
     expect(res.status).toBe(200);
     expect(body.totalCount).toBe(2);
@@ -268,10 +280,9 @@ describe("agent verify route", () => {
     }));
 
     const { GET } = await loadVerifyRoute();
-    const res = await GET(
-      makeNextRequest("https://example.com"),
-      { params: Promise.resolve({ chainId: "42220", agentId: "1" }) },
-    );
+    const res = await GET(makeNextRequest("https://example.com"), {
+      params: Promise.resolve({ chainId: "42220", agentId: "1" }),
+    });
     expect(res.status).toBe(200);
     expect(await jsonBody(res)).toMatchObject({ isVerified: false });
   });
@@ -290,10 +301,9 @@ describe("agent verify route", () => {
       }));
 
     const { GET } = await loadVerifyRoute();
-    const res = await GET(
-      makeNextRequest("https://example.com"),
-      { params: Promise.resolve({ chainId: "42220", agentId: "1" }) },
-    );
+    const res = await GET(makeNextRequest("https://example.com"), {
+      params: Promise.resolve({ chainId: "42220", agentId: "1" }),
+    });
     expect(res.status).toBe(200);
     expect(await jsonBody(res)).toMatchObject({
       isVerified: true,
@@ -321,10 +331,9 @@ describe("reputation route", () => {
       hasHumanProof: vi.fn().mockResolvedValue(false),
     }));
     const { GET } = await loadReputationRoute();
-    const res = await GET(
-      makeNextRequest("https://example.com"),
-      { params: Promise.resolve({ chainId: "42220", agentId: "1" }) },
-    );
+    const res = await GET(makeNextRequest("https://example.com"), {
+      params: Promise.resolve({ chainId: "42220", agentId: "1" }),
+    });
     expect(res.status).toBe(200);
     expect(await jsonBody(res)).toEqual({ score: 0, hasProof: false });
   });
@@ -341,10 +350,9 @@ describe("reputation route", () => {
       }));
 
     const { GET } = await loadReputationRoute();
-    const res = await GET(
-      makeNextRequest("https://example.com"),
-      { params: Promise.resolve({ chainId: "42220", agentId: "1" }) },
-    );
+    const res = await GET(makeNextRequest("https://example.com"), {
+      params: Promise.resolve({ chainId: "42220", agentId: "1" }),
+    });
 
     expect(res.status).toBe(200);
     expect(await jsonBody(res)).toEqual({
@@ -374,19 +382,17 @@ describe("cards route", () => {
     }));
 
     const { GET } = await loadCardsRoute();
-    const empty = await GET(
-      makeNextRequest("https://example.com"),
-      { params: Promise.resolve({ chainId: "42220", agentId: "1" }) },
-    );
+    const empty = await GET(makeNextRequest("https://example.com"), {
+      params: Promise.resolve({ chainId: "42220", agentId: "1" }),
+    });
     expect(empty.status).toBe(404);
 
     mockContract.mockImplementationOnce(() => ({
       getAgentMetadata: vi.fn().mockResolvedValue('{"title":"Agent Alpha"}'),
     }));
-    const found = await GET(
-      makeNextRequest("https://example.com"),
-      { params: Promise.resolve({ chainId: "42220", agentId: "1" }) },
-    );
+    const found = await GET(makeNextRequest("https://example.com"), {
+      params: Promise.resolve({ chainId: "42220", agentId: "1" }),
+    });
     expect(found.status).toBe(200);
     expect(await jsonBody(found)).toEqual({ title: "Agent Alpha" });
   });
@@ -412,10 +418,9 @@ describe("verify-status route", () => {
     }));
 
     const { GET } = await loadVerifyStatusRoute();
-    const res = await GET(
-      makeNextRequest("https://example.com"),
-      { params: Promise.resolve({ chainId: "42220", agentId: "1" }) },
-    );
+    const res = await GET(makeNextRequest("https://example.com"), {
+      params: Promise.resolve({ chainId: "42220", agentId: "1" }),
+    });
 
     expect(res.status).toBe(200);
     expect(await jsonBody(res)).toEqual({ verified: false });
@@ -433,10 +438,9 @@ describe("verify-status route", () => {
       }));
 
     const { GET } = await loadVerifyStatusRoute();
-    const res = await GET(
-      makeNextRequest("https://example.com"),
-      { params: Promise.resolve({ chainId: "42220", agentId: "1" }) },
-    );
+    const res = await GET(makeNextRequest("https://example.com"), {
+      params: Promise.resolve({ chainId: "42220", agentId: "1" }),
+    });
 
     expect(res.status).toBe(200);
     expect(await jsonBody(res)).toEqual({

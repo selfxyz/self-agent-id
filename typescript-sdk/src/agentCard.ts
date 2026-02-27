@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { ethers } from "ethers";
-import { REGISTRY_ABI, PROVIDER_ABI } from "./constants";
+import type { ethers } from "ethers";
+import type {
+  TypedRegistryContract,
+  TypedProviderContract,
+} from "./contract-types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -70,7 +73,15 @@ export interface A2ASecurityScheme {
 
 /** A service endpoint entry in the ERC-8004 agent document. */
 export interface ERC8004Service {
-  name: "web" | "A2A" | "MCP" | "OASF" | "ENS" | "DID" | "email" | string;
+  name:
+    | "web"
+    | "A2A"
+    | "MCP"
+    | "OASF"
+    | "ENS"
+    | "DID"
+    | "email"
+    | (string & {});
   endpoint: string;
   version?: string;
 }
@@ -151,7 +162,7 @@ export function getProviderLabel(strength: number): string {
  * @returns A color string: "green" (>=80), "blue" (>=60), "amber" (>=40), or "gray".
  */
 export function getStrengthColor(
-  strength: number
+  strength: number,
 ): "green" | "blue" | "amber" | "gray" {
   if (strength >= 80) return "green";
   if (strength >= 60) return "blue";
@@ -175,8 +186,8 @@ export function getStrengthColor(
  */
 export async function buildAgentCard(
   agentId: number,
-  registry: ethers.Contract,
-  provider: ethers.Contract,
+  registry: TypedRegistryContract,
+  provider: TypedProviderContract,
   userFields: {
     name: string;
     description?: string;
@@ -188,7 +199,7 @@ export async function buildAgentCard(
     agentProvider?: A2AProvider;
     capabilities?: A2ACapabilities;
     securitySchemes?: A2ASecurityScheme[];
-  }
+  },
 ): Promise<ERC8004AgentDocument> {
   const [
     providerName,
@@ -198,15 +209,16 @@ export async function buildAgentCard(
     chainId,
     proofProviderAddress,
   ] = await Promise.all([
-    provider.providerName() as Promise<string>,
-    provider.verificationStrength() as Promise<number>,
-    registry.getAgentCredentials(agentId).catch(() => null),
-    registry.getAddress() as Promise<string>,
-    (registry.runner?.provider
-      ?.getNetwork()
-      .then((n: ethers.Network) => Number(n.chainId)) ?? Promise.resolve(0)
+    provider.providerName(),
+    provider.verificationStrength(),
+    registry.getAgentCredentials(BigInt(agentId)).catch(() => null),
+    registry.getAddress(),
+    (
+      registry.runner?.provider
+        ?.getNetwork()
+        .then((n: ethers.Network) => Number(n.chainId)) ?? Promise.resolve(0)
     ).catch(() => 0),
-    provider.getAddress() as Promise<string>,
+    provider.getAddress(),
   ]);
 
   const proofType = getProviderLabel(Number(verificationStrength));
@@ -311,7 +323,7 @@ export interface GenerateRegistrationJSONOptions {
  * @returns A populated {@link ERC8004AgentDocument}.
  */
 export function generateRegistrationJSON(
-  options: GenerateRegistrationJSONOptions
+  options: GenerateRegistrationJSONOptions,
 ): ERC8004AgentDocument {
   return {
     type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",

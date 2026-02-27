@@ -2,7 +2,12 @@
 
 import { getAgentInfo, getAgentsForHuman } from "@selfxyz/agent-sdk";
 import type { McpConfig } from "../config";
-import { toolError, toolSuccess, formatCredentialsSummary, formatAgentInfo } from "../utils";
+import {
+  toolError,
+  toolSuccess,
+  formatCredentialsSummary,
+  formatAgentInfo,
+} from "../utils";
 
 interface LookupAgentArgs {
   agent_id?: number;
@@ -15,7 +20,10 @@ interface ListAgentsForHumanArgs {
   network?: "mainnet" | "testnet";
 }
 
-export async function handleLookupAgent(args: LookupAgentArgs, config: McpConfig) {
+export async function handleLookupAgent(
+  args: LookupAgentArgs,
+  config: McpConfig,
+) {
   const { agent_id, agent_address, network = config.network } = args;
 
   if (agent_id == null && !agent_address) {
@@ -34,8 +42,13 @@ export async function handleLookupAgent(args: LookupAgentArgs, config: McpConfig
   }
 
   try {
-    const info = await getAgentInfo(agent_id!, { network, apiBase: config.apiUrl });
-    const formatted = formatAgentInfo(info as unknown as Record<string, unknown>);
+    const info = await getAgentInfo(agent_id!, {
+      network,
+      apiBase: config.apiUrl,
+    });
+    const formatted = formatAgentInfo(
+      info as unknown as Record<string, unknown>,
+    );
     const credentialsSummary = formatCredentialsSummary(info.credentials);
     return toolSuccess({ ...formatted, credentialsSummary });
   } catch (err: unknown) {
@@ -44,11 +57,17 @@ export async function handleLookupAgent(args: LookupAgentArgs, config: McpConfig
   }
 }
 
-export async function handleListAgentsForHuman(args: ListAgentsForHumanArgs, config: McpConfig) {
+export async function handleListAgentsForHuman(
+  args: ListAgentsForHumanArgs,
+  config: McpConfig,
+) {
   const { human_address, network = config.network } = args;
 
   try {
-    const result = await getAgentsForHuman(human_address, { network, apiBase: config.apiUrl });
+    const result = await getAgentsForHuman(human_address, {
+      network,
+      apiBase: config.apiUrl,
+    });
     return toolSuccess(result as unknown as Record<string, unknown>);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

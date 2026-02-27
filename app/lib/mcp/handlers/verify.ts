@@ -4,12 +4,12 @@ import { ethers } from "ethers";
 import {
   SelfAgentVerifier,
   NETWORKS,
-  REGISTRY_ABI,
   isProofExpiringSoon,
 } from "@selfxyz/agent-sdk";
 import type { McpConfig } from "../config";
 import { toolError, toolSuccess } from "../utils";
 
+import { typedRegistry } from "@/lib/contract-types";
 interface VerifyAgentArgs {
   agent_address: string;
   network?: "mainnet" | "testnet";
@@ -27,7 +27,10 @@ interface VerifyRequestArgs {
   body?: string;
 }
 
-export async function handleVerifyAgent(args: VerifyAgentArgs, config: McpConfig) {
+export async function handleVerifyAgent(
+  args: VerifyAgentArgs,
+  config: McpConfig,
+) {
   const {
     agent_address,
     network = config.network,
@@ -38,11 +41,12 @@ export async function handleVerifyAgent(args: VerifyAgentArgs, config: McpConfig
 
   try {
     const networkConfig = NETWORKS[network];
-    const rpcUrl = network === config.network ? config.rpcUrl : networkConfig.rpcUrl;
+    const rpcUrl =
+      network === config.network ? config.rpcUrl : networkConfig.rpcUrl;
     const registryAddress = networkConfig.registryAddress;
 
     const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const registry = new ethers.Contract(registryAddress, REGISTRY_ABI, provider);
+    const registry = typedRegistry(registryAddress, provider);
 
     const agentKey = ethers.zeroPadValue(agent_address, 32);
     const isVerified: boolean = await registry.isVerifiedAgent(agentKey);
@@ -91,7 +95,9 @@ export async function handleVerifyAgent(args: VerifyAgentArgs, config: McpConfig
     const failures: string[] = [];
 
     if (proofExpired) {
-      failures.push("Agent's proof-of-human has expired. Re-authentication required.");
+      failures.push(
+        "Agent's proof-of-human has expired. Re-authentication required.",
+      );
     }
 
     if (require_self_provider) {
@@ -112,7 +118,8 @@ export async function handleVerifyAgent(args: VerifyAgentArgs, config: McpConfig
       failures.push("Agent has not passed OFAC screening.");
     }
 
-    const isSelfProvider = proofProvider.toLowerCase() === selfProvider.toLowerCase();
+    const isSelfProvider =
+      proofProvider.toLowerCase() === selfProvider.toLowerCase();
     let verification_strength = "unknown";
     if (isSelfProvider) {
       verification_strength = "self-protocol";
@@ -126,7 +133,8 @@ export async function handleVerifyAgent(args: VerifyAgentArgs, config: McpConfig
       expiryInfo.proof_expired = proofExpired;
       if (proofExpiringSoon) {
         expiryInfo.proof_expiring_soon = true;
-        expiryInfo.expiry_warning = "Proof expires within 30 days. Agent should re-authenticate soon.";
+        expiryInfo.expiry_warning =
+          "Proof expires within 30 days. Agent should re-authenticate soon.";
       }
     }
 
@@ -161,7 +169,10 @@ export async function handleVerifyAgent(args: VerifyAgentArgs, config: McpConfig
   }
 }
 
-export async function handleVerifyRequest(args: VerifyRequestArgs, config: McpConfig) {
+export async function handleVerifyRequest(
+  args: VerifyRequestArgs,
+  config: McpConfig,
+) {
   const { agent_signature, agent_timestamp, method, path, body } = args;
 
   try {
@@ -202,7 +213,8 @@ export async function handleVerifyRequest(args: VerifyRequestArgs, config: McpCo
       agent_id: Number(result.agentId),
       agent_count: Number(result.agentCount),
       credentials,
-      note: "Replay protection is not enforced at the MCP layer. " +
+      note:
+        "Replay protection is not enforced at the MCP layer. " +
         "If you are building a service, implement your own nonce or replay cache.",
     });
   } catch (err: unknown) {

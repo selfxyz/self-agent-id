@@ -494,11 +494,19 @@ function ParameterTable({ params }: { params: Param[] }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-surface-2/50 border-b border-border">
-              <th className="text-left px-3 py-2 text-muted font-medium">Name</th>
+              <th className="text-left px-3 py-2 text-muted font-medium">
+                Name
+              </th>
               <th className="text-left px-3 py-2 text-muted font-medium">In</th>
-              <th className="text-left px-3 py-2 text-muted font-medium">Type</th>
-              <th className="text-left px-3 py-2 text-muted font-medium">Required</th>
-              <th className="text-left px-3 py-2 text-muted font-medium">Description</th>
+              <th className="text-left px-3 py-2 text-muted font-medium">
+                Type
+              </th>
+              <th className="text-left px-3 py-2 text-muted font-medium">
+                Required
+              </th>
+              <th className="text-left px-3 py-2 text-muted font-medium">
+                Description
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -511,12 +519,16 @@ function ParameterTable({ params }: { params: Param[] }) {
                 <td className="px-3 py-2 text-muted text-xs">{p.type}</td>
                 <td className="px-3 py-2">
                   {p.required ? (
-                    <span className="text-accent-error text-xs font-medium">required</span>
+                    <span className="text-accent-error text-xs font-medium">
+                      required
+                    </span>
                   ) : (
                     <span className="text-muted text-xs">optional</span>
                   )}
                 </td>
-                <td className="px-3 py-2 text-muted text-xs">{p.description}</td>
+                <td className="px-3 py-2 text-muted text-xs">
+                  {p.description}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -542,7 +554,10 @@ function ResponseBlock({ responses }: { responses: ResponseDef[] }) {
       <h4 className="text-sm font-semibold text-foreground mb-2">Responses</h4>
       <div className="space-y-1">
         {responses.map((r) => (
-          <div key={r.status} className="rounded-lg border border-border overflow-hidden">
+          <div
+            key={r.status}
+            className="rounded-lg border border-border overflow-hidden"
+          >
             <button
               onClick={() =>
                 setOpenStatus(openStatus === r.status ? null : r.status)
@@ -556,7 +571,9 @@ function ResponseBlock({ responses }: { responses: ResponseDef[] }) {
             {openStatus === r.status && r.example && (
               <div className="px-3 pb-3">
                 <CodeBlock
-                  tabs={[{ label: "Response", language: "json", code: r.example }]}
+                  tabs={[
+                    { label: "Response", language: "json", code: r.example },
+                  ]}
                 />
               </div>
             )}
@@ -581,7 +598,9 @@ function EndpointRow({ endpoint }: { endpoint: EndpointDef }) {
         className={`w-full flex items-center gap-3 px-4 py-3 ${c.bg} hover:brightness-125 transition-all cursor-pointer`}
       >
         <MethodBadge method={endpoint.method} />
-        <code className="text-sm text-foreground font-mono">{endpoint.path}</code>
+        <code className="text-sm text-foreground font-mono">
+          {endpoint.path}
+        </code>
         <span className="text-sm text-muted hidden sm:inline ml-2">
           {endpoint.summary}
         </span>
@@ -592,7 +611,9 @@ function EndpointRow({ endpoint }: { endpoint: EndpointDef }) {
 
       {/* Expanded detail */}
       {open && (
-        <div className={`px-4 py-4 bg-surface-1 border-t border-border space-y-3`}>
+        <div
+          className={`px-4 py-4 bg-surface-1 border-t border-border space-y-3`}
+        >
           <p className="text-sm text-muted">{endpoint.description}</p>
 
           <ParameterTable params={endpoint.parameters} />
@@ -711,7 +732,9 @@ export default function ApiDocsPage() {
             <Bot size={18} className="text-purple-400 mt-0.5 shrink-0" />
             <div>
               <p className="text-sm text-muted">
-                <strong className="text-foreground">Using an AI coding assistant?</strong>{" "}
+                <strong className="text-foreground">
+                  Using an AI coding assistant?
+                </strong>{" "}
                 The{" "}
                 <a
                   href="https://www.npmjs.com/package/@selfxyz/mcp-server"
@@ -865,8 +888,8 @@ println!("Agent ID: {}", result.agent_id);`,
         <Card>
           <h2 className="text-lg font-bold mb-2">Authentication</h2>
           <p className="text-sm text-muted mb-3">
-            The API uses encrypted session tokens instead of API keys. Tokens are
-            returned by{" "}
+            The API uses encrypted session tokens instead of API keys. Tokens
+            are returned by{" "}
             <code className="bg-surface-2 px-1 rounded text-accent-2">
               POST /register
             </code>{" "}
@@ -875,7 +898,9 @@ println!("Agent ID: {}", result.agent_id);`,
               POST /deregister
             </code>{" "}
             and must be passed as a{" "}
-            <code className="bg-surface-2 px-1 rounded text-accent-2">token</code>{" "}
+            <code className="bg-surface-2 px-1 rounded text-accent-2">
+              token
+            </code>{" "}
             query parameter to all subsequent endpoints.
           </p>
           <ul className="list-disc list-inside text-sm text-muted space-y-1">
@@ -923,13 +948,18 @@ println!("Agent ID: {}", result.agent_id);`,
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left">
-                  <th className="pb-2 pr-4 text-foreground font-medium">Code</th>
+                  <th className="pb-2 pr-4 text-foreground font-medium">
+                    Code
+                  </th>
                   <th className="pb-2 text-foreground font-medium">Meaning</th>
                 </tr>
               </thead>
               <tbody className="text-muted">
                 {[
-                  ["400", "Bad request — invalid parameters, missing fields, or wrong mode"],
+                  [
+                    "400",
+                    "Bad request — invalid parameters, missing fields, or wrong mode",
+                  ],
                   ["401", "Invalid or tampered session token"],
                   ["404", "Agent not found on-chain"],
                   ["409", "Operation not available at current session stage"],
@@ -938,7 +968,9 @@ println!("Agent ID: {}", result.agent_id);`,
                 ].map(([code, meaning], i, arr) => (
                   <tr
                     key={code}
-                    className={i < arr.length - 1 ? "border-b border-border/50" : ""}
+                    className={
+                      i < arr.length - 1 ? "border-b border-border/50" : ""
+                    }
                   >
                     <td className="py-2 pr-4 font-mono">{code}</td>
                     <td className="py-2">{meaning}</td>

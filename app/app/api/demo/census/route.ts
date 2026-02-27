@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { HEADERS } from "@selfxyz/agent-sdk";
 import { NETWORKS, type NetworkId } from "@/lib/network";
 import { getCachedVerifier } from "@/lib/selfVerifier";
@@ -46,7 +46,10 @@ async function verifyAgent(req: NextRequest, body: string) {
   const timestamp = req.headers.get(HEADERS.TIMESTAMP);
 
   if (!signature || !timestamp) {
-    return { valid: false as const, error: "Missing agent authentication headers" };
+    return {
+      valid: false as const,
+      error: "Missing agent authentication headers",
+    };
   }
 
   const verifier = createVerifier(req);
@@ -123,7 +126,7 @@ export async function POST(req: NextRequest) {
 
   const creds = result.credentials;
   const entry: CensusEntry = {
-    agentAddress: result.agentAddress!,
+    agentAddress: result.agentAddress,
     agentId: result.agentId.toString(),
     nationality: creds?.nationality || "",
     olderThan: Number(creds?.olderThan || 0),
@@ -131,7 +134,7 @@ export async function POST(req: NextRequest) {
     timestamp: Date.now(),
   };
 
-  census.set(result.agentAddress!.toLowerCase(), entry);
+  census.set(result.agentAddress.toLowerCase(), entry);
 
   return NextResponse.json({
     recorded: true,

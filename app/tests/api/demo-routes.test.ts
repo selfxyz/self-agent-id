@@ -108,7 +108,9 @@ function setDefaultMocks() {
 
   mockJsonRpcProvider.mockImplementation(() => ({ kind: "provider" }));
   mockWalletCtor.mockImplementation(() => ({ address: "0xrelayer" }));
-  mockZeroPadValue.mockImplementation((value: string) => `pad:${value.toLowerCase()}`);
+  mockZeroPadValue.mockImplementation(
+    (value: string) => `pad:${value.toLowerCase()}`,
+  );
 
   mockMetaStaticCall.mockResolvedValue(undefined);
   mockMetaVerifyAgent.mockResolvedValue({
@@ -203,7 +205,9 @@ describe("demo verify route", () => {
   it("requires signature headers", async () => {
     const { POST } = await loadDemoVerifyRoute();
     const res = await POST(
-      makeNextRequest("https://example.com/api/demo/verify", { method: "POST" }),
+      makeNextRequest("https://example.com/api/demo/verify", {
+        method: "POST",
+      }),
     );
 
     expect(res.status).toBe(401);
@@ -422,7 +426,9 @@ describe("demo chat route", () => {
   it("returns 503 when upstream fetch throws", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => { throw new Error("connection refused"); }),
+      vi.fn(async () => {
+        throw new Error("connection refused");
+      }),
     );
     const { POST } = await loadDemoChatRoute();
     const res = await POST(
@@ -433,7 +439,9 @@ describe("demo chat route", () => {
     );
 
     expect(res.status).toBe(503);
-    expect(await jsonBody(res)).toEqual({ error: "LangChain service unavailable" });
+    expect(await jsonBody(res)).toEqual({
+      error: "LangChain service unavailable",
+    });
   });
 });
 
@@ -475,7 +483,10 @@ describe("demo census route", () => {
       }),
     );
     expect(postRes.status).toBe(200);
-    expect(await jsonBody(postRes)).toMatchObject({ recorded: true, totalAgents: 1 });
+    expect(await jsonBody(postRes)).toMatchObject({
+      recorded: true,
+      totalAgents: 1,
+    });
 
     const getRes = await GET(
       makeNextRequest("https://example.com/api/demo/census", {
@@ -507,17 +518,23 @@ describe("demo agent-to-agent route", () => {
   it("returns 500 when demo agent key is missing", async () => {
     const { POST } = await loadDemoAgentToAgentRoute(false);
     const res = await POST(
-      makeNextRequest("https://example.com/api/demo/agent-to-agent", { method: "POST" }),
+      makeNextRequest("https://example.com/api/demo/agent-to-agent", {
+        method: "POST",
+      }),
     );
     expect(res.status).toBe(500);
-    expect((await jsonBody<{ error: string }>(res)).error).toContain("Demo agent not configured");
+    expect((await jsonBody<{ error: string }>(res)).error).toContain(
+      "Demo agent not configured",
+    );
   });
 
   it("requires auth headers and blocks replayed requests", async () => {
     const { POST } = await loadDemoAgentToAgentRoute(true);
 
     const missing = await POST(
-      makeNextRequest("https://example.com/api/demo/agent-to-agent", { method: "POST" }),
+      makeNextRequest("https://example.com/api/demo/agent-to-agent", {
+        method: "POST",
+      }),
     );
     expect(missing.status).toBe(401);
 
@@ -577,7 +594,9 @@ describe("demo chain-verify route", () => {
   it("returns 503 when relayer is not configured", async () => {
     const { POST } = await loadDemoChainVerifyRoute(false);
     const res = await POST(
-      makeNextRequest("https://example.com/api/demo/chain-verify", { method: "POST" }),
+      makeNextRequest("https://example.com/api/demo/chain-verify", {
+        method: "POST",
+      }),
     );
     expect(res.status).toBe(503);
     expect(await jsonBody(res)).toEqual({ error: "Relayer not configured" });
@@ -586,7 +605,9 @@ describe("demo chain-verify route", () => {
   it("validates headers and payload shape", async () => {
     const { POST } = await loadDemoChainVerifyRoute(true);
     const missingHeaders = await POST(
-      makeNextRequest("https://example.com/api/demo/chain-verify", { method: "POST" }),
+      makeNextRequest("https://example.com/api/demo/chain-verify", {
+        method: "POST",
+      }),
     );
     expect(missingHeaders.status).toBe(401);
 
@@ -604,7 +625,9 @@ describe("demo chain-verify route", () => {
   });
 
   it("maps simulation revert reasons to user-friendly errors", async () => {
-    mockMetaStaticCall.mockRejectedValue(new Error("execution reverted: NotVerifiedAgent"));
+    mockMetaStaticCall.mockRejectedValue(
+      new Error("execution reverted: NotVerifiedAgent"),
+    );
     const { POST } = await loadDemoChainVerifyRoute(true);
     const res = await POST(
       makeNextRequest("https://example.com/api/demo/chain-verify", {
@@ -622,7 +645,9 @@ describe("demo chain-verify route", () => {
       }),
     );
     expect(res.status).toBe(400);
-    expect((await jsonBody<{ error: string }>(res)).error).toContain("agent not verified");
+    expect((await jsonBody<{ error: string }>(res)).error).toContain(
+      "agent not verified",
+    );
   });
 
   it("relays valid meta-transactions and returns tx metadata", async () => {

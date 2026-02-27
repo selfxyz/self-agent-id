@@ -7,7 +7,7 @@
 // Poll registration status. Checks on-chain whether the agent is verified,
 // and returns updated session state.
 
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import {
   decryptAndValidateSession,
   getNetworkConfig,
@@ -18,9 +18,10 @@ import {
   corsResponse,
   type ApiNetwork,
 } from "@/lib/agent-api-helpers";
-import { REGISTRY_ABI } from "@/lib/constants";
+import {} from "@/lib/constants";
 import { ethers } from "ethers";
 
+import { typedRegistry } from "@/lib/contract-types";
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token");
   if (!token) {
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest) {
     return sessionResponse(session, secret, {
       agentAddress: session.agentAddress,
       agentId: session.agentId,
-      humanInstructions: humanInstructions(session.stage as "completed" | "failed"),
+      humanInstructions: humanInstructions(session.stage),
     });
   }
 
@@ -72,11 +73,7 @@ export async function GET(req: NextRequest) {
       let credentials = null;
       try {
         const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
-        const registry = new ethers.Contract(
-          networkConfig.registryAddress,
-          REGISTRY_ABI,
-          provider,
-        );
+        const registry = typedRegistry(networkConfig.registryAddress, provider);
         const rawCreds = await registry.getAgentCredentials(agentId);
         credentials = {
           nationality: rawCreds.nationality || undefined,
@@ -105,7 +102,9 @@ export async function GET(req: NextRequest) {
     // Not yet verified — return current stage
     return sessionResponse(session, secret, {
       agentAddress,
-      humanInstructions: humanInstructions(session.stage as "qr-ready" | "proof-received" | "pending"),
+      humanInstructions: humanInstructions(
+        session.stage as "qr-ready" | "proof-received" | "pending",
+      ),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -113,6 +112,6 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function OPTIONS() {
+export function OPTIONS() {
   return corsResponse();
 }

@@ -18,7 +18,11 @@ import { SelfAgent } from "@selfxyz/agent-sdk";
 const agent = new SelfAgent({ privateKey: "0x..." });
 
 // Sign a request (returns auth headers)
-const headers = await agent.signRequest("POST", "https://api.example.com/data", '{"query":"test"}');
+const headers = await agent.signRequest(
+  "POST",
+  "https://api.example.com/data",
+  '{"query":"test"}',
+);
 
 // Or use the built-in HTTP client (auto-signs)
 const response = await agent.fetch("https://api.example.com/data", {
@@ -28,14 +32,14 @@ const response = await agent.fetch("https://api.example.com/data", {
 
 // Check on-chain status
 console.log(await agent.isRegistered()); // true/false
-console.log(await agent.getInfo());      // { agentId, isVerified, ... }
+console.log(await agent.getInfo()); // { agentId, isVerified, ... }
 ```
 
 ### Agent Properties
 
 ```typescript
-agent.address;   // Ethereum address (e.g. "0xf39F...")
-agent.agentKey;  // bytes32 zero-padded address for on-chain lookups
+agent.address; // Ethereum address (e.g. "0xf39F...")
+agent.agentKey; // bytes32 zero-padded address for on-chain lookups
 ```
 
 ### Credentials
@@ -87,8 +91,8 @@ const verifier = VerifierBuilder.create()
   .rateLimit({ perMinute: 60, perHour: 1000 })
   .replayProtection()
   .includeCredentials()
-  .maxAge(300_000)     // 5 min timestamp window
-  .cacheTtl(60_000)    // 1 min cache
+  .maxAge(300_000) // 5 min timestamp window
+  .cacheTtl(60_000) // 1 min cache
   .build();
 ```
 
@@ -182,7 +186,7 @@ import {
 getRegistrationConfigIndex({ minimumAge: 18, ofac: true }); // 4
 
 // Simple mode (verified-wallet) — human IS the agent
-buildSimpleRegisterUserDataAscii({ minimumAge: 18 });  // "R1"
+buildSimpleRegisterUserDataAscii({ minimumAge: 18 }); // "R1"
 buildSimpleDeregisterUserDataAscii({ minimumAge: 18 }); // "D1"
 
 // Advanced mode (agent-identity) — agent has own keypair
@@ -224,13 +228,13 @@ const session = await requestRegistration({
   agentName: "My Agent",
 });
 
-console.log(session.deepLink);           // URL for the human to open
-console.log(session.humanInstructions);  // Steps for the human
+console.log(session.deepLink); // URL for the human to open
+console.log(session.humanInstructions); // Steps for the human
 
 // Wait for completion (polls on-chain)
 const result = await session.waitForCompletion({ timeoutMs: 300_000 });
-console.log(result.agentId);       // On-chain agent ID
-console.log(result.agentAddress);  // Agent's address
+console.log(result.agentId); // On-chain agent ID
+console.log(result.agentAddress); // Agent's address
 
 // Export the generated private key
 const privateKey = await session.exportKey();
@@ -265,12 +269,12 @@ npx self-agent register export --session .self/session.json --unsafe --print-pri
 
 **Registration modes:**
 
-| Mode | Description | `userDefinedData` |
-|------|-------------|-------------------|
-| `verified-wallet` | Human address = agent address | `R{cfg}` |
-| `agent-identity` | Agent has own keypair, signed challenge | `K{cfg}{addr}{r}{s}{v}` |
-| `wallet-free` | Agent as guardian, no human wallet needed | `W{cfg}{addr}{guardian}{r}{s}{v}` |
-| `smart-wallet` | ZeroDev Kernel + passkeys | Smart wallet template |
+| Mode              | Description                               | `userDefinedData`                 |
+| ----------------- | ----------------------------------------- | --------------------------------- |
+| `verified-wallet` | Human address = agent address             | `R{cfg}`                          |
+| `agent-identity`  | Agent has own keypair, signed challenge   | `K{cfg}{addr}{r}{s}{v}`           |
+| `wallet-free`     | Agent as guardian, no human wallet needed | `W{cfg}{addr}{guardian}{r}{s}{v}` |
+| `smart-wallet`    | ZeroDev Kernel + passkeys                 | Smart wallet template             |
 
 ## Configuration
 
@@ -311,9 +315,9 @@ This SDK is 100% compatible with the Rust SDK (`self-agent-sdk`) and Python SDK 
 
 ## Networks
 
-| Network | Registry | Chain ID |
-|---------|----------|----------|
-| Mainnet (Celo) | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` | 42220 |
+| Network                | Registry                                     | Chain ID |
+| ---------------------- | -------------------------------------------- | -------- |
+| Mainnet (Celo)         | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` | 42220    |
 | Testnet (Celo Sepolia) | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` | 11142220 |
 
 ## License

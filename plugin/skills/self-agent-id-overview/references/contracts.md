@@ -2,12 +2,12 @@
 
 ## Contract Addresses
 
-| Contract | Mainnet (42220) | Testnet (11142220) |
-|---|---|---|
-| SelfAgentRegistry | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` |
+| Contract               | Mainnet (42220)                              | Testnet (11142220)                           |
+| ---------------------- | -------------------------------------------- | -------------------------------------------- |
+| SelfAgentRegistry      | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` |
 | SelfHumanProofProvider | `0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d` | `0x5E61c3051Bf4115F90AacEAE6212bc419f8aBB6c` |
-| AgentDemoVerifier | `0xD8ec054FD869A762bC977AC328385142303c7def` | `0xc31BAe8f2d7FCd19f737876892f05d9bDB294241` |
-| AgentGate | `0x26e05bF632fb5bACB665ab014240EAC1413dAE35` | `0x86Af07e30Aa42367cbcA7f2B1764Be346598bbc2` |
+| AgentDemoVerifier      | `0xD8ec054FD869A762bC977AC328385142303c7def` | `0xc31BAe8f2d7FCd19f737876892f05d9bDB294241` |
+| AgentGate              | `0x26e05bF632fb5bACB665ab014240EAC1413dAE35` | `0x86Af07e30Aa42367cbcA7f2B1764Be346598bbc2` |
 | Hub V2 (Self Protocol) | `0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF` | `0x16ECBA51e18a4a7e61fdC417f0d47AFEeDfbed74` |
 
 All contracts are verified on Sourcify, Celoscan, and Blockscout.
@@ -154,51 +154,52 @@ Force-revoke a compromised agent. Only callable by the agent's designated guardi
 
 ### Admin Functions (Owner Only)
 
-| Function | Description |
-|---|---|
+| Function                        | Description                                  |
+| ------------------------------- | -------------------------------------------- |
 | `setSelfProofProvider(address)` | Set the Self Protocol proof provider address |
-| `addProofProvider(address)` | Whitelist a new proof provider |
-| `removeProofProvider(address)` | Remove a provider from the whitelist |
-| `setMaxAgentsPerHuman(uint256)` | Set the sybil limit (0 = unlimited) |
+| `addProofProvider(address)`     | Whitelist a new proof provider               |
+| `removeProofProvider(address)`  | Remove a provider from the whitelist         |
+| `setMaxAgentsPerHuman(uint256)` | Set the sybil limit (0 = unlimited)          |
 
 ### Events
 
-| Event | Parameters |
-|---|---|
+| Event                           | Parameters                                                |
+| ------------------------------- | --------------------------------------------------------- |
 | `AgentRegisteredWithHumanProof` | `agentId, proofProvider, nullifier, verificationStrength` |
-| `HumanProofRevoked` | `agentId, nullifier` |
-| `ProofProviderAdded` | `provider, name` |
-| `ProofProviderRemoved` | `provider` |
-| `GuardianSet` | `agentId, guardian` |
-| `AgentMetadataUpdated` | `agentId` |
-| `AgentCredentialsStored` | `agentId` |
-| `MaxAgentsPerHumanUpdated` | `max` |
+| `HumanProofRevoked`             | `agentId, nullifier`                                      |
+| `ProofProviderAdded`            | `provider, name`                                          |
+| `ProofProviderRemoved`          | `provider`                                                |
+| `GuardianSet`                   | `agentId, guardian`                                       |
+| `AgentMetadataUpdated`          | `agentId`                                                 |
+| `AgentCredentialsStored`        | `agentId`                                                 |
+| `MaxAgentsPerHumanUpdated`      | `max`                                                     |
 
 ## SelfHumanProofProvider
 
 Lightweight metadata wrapper for Self Protocol as a proof-of-human provider.
 
-| Function | Returns | Description |
-|---|---|---|
-| `providerName()` | `"self"` | Provider identifier string |
-| `verificationStrength()` | `100` | Passport NFC + biometric verification |
-| `verifyHumanProof(proof, data)` | Reverts | Always reverts with `DirectVerificationNotSupported` |
-| `hubV2()` | `address` | The Hub V2 contract address (immutable) |
-| `scope()` | `uint256` | The nullifier scope value (immutable) |
+| Function                        | Returns   | Description                                          |
+| ------------------------------- | --------- | ---------------------------------------------------- |
+| `providerName()`                | `"self"`  | Provider identifier string                           |
+| `verificationStrength()`        | `100`     | Passport NFC + biometric verification                |
+| `verifyHumanProof(proof, data)` | Reverts   | Always reverts with `DirectVerificationNotSupported` |
+| `hubV2()`                       | `address` | The Hub V2 contract address (immutable)              |
+| `scope()`                       | `uint256` | The nullifier scope value (immutable)                |
 
 ## SelfReputationProvider
 
 Stateless view-only wrapper for ERC-8004 reputation scoring.
 
-| Function | Returns | Description |
-|---|---|---|
-| `getReputationScore(agentId)` | `uint8` (0-100) | Score from provider's `verificationStrength()` |
-| `getReputation(agentId)` | `(uint8, string, bool, uint256)` | Full details: score, providerName, hasProof, registeredAtBlock |
-| `getReputationBatch(agentIds)` | `uint8[]` | Batch scores for multiple agents |
-| `name()` | `"Self Protocol"` | Provider metadata |
-| `version()` | `"1.0"` | Provider version |
+| Function                       | Returns                          | Description                                                    |
+| ------------------------------ | -------------------------------- | -------------------------------------------------------------- |
+| `getReputationScore(agentId)`  | `uint8` (0-100)                  | Score from provider's `verificationStrength()`                 |
+| `getReputation(agentId)`       | `(uint8, string, bool, uint256)` | Full details: score, providerName, hasProof, registeredAtBlock |
+| `getReputationBatch(agentIds)` | `uint8[]`                        | Batch scores for multiple agents                               |
+| `name()`                       | `"Self Protocol"`                | Provider metadata                                              |
+| `version()`                    | `"1.0"`                          | Provider version                                               |
 
 Score interpretation:
+
 - **100** — Passport NFC chip + biometric (Self Protocol)
 - **60** — Government ID without chip
 - **40** — Video liveness check
@@ -208,15 +209,15 @@ Score interpretation:
 
 Freshness-checking validation provider for ERC-8004.
 
-| Function | Returns | Description |
-|---|---|---|
-| `validateAgent(agentId)` | `(bool, bool, uint256, uint256, address)` | Full validation: valid, fresh, registeredAt, blockAge, proofProvider |
-| `isValidAgent(agentId)` | `bool` | Quick check: valid AND fresh |
-| `validateBatch(agentIds)` | `bool[]` | Batch validation for multiple agents |
-| `setFreshnessThreshold(blocks)` | — | Owner-only: set freshness window in blocks |
-| `freshnessThreshold()` | `uint256` | Current threshold (default: 6,307,200 blocks) |
-| `name()` | `"Self Protocol"` | Provider metadata |
-| `version()` | `"1.0"` | Provider version |
+| Function                        | Returns                                   | Description                                                          |
+| ------------------------------- | ----------------------------------------- | -------------------------------------------------------------------- |
+| `validateAgent(agentId)`        | `(bool, bool, uint256, uint256, address)` | Full validation: valid, fresh, registeredAt, blockAge, proofProvider |
+| `isValidAgent(agentId)`         | `bool`                                    | Quick check: valid AND fresh                                         |
+| `validateBatch(agentIds)`       | `bool[]`                                  | Batch validation for multiple agents                                 |
+| `setFreshnessThreshold(blocks)` | —                                         | Owner-only: set freshness window in blocks                           |
+| `freshnessThreshold()`          | `uint256`                                 | Current threshold (default: 6,307,200 blocks)                        |
+| `name()`                        | `"Self Protocol"`                         | Provider metadata                                                    |
+| `version()`                     | `"1.0"`                                   | Provider version                                                     |
 
 Default freshness threshold: **6,307,200 blocks** (~1 year on Celo at 5 seconds per block).
 
@@ -355,6 +356,7 @@ bytes32 agentKey = bytes32(uint256(uint160(agentAddress)));
 ```
 
 This applies to all registration modes:
+
 - **Simple mode:** `agentAddress` = human's wallet address
 - **Advanced mode:** `agentAddress` = agent's own address (separate keypair)
 - **Wallet-free mode:** `agentAddress` = agent's own address
@@ -394,35 +396,35 @@ Position [2+]: Mode-specific payload
 
 ### Total Lengths
 
-| Mode | Min Length | Format |
-|---|---|---|
-| Simple register (`R`) | 2 | `R` + config |
-| Simple deregister (`D`) | 2 | `D` + config |
-| Advanced register (`K`) | 172 | `K` + config + addr(40) + r(64) + s(64) + v(2) |
-| Advanced deregister (`X`) | 42 | `X` + config + addr(40) |
-| Wallet-free (`W`) | 212 | `W` + config + agentAddr(40) + guardian(40) + r(64) + s(64) + v(2) |
+| Mode                      | Min Length | Format                                                             |
+| ------------------------- | ---------- | ------------------------------------------------------------------ |
+| Simple register (`R`)     | 2          | `R` + config                                                       |
+| Simple deregister (`D`)   | 2          | `D` + config                                                       |
+| Advanced register (`K`)   | 172        | `K` + config + addr(40) + r(64) + s(64) + v(2)                     |
+| Advanced deregister (`X`) | 42         | `X` + config + addr(40)                                            |
+| Wallet-free (`W`)         | 212        | `W` + config + agentAddr(40) + guardian(40) + r(64) + s(64) + v(2) |
 
 ## Error Reference
 
-| Error | Meaning |
-|---|---|
-| `TransferNotAllowed()` | Attempted to transfer a soulbound NFT |
-| `AgentAlreadyRegistered(agentKey)` | Agent key is already registered |
-| `AgentNotRegistered(agentKey)` | Agent key has no registration |
-| `NotAgentOwner(expected, actual)` | Nullifier mismatch on deregistration |
-| `InvalidAction(action)` | Unknown action byte in userDefinedData |
-| `InvalidUserData()` | Malformed or too-short userDefinedData |
-| `ProviderNotApproved(provider)` | Provider not on the whitelist |
-| `InvalidAgentSignature()` | ECDSA signature does not match agent address |
-| `NotGuardian(agentId)` | Caller is not the designated guardian |
-| `NotNftOwner(agentId)` | Caller does not own the agent NFT |
-| `NoGuardianSet(agentId)` | No guardian exists for this agent |
-| `TooManyAgentsForHuman(nullifier, max)` | Sybil limit exceeded |
-| `InvalidConfigIndex(raw)` | Config byte not in range 0-5 or '0'-'5' |
-| `VerificationFailed()` | Synchronous provider verification failed |
-| `ProviderDataTooShort()` | Provider data missing agent key (< 32 bytes) |
-| `NotSameHuman()` | Nullifier mismatch on revocation |
-| `DirectVerificationNotSupported()` | Called verifyHumanProof on Self provider (use async flow) |
+| Error                                   | Meaning                                                   |
+| --------------------------------------- | --------------------------------------------------------- |
+| `TransferNotAllowed()`                  | Attempted to transfer a soulbound NFT                     |
+| `AgentAlreadyRegistered(agentKey)`      | Agent key is already registered                           |
+| `AgentNotRegistered(agentKey)`          | Agent key has no registration                             |
+| `NotAgentOwner(expected, actual)`       | Nullifier mismatch on deregistration                      |
+| `InvalidAction(action)`                 | Unknown action byte in userDefinedData                    |
+| `InvalidUserData()`                     | Malformed or too-short userDefinedData                    |
+| `ProviderNotApproved(provider)`         | Provider not on the whitelist                             |
+| `InvalidAgentSignature()`               | ECDSA signature does not match agent address              |
+| `NotGuardian(agentId)`                  | Caller is not the designated guardian                     |
+| `NotNftOwner(agentId)`                  | Caller does not own the agent NFT                         |
+| `NoGuardianSet(agentId)`                | No guardian exists for this agent                         |
+| `TooManyAgentsForHuman(nullifier, max)` | Sybil limit exceeded                                      |
+| `InvalidConfigIndex(raw)`               | Config byte not in range 0-5 or '0'-'5'                   |
+| `VerificationFailed()`                  | Synchronous provider verification failed                  |
+| `ProviderDataTooShort()`                | Provider data missing agent key (< 32 bytes)              |
+| `NotSameHuman()`                        | Nullifier mismatch on revocation                          |
+| `DirectVerificationNotSupported()`      | Called verifyHumanProof on Self provider (use async flow) |
 
 ## Compilation and Deployment Notes
 

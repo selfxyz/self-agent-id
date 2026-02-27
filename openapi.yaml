@@ -955,8 +955,10 @@ paths:
                 description: On-chain AI agent identity registry with proof-of-human verification
                 apiBase: https://self-agent-id.vercel.app/api/agent
                 networks: [mainnet, testnet]
-                registrationModes: [verified-wallet, agent-identity, wallet-free, smart-wallet]
-                capabilities: [register, deregister, verify, credentials, agent-card, a2a]
+                registrationModes:
+                  [verified-wallet, agent-identity, wallet-free, smart-wallet]
+                capabilities:
+                  [register, deregister, verify, credentials, agent-card, a2a]
                 sessionTtlMs: 1800000
 
   # ── Demo (require x-self-agent-* headers) ────────────────────────

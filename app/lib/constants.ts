@@ -43,6 +43,12 @@ export const REGISTRY_ABI = [
   "function getAgentCredentials(uint256 agentId) view returns ((string issuingState, string[] name, string idNumber, string nationality, string dateOfBirth, string gender, string expiryDate, uint256 olderThan, bool[3] ofac))",
   // V5: per-agent nonce for replay-attack prevention on advanced/wallet-free registration
   "function agentNonces(address agent) view returns (uint256)",
+  // Standard interface aliases (match SDK REGISTRY_ABI naming)
+  "function getProofProvider(uint256 agentId) view returns (address)",
+  "function selfProofProvider() view returns (address)",
+  // ERC-8004: proof expiry
+  "function proofExpiresAt(uint256 agentId) view returns (uint256)",
+  "function isProofFresh(uint256 agentId) view returns (bool)",
   "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
 ] as const;
 

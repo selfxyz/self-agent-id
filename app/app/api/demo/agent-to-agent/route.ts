@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { SelfAgent, HEADERS } from "@selfxyz/agent-sdk";
 import { getNetwork, NETWORKS, type NetworkId } from "@/lib/network";
 import { getCachedVerifier } from "@/lib/selfVerifier";
 import { checkAndRecordReplay } from "@/lib/replayGuard";
 
+import { typedRegistry } from "@/lib/contract-types";
 // Per-network demo agent private keys
 const DEMO_KEYS: Record<NetworkId, string | undefined> = {
   "celo-sepolia": process.env.DEMO_AGENT_PRIVATE_KEY_SEPOLIA,
@@ -31,8 +32,10 @@ export async function POST(req: NextRequest) {
 
   if (!demoAgentPk) {
     return NextResponse.json(
-      { error: `Demo agent not configured for ${network.label} (missing DEMO_AGENT_PRIVATE_KEY_${network.isTestnet ? "SEPOLIA" : "MAINNET"})` },
-      { status: 500 }
+      {
+        error: `Demo agent not configured for ${network.label} (missing DEMO_AGENT_PRIVATE_KEY_${network.isTestnet ? "SEPOLIA" : "MAINNET"})`,
+      },
+      { status: 500 },
     );
   }
 
@@ -43,7 +46,7 @@ export async function POST(req: NextRequest) {
   if (!signature || !timestamp) {
     return NextResponse.json(
       { error: "Missing agent authentication headers" },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -70,7 +73,7 @@ export async function POST(req: NextRequest) {
         verified: false,
         error: verifyResult.error || "Agent verification failed",
       },
-      { status: 403 }
+      { status: 403 },
     );
   }
 
@@ -100,18 +103,10 @@ export async function POST(req: NextRequest) {
   });
 
   const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-  const registry = new ethers.Contract(
-    network.registryAddress,
-    [
-      "function getAgentId(bytes32) view returns (uint256)",
-      "function sameHuman(uint256, uint256) view returns (bool)",
-      "function isVerifiedAgent(bytes32) view returns (bool)",
-    ],
-    provider
-  );
+  const registry = typedRegistry(network.registryAddress, provider);
 
   const demoKey = ethers.zeroPadValue(demoAgent.address, 32);
-  const callerKey = verifyResult.agentKey!;
+  const callerKey = verifyResult.agentKey;
 
   const [demoVerified, demoId, callerId, callerVerified] = await Promise.all([
     registry.isVerifiedAgent(demoKey),
@@ -159,7 +154,7 @@ export async function POST(req: NextRequest) {
   const responseHeaders = await demoAgent.signRequest(
     "POST",
     req.url,
-    responseBody
+    responseBody,
   );
 
   return new NextResponse(responseBody, {

@@ -2,20 +2,22 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
-import { REGISTRY_ABI, PROVIDER_ABI, getProviderLabel } from "@selfxyz/agent-sdk";
+import { getProviderLabel } from "@selfxyz/agent-sdk";
 import { CHAIN_CONFIG } from "@/lib/chain-config";
-import { CORS_HEADERS, corsResponse, errorResponse, validateAgentId } from "@/lib/api-helpers";
+import {
+  CORS_HEADERS,
+  corsResponse,
+  errorResponse,
+  validateAgentId,
+} from "@/lib/api-helpers";
 
-// Supplemental ABI for functions not in the SDK's REGISTRY_ABI
-const REGISTRY_EXT_ABI = [
-  "function agentIdToAgentKey(uint256 agentId) view returns (bytes32)",
-] as const;
+import { typedProvider, typedRegistry } from "@/lib/contract-types";
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ chainId: string; agentId: string }> }
+  { params }: { params: Promise<{ chainId: string; agentId: string }> },
 ) {
   const { chainId, agentId } = await params;
   const config = CHAIN_CONFIG[chainId];
@@ -26,16 +28,15 @@ export async function GET(
 
   try {
     const rpc = new ethers.JsonRpcProvider(config.rpc);
-    const registry = new ethers.Contract(config.registry, REGISTRY_ABI, rpc);
-    const registryExt = new ethers.Contract(config.registry, REGISTRY_EXT_ABI, rpc);
+    const registry = typedRegistry(config.registry, rpc);
 
     // Fetch core agent data in parallel
     const [agentKey, hasProof, providerAddr, registeredAt, credentials] =
       await Promise.all([
-        registryExt.agentIdToAgentKey(id) as Promise<string>,
-        registry.hasHumanProof(id) as Promise<boolean>,
-        registry.getProofProvider(id) as Promise<string>,
-        registry.agentRegisteredAt(id) as Promise<bigint>,
+        registry.agentIdToAgentKey(id),
+        registry.hasHumanProof(id),
+        registry.getProofProvider(id),
+        registry.agentRegisteredAt(id),
         registry.getAgentCredentials(id) as Promise<{
           issuingState: string;
           name: string[];
@@ -55,9 +56,7 @@ export async function GET(
     }
 
     // Derive agent address from the key (lower 20 bytes)
-    const agentAddress = ethers.getAddress(
-      "0x" + agentKey.slice(-40)
-    );
+    const agentAddress = ethers.getAddress("0x" + agentKey.slice(-40));
 
     // Determine network label from chainId
     const networkLabel = chainId === "42220" ? "mainnet" : "testnet";
@@ -66,7 +65,7 @@ export async function GET(
     let verificationStrength = 0;
     let strengthLabel = "None";
     if (hasProof && providerAddr !== ethers.ZeroAddress) {
-      const provider = new ethers.Contract(providerAddr, PROVIDER_ABI, rpc);
+      const provider = typedProvider(providerAddr, rpc);
       const strength: number = await provider.verificationStrength();
       verificationStrength = Number(strength);
       strengthLabel = getProviderLabel(verificationStrength);
@@ -90,18 +89,21 @@ export async function GET(
         registeredAt: Number(registeredAt),
         network: networkLabel,
       },
-      { headers: CORS_HEADERS }
+      { headers: CORS_HEADERS },
     );
   } catch (err) {
     // Distinguish RPC failures from "not found"
     const message = err instanceof Error ? err.message : String(err);
-    if (message.includes("could not coalesce") || message.includes("BAD_DATA")) {
+    if (
+      message.includes("could not coalesce") ||
+      message.includes("BAD_DATA")
+    ) {
       return errorResponse("Agent not found", 404);
     }
     return errorResponse("RPC error", 502);
   }
 }
 
-export async function OPTIONS() {
+export function OPTIONS() {
   return corsResponse();
 }

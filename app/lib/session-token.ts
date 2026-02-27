@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { createCipheriv, createDecipheriv, randomBytes, createHash } from "crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  randomBytes,
+  createHash,
+} from "crypto";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16;
@@ -58,7 +63,10 @@ export function decryptSession(token: string, secret: string): SessionData {
 
   const iv = combined.subarray(0, IV_LENGTH);
   const authTag = combined.subarray(combined.length - AUTH_TAG_LENGTH);
-  const ciphertext = combined.subarray(IV_LENGTH, combined.length - AUTH_TAG_LENGTH);
+  const ciphertext = combined.subarray(
+    IV_LENGTH,
+    combined.length - AUTH_TAG_LENGTH,
+  );
   const decipher = createDecipheriv(ALGORITHM, key, iv);
   decipher.setAuthTag(authTag);
   const decrypted = Buffer.concat([

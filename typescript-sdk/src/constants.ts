@@ -20,6 +20,7 @@ export const REGISTRY_ABI = [
   "function agentRegisteredAt(uint256 agentId) view returns (uint256)",
   // ERC-8004: proof expiry
   "function proofExpiresAt(uint256 agentId) view returns (uint256)",
+  "function isProofFresh(uint256 agentId) view returns (bool)",
 ] as const;
 
 /** ABI for IHumanProofProvider — used to query provider metadata */
@@ -32,7 +33,10 @@ export const PROVIDER_ABI = [
 export type NetworkName = "mainnet" | "testnet";
 
 /** Per-network configuration (registry address + RPC URL) */
-export const NETWORKS: Record<NetworkName, { registryAddress: string; rpcUrl: string }> = {
+export const NETWORKS: Record<
+  NetworkName,
+  { registryAddress: string; rpcUrl: string }
+> = {
   mainnet: {
     registryAddress: "0xaC3DF9ABf80d0F5c020C06B04Cced27763355944",
     rpcUrl: "https://forno.celo.org",

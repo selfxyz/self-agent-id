@@ -7,7 +7,7 @@
 // Creates a session, generates keypair (for agent-identity / wallet-free modes),
 // builds userDefinedData, and returns Self app QR data + deep link.
 
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import { ethers } from "ethers";
 import {
   buildSimpleRegisterUserDataAscii,
@@ -28,7 +28,6 @@ import {
   jsonResponse,
   errorResponse,
   corsResponse,
-  type ApiNetwork,
 } from "@/lib/agent-api-helpers";
 import { checkRateLimit } from "@/lib/rateLimit";
 
@@ -61,8 +60,13 @@ interface RegisterRequestBody {
 
 export async function POST(req: NextRequest) {
   // Rate limit: 10 registration requests per minute per IP
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  const rl = await checkRateLimit({ key: `register:${ip}`, limit: 10, windowMs: 60_000 });
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const rl = await checkRateLimit({
+    key: `register:${ip}`,
+    limit: 10,
+    windowMs: 60_000,
+  });
   if (!rl.allowed) {
     return errorResponse("Too many requests", 429);
   }
@@ -91,12 +95,15 @@ export async function POST(req: NextRequest) {
       400,
     );
   }
-  const network = body.network as ApiNetwork;
+  const network = body.network;
   const networkConfig = getNetworkConfig(network);
 
   // ── Validate humanAddress (required for simple + agent-identity) ────────
   const needsHumanAddress = mode === "simple" || mode === "agent-identity";
-  if (needsHumanAddress && (!body.humanAddress || !isValidAddress(body.humanAddress))) {
+  if (
+    needsHumanAddress &&
+    (!body.humanAddress || !isValidAddress(body.humanAddress))
+  ) {
     return errorResponse(
       "humanAddress is required and must be a valid Ethereum address for this mode",
       400,
@@ -135,14 +142,11 @@ export async function POST(req: NextRequest) {
       agentPrivateKey = wallet.privateKey;
       agentAddress = wallet.address;
 
-      const signedChallenge = await signRegistrationChallenge(
-        agentPrivateKey,
-        {
-          humanIdentifier: humanAddress,
-          chainId: networkConfig.chainId,
-          registryAddress: networkConfig.registryAddress,
-        },
-      );
+      const signedChallenge = await signRegistrationChallenge(agentPrivateKey, {
+        humanIdentifier: humanAddress,
+        chainId: networkConfig.chainId,
+        registryAddress: networkConfig.registryAddress,
+      });
 
       userDefinedData = buildAdvancedRegisterUserDataAscii({
         agentAddress,
@@ -156,14 +160,11 @@ export async function POST(req: NextRequest) {
       agentAddress = wallet.address;
       humanAddress = agentAddress; // userId = agent address for wallet-free
 
-      const signedChallenge = await signRegistrationChallenge(
-        agentPrivateKey,
-        {
-          humanIdentifier: ethers.getAddress(agentAddress),
-          chainId: networkConfig.chainId,
-          registryAddress: networkConfig.registryAddress,
-        },
-      );
+      const signedChallenge = await signRegistrationChallenge(agentPrivateKey, {
+        humanIdentifier: ethers.getAddress(agentAddress),
+        chainId: networkConfig.chainId,
+        registryAddress: networkConfig.registryAddress,
+      });
 
       userDefinedData = buildWalletFreeRegisterUserDataAscii({
         agentAddress,
@@ -176,9 +177,11 @@ export async function POST(req: NextRequest) {
     const selfAppDisclosures: Record<string, boolean | number> = {};
     if (body.disclosures?.nationality) selfAppDisclosures.nationality = true;
     if (body.disclosures?.name) selfAppDisclosures.name = true;
-    if (body.disclosures?.date_of_birth) selfAppDisclosures.date_of_birth = true;
+    if (body.disclosures?.date_of_birth)
+      selfAppDisclosures.date_of_birth = true;
     if (body.disclosures?.gender) selfAppDisclosures.gender = true;
-    if (body.disclosures?.issuing_state) selfAppDisclosures.issuing_state = true;
+    if (body.disclosures?.issuing_state)
+      selfAppDisclosures.issuing_state = true;
     if (body.disclosures?.ofac) selfAppDisclosures.ofac = true;
     if (disclosures.minimumAge && disclosures.minimumAge > 0) {
       selfAppDisclosures.minimumAge = disclosures.minimumAge;
@@ -250,6 +253,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function OPTIONS() {
+export function OPTIONS() {
   return corsResponse();
 }

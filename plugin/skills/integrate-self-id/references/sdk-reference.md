@@ -6,11 +6,11 @@ Complete API reference for the Self Agent ID SDKs across TypeScript, Python, and
 
 ## Packages
 
-| Language | Package | Install |
-|---|---|---|
+| Language   | Package              | Install                          |
+| ---------- | -------------------- | -------------------------------- |
 | TypeScript | `@selfxyz/agent-sdk` | `npm install @selfxyz/agent-sdk` |
-| Python | `selfxyz-agent-sdk` | `pip install selfxyz-agent-sdk` |
-| Rust | `self-agent-sdk` | `cargo add self-agent-sdk` |
+| Python     | `selfxyz-agent-sdk`  | `pip install selfxyz-agent-sdk`  |
+| Rust       | `self-agent-sdk`     | `cargo add self-agent-sdk`       |
 
 ---
 
@@ -21,6 +21,7 @@ The `SelfAgent` class is the primary agent-side client. It manages identity, sig
 ### Constructor
 
 **TypeScript:**
+
 ```typescript
 import { SelfAgent } from "@selfxyz/agent-sdk";
 
@@ -28,6 +29,7 @@ const agent = new SelfAgent(config: SelfAgentConfig);
 ```
 
 **Python:**
+
 ```python
 from self_agent_sdk import SelfAgent
 
@@ -35,6 +37,7 @@ agent = SelfAgent(**config)
 ```
 
 **Rust:**
+
 ```rust
 use self_agent_sdk::SelfAgent;
 
@@ -43,13 +46,13 @@ let agent = SelfAgent::new(config)?;
 
 ### SelfAgentConfig
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `privateKey` | `string` | Auto-generated | Hex private key, 0x-prefixed. If omitted, a new ECDSA keypair is generated. |
-| `network` | `"mainnet" \| "testnet"` | `"testnet"` | Network selection. Sets chain ID, RPC URL, and contract addresses. |
-| `registryAddress` | `string` | Network default | Override the registry contract address. |
-| `rpcUrl` | `string` | Network default | Override the JSON-RPC endpoint. |
-| `apiBase` | `string` | `https://self-agent-id.vercel.app` | Override the REST API base URL. |
+| Field             | Type                     | Default                            | Description                                                                 |
+| ----------------- | ------------------------ | ---------------------------------- | --------------------------------------------------------------------------- |
+| `privateKey`      | `string`                 | Auto-generated                     | Hex private key, 0x-prefixed. If omitted, a new ECDSA keypair is generated. |
+| `network`         | `"mainnet" \| "testnet"` | `"testnet"`                        | Network selection. Sets chain ID, RPC URL, and contract addresses.          |
+| `registryAddress` | `string`                 | Network default                    | Override the registry contract address.                                     |
+| `rpcUrl`          | `string`                 | Network default                    | Override the JSON-RPC endpoint.                                             |
+| `apiBase`         | `string`                 | `https://self-agent-id.vercel.app` | Override the REST API base URL.                                             |
 
 Python uses snake_case: `private_key`, `registry_address`, `rpc_url`, `api_base`.
 
@@ -101,18 +104,18 @@ let info = agent.get_info().await?;
 
 **AgentInfo type:**
 
-| Field | Type | Description |
-|---|---|---|
-| `registered` | `boolean` | Whether the agent is registered |
-| `agentId` | `number` | On-chain token ID (0 if unregistered) |
-| `address` | `string` | Agent's Ethereum address |
-| `agentKey` | `string` | bytes32 registry key |
-| `owner` | `string` | NFT owner address |
-| `isVerified` | `boolean` | Whether the agent has a valid human proof |
-| `proofProvider` | `string` | Address of the proof provider |
-| `nullifier` | `string` | Cryptographic nullifier (for sybil checks) |
-| `registeredAtBlock` | `number` | Block number of registration |
-| `credentials` | `AgentCredentials` | ZK-attested credentials |
+| Field               | Type               | Description                                |
+| ------------------- | ------------------ | ------------------------------------------ |
+| `registered`        | `boolean`          | Whether the agent is registered            |
+| `agentId`           | `number`           | On-chain token ID (0 if unregistered)      |
+| `address`           | `string`           | Agent's Ethereum address                   |
+| `agentKey`          | `string`           | bytes32 registry key                       |
+| `owner`             | `string`           | NFT owner address                          |
+| `isVerified`        | `boolean`          | Whether the agent has a valid human proof  |
+| `proofProvider`     | `string`           | Address of the proof provider              |
+| `nullifier`         | `string`           | Cryptographic nullifier (for sybil checks) |
+| `registeredAtBlock` | `number`           | Block number of registration               |
+| `credentials`       | `AgentCredentials` | ZK-attested credentials                    |
 
 ---
 
@@ -153,6 +156,7 @@ let headers: HashMap<String, String> = agent.sign_request(
 ```
 
 The signing algorithm:
+
 1. Compute body hash: `keccak256(body || "")`
 2. Canonicalize URL to path + query only
 3. Build message: `keccak256(timestamp + METHOD + pathWithQuery + bodyHash)`
@@ -220,17 +224,17 @@ let creds = agent.get_credentials().await?;
 
 **AgentCredentials type:**
 
-| Field | Type | Description |
-|---|---|---|
-| `nationality` | `string` | ISO 3166-1 alpha-3 (e.g., "USA", "GBR") |
-| `olderThan` | `number` | Verified age threshold (0, 18, or 21) |
-| `ofacClean` | `boolean` | Whether all 3 OFAC lists are clear |
-| `issuingState` | `string` | Passport issuing state |
-| `name` | `string[]` | Full name components (if disclosed) |
-| `dateOfBirth` | `string` | Date of birth (if disclosed) |
-| `gender` | `string` | Gender (if disclosed) |
-| `expiryDate` | `string` | Passport expiry (if disclosed) |
-| `ofac` | `boolean[3]` | Individual OFAC list results [SDN, nonSDN, consolidated] |
+| Field          | Type         | Description                                              |
+| -------------- | ------------ | -------------------------------------------------------- |
+| `nationality`  | `string`     | ISO 3166-1 alpha-3 (e.g., "USA", "GBR")                  |
+| `olderThan`    | `number`     | Verified age threshold (0, 18, or 21)                    |
+| `ofacClean`    | `boolean`    | Whether all 3 OFAC lists are clear                       |
+| `issuingState` | `string`     | Passport issuing state                                   |
+| `name`         | `string[]`   | Full name components (if disclosed)                      |
+| `dateOfBirth`  | `string`     | Date of birth (if disclosed)                             |
+| `gender`       | `string`     | Gender (if disclosed)                                    |
+| `expiryDate`   | `string`     | Passport expiry (if disclosed)                           |
+| `ofac`         | `boolean[3]` | Individual OFAC list results [SDN, nonSDN, consolidated] |
 
 ---
 
@@ -307,14 +311,14 @@ let session = agent.request_registration(18, true).await?;
 
 **RegistrationSession type:**
 
-| Field | Type | Description |
-|---|---|---|
-| `sessionToken` | `string` | Encrypted session token for polling/export |
-| `qrData` | `object` | Self app QR configuration |
-| `deepLink` | `string` | Direct link to open Self app (mobile) |
-| `agentAddress` | `string` | The agent's Ethereum address |
-| `expiresAt` | `string` | ISO timestamp when session expires (30 min) |
-| `timeRemainingMs` | `number` | Milliseconds until session expiry |
+| Field             | Type     | Description                                 |
+| ----------------- | -------- | ------------------------------------------- |
+| `sessionToken`    | `string` | Encrypted session token for polling/export  |
+| `qrData`          | `object` | Self app QR configuration                   |
+| `deepLink`        | `string` | Direct link to open Self app (mobile)       |
+| `agentAddress`    | `string` | The agent's Ethereum address                |
+| `expiresAt`       | `string` | ISO timestamp when session expires (30 min) |
+| `timeRemainingMs` | `number` | Milliseconds until session expiry           |
 
 ---
 
@@ -329,10 +333,10 @@ const status: RegistrationStatus = await agent.getRegistrationStatus();
 
 **RegistrationStatus type:**
 
-| Field | Type | Description |
-|---|---|---|
-| `status` | `"pending" \| "verified" \| "expired" \| "failed"` | Current session status |
-| `agentId` | `number \| undefined` | On-chain agent ID (present when verified) |
+| Field     | Type                                               | Description                               |
+| --------- | -------------------------------------------------- | ----------------------------------------- |
+| `status`  | `"pending" \| "verified" \| "expired" \| "failed"` | Current session status                    |
+| `agentId` | `number \| undefined`                              | On-chain agent ID (present when verified) |
 
 ---
 
@@ -402,22 +406,24 @@ The `SelfAgentVerifier` class provides server-side verification of agent-signed 
 ### Builder
 
 **TypeScript:**
+
 ```typescript
 import { SelfAgentVerifier } from "@selfxyz/agent-sdk";
 
 const verifier = SelfAgentVerifier.create()
-  .network("mainnet")                              // Select network
-  .registry("0x...")                                // Override registry address
-  .rpcUrl("https://...")                            // Override RPC URL
-  .requireAge(18)                                   // Require age 18+ credential
-  .requireOFAC()                                    // Require OFAC clearance
-  .requireSelfProvider()                            // CRITICAL: require Self Protocol provider
-  .sybilLimit(3)                                    // Max agents per human
+  .network("mainnet") // Select network
+  .registry("0x...") // Override registry address
+  .rpcUrl("https://...") // Override RPC URL
+  .requireAge(18) // Require age 18+ credential
+  .requireOFAC() // Require OFAC clearance
+  .requireSelfProvider() // CRITICAL: require Self Protocol provider
+  .sybilLimit(3) // Max agents per human
   .rateLimit({ windowMs: 60000, maxRequests: 100 }) // Per-agent rate limit
   .build();
 ```
 
 **Python:**
+
 ```python
 from self_agent_sdk import SelfAgentVerifier
 
@@ -434,6 +440,7 @@ verifier = (
 ```
 
 **Rust:**
+
 ```rust
 use self_agent_sdk::SelfAgentVerifier;
 
@@ -449,17 +456,17 @@ let verifier = SelfAgentVerifier::builder()
 
 ### Builder Methods
 
-| Method (TS) | Method (Python) | Method (Rust) | Description |
-|---|---|---|---|
-| `.network(name)` | `.network(name)` | `.network(name)` | Set network ("mainnet" or "testnet") |
-| `.registry(addr)` | `.registry(addr)` | `.registry(addr)` | Override registry address |
-| `.rpcUrl(url)` | `.rpc_url(url)` | `.rpc_url(url)` | Override RPC URL |
-| `.requireAge(n)` | `.require_age(n)` | `.require_age(n)` | Require minimum age (0, 18, or 21) |
-| `.requireOFAC()` | `.require_ofac()` | `.require_ofac()` | Require OFAC clearance |
-| `.requireSelfProvider()` | `.require_self_provider()` | `.require_self_provider()` | Require Self Protocol provider |
-| `.sybilLimit(n)` | `.sybil_limit(n)` | `.sybil_limit(n)` | Max agents per human |
-| `.rateLimit(opts)` | `.rate_limit(**opts)` | `.rate_limit(w, m)` | Per-agent rate limiting |
-| `.build()` | `.build()` | `.build()` | Construct the verifier |
+| Method (TS)              | Method (Python)            | Method (Rust)              | Description                          |
+| ------------------------ | -------------------------- | -------------------------- | ------------------------------------ |
+| `.network(name)`         | `.network(name)`           | `.network(name)`           | Set network ("mainnet" or "testnet") |
+| `.registry(addr)`        | `.registry(addr)`          | `.registry(addr)`          | Override registry address            |
+| `.rpcUrl(url)`           | `.rpc_url(url)`            | `.rpc_url(url)`            | Override RPC URL                     |
+| `.requireAge(n)`         | `.require_age(n)`          | `.require_age(n)`          | Require minimum age (0, 18, or 21)   |
+| `.requireOFAC()`         | `.require_ofac()`          | `.require_ofac()`          | Require OFAC clearance               |
+| `.requireSelfProvider()` | `.require_self_provider()` | `.require_self_provider()` | Require Self Protocol provider       |
+| `.sybilLimit(n)`         | `.sybil_limit(n)`          | `.sybil_limit(n)`          | Max agents per human                 |
+| `.rateLimit(opts)`       | `.rate_limit(**opts)`      | `.rate_limit(w, m)`        | Per-agent rate limiting              |
+| `.build()`               | `.build()`                 | `.build()`                 | Construct the verifier               |
 
 ### Methods
 
@@ -490,12 +497,12 @@ Manual verification of request headers. Available in all three languages.
 ```typescript
 // TypeScript
 const result: VerificationResult = await verifier.verify({
-  address: string,    // From x-self-agent-address header
-  signature: string,  // From x-self-agent-signature header
-  timestamp: string,  // From x-self-agent-timestamp header
-  method: string,     // HTTP method (e.g., "POST")
-  path: string,       // Request path (e.g., "/api/data")
-  body: string,       // Request body (empty string if none)
+  address: string, // From x-self-agent-address header
+  signature: string, // From x-self-agent-signature header
+  timestamp: string, // From x-self-agent-timestamp header
+  method: string, // HTTP method (e.g., "POST")
+  path: string, // Request path (e.g., "/api/data")
+  body: string, // Request body (empty string if none)
 });
 ```
 
@@ -529,12 +536,12 @@ let result = verifier.verify(
 
 ```typescript
 interface VerificationResult {
-  valid: boolean;               // Whether all checks passed
-  agentId?: number;             // On-chain agent ID
-  address?: string;             // Recovered signer address
+  valid: boolean; // Whether all checks passed
+  agentId?: number; // On-chain agent ID
+  address?: string; // Recovered signer address
   credentials?: AgentCredentials; // ZK-attested credentials
-  agentCount?: number;          // Number of agents for this human
-  reason?: string;              // Rejection reason (when valid = false)
+  agentCount?: number; // Number of agents for this human
+  reason?: string; // Rejection reason (when valid = false)
 }
 ```
 
@@ -572,7 +579,10 @@ println!("{}", info.proof_expires_at);
 The TypeScript SDK includes a built-in 30-day warning threshold:
 
 ```typescript
-import { isProofExpiringSoon, EXPIRY_WARNING_THRESHOLD_SECS } from "@selfxyz/agent-sdk";
+import {
+  isProofExpiringSoon,
+  EXPIRY_WARNING_THRESHOLD_SECS,
+} from "@selfxyz/agent-sdk";
 // EXPIRY_WARNING_THRESHOLD_SECS = 2_592_000 (30 days)
 
 if (isProofExpiringSoon(proofExpiresAt)) {
@@ -585,7 +595,14 @@ if (isProofExpiringSoon(proofExpiresAt)) {
 The verifier checks `isProofFresh()` on-chain and returns an error when an agent's proof has lapsed:
 
 ```typescript
-const result = await verifier.verify({ address, signature, timestamp, method, path, body });
+const result = await verifier.verify({
+  address,
+  signature,
+  timestamp,
+  method,
+  path,
+  body,
+});
 if (!result.valid && result.error?.includes("proof has expired")) {
   // Agent must deregister and re-register to refresh
 }
@@ -638,18 +655,21 @@ Map age and OFAC requirements to a config index number.
 ```typescript
 import { getRegistrationConfigIndex } from "@selfxyz/agent-sdk";
 
-const index: number = getRegistrationConfigIndex({ minimumAge: 18, ofac: true });
+const index: number = getRegistrationConfigIndex({
+  minimumAge: 18,
+  ofac: true,
+});
 // Returns: 0 through 5
 ```
 
-| minimumAge | ofac | Result |
-|---|---|---|
-| 0 | false | `0` |
-| 18 | false | `1` |
-| 21 | false | `2` |
-| 0 | true | `3` |
-| 18 | true | `4` |
-| 21 | true | `5` |
+| minimumAge | ofac  | Result |
+| ---------- | ----- | ------ |
+| 0          | false | `0`    |
+| 18         | false | `1`    |
+| 21         | false | `2`    |
+| 0          | true  | `3`    |
+| 18         | true  | `4`    |
+| 21         | true  | `5`    |
 
 ---
 
@@ -686,7 +706,10 @@ Build the `userDefinedData` payload for verified-wallet (simple) mode.
 ```typescript
 import { buildSimpleRegisterUserDataAscii } from "@selfxyz/agent-sdk";
 
-const data: string = buildSimpleRegisterUserDataAscii({ minimumAge: 18, ofac: true });
+const data: string = buildSimpleRegisterUserDataAscii({
+  minimumAge: 18,
+  ofac: true,
+});
 // Returns: "R" + configDigit (e.g., "R4" for age 18+ with OFAC)
 ```
 
@@ -745,9 +768,7 @@ const card: A2AAgentCard = buildAgentCard({
   registry: "0xaC3DF9ABf80d0F5c020C06B04Cced27763355944",
   proofProvider: "0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d",
   credentials: { nationality: "USA", olderThan: 18, ofacClean: true },
-  skills: [
-    { id: "chat", name: "Chat", description: "General conversation" },
-  ],
+  skills: [{ id: "chat", name: "Chat", description: "General conversation" }],
 });
 ```
 
@@ -755,7 +776,7 @@ const card: A2AAgentCard = buildAgentCard({
 
 ```typescript
 interface A2AAgentCard {
-  a2aVersion: string;    // "0.1"
+  a2aVersion: string; // "0.1"
   name: string;
   description: string;
   url?: string;
@@ -767,9 +788,9 @@ interface A2AAgentCard {
     providerName: string;
     verificationStrength: number;
     trustModel: {
-      proofType: string;       // "zk-passport"
-      proofStandard: string;   // "groth16"
-      proofProvider: string;   // "self-protocol"
+      proofType: string; // "zk-passport"
+      proofStandard: string; // "groth16"
+      proofProvider: string; // "self-protocol"
       onChainVerifiable: boolean;
     };
     credentials: {
@@ -883,7 +904,10 @@ Thrown for generic registration failures (ZK proof verification failed, contract
 import { RegistrationError } from "@selfxyz/agent-sdk";
 
 try {
-  const session = await agent.requestRegistration({ minimumAge: 18, ofac: true });
+  const session = await agent.requestRegistration({
+    minimumAge: 18,
+    ofac: true,
+  });
 } catch (err) {
   if (err instanceof RegistrationError) {
     console.error("Registration failed:", err.message);
@@ -901,38 +925,38 @@ The SDK calls these endpoints internally. They are also available for direct use
 
 ### Agent Info
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/agent/info/{chainId}/{agentId}` | Full agent info by ID |
-| `GET` | `/api/agent/agents/{chainId}/{address}` | List agent IDs for a human address |
-| `GET` | `/api/agent/verify/{chainId}/{agentId}` | Verification status and proof provider |
+| Method | Path                                    | Description                            |
+| ------ | --------------------------------------- | -------------------------------------- |
+| `GET`  | `/api/agent/info/{chainId}/{agentId}`   | Full agent info by ID                  |
+| `GET`  | `/api/agent/agents/{chainId}/{address}` | List agent IDs for a human address     |
+| `GET`  | `/api/agent/verify/{chainId}/{agentId}` | Verification status and proof provider |
 
 ### Registration
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/api/agent/register` | Start a registration session |
-| `GET` | `/api/agent/register/status?token=X` | Poll registration status |
-| `GET` | `/api/agent/register/qr?token=X` | Get QR code data |
+| Method | Path                                 | Description                  |
+| ------ | ------------------------------------ | ---------------------------- |
+| `POST` | `/api/agent/register`                | Start a registration session |
+| `GET`  | `/api/agent/register/status?token=X` | Poll registration status     |
+| `GET`  | `/api/agent/register/qr?token=X`     | Get QR code data             |
 
 ### Deregistration
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/api/agent/deregister` | Start a deregistration session |
-| `GET` | `/api/agent/deregister/status?token=X` | Poll deregistration status |
+| Method | Path                                   | Description                    |
+| ------ | -------------------------------------- | ------------------------------ |
+| `POST` | `/api/agent/deregister`                | Start a deregistration session |
+| `GET`  | `/api/agent/deregister/status?token=X` | Poll deregistration status     |
 
 ### Agent Cards
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/cards/{chainId}/{agentId}` | Read agent card |
+| Method | Path                             | Description     |
+| ------ | -------------------------------- | --------------- |
+| `GET`  | `/api/cards/{chainId}/{agentId}` | Read agent card |
 
 ### Reputation
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/reputation/{chainId}/{agentId}` | Reputation score and provider details |
+| Method | Path                                  | Description                           |
+| ------ | ------------------------------------- | ------------------------------------- |
+| `GET`  | `/api/reputation/{chainId}/{agentId}` | Reputation score and provider details |
 
 ### Chain IDs for API Paths
 

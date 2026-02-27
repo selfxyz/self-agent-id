@@ -2,15 +2,21 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
-import { REGISTRY_ABI, PROVIDER_ABI, getProviderLabel } from "@selfxyz/agent-sdk";
+import { getProviderLabel } from "@selfxyz/agent-sdk";
 import { CHAIN_CONFIG } from "@/lib/chain-config";
-import { CORS_HEADERS, corsResponse, errorResponse, validateAgentId } from "@/lib/api-helpers";
+import {
+  CORS_HEADERS,
+  corsResponse,
+  errorResponse,
+  validateAgentId,
+} from "@/lib/api-helpers";
 
+import { typedProvider, typedRegistry } from "@/lib/contract-types";
 export async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ chainId: string; agentId: string }> }
+  { params }: { params: Promise<{ chainId: string; agentId: string }> },
 ) {
   const { chainId, agentId } = await params;
   const config = CHAIN_CONFIG[chainId];
@@ -21,22 +27,22 @@ export async function GET(
 
   try {
     const rpc = new ethers.JsonRpcProvider(config.rpc);
-    const registry = new ethers.Contract(config.registry, REGISTRY_ABI, rpc);
+    const registry = typedRegistry(config.registry, rpc);
 
     const hasProof: boolean = await registry.hasHumanProof(id);
     if (!hasProof) {
       return NextResponse.json(
         { score: 0, hasProof: false },
-        { headers: CORS_HEADERS }
+        { headers: CORS_HEADERS },
       );
     }
 
     const providerAddr: string = await registry.getProofProvider(id);
-    const provider = new ethers.Contract(providerAddr, PROVIDER_ABI, rpc);
+    const provider = typedProvider(providerAddr, rpc);
 
     const [strength, providerName] = await Promise.all([
-      provider.verificationStrength() as Promise<number>,
-      provider.providerName() as Promise<string>,
+      provider.verificationStrength(),
+      provider.providerName(),
     ]);
 
     const score = Number(strength);
@@ -47,13 +53,13 @@ export async function GET(
         providerName,
         proofType: getProviderLabel(score),
       },
-      { headers: CORS_HEADERS }
+      { headers: CORS_HEADERS },
     );
   } catch {
     return errorResponse("Agent not found", 404);
   }
 }
 
-export async function OPTIONS() {
+export function OPTIONS() {
   return corsResponse();
 }
