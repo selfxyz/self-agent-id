@@ -35,10 +35,10 @@ function isKnownPrivilegedToken(token: string, knownTokens: string[]): boolean {
   return matched;
 }
 
-export async function verifyMcpBearerToken(
+export function verifyMcpBearerToken(
   _req: Request,
   bearerToken?: string,
-): Promise<AuthInfo | undefined> {
+): AuthInfo | undefined {
   if (!bearerToken) return undefined;
 
   const keys = getPrivilegedApiKeys();
