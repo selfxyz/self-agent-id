@@ -26,6 +26,17 @@ const verifier = new SelfAgentVerifier({
 let verificationCount = 0;
 const uniqueHumans = new Set<string>();
 
+type DemoRegistry = {
+  isVerifiedAgent(agentKey: string): Promise<boolean>;
+  getAgentId(agentKey: string): Promise<bigint>;
+  sameHuman(agentIdA: bigint, agentIdB: bigint): Promise<boolean>;
+};
+
+const typedRegistryFactory = typedRegistry as unknown as (
+  registryAddress: string,
+  runner: ethers.Provider,
+) => DemoRegistry;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -125,7 +136,7 @@ http("demoAgent", async (req, res) => {
   });
 
   const provider = new ethers.JsonRpcProvider(RPC);
-  const registry = typedRegistry(REGISTRY, provider);
+  const registry = typedRegistryFactory(REGISTRY, provider);
 
   const demoKey = ethers.zeroPadValue(demoAgent.address, 32);
   const callerKey = verifyResult.agentKey;

@@ -872,9 +872,17 @@ async function pollOnChain(
  * @returns Parsed JSON body, or an empty object if the body is empty.
  */
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = [];
+  const chunks: Buffer<ArrayBufferLike>[] = [];
   return new Promise((resolveBody, rejectBody) => {
-    req.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    req.on("data", (chunk: unknown) => {
+      if (typeof chunk === "string") {
+        chunks.push(Buffer.from(chunk, "utf8"));
+        return;
+      }
+      if (chunk instanceof Uint8Array) {
+        chunks.push(Buffer.from(chunk));
+      }
+    });
     req.on("end", () => {
       try {
         const text = Buffer.concat(chunks).toString("utf8");

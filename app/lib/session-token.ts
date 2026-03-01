@@ -73,7 +73,11 @@ export function decryptSession(token: string, secret: string): SessionData {
     decipher.update(ciphertext),
     decipher.final(),
   ]);
-  const data: SessionData = JSON.parse(decrypted.toString("utf8"));
+  const parsed = JSON.parse(decrypted.toString("utf8")) as unknown;
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Invalid token payload");
+  }
+  const data = parsed as SessionData;
 
   if (data.expiresAt && new Date(data.expiresAt) < new Date()) {
     throw new Error("Session expired");

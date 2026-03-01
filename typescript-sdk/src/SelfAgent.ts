@@ -198,13 +198,16 @@ export class SelfAgent {
     if (!raw) return undefined;
 
     try {
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(raw) as unknown;
+      if (!parsed || typeof parsed !== "object") return undefined;
       if (
-        parsed.type ===
-          "https://eips.ethereum.org/EIPS/eip-8004#registration-v1" ||
-        parsed.a2aVersion
-      )
+        ("type" in parsed &&
+          parsed.type ===
+            "https://eips.ethereum.org/EIPS/eip-8004#registration-v1") ||
+        "a2aVersion" in parsed
+      ) {
         return parsed as A2AAgentCard;
+      }
     } catch (err) {
       console.warn("[SelfAgent] Failed to parse agent card metadata:", err);
     }
@@ -241,10 +244,10 @@ export class SelfAgent {
     const registryWithSigner = this.registry.connect(
       this.wallet,
     ) as ethers.Contract;
-    const tx = await registryWithSigner.updateAgentMetadata(
+    const tx = (await registryWithSigner.updateAgentMetadata(
       agentId,
       JSON.stringify(card),
-    );
+    )) as ethers.ContractTransactionResponse;
     await tx.wait();
     return tx.hash;
   }

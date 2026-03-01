@@ -4,6 +4,26 @@ import { SelfAgent } from "@selfxyz/agent-sdk";
 import type { McpConfig } from "../config";
 import { toolError, toolSuccess, formatCredentialsSummary } from "../utils";
 
+type JsonObject = Record<string, unknown>;
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function asStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+async function readJsonObject(response: Response): Promise<JsonObject> {
+  const raw = (await response.json()) as unknown;
+  return isJsonObject(raw) ? raw : {};
+}
+
 // ── Get Identity ────────────────────────────────────────────────────────────
 
 interface GetIdentityArgs {
@@ -115,25 +135,24 @@ export async function handleRegisterAgent(
     });
 
     if (!response.ok) {
-      const err = await response
-        .json()
-        .catch(() => ({ error: response.statusText }));
+      const err = await readJsonObject(response).catch(
+        () => ({ error: response.statusText }) as JsonObject,
+      );
       return toolError(
-        `Registration failed: ${err.error || response.statusText}`,
+        `Registration failed: ${asString(err.error) || response.statusText}`,
       );
     }
 
-    const data = await response.json();
+    const data = await readJsonObject(response);
+    const instructions = asStringArray(data.humanInstructions)?.join("\n");
 
     return toolSuccess({
-      session_token: data.sessionToken,
-      agent_address: data.agentAddress,
+      session_token: asString(data.sessionToken),
+      agent_address: asString(data.agentAddress),
       qr_data: data.qrData,
-      deep_link: data.deepLink,
-      expires_at: data.expiresAt,
-      instructions:
-        data.humanInstructions?.join("\n") ||
-        "Scan the QR code with the Self app.",
+      deep_link: asString(data.deepLink),
+      expires_at: asString(data.expiresAt),
+      instructions: instructions || "Scan the QR code with the Self app.",
       next_step:
         "Have the human scan the QR/deep link, then call self_check_registration " +
         "with this session_token. The private key will be returned only after verification completes.",
@@ -162,10 +181,10 @@ export async function handleCheckRegistration(
     });
 
     if (!response.ok) {
-      const err = await response
-        .json()
-        .catch(() => ({ error: response.statusText }));
-      const msg = err.error || response.statusText;
+      const err = await readJsonObject(response).catch(
+        () => ({ error: response.statusText }) as JsonObject,
+      );
+      const msg = asString(err.error) || response.statusText;
 
       if (response.status === 410) {
         return toolSuccess({
@@ -178,14 +197,15 @@ export async function handleCheckRegistration(
       return toolError(`Failed to check registration: ${msg}`);
     }
 
-    const data = await response.json();
+    const data = await readJsonObject(response);
+    const stage = asString(data.stage);
 
-    if (data.stage === "completed") {
+    if (stage === "completed") {
       return toolSuccess({
         status: "verified",
         agent_id: data.agentId,
-        agent_address: data.agentAddress,
-        session_token: data.sessionToken,
+        agent_address: asString(data.agentAddress),
+        session_token: asString(data.sessionToken),
         credentials: data.credentials,
         message:
           "Agent registered successfully! " +
@@ -195,7 +215,7 @@ export async function handleCheckRegistration(
 
     return toolSuccess({
       status: "pending",
-      session_token: data.sessionToken,
+      session_token: asString(data.sessionToken),
       message:
         "Registration not yet complete. The human has not scanned the QR code yet. " +
         "Call self_check_registration again with the updated session_token to keep polling.",
@@ -210,6 +230,13 @@ export async function handleCheckRegistration(
 
 interface DeregisterAgentArgs {
   network?: "mainnet" | "testnet";
+}
+
+interface DeregistrationRequestSession {
+  sessionToken: string;
+  deepLink?: string;
+  expiresAt?: string;
+  humanInstructions: string[];
 }
 
 export async function handleDeregisterAgent(
@@ -232,9 +259,9 @@ export async function handleDeregisterAgent(
       rpcUrl: config.rpcUrl,
     });
 
-    const session = await agent.requestDeregistration({
+    const session = (await agent.requestDeregistration({
       apiBase: config.apiUrl,
-    });
+    })) as DeregistrationRequestSession;
     const qrUrl = `${config.apiUrl}/qr/${session.sessionToken}`;
 
     return toolSuccess({

@@ -849,31 +849,70 @@ export class SelfAgentVerifier {
    * ```
    */
   auth() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return async (req: any, res: any, next: any) => {
-      const signature = req.headers[HEADERS.SIGNATURE];
-      const timestamp = req.headers[HEADERS.TIMESTAMP];
+    type MiddlewareReq = {
+      headers?: Record<string, unknown>;
+      method?: string;
+      originalUrl?: string;
+      url?: string;
+      rawBody?: unknown;
+      body?: unknown;
+      agent?: {
+        address: string;
+        agentKey: string;
+        agentId: bigint;
+        agentCount: bigint;
+        nullifier: bigint;
+        credentials?: AgentCredentials;
+      };
+    };
+    type MiddlewareRes = {
+      status: (code: number) => {
+        json: (payload: Record<string, unknown>) => void;
+      };
+    };
+    type MiddlewareNext = () => void;
+
+    return async (
+      req: MiddlewareReq,
+      res: MiddlewareRes,
+      next: MiddlewareNext,
+    ) => {
+      const signatureHeader = req.headers?.[HEADERS.SIGNATURE];
+      const timestampHeader = req.headers?.[HEADERS.TIMESTAMP];
+      const signature =
+        typeof signatureHeader === "string" ? signatureHeader : undefined;
+      const timestamp =
+        typeof timestampHeader === "string" ? timestampHeader : undefined;
 
       if (!signature || !timestamp) {
         res.status(401).json({ error: "Missing agent authentication headers" });
         return;
       }
 
+      const method = typeof req.method === "string" ? req.method : "GET";
+      const url =
+        typeof req.originalUrl === "string"
+          ? req.originalUrl
+          : typeof req.url === "string"
+            ? req.url
+            : "/";
+      const body =
+        typeof req.rawBody === "string"
+          ? req.rawBody
+          : Buffer.isBuffer(req.rawBody)
+            ? req.rawBody.toString("utf8")
+            : typeof req.body === "string"
+              ? req.body
+              : req.body
+                ? JSON.stringify(req.body)
+                : undefined;
+
       const result = await this.verify({
         signature,
         timestamp,
-        method: req.method,
-        url: req.originalUrl || req.url,
-        body:
-          typeof req.rawBody === "string"
-            ? req.rawBody
-            : Buffer.isBuffer(req.rawBody)
-              ? req.rawBody.toString("utf8")
-              : typeof req.body === "string"
-                ? req.body
-                : req.body
-                  ? JSON.stringify(req.body)
-                  : undefined,
+        method,
+        url,
+        body,
       });
 
       if (!result.valid) {

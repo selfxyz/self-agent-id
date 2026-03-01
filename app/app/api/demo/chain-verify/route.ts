@@ -79,16 +79,39 @@ export async function POST(req: NextRequest) {
   let eip712Signature: string;
   let networkId: NetworkId;
   try {
-    const parsed = JSON.parse(bodyText);
-    agentKey = parsed.agentKey;
-    nonce = parsed.nonce;
-    deadline = parsed.deadline;
-    eip712Signature = parsed.eip712Signature;
+    const parsed = JSON.parse(bodyText) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error("Invalid JSON object");
+    }
+    const bodyObj = parsed as Record<string, unknown>;
+
+    agentKey = typeof bodyObj.agentKey === "string" ? bodyObj.agentKey : "";
+    const rawNonce = bodyObj.nonce;
+    nonce =
+      typeof rawNonce === "string"
+        ? rawNonce
+        : typeof rawNonce === "number"
+          ? String(rawNonce)
+          : "";
+    const rawDeadline = bodyObj.deadline;
+    deadline =
+      typeof rawDeadline === "number"
+        ? rawDeadline
+        : typeof rawDeadline === "string"
+          ? Number(rawDeadline)
+          : Number.NaN;
+    eip712Signature =
+      typeof bodyObj.eip712Signature === "string"
+        ? bodyObj.eip712Signature
+        : "";
+
+    const rawNetworkId = bodyObj.networkId;
     networkId =
-      parsed.networkId && parsed.networkId in NETWORKS
-        ? parsed.networkId
+      typeof rawNetworkId === "string" && rawNetworkId in NETWORKS
+        ? (rawNetworkId as NetworkId)
         : "celo-sepolia";
-    if (!agentKey || nonce == null || !deadline || !eip712Signature) {
+
+    if (!agentKey || !nonce || !Number.isFinite(deadline) || !eip712Signature) {
       throw new Error("Missing fields");
     }
   } catch {

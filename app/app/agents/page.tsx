@@ -99,8 +99,9 @@ async function fetchVerificationStrength(
   try {
     const metadata: string = await registry.getAgentMetadata(agentId);
     if (metadata) {
-      const parsed = JSON.parse(metadata);
-      hasA2ACard = !!parsed.a2aVersion;
+      const parsed = JSON.parse(metadata) as unknown;
+      hasA2ACard =
+        typeof parsed === "object" && parsed !== null && "a2aVersion" in parsed;
     }
   } catch {}
   return { strength, hasA2ACard };

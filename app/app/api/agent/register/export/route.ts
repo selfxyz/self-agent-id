@@ -18,14 +18,20 @@ import {
 } from "@/lib/agent-api-helpers";
 
 export async function POST(req: NextRequest) {
-  let body: { token?: string };
+  let body: unknown;
   try {
-    body = await req.json();
+    body = (await req.json()) as unknown;
   } catch {
     return errorResponse("Invalid JSON body", 400);
   }
 
-  const token = body.token;
+  const token =
+    typeof body === "object" &&
+    body !== null &&
+    "token" in body &&
+    typeof body.token === "string"
+      ? body.token
+      : undefined;
   if (!token) {
     return errorResponse("Missing token in request body", 400);
   }

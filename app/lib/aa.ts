@@ -101,10 +101,22 @@ async function getAaProxyToken(chain: Chain): Promise<string> {
   });
 
   if (!res.ok) {
-    const body = await res
-      .json()
-      .catch(() => ({ error: "AA token request failed" }));
-    throw new Error(body.error || `AA token request failed (${res.status})`);
+    let errorMessage = `AA token request failed (${res.status})`;
+    try {
+      const body = (await res.json()) as unknown;
+      if (
+        typeof body === "object" &&
+        body !== null &&
+        "error" in body &&
+        typeof body.error === "string" &&
+        body.error
+      ) {
+        errorMessage = body.error;
+      }
+    } catch {
+      // keep default message
+    }
+    throw new Error(errorMessage);
   }
 
   const data = (await res.json()) as { token?: string; expiresAt?: number };

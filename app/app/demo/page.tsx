@@ -71,6 +71,67 @@ interface AgentSetup {
   credentials?: AgentCredentials;
 }
 
+interface DemoErrorResponse {
+  error?: string;
+}
+
+interface DemoVerifyResponse extends DemoErrorResponse {
+  valid?: boolean;
+  agentId?: string | number;
+  credentials?: {
+    nationality?: string;
+    olderThan?: string | number;
+  };
+}
+
+interface DemoCensusCountry {
+  country: string;
+  count: number;
+}
+
+interface DemoCensusResponse extends DemoErrorResponse {
+  totalAgents?: number;
+  topCountries?: DemoCensusCountry[];
+  verifiedOver18?: number;
+  verifiedOver21?: number;
+  ofacClear?: number;
+}
+
+interface DemoPeerResponse extends DemoErrorResponse {
+  demoAgent?: {
+    address?: string;
+    agentId?: string;
+    verified?: boolean;
+  };
+  callerAgent?: {
+    agentId?: string;
+    verified?: boolean;
+  };
+  sameHuman?: boolean;
+  message?: string;
+}
+
+interface DemoChainVerifyResponse extends DemoErrorResponse {
+  txHash: string;
+  blockNumber: string | number;
+  explorerUrl: string;
+  agentId: string | number;
+  credentials?: {
+    olderThan?: string | number;
+    nationality?: string;
+  };
+  verificationCount: string | number;
+  totalVerifications: string | number;
+  rateLimitRemaining?: number;
+  gasUsed?: string | number;
+}
+
+interface DemoChatResponse extends DemoErrorResponse {
+  verified?: boolean;
+  agent?: string;
+  response?: string;
+}
+
 type TestStatus = "idle" | "running" | "success" | "error";
 
 interface TestState {
@@ -638,7 +699,7 @@ async function runServiceTest(
 
     const verifyElapsed = Math.round(performance.now() - t0);
     t.push(verifyElapsed);
-    const verifyData = await verifyRes.json();
+    const verifyData = (await verifyRes.json()) as DemoVerifyResponse;
     log(id, `POST /verify — HTTP ${verifyRes.status} (${verifyElapsed}ms)`);
 
     if (!verifyData.valid) {
@@ -677,7 +738,7 @@ async function runServiceTest(
 
     const censusElapsed = Math.round(performance.now() - t1);
     t.push(censusElapsed);
-    const censusData = await censusRes.json();
+    const censusData = (await censusRes.json()) as DemoCensusResponse;
 
     if (!censusRes.ok) {
       log(
@@ -713,7 +774,7 @@ async function runServiceTest(
     const statsRes = await agent.fetch(serviceUrl("/census"));
     const statsElapsed = Math.round(performance.now() - t2);
     t.push(statsElapsed);
-    const stats = await statsRes.json();
+    const stats = (await statsRes.json()) as DemoCensusResponse;
 
     if (!statsRes.ok) {
       log(
@@ -872,9 +933,9 @@ async function runPeerTest(
     log(id, `POST demo-agent — HTTP ${res.status} (${elapsed}ms)`);
 
     if (!res.ok) {
-      const errData = await res
+      const errData = (await res
         .json()
-        .catch(() => ({ error: "Request rejected" }));
+        .catch(() => ({ error: "Request rejected" }))) as DemoErrorResponse;
       log(id, `Rejected: ${errData.error || "unknown"}`);
       dispatch({
         type: "UPDATE_TEST",
@@ -897,13 +958,13 @@ async function runPeerTest(
 
     t0 = performance.now();
     const responseBody = await res.text();
-    let data: Record<string, unknown>;
+    let data: DemoPeerResponse;
     try {
-      const parsed = JSON.parse(responseBody);
+      const parsed = JSON.parse(responseBody) as unknown;
       if (!parsed || typeof parsed !== "object") {
         throw new Error("Response is not a JSON object");
       }
-      data = parsed as Record<string, unknown>;
+      data = parsed as DemoPeerResponse;
     } catch {
       log(id, "Demo agent returned invalid JSON");
       dispatch({
@@ -919,21 +980,8 @@ async function runPeerTest(
     }
     const parseElapsed = Math.round(performance.now() - t0);
     t.push(parseElapsed);
-    const demoAgentInfo =
-      (data.demoAgent as
-        | {
-            address?: string;
-            agentId?: string;
-            verified?: boolean;
-          }
-        | undefined) ?? {};
-    const callerAgentInfo =
-      (data.callerAgent as
-        | {
-            agentId?: string;
-            verified?: boolean;
-          }
-        | undefined) ?? {};
+    const demoAgentInfo = data.demoAgent ?? {};
+    const callerAgentInfo = data.callerAgent ?? {};
     const sameHuman = Boolean(data.sameHuman);
     const message = typeof data.message === "string" ? data.message : "";
 
@@ -1188,8 +1236,10 @@ async function runGateTest(
       log(id, "Signing EIP-712 with agent key (secp256k1)...");
     } else if (window.ethereum) {
       const browserProvider = new ethers.BrowserProvider(window.ethereum);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      eip712Signer = (await browserProvider.getSigner()) as any;
+      const signer = await browserProvider.getSigner();
+      eip712Signer = signer as ethers.Signer & {
+        signTypedData: typeof ethers.Wallet.prototype.signTypedData;
+      };
       log(id, "Signing EIP-712 via browser wallet...");
     } else {
       throw new Error(
@@ -1239,7 +1289,7 @@ async function runGateTest(
     const elapsed1 = Math.round(performance.now() - t0);
     t.push(elapsed1);
 
-    const data = await res.json();
+    const data = (await res.json()) as DemoChainVerifyResponse;
 
     if (!res.ok) {
       log(id, `HTTP ${res.status} — ${data.error || "failed"}`);
@@ -1995,7 +2045,7 @@ export default function DemoPage() {
           });
         }
 
-        const data = await res.json();
+        const data = (await res.json()) as DemoChatResponse;
         log(
           "chat",
           `Response: HTTP ${res.status}, verified=${data.verified ?? "n/a"}, agent=${data.agent ?? "n/a"}`,
@@ -2015,7 +2065,7 @@ export default function DemoPage() {
           );
           dispatch({
             type: "ADD_CHAT_MESSAGE",
-            message: { role: "agent", content: data.response },
+            message: { role: "agent", content: data.response || "" },
           });
         }
       } catch (err) {

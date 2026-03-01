@@ -60,7 +60,11 @@ export async function POST(req: NextRequest) {
 
   let body: DeregisterRequestBody;
   try {
-    body = await req.json();
+    const parsed = (await req.json()) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      return errorResponse("Invalid JSON body", 400);
+    }
+    body = parsed as DeregisterRequestBody;
   } catch {
     return errorResponse("Invalid JSON body", 400);
   }

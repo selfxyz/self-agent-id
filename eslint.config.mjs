@@ -98,32 +98,6 @@ export default tseslint.config(
     },
   },
 
-  // Transitional unsafe-any baseline for dynamic/demo SDK surfaces.
-  // Keep strict defaults elsewhere while we migrate these files to strong runtime validation.
-  {
-    files: [
-      "app/app/agents/**/*.tsx",
-      "app/app/demo/page.tsx",
-      "app/app/api/agent/**/*.ts",
-      "app/app/api/cards/**/*.ts",
-      "app/app/api/demo/**/*.ts",
-      "app/lib/aa.ts",
-      "app/lib/mcp/handlers/identity.ts",
-      "app/lib/session-token.ts",
-      "functions/src/demo-agent.ts",
-      "typescript-sdk/src/SelfAgent.ts",
-      "typescript-sdk/src/SelfAgentVerifier.ts",
-      "typescript-sdk/src/cli.ts",
-    ],
-    rules: {
-      "@typescript-eslint/no-unsafe-assignment": "off",
-      "@typescript-eslint/no-unsafe-member-access": "off",
-      "@typescript-eslint/no-unsafe-call": "off",
-      "@typescript-eslint/no-unsafe-argument": "off",
-      "@typescript-eslint/no-unsafe-return": "off",
-    },
-  },
-
   // Test file overrides — relax strict rules
   {
     files: ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],

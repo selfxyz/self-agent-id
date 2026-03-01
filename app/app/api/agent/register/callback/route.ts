@@ -51,7 +51,11 @@ export async function POST(req: NextRequest) {
   // Parse callback body
   let callbackData: Record<string, unknown>;
   try {
-    callbackData = await req.json();
+    const parsed = (await req.json()) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      return errorResponse("Invalid callback payload", 400);
+    }
+    callbackData = parsed as Record<string, unknown>;
   } catch {
     return errorResponse("Invalid callback payload", 400);
   }

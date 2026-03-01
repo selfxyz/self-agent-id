@@ -20,7 +20,15 @@ export async function POST(req: NextRequest) {
   const body = await req.text();
   let parsed: { query?: string; session_id?: string } = {};
   try {
-    parsed = JSON.parse(body || "{}");
+    const raw = JSON.parse(body || "{}") as unknown;
+    if (raw && typeof raw === "object") {
+      const obj = raw as Record<string, unknown>;
+      parsed = {
+        query: typeof obj.query === "string" ? obj.query : undefined,
+        session_id:
+          typeof obj.session_id === "string" ? obj.session_id : undefined,
+      };
+    }
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
@@ -96,8 +104,16 @@ export async function POST(req: NextRequest) {
       const errText = await langchainRes.text();
       let detail = errText;
       try {
-        const errJson = JSON.parse(errText);
-        detail = errJson.detail || errText;
+        const errJson = JSON.parse(errText) as unknown;
+        if (
+          typeof errJson === "object" &&
+          errJson !== null &&
+          "detail" in errJson &&
+          typeof errJson.detail === "string" &&
+          errJson.detail
+        ) {
+          detail = errJson.detail;
+        }
       } catch {
         /* plain text */
       }
@@ -107,7 +123,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const data = await langchainRes.json();
+    const data = (await langchainRes.json()) as unknown;
     return NextResponse.json(data);
   } catch {
     return NextResponse.json(

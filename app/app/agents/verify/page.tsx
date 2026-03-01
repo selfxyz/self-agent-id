@@ -270,8 +270,14 @@ function VerifyContent() {
           let agentCard: A2AAgentCard | undefined;
           if (metadata) {
             try {
-              const parsed = JSON.parse(metadata);
-              if (parsed.a2aVersion) agentCard = parsed;
+              const parsed = JSON.parse(metadata) as unknown;
+              if (
+                typeof parsed === "object" &&
+                parsed !== null &&
+                "a2aVersion" in parsed
+              ) {
+                agentCard = parsed as A2AAgentCard;
+              }
             } catch {}
           }
 

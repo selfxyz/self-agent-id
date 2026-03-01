@@ -32,7 +32,10 @@ export async function GET(
 
     if (!raw) return errorResponse("No agent card set", 404);
 
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error("Invalid metadata");
+    }
     return NextResponse.json(parsed, { headers: CORS_HEADERS });
   } catch {
     return errorResponse("Agent not found or invalid metadata", 404);
