@@ -155,9 +155,11 @@ export async function handleCheckRegistration(
   config: McpConfig,
 ) {
   try {
-    const response = await fetch(
-      `${config.apiUrl}/api/agent/register/status?token=${encodeURIComponent(args.session_token)}`,
-    );
+    const response = await fetch(`${config.apiUrl}/api/agent/register/status`, {
+      headers: {
+        Authorization: `Bearer ${args.session_token}`,
+      },
+    });
 
     if (!response.ok) {
       const err = await response

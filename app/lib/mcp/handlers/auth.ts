@@ -2,6 +2,7 @@
 
 import { SelfAgent } from "@selfxyz/agent-sdk";
 import type { McpConfig } from "../config";
+import { validateAuthenticatedFetchUrl } from "../egress";
 import { toolError, toolSuccess, truncateBody } from "../utils";
 
 interface SignRequestArgs {
@@ -58,6 +59,11 @@ export async function handleAuthenticatedFetch(
       "No agent identity configured. Set SELF_AGENT_PRIVATE_KEY in your MCP server configuration, " +
         "or use self_register_agent to create a new agent identity.",
     );
+  }
+
+  const egressCheck = validateAuthenticatedFetchUrl(args.url);
+  if (!egressCheck.ok) {
+    return toolError(`Authenticated fetch blocked: ${egressCheck.error}`);
   }
 
   try {

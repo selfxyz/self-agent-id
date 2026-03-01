@@ -96,16 +96,8 @@ const ENDPOINT_GROUPS: GroupDef[] = [
         path: "/api/agent/register/status",
         summary: "Poll registration status",
         description:
-          'Returns current registration stage: "qr-ready", "proof-received", "completed", or "failed". Once completed, includes on-chain agent ID and transaction hash.',
-        parameters: [
-          {
-            name: "token",
-            in: "query",
-            type: "string",
-            required: true,
-            description: "Encrypted session token from POST /register",
-          },
-        ],
+          'Returns current registration stage: "qr-ready", "proof-received", "completed", or "failed". Send the session token as Authorization: Bearer <sessionToken>.',
+        parameters: [],
         responses: [
           {
             status: 200,
@@ -146,16 +138,8 @@ const ENDPOINT_GROUPS: GroupDef[] = [
         path: "/api/agent/register/qr",
         summary: "Get QR code and deep link",
         description:
-          "Returns the QR code image URL and deep link for the current session. Use this if you need to re-render the QR.",
-        parameters: [
-          {
-            name: "token",
-            in: "query",
-            type: "string",
-            required: true,
-            description: "Encrypted session token",
-          },
-        ],
+          "Returns the QR code payload and deep link for the current session. Send the session token as Authorization: Bearer <sessionToken>.",
+        parameters: [],
         responses: [
           {
             status: 200,
@@ -168,20 +152,19 @@ const ENDPOINT_GROUPS: GroupDef[] = [
         ],
       },
       {
-        method: "GET",
+        method: "POST",
         path: "/api/agent/register/export",
         summary: "Export agent private key",
         description:
           'After registration completes, export the agent\'s private key. Only available for "agent-identity" and "wallet-free" modes.',
-        parameters: [
-          {
-            name: "token",
-            in: "query",
-            type: "string",
-            required: true,
-            description: "Encrypted session token",
-          },
-        ],
+        parameters: [],
+        requestBody: {
+          description:
+            "Provide the encrypted session token in the request body.",
+          example: `{
+  "token": "enc_..."
+}`,
+        },
         responses: [
           {
             status: 200,
@@ -240,16 +223,8 @@ const ENDPOINT_GROUPS: GroupDef[] = [
         path: "/api/agent/deregister/status",
         summary: "Poll deregistration status",
         description:
-          "Returns current deregistration stage. Once completed, the agent NFT has been burned.",
-        parameters: [
-          {
-            name: "token",
-            in: "query",
-            type: "string",
-            required: true,
-            description: "Encrypted session token from POST /deregister",
-          },
-        ],
+          "Returns current deregistration stage. Once completed, the agent NFT has been burned. Send the session token as Authorization: Bearer <sessionToken>.",
+        parameters: [],
         responses: [
           {
             status: 200,
@@ -719,10 +694,10 @@ export default function ApiDocsPage() {
             </p>
             <p>↳ User scans QR with Self app → proof submitted on-chain</p>
             <p>
-              GET /register/status?token= → poll until{" "}
+              GET /register/status (+ Authorization: Bearer) → poll until{" "}
               <span className="text-accent-success">completed</span>
             </p>
-            <p>GET /register/export?token= → retrieve agent private key</p>
+            <p>POST /register/export → retrieve agent private key</p>
           </div>
         </Card>
 
@@ -781,11 +756,14 @@ curl -X POST https://self-agent-id.vercel.app/api/agent/register \\
 #    User scans QR with Self app → passport proof submitted
 
 # 3. Poll for completion
-curl "https://self-agent-id.vercel.app/api/agent/register/status?token=SESSION_TOKEN"
+curl "https://self-agent-id.vercel.app/api/agent/register/status" \\
+  -H "Authorization: Bearer SESSION_TOKEN"
 # → { stage: "completed", agentId: 42, ... }
 
 # 4. (Optional) Export agent private key
-curl "https://self-agent-id.vercel.app/api/agent/register/export?token=SESSION_TOKEN"
+curl -X POST https://self-agent-id.vercel.app/api/agent/register/export \\
+  -H "Content-Type: application/json" \\
+  -d '{"token":"SESSION_TOKEN"}'
 # → { privateKey, agentAddress, agentId }`,
               },
             ]}

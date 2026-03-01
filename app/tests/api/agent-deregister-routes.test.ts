@@ -22,6 +22,7 @@ const mockHelpers = {
   isValidNetwork: vi.fn(),
   isValidAddress: vi.fn(),
   checkAgentOnChain: vi.fn(),
+  readSessionTokenFromRequest: vi.fn(),
 };
 
 const mockGetAddress = vi.fn();
@@ -135,6 +136,14 @@ function setDefaultMocks() {
   mockHelpers.checkAgentOnChain.mockResolvedValue({
     isVerified: true,
     agentId: 21n,
+  });
+  mockHelpers.readSessionTokenFromRequest.mockImplementation((req: any) => {
+    const auth = req?.headers?.get?.("authorization");
+    if (auth === "Bearer t") return { token: "t" };
+    return {
+      error:
+        "Missing session token. Provide Authorization: Bearer <sessionToken>.",
+    };
   });
 
   mockGetAddress.mockImplementation((value: string) => value.toLowerCase());
@@ -497,10 +506,10 @@ describe("agent deregister status route", () => {
     });
     const { GET } = await loadDeregisterStatusRoute();
     const res = await GET(
-      makeNextRequest(
-        "https://example.com/api/agent/deregister/status?token=t",
-        { method: "GET" },
-      ),
+      makeNextRequest("https://example.com/api/agent/deregister/status", {
+        method: "GET",
+        headers: { authorization: "Bearer t" },
+      }),
     );
 
     expect(res.status).toBe(200);
@@ -528,10 +537,10 @@ describe("agent deregister status route", () => {
     });
     const { GET } = await loadDeregisterStatusRoute();
     const res = await GET(
-      makeNextRequest(
-        "https://example.com/api/agent/deregister/status?token=t",
-        { method: "GET" },
-      ),
+      makeNextRequest("https://example.com/api/agent/deregister/status", {
+        method: "GET",
+        headers: { authorization: "Bearer t" },
+      }),
     );
 
     expect(res.status).toBe(200);

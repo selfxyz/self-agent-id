@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-// GET /api/agent/deregister/status?token=<encrypted_token>
+// GET /api/agent/deregister/status
 //
 // Poll deregistration status. Checks on-chain whether the agent is
 // no longer verified, and returns updated session state.
@@ -16,14 +16,16 @@ import {
   humanInstructions,
   errorResponse,
   corsResponse,
+  readSessionTokenFromRequest,
   type ApiNetwork,
 } from "@/lib/agent-api-helpers";
 
 export async function GET(req: NextRequest) {
-  const token = req.nextUrl.searchParams.get("token");
-  if (!token) {
-    return errorResponse("Missing token query parameter", 400);
+  const tokenResult = readSessionTokenFromRequest(req);
+  if (!tokenResult.token) {
+    return errorResponse(tokenResult.error || "Missing session token", 400);
   }
+  const token = tokenResult.token;
 
   let session;
   let secret: string;

@@ -27,6 +27,40 @@ interface VerifyRequestArgs {
   body?: string;
 }
 
+const verifyRequestVerifierCache = new Map<string, SelfAgentVerifier>();
+
+function envReplayProtectionEnabled(): boolean {
+  return (
+    (process.env.MCP_VERIFY_REQUEST_REPLAY_PROTECTION || "true") !== "false"
+  );
+}
+
+function verifierCacheKey(
+  config: McpConfig,
+  replayProtection: boolean,
+): string {
+  return `${config.network}:${config.rpcUrl}:${replayProtection ? "replay-on" : "replay-off"}`;
+}
+
+function getVerifyRequestVerifier(
+  config: McpConfig,
+  replayProtection: boolean,
+): SelfAgentVerifier {
+  const key = verifierCacheKey(config, replayProtection);
+  const existing = verifyRequestVerifierCache.get(key);
+  if (existing) return existing;
+
+  const verifier = SelfAgentVerifier.create()
+    .network(config.network)
+    .rpc(config.rpcUrl)
+    .includeCredentials()
+    .replayProtection(replayProtection)
+    .build();
+
+  verifyRequestVerifierCache.set(key, verifier);
+  return verifier;
+}
+
 export async function handleVerifyAgent(
   args: VerifyAgentArgs,
   config: McpConfig,
@@ -173,15 +207,18 @@ export async function handleVerifyRequest(
   args: VerifyRequestArgs,
   config: McpConfig,
 ) {
-  const { agent_signature, agent_timestamp, method, path, body } = args;
+  const {
+    agent_address,
+    agent_signature,
+    agent_timestamp,
+    method,
+    path,
+    body,
+  } = args;
 
   try {
-    const verifier = SelfAgentVerifier.create()
-      .network(config.network)
-      .rpc(config.rpcUrl)
-      .includeCredentials()
-      .replayProtection(false)
-      .build();
+    const replayProtection = envReplayProtectionEnabled();
+    const verifier = getVerifyRequestVerifier(config, replayProtection);
 
     const result = await verifier.verify({
       signature: agent_signature,
@@ -199,6 +236,17 @@ export async function handleVerifyRequest(
       });
     }
 
+    const claimedAddress = ethers.getAddress(agent_address);
+    const recoveredAddress = ethers.getAddress(result.agentAddress);
+    if (claimedAddress !== recoveredAddress) {
+      return toolSuccess({
+        valid: false,
+        agent_address: recoveredAddress,
+        reason:
+          "x-self-agent-address does not match recovered signature signer.",
+      });
+    }
+
     const credentials = result.credentials
       ? {
           nationality: result.credentials.nationality || undefined,
@@ -209,13 +257,14 @@ export async function handleVerifyRequest(
 
     return toolSuccess({
       valid: true,
-      agent_address: result.agentAddress,
+      agent_address: recoveredAddress,
       agent_id: Number(result.agentId),
       agent_count: Number(result.agentCount),
       credentials,
-      note:
-        "Replay protection is not enforced at the MCP layer. " +
-        "If you are building a service, implement your own nonce or replay cache.",
+      note: replayProtection
+        ? "Replay protection is enabled at the MCP layer using server-side cache."
+        : "Replay protection is not enforced at the MCP layer. " +
+          "If you are building a service, implement your own nonce or replay cache.",
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

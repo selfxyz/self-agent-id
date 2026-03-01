@@ -136,6 +136,40 @@ export function decryptAndValidateSession(token: string): SessionResponse {
   return { session, secret };
 }
 
+const ALLOW_LEGACY_QUERY_SESSION_TOKEN =
+  (process.env.ALLOW_LEGACY_QUERY_SESSION_TOKEN || "false") === "true";
+
+function extractBearerToken(authorizationHeader: string | null): string | null {
+  if (!authorizationHeader) return null;
+  const [scheme, ...rest] = authorizationHeader.trim().split(/\s+/);
+  if (!scheme || scheme.toLowerCase() !== "bearer") return null;
+  const token = rest.join(" ").trim();
+  return token || null;
+}
+
+export function readSessionTokenFromRequest(req: {
+  headers: { get(name: string): string | null };
+  nextUrl: { searchParams: URLSearchParams };
+}): { token?: string; error?: string } {
+  const bearer = extractBearerToken(req.headers.get("authorization"));
+  if (bearer) return { token: bearer };
+
+  if (ALLOW_LEGACY_QUERY_SESSION_TOKEN) {
+    const queryToken = req.nextUrl.searchParams.get("token");
+    if (queryToken) return { token: queryToken };
+    return {
+      error:
+        "Missing session token. Provide Authorization: Bearer <sessionToken> " +
+        "or ?token=<sessionToken>.",
+    };
+  }
+
+  return {
+    error:
+      "Missing session token. Provide Authorization: Bearer <sessionToken>.",
+  };
+}
+
 /**
  * Build a standard token-bearing JSON response with time metadata.
  */

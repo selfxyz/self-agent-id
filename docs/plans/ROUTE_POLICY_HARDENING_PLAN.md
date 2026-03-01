@@ -20,6 +20,7 @@ Current routes repeat security-critical logic (body parsing, limits, auth checks
 2. Keep registration/deregistration state transitions explicit and local.
 3. Make route security posture obvious from one policy object.
 4. Preserve existing route surface (hardening-only, no endpoint removal).
+5. Keep MCP developer onboarding friction low by leaving safe/read-only tools public.
 
 ## 3. Non-goals
 
@@ -139,8 +140,23 @@ Instead, put those in focused domain helpers:
    - agentHeaders auth required in production profile
    - replay + rate limits
 5. MCP route
-   - `auth: mcpAuth` mandatory
+   - transport auth optional for safe/read-only tools
+   - mandatory privileged scope for identity-changing/signing/proxy tools
    - per-tool authorization and egress policy checks
+
+### 8.1 MCP access model (developer-friendly public profile)
+
+Define two MCP tool tiers and make them explicit in policy:
+
+1. Public-safe tools/resources (no auth required)
+   - Discovery + verification read paths only
+   - Must enforce rate limits, upstream timeout, and response size caps
+2. Privileged tools/resources (auth + scope required)
+   - Request signing, authenticated fetch/proxying, identity-changing operations
+   - Requires `Authorization: Bearer <token>` with privileged scope
+   - Enforce outbound egress policy (allowlist / private-network denylist)
+
+This keeps MCP open for developer experimentation while protecting high-impact capabilities.
 
 ## 9. Migration plan (phased)
 
@@ -148,7 +164,7 @@ Instead, put those in focused domain helpers:
 
 1. Lock behavior with integration tests per route family.
 2. Add negative tests: auth bypass, replay, oversized body, invalid content-type, timeout handling.
-3. **Important:** Add explicit gap-tracking markers in Phase 0 tests for known security issues (e.g., `body.length` char-count instead of byte-count, wildcard CORS, missing MCP auth), using comments like `// SECURITY_GAP: Finding #N — ...`. These tests may assert **current insecure behavior** during baseline capture. When the corresponding hardening fix lands, the test should fail and then be updated to assert the new secure behavior; replace the marker with `// SECURITY_FIX: Finding #N — hardened in Phase N`.
+3. **Important:** Add explicit gap-tracking markers in Phase 0 tests for known security issues (e.g., `body.length` char-count instead of byte-count, wildcard CORS, missing MCP privileged gating), using comments like `// SECURITY_GAP: Finding #N — ...`. These tests may assert **current insecure behavior** during baseline capture. When the corresponding hardening fix lands, the test should fail and then be updated to assert the new secure behavior; replace the marker with `// SECURITY_FIX: Finding #N — hardened in Phase N`.
 
 ### Phase 1: Build primitives without changing route behavior
 
@@ -167,8 +183,9 @@ Instead, put those in focused domain helpers:
 
 ### Phase 4: Migrate demo + MCP routes
 
-1. Add mandatory MCP auth adapter.
-2. Add replay defaults and egress restrictions.
+1. Add MCP auth adapter with public-safe default and privileged-scope gating.
+2. Add explicit tool/resource access matrix tests (public-safe vs privileged).
+3. Add replay defaults and egress restrictions.
 
 ### Phase 5: Cleanup
 
@@ -182,6 +199,7 @@ Instead, put those in focused domain helpers:
 3. All upstream fetches go through timeout wrapper.
 4. All auth-required routes declare auth mode in policy.
 5. Security regression tests pass for all route families.
+6. MCP policy declares tool tier (public-safe vs privileged) for every tool/resource.
 
 ## 11. Risks and mitigations
 

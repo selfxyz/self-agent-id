@@ -24,6 +24,7 @@ const mockHelpers = {
   isValidNetwork: vi.fn(),
   isValidAddress: vi.fn(),
   checkAgentOnChain: vi.fn(),
+  readSessionTokenFromRequest: vi.fn(),
 };
 
 const mockCreateRandom = vi.fn();
@@ -145,6 +146,14 @@ function setDefaultMocks() {
   mockHelpers.checkAgentOnChain.mockResolvedValue({
     isVerified: false,
     agentId: 0n,
+  });
+  mockHelpers.readSessionTokenFromRequest.mockImplementation((req: any) => {
+    const auth = req?.headers?.get?.("authorization");
+    if (auth === "Bearer t") return { token: "t" };
+    return {
+      error:
+        "Missing session token. Provide Authorization: Bearer <sessionToken>.",
+    };
   });
 
   mockCreateRandom.mockReturnValue({
@@ -598,7 +607,8 @@ describe("agent register status route", () => {
     );
     expect(res.status).toBe(400);
     expect(await jsonBody(res)).toEqual({
-      error: "Missing token query parameter",
+      error:
+        "Missing session token. Provide Authorization: Bearer <sessionToken>.",
     });
   });
 
@@ -614,8 +624,9 @@ describe("agent register status route", () => {
     });
     const { GET } = await loadRegisterStatusRoute();
     const res = await GET(
-      makeNextRequest("https://example.com/api/agent/register/status?token=t", {
+      makeNextRequest("https://example.com/api/agent/register/status", {
         method: "GET",
+        headers: { authorization: "Bearer t" },
       }),
     );
 
@@ -643,8 +654,9 @@ describe("agent register status route", () => {
     });
     const { GET } = await loadRegisterStatusRoute();
     const res = await GET(
-      makeNextRequest("https://example.com/api/agent/register/status?token=t", {
+      makeNextRequest("https://example.com/api/agent/register/status", {
         method: "GET",
+        headers: { authorization: "Bearer t" },
       }),
     );
 
@@ -678,8 +690,9 @@ describe("agent register status route", () => {
     });
     const { GET } = await loadRegisterStatusRoute();
     const res = await GET(
-      makeNextRequest("https://example.com/api/agent/register/status?token=t", {
+      makeNextRequest("https://example.com/api/agent/register/status", {
         method: "GET",
+        headers: { authorization: "Bearer t" },
       }),
     );
 
@@ -718,8 +731,9 @@ describe("agent register QR route", () => {
       secret: "session-secret",
     });
     const wrongStage = await GET(
-      makeNextRequest("https://example.com/api/agent/register/qr?token=t", {
+      makeNextRequest("https://example.com/api/agent/register/qr", {
         method: "GET",
+        headers: { authorization: "Bearer t" },
       }),
     );
     expect(wrongStage.status).toBe(409);
@@ -736,8 +750,9 @@ describe("agent register QR route", () => {
     });
     const { GET } = await loadRegisterQrRoute();
     const res = await GET(
-      makeNextRequest("https://example.com/api/agent/register/qr?token=t", {
+      makeNextRequest("https://example.com/api/agent/register/qr", {
         method: "GET",
+        headers: { authorization: "Bearer t" },
       }),
     );
 

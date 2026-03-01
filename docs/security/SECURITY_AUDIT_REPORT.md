@@ -247,7 +247,9 @@ Goal: Compromise identity trust or abuse infrastructure
 
 ### Immediate (same day)
 
-1. Add authentication/authorization guard on `/api/mcp`.
+1. Add an MCP authorization profile:
+   - either require caller auth at transport, or
+   - keep transport public-safe and require strict authz for privileged tools.
 2. Enforce strict per-tool authorization for privileged MCP actions (request signing, authenticated fetch, identity-changing flows).
 3. Require signed auth on `/api/demo/chat` in production and add strict rate limits.
 4. Add outbound timeouts to Pimlico/LangChain/Upstash fetches.
@@ -324,8 +326,11 @@ Goal: Compromise identity trust or abuse infrastructure
 
 ## Hardening Checklist
 
-- [ ] Require caller authentication on `/api/mcp`.
+- [ ] Define MCP access profile:
+  - transport-level auth required for private deployments, or
+  - public-safe transport with strict privileged-tool authz + abuse controls.
 - [ ] Enforce per-tool authorization policies for privileged MCP actions.
+- [ ] Classify all MCP tools/resources as `public-safe` or `privileged` (default-deny for privileged).
 - [ ] Restrict/allowlist outbound URLs for authenticated fetch tooling.
 - [ ] Enable replay protection for MCP `self_verify_request` or require nonce/audience binding.
 - [ ] Remove query-param token transport for sensitive session endpoints.

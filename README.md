@@ -798,13 +798,13 @@ SDK default base URL can be overridden with env var `SELF_AGENT_API_BASE`.
 
 ### 9.1 Registration Endpoints
 
-| Method | Path                                  | Description                                       |
-| ------ | ------------------------------------- | ------------------------------------------------- |
-| POST   | `/api/agent/register`                 | Initiate registration, generate keypair, build QR |
-| GET    | `/api/agent/register/qr?token=`       | Retrieve QR code image URL and deep link          |
-| GET    | `/api/agent/register/status?token=`   | Poll registration status                          |
-| POST   | `/api/agent/register/callback?token=` | Receive Self app callback after passport scan     |
-| GET    | `/api/agent/register/export?token=`   | Export agent private key                          |
+| Method | Path                                  | Description                                        |
+| ------ | ------------------------------------- | -------------------------------------------------- |
+| POST   | `/api/agent/register`                 | Initiate registration, generate keypair, build QR  |
+| GET    | `/api/agent/register/qr`              | Retrieve QR code data and deep link (Bearer token) |
+| GET    | `/api/agent/register/status`          | Poll registration status (Bearer token)            |
+| POST   | `/api/agent/register/callback?token=` | Receive Self app callback after passport scan      |
+| POST   | `/api/agent/register/export`          | Export agent private key                           |
 
 **POST `/api/agent/register`** request body:
 
@@ -826,11 +826,11 @@ SDK default base URL can be overridden with env var `SELF_AGENT_API_BASE`.
 
 ### 9.2 Deregistration Endpoints
 
-| Method | Path                                    | Description                |
-| ------ | --------------------------------------- | -------------------------- |
-| POST   | `/api/agent/deregister`                 | Initiate deregistration    |
-| GET    | `/api/agent/deregister/status?token=`   | Poll deregistration status |
-| POST   | `/api/agent/deregister/callback?token=` | Receive Self app callback  |
+| Method | Path                                    | Description                               |
+| ------ | --------------------------------------- | ----------------------------------------- |
+| POST   | `/api/agent/deregister`                 | Initiate deregistration                   |
+| GET    | `/api/agent/deregister/status`          | Poll deregistration status (Bearer token) |
+| POST   | `/api/agent/deregister/callback?token=` | Receive Self app callback                 |
 
 ### 9.3 Query Endpoints
 

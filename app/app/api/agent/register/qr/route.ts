@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-// GET /api/agent/register/qr?token=<encrypted_token>
+// GET /api/agent/register/qr
 //
 // Returns QR code data for the registration deep link.
 // Provides the deep link plus a URL to a public QR image API
@@ -16,13 +16,15 @@ import {
   jsonResponse,
   errorResponse,
   corsResponse,
+  readSessionTokenFromRequest,
 } from "@/lib/agent-api-helpers";
 
 export function GET(req: NextRequest) {
-  const token = req.nextUrl.searchParams.get("token");
-  if (!token) {
-    return errorResponse("Missing token query parameter", 400);
+  const tokenResult = readSessionTokenFromRequest(req);
+  if (!tokenResult.token) {
+    return errorResponse(tokenResult.error || "Missing session token", 400);
   }
+  const token = tokenResult.token;
 
   let session;
   try {

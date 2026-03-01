@@ -137,6 +137,45 @@ describe("agent-api-helpers (pure)", () => {
       expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
     });
   });
+
+  describe("readSessionTokenFromRequest", () => {
+    it("reads token from Authorization bearer header", () => {
+      const req = {
+        headers: {
+          get: (name: string) =>
+            name === "authorization" ? "Bearer abc" : null,
+        },
+        nextUrl: { searchParams: new URLSearchParams() },
+      };
+      expect(mod.readSessionTokenFromRequest(req)).toEqual({ token: "abc" });
+    });
+
+    it("rejects missing token by default without query fallback", () => {
+      const req = {
+        headers: { get: () => null },
+        nextUrl: { searchParams: new URLSearchParams("token=legacy") },
+      };
+      expect(mod.readSessionTokenFromRequest(req)).toEqual({
+        error:
+          "Missing session token. Provide Authorization: Bearer <sessionToken>.",
+      });
+    });
+
+    it("allows legacy query token when ALLOW_LEGACY_QUERY_SESSION_TOKEN=true", async () => {
+      vi.resetModules();
+      vi.stubEnv("SESSION_SECRET", "test-session-secret-32chars!!");
+      vi.stubEnv("ALLOW_LEGACY_QUERY_SESSION_TOKEN", "true");
+      const fresh = await import("@/lib/agent-api-helpers");
+
+      const req = {
+        headers: { get: () => null },
+        nextUrl: { searchParams: new URLSearchParams("token=legacy") },
+      };
+      expect(fresh.readSessionTokenFromRequest(req)).toEqual({
+        token: "legacy",
+      });
+    });
+  });
 });
 
 // ── isValidAddress (uses real ethers) ───────────────────────────────────────
