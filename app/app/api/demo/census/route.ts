@@ -8,6 +8,9 @@ import { NETWORKS, type NetworkId } from "@/lib/network";
 import { getCachedVerifier } from "@/lib/selfVerifier";
 import { checkAndRecordReplay } from "@/lib/replayGuard";
 
+// Allow up to 30s for RPC calls to Forno (default 10s can be tight)
+export const maxDuration = 30;
+
 // ---------------------------------------------------------------------------
 // In-memory census store (portable to Firestore later)
 // ---------------------------------------------------------------------------
@@ -114,33 +117,39 @@ function computeStats() {
 // ---------------------------------------------------------------------------
 
 export async function POST(req: NextRequest) {
-  const body = await req.text();
-  const result = await verifyAgent(req, body);
+  try {
+    const body = await req.text();
+    const result = await verifyAgent(req, body);
 
-  if (!result.valid) {
-    return NextResponse.json(
-      { error: result.error || "Agent verification failed" },
-      { status: 403 },
-    );
+    if (!result.valid) {
+      return NextResponse.json(
+        { error: result.error || "Agent verification failed" },
+        { status: 403 },
+      );
+    }
+
+    const creds = result.credentials;
+    const entry: CensusEntry = {
+      agentAddress: result.agentAddress,
+      agentId: result.agentId.toString(),
+      nationality: creds?.nationality || "",
+      olderThan: Number(creds?.olderThan || 0),
+      ofac: creds?.ofac ? creds.ofac.map(Boolean) : [false, false, false],
+      timestamp: Date.now(),
+    };
+
+    census.set(result.agentAddress.toLowerCase(), entry);
+
+    return NextResponse.json({
+      recorded: true,
+      totalAgents: census.size,
+      yourEntry: entry,
+    });
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Internal census error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  const creds = result.credentials;
-  const entry: CensusEntry = {
-    agentAddress: result.agentAddress,
-    agentId: result.agentId.toString(),
-    nationality: creds?.nationality || "",
-    olderThan: Number(creds?.olderThan || 0),
-    ofac: creds?.ofac ? creds.ofac.map(Boolean) : [false, false, false],
-    timestamp: Date.now(),
-  };
-
-  census.set(result.agentAddress.toLowerCase(), entry);
-
-  return NextResponse.json({
-    recorded: true,
-    totalAgents: census.size,
-    yourEntry: entry,
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -148,14 +157,20 @@ export async function POST(req: NextRequest) {
 // ---------------------------------------------------------------------------
 
 export async function GET(req: NextRequest) {
-  const result = await verifyAgent(req, "");
+  try {
+    const result = await verifyAgent(req, "");
 
-  if (!result.valid) {
-    return NextResponse.json(
-      { error: result.error || "Agent verification failed" },
-      { status: 403 },
-    );
+    if (!result.valid) {
+      return NextResponse.json(
+        { error: result.error || "Agent verification failed" },
+        { status: 403 },
+      );
+    }
+
+    return NextResponse.json(computeStats());
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Internal census error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  return NextResponse.json(computeStats());
 }

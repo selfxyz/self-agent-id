@@ -11,6 +11,10 @@ import { getCachedVerifier } from "@/lib/selfVerifier";
 import { checkAndRecordReplay } from "@/lib/replayGuard";
 
 import { typedDemoVerifier, typedRegistry } from "@/lib/contract-types";
+
+// Allow up to 60s for on-chain tx submission + confirmation
+export const maxDuration = 60;
+
 const RELAYER_PK = process.env.RELAYER_PRIVATE_KEY;
 
 // ---------------------------------------------------------------------------
@@ -70,9 +74,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const bodyText = await req.text();
+  let bodyText: string;
+  try {
+    bodyText = await req.text();
+  } catch {
+    return NextResponse.json(
+      { error: "Failed to read request body" },
+      { status: 400 },
+    );
+  }
 
-  // 2. Parse request body
+  try {
+    // 2. Parse request body
   let agentKey: string;
   let nonce: string;
   let deadline: number;
@@ -299,5 +312,10 @@ export async function POST(req: NextRequest) {
       reason = txErr.message.slice(0, 200);
     }
     return NextResponse.json({ error: reason }, { status: 500 });
+  }
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Internal chain-verify error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

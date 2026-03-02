@@ -8,6 +8,9 @@ import { NETWORKS, type NetworkId } from "@/lib/network";
 import { getCachedVerifier } from "@/lib/selfVerifier";
 import { checkAndRecordReplay } from "@/lib/replayGuard";
 
+// Allow up to 30s for RPC calls to Forno (default 10s can be tight)
+export const maxDuration = 30;
+
 // In-memory verification counter (resets on server restart — fine for demo)
 let verificationCount = 0;
 
@@ -28,55 +31,64 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const verifier = getCachedVerifier(resolveNetwork(req), {
-    maxAgentsPerHuman: 0, // disable sybil check for demo
-    includeCredentials: true,
-    enableReplayProtection: true,
-  });
+  try {
+    const verifier = getCachedVerifier(resolveNetwork(req), {
+      maxAgentsPerHuman: 0, // disable sybil check for demo
+      includeCredentials: true,
+      enableReplayProtection: true,
+    });
 
-  const body = await req.text();
+    const body = await req.text();
 
-  const result = await verifier.verify({
-    signature,
-    timestamp,
-    method: "POST",
-    url: req.url,
-    body: body || undefined,
-  });
-
-  if (result.valid) {
-    const replay = await checkAndRecordReplay({
+    const result = await verifier.verify({
       signature,
       timestamp,
       method: "POST",
       url: req.url,
       body: body || undefined,
-      scope: "demo-verify",
     });
-    if (!replay.ok) {
-      return NextResponse.json(
-        { valid: false, error: replay.error || "Replay detected" },
-        { status: 409 },
-      );
+
+    if (result.valid) {
+      const replay = await checkAndRecordReplay({
+        signature,
+        timestamp,
+        method: "POST",
+        url: req.url,
+        body: body || undefined,
+        scope: "demo-verify",
+      });
+      if (!replay.ok) {
+        return NextResponse.json(
+          { valid: false, error: replay.error || "Replay detected" },
+          { status: 409 },
+        );
+      }
     }
+
+    if (result.valid) verificationCount++;
+
+    // Convert BigInt values to strings for JSON serialization
+    return NextResponse.json({
+      valid: result.valid,
+      agentAddress: result.agentAddress,
+      agentKey: result.agentKey,
+      agentId: result.agentId.toString(),
+      agentCount: result.agentCount.toString(),
+      verificationCount,
+      credentials: result.credentials
+        ? {
+            ...result.credentials,
+            olderThan: result.credentials.olderThan.toString(),
+          }
+        : undefined,
+      error: result.error,
+    });
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Internal verification error";
+    return NextResponse.json(
+      { valid: false, error: message },
+      { status: 500 },
+    );
   }
-
-  if (result.valid) verificationCount++;
-
-  // Convert BigInt values to strings for JSON serialization
-  return NextResponse.json({
-    valid: result.valid,
-    agentAddress: result.agentAddress,
-    agentKey: result.agentKey,
-    agentId: result.agentId.toString(),
-    agentCount: result.agentCount.toString(),
-    verificationCount,
-    credentials: result.credentials
-      ? {
-          ...result.credentials,
-          olderThan: result.credentials.olderThan.toString(),
-        }
-      : undefined,
-    error: result.error,
-  });
 }

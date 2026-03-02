@@ -10,6 +10,10 @@ import { getCachedVerifier } from "@/lib/selfVerifier";
 import { checkAndRecordReplay } from "@/lib/replayGuard";
 
 import { typedRegistry } from "@/lib/contract-types";
+
+// Allow up to 30s for RPC calls to Forno (default 10s can be tight)
+export const maxDuration = 30;
+
 // Per-network demo agent private keys
 const DEMO_KEYS: Record<NetworkId, string | undefined> = {
   "celo-sepolia": process.env.DEMO_AGENT_PRIVATE_KEY_SEPOLIA,
@@ -50,120 +54,126 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const body = await req.text();
+  try {
+    const body = await req.text();
 
-  // 2. Demo agent verifies the caller's identity on-chain
-  const verifier = getCachedVerifier(network.id, {
-    maxAgentsPerHuman: 0,
-    includeCredentials: false,
-    enableReplayProtection: true,
-  });
+    // 2. Demo agent verifies the caller's identity on-chain
+    const verifier = getCachedVerifier(network.id, {
+      maxAgentsPerHuman: 0,
+      includeCredentials: false,
+      enableReplayProtection: true,
+    });
 
-  const verifyResult = await verifier.verify({
-    signature,
-    timestamp,
-    method: "POST",
-    url: req.url,
-    body: body || undefined,
-  });
+    const verifyResult = await verifier.verify({
+      signature,
+      timestamp,
+      method: "POST",
+      url: req.url,
+      body: body || undefined,
+    });
 
-  if (!verifyResult.valid) {
-    return NextResponse.json(
-      {
-        verified: false,
-        error: verifyResult.error || "Agent verification failed",
+    if (!verifyResult.valid) {
+      return NextResponse.json(
+        {
+          verified: false,
+          error: verifyResult.error || "Agent verification failed",
+        },
+        { status: 403 },
+      );
+    }
+
+    const replay = await checkAndRecordReplay({
+      signature,
+      timestamp,
+      method: "POST",
+      url: req.url,
+      body: body || undefined,
+      scope: "demo-agent-to-agent",
+    });
+    if (!replay.ok) {
+      return NextResponse.json(
+        {
+          verified: false,
+          error: replay.error || "Replay detected",
+        },
+        { status: 409 },
+      );
+    }
+
+    // 3. Demo agent does on-chain sameHuman check
+    const demoAgent = new SelfAgent({
+      privateKey: demoAgentPk,
+      registryAddress: network.registryAddress,
+      rpcUrl: network.rpcUrl,
+    });
+
+    const provider = new ethers.JsonRpcProvider(network.rpcUrl);
+    const registry = typedRegistry(network.registryAddress, provider);
+
+    const demoKey = ethers.zeroPadValue(demoAgent.address, 32);
+    const callerKey = verifyResult.agentKey;
+
+    const [demoVerified, demoId, callerId, callerVerified] = await Promise.all([
+      registry.isVerifiedAgent(demoKey),
+      registry.getAgentId(demoKey),
+      registry.getAgentId(callerKey),
+      registry.isVerifiedAgent(callerKey),
+    ]);
+
+    let sameHumanResult = false;
+    if (demoId > 0n && callerId > 0n) {
+      sameHumanResult = await registry.sameHuman(demoId, callerId);
+    }
+
+    // Track verification stats
+    verificationCount++;
+    // Use callerAgent address as a proxy for unique human (nullifier not available here)
+    if (verifyResult.agentAddress) {
+      uniqueHumans.add(verifyResult.agentAddress.toLowerCase());
+    }
+
+    const message = `Beep boop! You are agent #${verificationCount} that I have verified as being verified by a human. I have seen ${uniqueHumans.size} unique agent${uniqueHumans.size === 1 ? "" : "s"} so far.`;
+
+    // 4. Build response payload
+    const responsePayload = {
+      verified: true,
+      demoAgent: {
+        address: demoAgent.address,
+        agentId: demoId.toString(),
+        verified: demoVerified,
       },
-      { status: 403 },
-    );
-  }
-
-  const replay = await checkAndRecordReplay({
-    signature,
-    timestamp,
-    method: "POST",
-    url: req.url,
-    body: body || undefined,
-    scope: "demo-agent-to-agent",
-  });
-  if (!replay.ok) {
-    return NextResponse.json(
-      {
-        verified: false,
-        error: replay.error || "Replay detected",
+      callerAgent: {
+        address: verifyResult.agentAddress,
+        agentId: callerId.toString(),
+        verified: callerVerified,
       },
-      { status: 409 },
+      sameHuman: sameHumanResult,
+      verificationCount,
+      uniqueAgents: uniqueHumans.size,
+      message,
+    };
+
+    const responseBody = JSON.stringify(responsePayload);
+
+    // 5. Demo agent signs the response so caller can verify it came from us
+    const responseHeaders = await demoAgent.signRequest(
+      "POST",
+      req.url,
+      responseBody,
     );
+
+    return new NextResponse(responseBody, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        [HEADERS.ADDRESS]: responseHeaders[HEADERS.ADDRESS],
+        [HEADERS.SIGNATURE]: responseHeaders[HEADERS.SIGNATURE],
+        [HEADERS.TIMESTAMP]: responseHeaders[HEADERS.TIMESTAMP],
+      },
+    });
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Internal verification error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  // 3. Demo agent does on-chain sameHuman check
-  const demoAgent = new SelfAgent({
-    privateKey: demoAgentPk,
-    registryAddress: network.registryAddress,
-    rpcUrl: network.rpcUrl,
-  });
-
-  const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-  const registry = typedRegistry(network.registryAddress, provider);
-
-  const demoKey = ethers.zeroPadValue(demoAgent.address, 32);
-  const callerKey = verifyResult.agentKey;
-
-  const [demoVerified, demoId, callerId, callerVerified] = await Promise.all([
-    registry.isVerifiedAgent(demoKey),
-    registry.getAgentId(demoKey),
-    registry.getAgentId(callerKey),
-    registry.isVerifiedAgent(callerKey),
-  ]);
-
-  let sameHumanResult = false;
-  if (demoId > 0n && callerId > 0n) {
-    sameHumanResult = await registry.sameHuman(demoId, callerId);
-  }
-
-  // Track verification stats
-  verificationCount++;
-  // Use callerAgent address as a proxy for unique human (nullifier not available here)
-  if (verifyResult.agentAddress) {
-    uniqueHumans.add(verifyResult.agentAddress.toLowerCase());
-  }
-
-  const message = `Beep boop! You are agent #${verificationCount} that I have verified as being verified by a human. I have seen ${uniqueHumans.size} unique agent${uniqueHumans.size === 1 ? "" : "s"} so far.`;
-
-  // 4. Build response payload
-  const responsePayload = {
-    verified: true,
-    demoAgent: {
-      address: demoAgent.address,
-      agentId: demoId.toString(),
-      verified: demoVerified,
-    },
-    callerAgent: {
-      address: verifyResult.agentAddress,
-      agentId: callerId.toString(),
-      verified: callerVerified,
-    },
-    sameHuman: sameHumanResult,
-    verificationCount,
-    uniqueAgents: uniqueHumans.size,
-    message,
-  };
-
-  const responseBody = JSON.stringify(responsePayload);
-
-  // 5. Demo agent signs the response so caller can verify it came from us
-  const responseHeaders = await demoAgent.signRequest(
-    "POST",
-    req.url,
-    responseBody,
-  );
-
-  return new NextResponse(responseBody, {
-    status: 200,
-    headers: {
-      "Content-Type": "application/json",
-      [HEADERS.ADDRESS]: responseHeaders[HEADERS.ADDRESS],
-      [HEADERS.SIGNATURE]: responseHeaders[HEADERS.SIGNATURE],
-      [HEADERS.TIMESTAMP]: responseHeaders[HEADERS.TIMESTAMP],
-    },
-  });
 }
