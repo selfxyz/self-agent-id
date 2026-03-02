@@ -45,7 +45,7 @@ const CELO_MAINNET: NetworkConfig = {
   isTestnet: false,
   demoServiceUrl: "",
   demoAgentUrl: "",
-  demoAgentAddress: "0x47a0B2c77b0c57B8d5E95Bf31D502a05211bB6FC",
+  demoAgentAddress: "0xAc8BA8E6328c293Ff5aC4121E41AFb50c8D32107",
   nativeCurrency: { name: "CELO", symbol: "CELO", decimals: 18 },
 };
 
@@ -69,7 +69,7 @@ const CELO_SEPOLIA: NetworkConfig = {
   isTestnet: true,
   demoServiceUrl: "",
   demoAgentUrl: "",
-  demoAgentAddress: "0xbEFb51b4c4b2B91f3685463360DD62f76aEe7ADF",
+  demoAgentAddress: "0x56738c05507379C38Bbfa8f75064fd344716245F",
   nativeCurrency: { name: "CELO", symbol: "CELO", decimals: 18 },
 };
 
