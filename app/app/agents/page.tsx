@@ -13,8 +13,8 @@ import {
   Key,
   Fingerprint,
   Loader2,
-  Mail,
 } from "lucide-react";
+import { PrivyIcon } from "@/components/PrivyIcon";
 import { connectWallet } from "@/lib/wallet";
 import {} from "@/lib/constants";
 import { useNetwork } from "@/lib/NetworkContext";
@@ -57,6 +57,10 @@ interface AgentEntry {
   credentials?: AgentCredentials;
 }
 
+function cleanStr(s: string): string {
+  return s.replace(/[\x00-\x1f]/g, "").trim();
+}
+
 async function fetchCredentials(
   registry: TypedRegistryContract,
   agentId: bigint,
@@ -70,8 +74,8 @@ async function fetchCredentials(
       ofac: raw.ofac || [false, false, false],
     };
     if (
-      creds.nationality ||
-      creds.issuingState ||
+      cleanStr(creds.nationality) ||
+      cleanStr(creds.issuingState) ||
       creds.olderThan > 0n ||
       creds.ofac?.some(Boolean)
     ) {
@@ -213,8 +217,10 @@ function buildDisclosureBadges(creds: AgentCredentials): string[] {
   const badges: string[] = [];
   if (creds.olderThan > 0n) badges.push(`${creds.olderThan.toString()}+`);
   if (creds.ofac?.some(Boolean)) badges.push("Not on OFAC List");
-  if (creds.nationality) badges.push(creds.nationality);
-  if (creds.issuingState) badges.push(`Issued: ${creds.issuingState}`);
+  const nat = cleanStr(creds.nationality ?? "");
+  if (nat) badges.push(nat);
+  const issuing = cleanStr(creds.issuingState ?? "");
+  if (issuing) badges.push(`Issued: ${issuing}`);
   return badges;
 }
 
@@ -622,7 +628,7 @@ export default function MyAgentsPage() {
                 : "bg-surface-1 border border-border text-muted hover:text-foreground"
             }`}
           >
-            <Mail size={16} />
+            <PrivyIcon size={16} />
             Social Login
           </button>
         )}
@@ -632,7 +638,7 @@ export default function MyAgentsPage() {
         /* ── Privy (Social Login) mode ── */
         !privyConnectedAddress ? (
           <div className="flex flex-col items-center gap-4">
-            <Mail size={32} className="text-purple-400" />
+            <PrivyIcon size={32} />
             <Button
               onClick={() => privyLogin && privyLogin()}
               variant="primary"
@@ -646,7 +652,7 @@ export default function MyAgentsPage() {
                 </>
               ) : (
                 <>
-                  <Mail size={18} />
+                  <PrivyIcon size={18} />
                   Sign in with Privy
                 </>
               )}

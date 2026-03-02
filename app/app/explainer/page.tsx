@@ -19,8 +19,8 @@ import {
   Key,
   ExternalLink,
   Code2,
-  Mail,
 } from "lucide-react";
+import { PrivyIcon } from "@/components/PrivyIcon";
 import CodeBlock from "@/components/CodeBlock";
 import { useNetwork } from "@/lib/NetworkContext";
 import { Card } from "@/components/Card";
@@ -390,7 +390,7 @@ export default function ExplainerPage() {
             <Card className="md:col-span-2">
               <div className="flex items-center gap-2 mb-4">
                 <span className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
-                  <Mail size={16} className="text-purple-400" />
+                  <PrivyIcon size={16} />
                 </span>
                 <h3 className="font-bold text-lg">Social Login (Privy)</h3>
               </div>

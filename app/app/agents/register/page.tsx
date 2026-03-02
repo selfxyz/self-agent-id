@@ -27,8 +27,8 @@ import {
   Rocket,
   Terminal,
   Bot,
-  Mail,
 } from "lucide-react";
+import { PrivyIcon } from "@/components/PrivyIcon";
 import { connectWallet } from "@/lib/wallet";
 import {} from "@/lib/constants";
 import { useNetwork } from "@/lib/NetworkContext";
@@ -728,7 +728,7 @@ export default function RegisterPage() {
               >
                 <div className="flex items-center gap-2 mb-2">
                   <span className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
-                    <Mail size={16} className="text-purple-400" />
+                    <PrivyIcon size={16} />
                   </span>
                   <span className="font-bold text-sm">Social Login (Privy)</span>
                 </div>
@@ -1104,7 +1104,7 @@ export default function RegisterPage() {
                 </>
               ) : (
                 <>
-                  <Mail size={18} />
+                  <PrivyIcon size={18} />
                   Sign In &amp; Generate Agent
                 </>
               )}
@@ -1277,7 +1277,7 @@ export default function RegisterPage() {
             ) : mode === "privy" ? (
               <>
                 <div className="flex items-center justify-center gap-2 mb-1">
-                  <Mail size={14} className="text-purple-400" />
+                  <PrivyIcon size={14} />
                   <p className="text-xs text-muted">Social Login (Privy) registration</p>
                 </div>
                 <p className="text-xs text-muted mb-1">Agent address</p>
@@ -1928,7 +1928,7 @@ export default function RegisterPage() {
               {mode === "privy" && (
                 <Card className="w-full">
                   <div className="flex items-center gap-2 mb-2">
-                    <Mail size={16} className="text-purple-400" />
+                    <PrivyIcon size={16} />
                     <p className="font-bold text-sm">Privy Wallet Info</p>
                   </div>
                   <p className="text-xs text-muted">

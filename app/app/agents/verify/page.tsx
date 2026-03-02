@@ -25,8 +25,8 @@ import {
   Loader2,
   Copy,
   Check,
-  Mail,
 } from "lucide-react";
+import { PrivyIcon } from "@/components/PrivyIcon";
 import CodeBlock from "@/components/CodeBlock";
 import {
   getServiceSnippets,
@@ -794,7 +794,7 @@ function VerifyContent() {
                   </Button>
                   {isPrivyConfigured() && privyLogin && (
                     <Button onClick={() => privyLogin!()} variant="danger" size="sm">
-                      <Mail size={14} />
+                      <PrivyIcon size={14} />
                       Sign in with Privy
                     </Button>
                   )}

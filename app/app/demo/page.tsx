@@ -38,6 +38,8 @@ import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import {} from "@/lib/constants";
 import { signInWithPasskey, isPasskeySupported } from "@/lib/aa";
+import { usePrivyState, isPrivyConfigured } from "@/lib/privy";
+import { PrivyIcon } from "@/components/PrivyIcon";
 import {
   getAgentPrivateKeyByAgent,
   getAgentPrivateKeyByGuardian,
@@ -1439,7 +1441,7 @@ export default function DemoPage() {
   const privateKeyRef = useRef<string>("");
   const chatUnlockedRef = useRef(false);
   const [setupMode, setSetupMode] = useState<
-    "private-key" | "passkey" | "wallet"
+    "private-key" | "passkey" | "wallet" | "social"
   >("private-key");
   const [passkeyAvailable, setPasskeyAvailable] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
@@ -1453,6 +1455,9 @@ export default function DemoPage() {
   const [walletLoading, setWalletLoading] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [walletError, setWalletError] = useState("");
+  const [socialLoading, setSocialLoading] = useState(false);
+
+  const { login: privyLogin, ready: privyReady, authenticated: privyAuthenticated, wallets: privyWallets } = usePrivyState();
 
   // Unique session ID — regenerated on every page load so the AI treats
   // each visit as a fresh encounter with no memory of prior sessions.
@@ -1922,6 +1927,106 @@ export default function DemoPage() {
     }
   }, [network]);
 
+  // ---- Social Login (Privy) ----
+
+  // When Privy authenticates and embedded wallet is ready, look up agent
+  useEffect(() => {
+    if (setupMode !== "social" || !privyAuthenticated || !socialLoading) return;
+    const embedded = privyWallets.find(
+      (w: { walletClientType: string }) => w.walletClientType === "privy",
+    );
+    if (!embedded) return;
+
+    const loadPrivyAgent = async () => {
+      try {
+        const address = ethers.getAddress(embedded.address);
+        const agentKey = ethers.zeroPadValue(address, 32);
+
+        const rpcProvider = new ethers.JsonRpcProvider(network.rpcUrl);
+        const registry = typedRegistry(network.registryAddress, rpcProvider);
+
+        // Check if any agent is registered with this wallet as owner
+        // (Privy wallet = humanAddress → agent could be simple or agent-identity mode)
+        const isVerified = await registry.isVerifiedAgent(agentKey);
+
+        if (!isVerified) {
+          // Try looking up agents by scanning Transfer events (owner lookup)
+          dispatch({
+            type: "SETUP_ERROR",
+            error:
+              "No verified agent found for this Privy wallet. Register first using Social Login mode.",
+          });
+          setSocialLoading(false);
+          return;
+        }
+
+        // Look up the agent's signing key from vault
+        const storedKey = getAgentPrivateKeyByAgent(address);
+
+        if (storedKey) {
+          // We have the signing key — use it
+          const wallet = new ethers.Wallet(storedKey);
+          const agent = new SelfAgent({
+            signer: wallet,
+            network: network.isTestnet ? "testnet" : "mainnet",
+          });
+          agentRef.current = agent;
+          privateKeyRef.current = storedKey;
+        } else {
+          // No stored key — load read-only (like passkey mode without key)
+          const wallet = ethers.Wallet.createRandom();
+          const agent = new SelfAgent({
+            signer: wallet,
+            network: network.isTestnet ? "testnet" : "mainnet",
+          });
+          agentRef.current = agent;
+          privateKeyRef.current = "";
+        }
+
+        const agentId = await registry.getAgentId(agentKey);
+
+        let credentials: AgentCredentials | undefined;
+        try {
+          const raw = await registry.getAgentCredentials(agentId);
+          const creds: AgentCredentials = {
+            issuingState: raw.issuingState ?? "",
+            name: raw.name ?? [],
+            nationality: raw.nationality ?? "",
+            dateOfBirth: raw.dateOfBirth ?? "",
+            gender: raw.gender ?? "",
+            expiryDate: raw.expiryDate ?? "",
+            olderThan: raw.olderThan ?? 0n,
+            ofac: raw.ofac ?? [false, false, false],
+          };
+          if (creds.nationality || creds.olderThan > 0n) credentials = creds;
+        } catch {
+          // no credentials
+        }
+
+        dispatch({
+          type: "SETUP_DONE",
+          agent: {
+            address,
+            agentKey,
+            agentId: agentId.toString(),
+            isVerified: true,
+            credentials,
+          },
+        });
+      } catch (err) {
+        dispatch({
+          type: "SETUP_ERROR",
+          error: err instanceof Error ? err.message : "Failed to load agent",
+        });
+      } finally {
+        setSocialLoading(false);
+      }
+    };
+
+    void loadPrivyAgent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setupMode, privyAuthenticated, privyWallets.length, socialLoading]);
+
   // ---- Tests ----
 
   const runAllTests = useCallback(async () => {
@@ -2180,6 +2285,20 @@ export default function DemoPage() {
               <Wallet className="w-3.5 h-3.5" />
               Wallet
             </button>
+            {isPrivyConfigured() && (
+              <button
+                type="button"
+                onClick={() => setSetupMode("social")}
+                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors flex items-center justify-center gap-1.5 ${
+                  setupMode === "social"
+                    ? "bg-surface-2 border-purple-500 text-foreground"
+                    : "bg-surface-1 border-border text-muted hover:text-foreground"
+                }`}
+              >
+                <PrivyIcon size={14} />
+                Social
+              </button>
+            )}
           </div>
 
           {setupMode === "private-key" ? (
@@ -2254,6 +2373,34 @@ export default function DemoPage() {
                   <>
                     <Fingerprint size={16} />
                     Sign in with Passkey
+                  </>
+                )}
+              </Button>
+            </div>
+          ) : setupMode === "social" ? (
+            <div className="space-y-3">
+              <p className="text-xs text-muted">
+                Sign in with your Privy social account to load an agent
+                registered via Social Login mode.
+              </p>
+              <Button
+                type="button"
+                onClick={() => {
+                  setSocialLoading(true);
+                  privyLogin && privyLogin();
+                }}
+                disabled={socialLoading || !privyReady || !privyLogin}
+                className="w-full"
+              >
+                {socialLoading ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  <>
+                    <PrivyIcon size={16} />
+                    Sign in with Privy
                   </>
                 )}
               </Button>
