@@ -2256,7 +2256,7 @@ export default function DemoPage() {
       {!state.agent ? (
         <Card className="max-w-md mx-auto">
           <h2 className="font-semibold mb-4">Load Your Agent</h2>
-          <div className="flex gap-2 mb-4">
+          <div className="grid grid-cols-2 gap-2 mb-4">
             <button
               type="button"
               onClick={() => setSetupMode("private-key")}
