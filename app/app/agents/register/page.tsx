@@ -442,7 +442,7 @@ export default function RegisterPage() {
 
         // Generate fresh agent keypair
         const newWallet = ethers.Wallet.createRandom();
-        setAgentWallet(newWallet as ethers.HDNodeWallet);
+        setAgentWallet(newWallet);
         saveAgentPrivateKey({
           agentAddress: newWallet.address,
           privateKey: newWallet.privateKey,
@@ -472,7 +472,7 @@ export default function RegisterPage() {
       }
     };
 
-    completePrivyRegistration();
+    void completePrivyRegistration();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     mode,
@@ -482,7 +482,7 @@ export default function RegisterPage() {
     privyWalletAddress,
   ]);
 
-  const handlePrivyStart = async () => {
+  const handlePrivyStart = () => {
     setErrorMessage("");
 
     if (!SelfAppBuilderClass) {
@@ -1127,7 +1127,7 @@ export default function RegisterPage() {
             </Button>
           ) : mode === "privy" ? (
             <Button
-              onClick={handlePrivyStart}
+              onClick={() => handlePrivyStart()}
               variant="primary"
               size="lg"
               disabled={loading || !privyReady}

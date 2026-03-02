@@ -55,7 +55,6 @@ export function PrivyBridge({ children }: { children: ReactNode }) {
   const walletsKey = wallets.map((w: { address: string }) => w.address).join();
   const value = useMemo<PrivyState>(
     () => ({ login, ready, authenticated, wallets }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [login, ready, authenticated, walletsKey],
   );
 

@@ -4,7 +4,7 @@
 
 "use client";
 
-import { type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { PrivyProvider } from "@privy-io/react-auth";
 import { NetworkProvider } from "@/lib/NetworkContext";
 import {

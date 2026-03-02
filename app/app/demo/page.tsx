@@ -2398,7 +2398,7 @@ export default function DemoPage() {
                 type="button"
                 onClick={() => {
                   setSocialLoading(true);
-                  privyLogin && privyLogin();
+                  if (privyLogin) privyLogin();
                 }}
                 disabled={socialLoading || !privyReady || !privyLogin}
                 className="w-full"

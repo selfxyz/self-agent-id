@@ -800,7 +800,7 @@ function VerifyContent() {
                   </Button>
                   {isPrivyConfigured() && privyLogin && (
                     <Button
-                      onClick={() => privyLogin!()}
+                      onClick={() => privyLogin()}
                       variant="danger"
                       size="sm"
                     >

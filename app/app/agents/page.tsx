@@ -276,7 +276,7 @@ export default function MyAgentsPage() {
       return;
     const addr = ethers.getAddress(privyEmbeddedAddress);
     setPrivyConnectedAddress(addr);
-    loadAgentsByOwner(addr);
+    void loadAgentsByOwner(addr);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [privyEmbeddedAddress]);
 
@@ -633,12 +633,12 @@ export default function MyAgentsPage() {
               setError("");
               // If already authenticated, reload agents immediately
               if (privyConnectedAddress) {
-                loadAgentsByOwner(privyConnectedAddress);
+                void loadAgentsByOwner(privyConnectedAddress);
               } else if (privyEmbeddedAddress) {
                 // Already authenticated but address not captured yet
                 const addr = ethers.getAddress(privyEmbeddedAddress);
                 setPrivyConnectedAddress(addr);
-                loadAgentsByOwner(addr);
+                void loadAgentsByOwner(addr);
               }
             }}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -697,7 +697,7 @@ export default function MyAgentsPage() {
                 </span>
               </p>
               <button
-                onClick={() => loadAgentsByOwner(privyConnectedAddress)}
+                onClick={() => void loadAgentsByOwner(privyConnectedAddress)}
                 disabled={loading}
                 className="p-2 text-muted hover:text-foreground hover:bg-surface-2 rounded-lg transition-colors disabled:opacity-50"
                 title="Refresh"
