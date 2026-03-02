@@ -276,7 +276,7 @@ function VerifyContent() {
                 parsed !== null &&
                 "a2aVersion" in parsed
               ) {
-                agentCard = parsed as A2AAgentCard;
+                agentCard = parsed as unknown as A2AAgentCard;
               }
             } catch {}
           }
