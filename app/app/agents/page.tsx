@@ -13,6 +13,7 @@ import {
   Key,
   Fingerprint,
   Loader2,
+  Bot,
 } from "lucide-react";
 import { PrivyIcon } from "@/components/PrivyIcon";
 import { connectWallet } from "@/lib/wallet";
@@ -30,6 +31,7 @@ import {
   isGaslessSupported,
 } from "@/lib/aa";
 import { usePrivyState, isPrivyConfigured } from "@/lib/privy";
+import { writeAgentCard } from "@/lib/writeAgentCard";
 
 import {
   typedProvider,
@@ -245,6 +247,7 @@ export default function MyAgentsPage() {
   const [privyConnectedAddress, setPrivyConnectedAddress] = useState<
     string | null
   >(null);
+  const [mintingCardFor, setMintingCardFor] = useState<string | null>(null);
 
   const {
     login: privyLogin,
@@ -484,6 +487,52 @@ export default function MyAgentsPage() {
       setError(err instanceof Error ? err.message : "Revocation failed");
     } finally {
       setRevoking(null);
+    }
+  };
+
+  const handleMintCard = async (agent: AgentEntry) => {
+    setMintingCardFor(agent.agentId.toString());
+    setError("");
+
+    try {
+      let signer: ethers.Signer;
+
+      if (lookupMode === "privy") {
+        // Privy embedded wallet — use window.ethereum if available
+        if (!window.ethereum) {
+          setError("No wallet available for signing. Try Connect Wallet mode.");
+          return;
+        }
+        const provider = new ethers.BrowserProvider(
+          window.ethereum as unknown as ethers.Eip1193Provider,
+        );
+        signer = await provider.getSigner();
+      } else {
+        // Wallet mode — use MetaMask / injected wallet
+        const provider = new ethers.BrowserProvider(
+          window.ethereum! as unknown as ethers.Eip1193Provider,
+        );
+        signer = await provider.getSigner();
+      }
+
+      await writeAgentCard(
+        agent.agentId,
+        network.registryAddress,
+        network,
+        signer,
+      );
+
+      // Refresh the agent list to show the new A2A badge
+      const ownerAddr = walletAddress ?? privyConnectedAddress;
+      if (ownerAddr) {
+        await loadAgentsByOwner(ownerAddr);
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to mint A2A card",
+      );
+    } finally {
+      setMintingCardFor(null);
     }
   };
 
@@ -730,7 +779,7 @@ export default function MyAgentsPage() {
               </Card>
             )}
 
-            {renderAgentCards(agents, null, null, network)}
+            {renderAgentCards(agents, null, null, network, (agent: AgentEntry) => void handleMintCard(agent), mintingCardFor, lookupMode)}
           </div>
         )
       ) : lookupMode === "passkey" ? (
@@ -880,7 +929,7 @@ export default function MyAgentsPage() {
               </Card>
             )}
 
-            {renderAgentCards(agents, null, null, network)}
+            {renderAgentCards(agents, null, null, network, (agent: AgentEntry) => void handleMintCard(agent), mintingCardFor, lookupMode)}
           </div>
         )
       ) : (
@@ -944,6 +993,9 @@ function renderAgentCards(
   onRevoke: ((agentId: bigint) => void) | null,
   revokingId: string | null,
   network?: import("@/lib/network").NetworkConfig,
+  onMintCard?: ((agent: AgentEntry) => void) | null,
+  mintingCardForId?: string | null,
+  lookupMode?: "wallet" | "key" | "passkey" | "privy",
 ) {
   return agents.map((agent) => (
     <div key={agent.agentId.toString()} className="space-y-2">
@@ -1078,6 +1130,29 @@ function renderAgentCards(
             to deregister via passport scan.
           </p>
         ))}
+
+      {onMintCard &&
+        agent.isVerified &&
+        !agent.hasA2ACard &&
+        (lookupMode === "wallet" || lookupMode === "privy") && (
+          <button
+            onClick={() => onMintCard(agent)}
+            disabled={mintingCardForId === agent.agentId.toString()}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors disabled:opacity-50"
+          >
+            {mintingCardForId === agent.agentId.toString() ? (
+              <>
+                <Loader2 size={12} className="animate-spin" />
+                Minting A2A Card...
+              </>
+            ) : (
+              <>
+                <Bot size={12} />
+                Mint A2A Card (on-chain)
+              </>
+            )}
+          </button>
+        )}
     </div>
   ));
 }

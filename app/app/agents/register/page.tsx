@@ -42,7 +42,8 @@ import { savePasskey } from "@/lib/passkey-storage";
 import { saveAgentPrivateKey } from "@/lib/agentKeyVault";
 import { usePrivyState, isPrivyConfigured } from "@/lib/privy";
 
-import { typedProvider, typedRegistry } from "@/lib/contract-types";
+import { typedRegistry } from "@/lib/contract-types";
+import { writeAgentCard as writeAgentCardShared } from "@/lib/writeAgentCard";
 // Dynamic import to avoid SSR issues with Self QR SDK
 const SelfQRcodeWrapper = dynamic(
   () => import("@selfxyz/qrcode").then((mod) => mod.SelfQRcodeWrapper),
@@ -524,73 +525,17 @@ export default function RegisterPage() {
         return;
       }
       setAgentIdResult(agentId.toString());
-
-      // Read provider strength
-      let resolvedVerificationStrength: number | null = null;
-      const providerAddr: string = await registry.agentProofProvider(agentId);
-      if (providerAddr && providerAddr !== ethers.ZeroAddress) {
-        const prov = typedProvider(providerAddr, provider);
-        const strength: number = await prov.verificationStrength();
-        resolvedVerificationStrength = Number(strength);
-        setVerificationStrength(resolvedVerificationStrength);
-      }
-
-      // Read credentials for card
-      let credentials = null;
-      try {
-        credentials = await registry.getAgentCredentials(agentId);
-      } catch {
-        /* no creds */
-      }
-
-      // Build card JSON
-      const card = {
-        a2aVersion: "0.1",
-        name: `Agent #${agentId}`,
-        description: "Human-verified AI agent on Self Protocol",
-        selfProtocol: {
-          agentId: Number(agentId),
-          registry: network.registryAddress,
-          chainId: network.chainId,
-          proofProvider: providerAddr,
-          providerName:
-            providerAddr !== ethers.ZeroAddress ? "self" : "unknown",
-          verificationStrength: resolvedVerificationStrength ?? 100,
-          trustModel: {
-            proofType: "passport",
-            sybilResistant: true,
-            ofacScreened: disclosures.ofac,
-            minimumAgeVerified: disclosures.minimumAge,
-          },
-          ...(credentials
-            ? {
-                credentials: {
-                  nationality: credentials.nationality || undefined,
-                  issuingState: credentials.issuingState || undefined,
-                  olderThan: Number(credentials.olderThan) || undefined,
-                  ofacClean: credentials.ofac?.[0] ?? undefined,
-                  hasName: credentials.name?.length > 0 ? true : undefined,
-                  hasDateOfBirth: credentials.dateOfBirth ? true : undefined,
-                  hasGender: credentials.gender ? true : undefined,
-                  documentExpiry: credentials.expiryDate || undefined,
-                },
-              }
-            : {}),
-        },
-      };
-
-      const json = JSON.stringify(card, null, 2);
-      setCardJson(json);
       setCardStep("writing");
 
-      // Write on-chain
       const signer = await provider.getSigner();
-      const registryWrite = typedRegistry(network.registryAddress, signer);
-      const tx = await registryWrite.updateAgentMetadata(
+      const result = await writeAgentCardShared(
         agentId,
-        JSON.stringify(card),
+        network.registryAddress,
+        network,
+        signer,
       );
-      await tx.wait();
+      setCardJson(result.cardJson);
+      setVerificationStrength(result.verificationStrength);
       setCardStep("done");
     } catch (err) {
       console.warn("[writeAgentCard] Skipped:", err);
