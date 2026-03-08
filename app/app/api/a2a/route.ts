@@ -133,7 +133,7 @@ function parseIntent(message: Message): Intent {
       const hasEd25519 = !!data.ed25519Pubkey;
       return {
         type: "register",
-        network: (data.network as string) || "testnet",
+        network: (data.network as string) || "mainnet",
         humanAddress: data.humanAddress as string | undefined,
         mode: (data.mode as string) || (hasEd25519 ? (data.humanAddress ? "ed25519-linked" : "ed25519") : "wallet-free"),
         pushConfig: data.pushNotificationUrl
@@ -206,7 +206,7 @@ function parseIntent(message: Message): Intent {
   ) {
     // Extract address if present (0x...)
     const addrMatch = text.match(/0x[a-fA-F0-9]{40}/);
-    const network = text.includes("mainnet") ? "mainnet" : "testnet";
+    const network = text.includes("testnet") ? "testnet" : "mainnet";
     return {
       type: "register",
       network,
@@ -327,13 +327,13 @@ async function handleRegister(
               examples: [
                 {
                   intent: "register",
-                  network: "testnet",
+                  network: "mainnet",
                   mode: "wallet-free",
                   note: "Simplest — no human wallet needed, human just scans QR",
                 },
                 {
                   intent: "register",
-                  network: "testnet",
+                  network: "mainnet",
                   humanAddress: "0xYourAddress...",
                   mode: "linked",
                   note: "Ties agent to a specific human wallet",
@@ -547,7 +547,7 @@ async function handleRegisterStatus(
                   example: {
                     intent: "register",
                     humanAddress: "0x...",
-                    network: "testnet",
+                    network: "mainnet",
                   },
                 }),
               ],
@@ -1074,7 +1074,7 @@ async function handleCheckFreshness(
                 "",
                 "To get a fresh proof, the agent must re-register:",
                 `1. Deregister: { intent: "deregister", agentId: ${agentId} }`,
-                `2. Re-register: { intent: "register", network: "testnet" }`,
+                `2. Re-register: { intent: "register" }`,
                 "",
                 "The human will need to scan their passport again.",
               ),
@@ -1086,7 +1086,7 @@ async function handleCheckFreshness(
                 action: "re-register",
                 steps: [
                   { intent: "deregister", agentId },
-                  { intent: "register", network: "testnet" },
+                  { intent: "register" },
                 ],
               }),
             ],
@@ -1109,7 +1109,7 @@ async function handleCheckFreshness(
                 "",
                 "Consider re-registering soon to maintain continuity:",
                 `1. Deregister: { intent: "deregister", agentId: ${agentId} }`,
-                `2. Re-register: { intent: "register", network: "testnet" }`,
+                `2. Re-register: { intent: "register" }`,
               ),
               dataPart({
                 agentId,
@@ -1171,13 +1171,18 @@ function handleHelp(taskId: string): Task {
             "I can help with:",
             "",
             "1. Register an agent — Get human-verified on-chain identity",
-            '   Say: "Register a new agent" or send { intent: "register", network: "testnet" }',
+            '   Say: "Register a new agent" or send { intent: "register" }',
+            "",
+            "   IMPORTANT — Networks:",
+            "   • mainnet (default): Celo Mainnet. Requires a REAL passport via the Self app.",
+            "   • testnet: Celo Sepolia. For testing only — accepts MOCK documents.",
+            '     Use network: "testnet" only if you want to test without the Self app.',
             "",
             "   Registration modes:",
             "",
             "   - wallet-free (default): No wallet needed. Server generates everything.",
             "     The human just scans a QR code with the Self app. Simplest option.",
-            '     Example: { intent: "register", network: "testnet" }',
+            '     Example: { intent: "register" }',
             "",
             "   - ed25519: For agents using Ed25519 keys (OpenClaw, Eliza, IronClaw).",
             "     No human wallet needed — derives address from pubkey. Bring your own",
@@ -1223,7 +1228,7 @@ function handleHelp(taskId: string): Task {
             '   Say: "Is agent #5 still fresh?" or send { intent: "freshness", agentId: 5 }',
             "   Returns: days remaining, expiry date, and re-registration steps if expired.",
             "",
-            "All queries default to testnet (Celo Sepolia). Add chainId: 42220 for mainnet.",
+            "All queries default to mainnet (Celo). Add chainId: 11142220 or network: \"testnet\" for Celo Sepolia (mock documents only).",
           ),
         ],
       },
@@ -1300,7 +1305,7 @@ const registryTaskHandler: TaskHandler = {
                 role: "agent",
                 parts: textParts(
                   "No active registration found for that task ID. The session may have expired.",
-                  "Start a new registration with: { intent: 'register', humanAddress: '0x...', network: 'testnet' }",
+                  "Start a new registration with: { intent: 'register' }",
                 ),
               },
               timestamp: new Date().toISOString(),
@@ -1340,7 +1345,7 @@ const registryTaskHandler: TaskHandler = {
                 ),
                 dataPart({
                   examples: [
-                    { intent: "register", network: "testnet" },
+                    { intent: "register" },
                     { intent: "lookup", agentId: 1 },
                     { intent: "verify", agentId: 1 },
                     { intent: "deregister", agentId: 1 },
