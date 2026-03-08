@@ -124,7 +124,7 @@ export async function handleRegisterAgent(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        mode: "agent-identity",
+        mode: "linked",
         network,
         disclosures: {
           ...(args.minimum_age != null ? { minimumAge: args.minimum_age } : {}),

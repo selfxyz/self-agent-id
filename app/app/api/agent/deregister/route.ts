@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
     const { data: sessionData } = createSessionToken(
       {
         type: "deregister",
-        mode: isSimple ? "simple" : "advanced",
+        mode: isSimple ? "self-custody" : "linked",
         network,
         humanAddress: isSimple ? agentAddress : nftOwner,
         agentAddress,

@@ -17,7 +17,7 @@ describe("session token encryption", () => {
     const data = {
       id: "test-123",
       type: "register" as const,
-      mode: "agent-identity",
+      mode: "linked",
       stage: "qr-ready",
       network: "testnet",
       createdAt: new Date().toISOString(),
@@ -72,7 +72,7 @@ describe("session token encryption", () => {
     const { token, data } = createSessionToken(
       {
         type: "register",
-        mode: "agent-identity",
+        mode: "linked",
         network: "testnet",
       },
       secret,

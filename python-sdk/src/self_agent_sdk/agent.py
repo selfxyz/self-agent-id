@@ -307,7 +307,7 @@ class SelfAgent:
     def request_registration(
         cls,
         *,
-        mode: str = "agent-identity",
+        mode: str = "linked",
         network: NetworkName = "mainnet",
         disclosures: dict | None = None,
         human_address: str | None = None,
@@ -321,8 +321,8 @@ class SelfAgent:
         that the human operator must scan with the Self app.
 
         Args:
-            mode: Registration mode (``"verified-wallet"``, ``"agent-identity"``,
-                ``"wallet-free"``, ``"smart-wallet"``, ``"privy"``).
+            mode: Registration mode (``"self-custody"``, ``"linked"``,
+                ``"wallet-free"``, ``"ed25519"``, ``"ed25519-linked"``, ``"smartwallet"``).
             network: ``"mainnet"`` or ``"testnet"``.
             disclosures: Optional disclosure requirements (e.g.
                 ``{"minimumAge": 18, "ofac": True}``).

@@ -151,7 +151,7 @@ const agent = new SelfAgent({ network: "testnet" });
 // const agent = new SelfAgent({ privateKey: "0x...", network: "testnet" });
 
 // Initiate registration with config: age 18+, OFAC check
-const session = await agent.register("agent-identity", {
+const session = await agent.register("linked", {
   minimumAge: 18,
   ofac: true,
 });

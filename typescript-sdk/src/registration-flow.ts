@@ -27,7 +27,7 @@ const CHAIN_IDS: Record<NetworkName, number> = {
 
 export interface RegistrationRequest {
   /** Registration mode */
-  mode: "verified-wallet" | "agent-identity" | "wallet-free" | "smart-wallet";
+  mode: "self-custody" | "linked" | "wallet-free" | "ed25519" | "ed25519-linked" | "smartwallet";
   /** Network: "mainnet" (default) or "testnet" */
   network?: NetworkName;
   /** Credential disclosures to request */
@@ -36,7 +36,7 @@ export interface RegistrationRequest {
     ofac?: boolean;
     nationality?: boolean;
   };
-  /** Human's wallet address (required for verified-wallet and agent-identity) */
+  /** Human's wallet address (required for self-custody and linked) */
   humanAddress?: string;
   /** Agent display name */
   agentName?: string;

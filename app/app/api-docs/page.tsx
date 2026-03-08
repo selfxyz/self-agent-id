@@ -58,7 +58,7 @@ const ENDPOINT_GROUPS: GroupDef[] = [
         parameters: [],
         requestBody: {
           example: `{
-  "mode": "agent-identity",
+  "mode": "linked",
   "network": "testnet",
   "humanAddress": "0x...",
   "disclosures": {
@@ -69,7 +69,7 @@ const ENDPOINT_GROUPS: GroupDef[] = [
   }
 }`,
           description:
-            'Modes: "verified-wallet", "agent-identity", "wallet-free". Networks: "mainnet", "testnet".',
+            'Modes: "self-custody", "linked", "wallet-free", "ed25519", "ed25519-linked". Networks: "mainnet", "testnet".',
         },
         responses: [
           {
@@ -80,14 +80,14 @@ const ENDPOINT_GROUPS: GroupDef[] = [
   "deepLink": "selfapp://verify?scope=...",
   "qrData": "selfapp://verify?scope=...",
   "agentAddress": "0x83fa...ff00",
-  "mode": "agent-identity",
+  "mode": "linked",
   "network": "testnet"
 }`,
           },
           {
             status: 400,
             description: "Invalid parameters or missing fields",
-            example: `{ "error": "humanAddress is required for agent-identity mode" }`,
+            example: `{ "error": "humanAddress is required for linked mode" }`,
           },
         ],
       },
@@ -156,7 +156,7 @@ const ENDPOINT_GROUPS: GroupDef[] = [
         path: "/api/agent/register/export",
         summary: "Export agent private key",
         description:
-          'After registration completes, export the agent\'s private key. Only available for "agent-identity" and "wallet-free" modes.',
+          'After registration completes, export the agent\'s private key. Only available for "linked", "wallet-free", "ed25519", and "ed25519-linked" modes.',
         parameters: [],
         requestBody: {
           description:
@@ -402,7 +402,7 @@ const ENDPOINT_GROUPS: GroupDef[] = [
             example: `{
   "api": "https://self-agent-id.vercel.app/api/agent",
   "networks": ["mainnet", "testnet"],
-  "modes": ["verified-wallet", "agent-identity", "wallet-free"],
+  "modes": ["self-custody", "linked", "wallet-free", "ed25519", "ed25519-linked"],
   "capabilities": ["register", "deregister", "query", "verify"]
 }`,
           },
@@ -746,7 +746,7 @@ export default function ApiDocsPage() {
 curl -X POST https://self-agent-id.vercel.app/api/agent/register \\
   -H "Content-Type: application/json" \\
   -d '{
-    "mode": "agent-identity",
+    "mode": "linked",
     "network": "testnet",
     "humanAddress": "0xYourWalletAddress"
   }'
@@ -799,7 +799,7 @@ const agent = new SelfAgent({
 
 // Request registration — returns session with QR link
 const session = await agent.requestRegistration({
-  mode: "agent-identity",
+  mode: "linked",
   humanAddress: "0xYourWallet",
   disclosures: { minimumAge: 18, ofac: true },
 });
@@ -823,7 +823,7 @@ agent = SelfAgent(
 
 # Request registration
 session = agent.request_registration(
-    mode="agent-identity",
+    mode="linked",
     human_address="0xYourWallet",
     disclosures={"minimum_age": 18, "ofac": True},
 )
@@ -847,7 +847,7 @@ let agent = SelfAgent::new(
 
 // Request registration
 let session = agent.request_registration(
-    "agent-identity",
+    "linked",
     "0xYourWallet",
     Disclosures { minimum_age: 18, ofac: true, ..Default::default() },
 ).await?;

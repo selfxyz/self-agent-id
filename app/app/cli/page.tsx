@@ -32,7 +32,7 @@ export default function CliQuickstartPage() {
             <li>
               Create session:{" "}
               <code className="bg-surface-2 px-1 rounded text-accent-2">
-                self-agent register init --mode agent-identity --human-address
+                self-agent register init --mode linked --human-address
                 0x... --network testnet --out .self/session.json
               </code>
             </li>
@@ -63,7 +63,7 @@ export default function CliQuickstartPage() {
             <li>
               Create session:{" "}
               <code className="bg-surface-2 px-1 rounded text-accent-2">
-                self-agent deregister init --mode verified-wallet
+                self-agent deregister init --mode self-custody
                 --human-address 0x... --network testnet --out
                 .self/session-deregister.json
               </code>

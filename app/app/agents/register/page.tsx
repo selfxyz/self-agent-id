@@ -63,7 +63,7 @@ let SelfAppBuilderClass:
   | typeof import("@selfxyz/qrcode").SelfAppBuilder
   | null = null;
 
-type Mode = "simple" | "advanced" | "walletfree" | "smartwallet" | "privy" | "ed25519";
+type Mode = "self-custody" | "linked" | "walletfree" | "smartwallet" | "privy" | "ed25519" | "ed25519-linked";
 type AgentPath = "onchain" | "offchain" | null;
 type Step = "mode" | "connect" | "scan" | "success";
 
@@ -80,7 +80,7 @@ function getConfigIndex(disc: { minimumAge: number; ofac: boolean }): string {
 export default function RegisterPage() {
   const router = useRouter();
   const { network } = useNetwork();
-  const [mode, setMode] = useState<Mode>("advanced");
+  const [mode, setMode] = useState<Mode>("linked");
   const [agentPath, setAgentPath] = useState<AgentPath>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [selfApp, setSelfApp] = useState<ReturnType<
@@ -205,7 +205,7 @@ export default function RegisterPage() {
     }
 
     const addressToCheck =
-      mode === "simple" ? walletAddress : agentWallet?.address;
+      mode === "self-custody" ? walletAddress : agentWallet?.address;
     if (!addressToCheck) return;
 
     const interval = setInterval(() => {
@@ -421,7 +421,7 @@ export default function RegisterPage() {
 
     setWalletAddress(address);
 
-    if (mode === "simple") {
+    if (mode === "self-custody") {
       const registered = await checkIfRegistered(address);
       if (registered) {
         setAlreadyRegistered(true);
@@ -440,7 +440,7 @@ export default function RegisterPage() {
 
     const cfgIdx = getConfigIndex(disclosures);
 
-    if (mode === "simple") {
+    if (mode === "self-custody") {
       setSelfApp(buildSelfApp(address, "R" + cfgIdx));
       setStep("scan");
     } else {
@@ -647,7 +647,7 @@ export default function RegisterPage() {
         return;
       }
       const agentAddress =
-        mode === "simple" ? walletAddress! : agentWallet!.address;
+        mode === "self-custody" ? walletAddress! : agentWallet!.address;
       const agentKey = ethers.zeroPadValue(agentAddress, 32);
 
       const provider = new ethers.BrowserProvider(
@@ -770,7 +770,7 @@ export default function RegisterPage() {
           {agentPath === "onchain" && (
             <>
               <button
-                onClick={() => { setAgentPath(null); setMode("advanced"); }}
+                onClick={() => { setAgentPath(null); setMode("linked"); }}
                 className="flex items-center gap-1 text-sm text-muted hover:text-foreground transition-colors self-start"
               >
                 <ChevronLeft size={16} />
@@ -785,9 +785,9 @@ export default function RegisterPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                 {/* Advanced mode card — recommended, shown first */}
                 <button
-                  onClick={() => setMode("advanced")}
+                  onClick={() => setMode("linked")}
                   className={`text-left p-5 rounded-xl border-2 transition-all ${
-                    mode === "advanced"
+                    mode === "linked"
                       ? "border-accent bg-surface-2"
                       : "border-border hover:border-border-strong"
                   }`}
@@ -796,20 +796,19 @@ export default function RegisterPage() {
                     <span className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
                       <Key size={16} className="text-accent" />
                     </span>
-                    <span className="font-bold text-sm">Agent Identity</span>
+                    <span className="font-bold text-sm">Linked Agent</span>
                   </div>
                   <Badge variant="success">recommended</Badge>
                   <p className="text-xs text-muted mt-2">
-                    Agent gets its own independent keypair. Your wallet key stays
-                    safe.
+                    Agent gets its own keypair, linked to your human wallet. Recommended for autonomous agents.
                   </p>
                 </button>
 
                 {/* Simple mode card */}
                 <button
-                  onClick={() => setMode("simple")}
+                  onClick={() => setMode("self-custody")}
                   className={`text-left p-5 rounded-xl border-2 transition-all ${
-                    mode === "simple"
+                    mode === "self-custody"
                       ? "border-accent bg-surface-2"
                       : "border-border hover:border-border-strong"
                   }`}
@@ -818,11 +817,10 @@ export default function RegisterPage() {
                     <span className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
                       <Wallet size={16} className="text-accent" />
                     </span>
-                    <span className="font-bold text-sm">Verified Wallet</span>
+                    <span className="font-bold text-sm">Self-Custody</span>
                   </div>
                   <p className="text-xs text-muted mt-2">
-                    Your wallet address is the verified identity. Best for
-                    human-operated, on-chain actions.
+                    Your wallet address IS the agent. Best for humans who operate their own agent.
                   </p>
                 </button>
 
@@ -839,7 +837,7 @@ export default function RegisterPage() {
                     <span className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
                       <Smartphone size={16} className="text-accent" />
                     </span>
-                    <span className="font-bold text-sm">No Wallet</span>
+                    <span className="font-bold text-sm">Wallet-Free</span>
                   </div>
                   <p className="text-xs text-muted mt-2">
                     No crypto wallet needed. Just your passport and the Self app.
@@ -900,7 +898,7 @@ export default function RegisterPage() {
           {agentPath === "offchain" && (
             <>
               <button
-                onClick={() => { setAgentPath(null); setMode("advanced"); }}
+                onClick={() => { setAgentPath(null); setMode("linked"); }}
                 className="flex items-center gap-1 text-sm text-muted hover:text-foreground transition-colors self-start"
               >
                 <ChevronLeft size={16} />
@@ -1016,20 +1014,20 @@ export default function RegisterPage() {
             <div className="flex items-center gap-2 mb-3">
               <Lock size={16} className="text-accent" />
               <p className="font-bold text-sm">
-                {mode === "simple"
-                  ? "How Verified Wallet works"
-                  : mode === "advanced"
-                    ? "How Agent Identity works"
+                {mode === "self-custody"
+                  ? "How Self-Custody works"
+                  : mode === "linked"
+                    ? "How Linked Agent works"
                     : mode === "smartwallet"
                       ? "How Smart Wallet works"
                       : mode === "privy"
                         ? "How Social Login works"
                         : mode === "ed25519"
                           ? "How Ed25519 Registration works"
-                          : "How No Wallet works"}
+                          : "How Wallet-Free works"}
               </p>
             </div>
-            {mode === "simple" ? (
+            {mode === "self-custody" ? (
               <ul className="text-sm text-muted space-y-1.5 list-disc list-inside">
                 <li>
                   Connect your{" "}
@@ -1052,10 +1050,10 @@ export default function RegisterPage() {
                   Best for{" "}
                   <strong className="text-foreground">on-chain gating</strong>{" "}
                   where you transact directly (DAOs, token access). For
-                  autonomous agents, choose Agent Identity.
+                  autonomous agents, choose Linked Agent.
                 </li>
               </ul>
-            ) : mode === "advanced" ? (
+            ) : mode === "linked" ? (
               <ul className="text-sm text-muted space-y-1.5 list-disc list-inside">
                 <li>
                   Connect your{" "}
@@ -1138,7 +1136,7 @@ export default function RegisterPage() {
                   A fresh{" "}
                   <strong className="text-foreground">agent keypair</strong> is
                   generated in your browser. The agent signs a challenge proving
-                  key ownership, same as Agent Identity mode.
+                  key ownership, same as Linked Agent mode.
                 </li>
                 <li>
                   Scan your passport with the{" "}
@@ -1424,7 +1422,7 @@ export default function RegisterPage() {
           ) : (
             <div className="w-full flex flex-col items-center gap-2">
               <p className="text-xs text-muted text-center max-w-md">
-                {mode === "simple"
+                {mode === "self-custody"
                   ? "Next step: connect your wallet. That same address will be your verified on-chain identity."
                   : "Next step: connect your wallet to prove the human. A separate agent keypair is generated in-browser for your agent."}
               </p>
@@ -1433,9 +1431,9 @@ export default function RegisterPage() {
                 variant="primary"
                 size="lg"
               >
-                {mode === "simple"
-                  ? "Continue: Connect Verified Wallet"
-                  : "Continue: Connect Wallet for Agent Identity"}
+                {mode === "self-custody"
+                  ? "Continue: Connect Self-Custody Wallet"
+                  : "Continue: Connect Wallet for Linked Agent"}
               </Button>
             </div>
           ))}
@@ -1491,7 +1489,7 @@ export default function RegisterPage() {
           {!walletAddress ? (
             <>
               <p className="text-muted text-center max-w-md">
-                {mode === "simple"
+                {mode === "self-custody"
                   ? "Connect your browser wallet (MetaMask, etc.). Your wallet address will become your agent\u2019s on-chain identity."
                   : "Connect your browser wallet (MetaMask, etc.). A new agent keypair will be generated and linked to your wallet."}
               </p>
@@ -1567,14 +1565,14 @@ export default function RegisterPage() {
       {step === "scan" && (
         <div className="flex flex-col items-center gap-4">
           <Card className="w-full text-center">
-            {mode === "simple" ? (
+            {mode === "self-custody" ? (
               <>
                 <p className="text-xs text-muted mb-1">
                   Registering wallet as agent
                 </p>
                 <p className="font-mono text-sm">{walletAddress}</p>
               </>
-            ) : mode === "advanced" ? (
+            ) : mode === "linked" ? (
               <>
                 <p className="text-xs text-muted mb-1">
                   Registering agent{" "}
@@ -1905,10 +1903,10 @@ export default function RegisterPage() {
             </Card>
           )}
 
-          {mode === "simple" ? (
+          {mode === "self-custody" ? (
             <>
               <Card className="w-full">
-                <p className="font-bold text-sm mb-3">Verified Wallet</p>
+                <p className="font-bold text-sm mb-3">Self-Custody</p>
                 <div className="space-y-3 text-sm">
                   <div>
                     <p className="text-xs text-muted mb-1">
@@ -1952,7 +1950,7 @@ export default function RegisterPage() {
                   </li>
                   <li>
                     For autonomous agents that sign requests to services, use{" "}
-                    <strong className="text-foreground">Agent Identity</strong>{" "}
+                    <strong className="text-foreground">Linked Agent</strong>{" "}
                     mode instead.
                   </li>
                 </ul>
@@ -2256,7 +2254,7 @@ export default function RegisterPage() {
                   </div>
                   <p className="text-xs text-muted">
                     Your Privy embedded wallet owns the agent NFT. To
-                    deregister, use the Agent Identity deregister flow with the
+                    deregister, use the Linked Agent deregister flow with the
                     same wallet. Your agent operates independently with its own
                     private key &mdash; no Privy dependency at runtime.
                   </p>
@@ -2269,7 +2267,7 @@ export default function RegisterPage() {
             <Button
               onClick={() => {
                 const key =
-                  mode === "simple"
+                  mode === "self-custody"
                     ? ethers.zeroPadValue(walletAddress!, 32)
                     : ethers.zeroPadValue(agentWallet!.address, 32);
                 router.push("/agents/verify?key=" + encodeURIComponent(key));

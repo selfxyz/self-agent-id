@@ -14,10 +14,11 @@ const DISCOVERY = {
     : "https://selfagentid.xyz/api/agent",
   networks: ["mainnet", "testnet"],
   registrationModes: [
-    "verified-wallet",
-    "agent-identity",
     "wallet-free",
-    "smart-wallet",
+    "ed25519",
+    "self-custody",
+    "linked",
+    "ed25519-linked",
   ],
   capabilities: [
     "register",

@@ -222,7 +222,7 @@ describe("agent register init route", () => {
       makeNextRequest("https://example.com/api/agent/register", {
         method: "POST",
         body: JSON.stringify({
-          mode: "simple",
+          mode: "self-custody",
           network: "testnet",
           humanAddress: "0xabc",
         }),
@@ -252,7 +252,7 @@ describe("agent register init route", () => {
       makeNextRequest("https://example.com/api/agent/register", {
         method: "POST",
         body: JSON.stringify({
-          mode: "simple",
+          mode: "self-custody",
           network: "badnet",
           humanAddress: "0xabc",
         }),
@@ -264,14 +264,14 @@ describe("agent register init route", () => {
     );
   });
 
-  it("requires humanAddress for simple mode", async () => {
+  it("requires humanAddress for self-custody mode", async () => {
     mockHelpers.isValidAddress.mockReturnValue(false);
     const { POST } = await loadRegisterRoute();
     const res = await POST(
       makeNextRequest("https://example.com/api/agent/register", {
         method: "POST",
         body: JSON.stringify({
-          mode: "simple",
+          mode: "self-custody",
           network: "testnet",
           humanAddress: "not-an-address",
         }),
@@ -291,7 +291,7 @@ describe("agent register init route", () => {
       makeNextRequest("https://example.com/api/agent/register", {
         method: "POST",
         body: JSON.stringify({
-          mode: "simple",
+          mode: "self-custody",
           network: "testnet",
           humanAddress: "0xabc",
           disclosures: { minimumAge: 25 },
@@ -305,13 +305,32 @@ describe("agent register init route", () => {
     });
   });
 
-  it("creates a simple mode registration session", async () => {
+  it("rejects the removed verified-wallet alias", async () => {
     const { POST } = await loadRegisterRoute();
     const res = await POST(
       makeNextRequest("https://example.com/api/agent/register", {
         method: "POST",
         body: JSON.stringify({
           mode: "verified-wallet",
+          network: "testnet",
+          humanAddress: "0x00000000000000000000000000000000000000FF",
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect((await jsonBody<{ error: string }>(res)).error).toContain(
+      "Invalid mode",
+    );
+  });
+
+  it("creates a self-custody mode registration session", async () => {
+    const { POST } = await loadRegisterRoute();
+    const res = await POST(
+      makeNextRequest("https://example.com/api/agent/register", {
+        method: "POST",
+        body: JSON.stringify({
+          mode: "self-custody",
           network: "testnet",
           humanAddress: "0x00000000000000000000000000000000000000FF",
           disclosures: { minimumAge: 18, ofac: true },
@@ -327,18 +346,18 @@ describe("agent register init route", () => {
     expect(
       await jsonBody<{ mode: string; sessionToken: string }>(res),
     ).toMatchObject({
-      mode: "simple",
+      mode: "self-custody",
       sessionToken: "encrypted-session-token",
     });
   });
 
-  it("creates an agent-identity registration with signed challenge", async () => {
+  it("creates a linked registration with signed challenge", async () => {
     const { POST } = await loadRegisterRoute();
     const res = await POST(
       makeNextRequest("https://example.com/api/agent/register", {
         method: "POST",
         body: JSON.stringify({
-          mode: "agent-identity",
+          mode: "linked",
           network: "testnet",
           humanAddress: "0x00000000000000000000000000000000000000FA",
         }),
@@ -352,6 +371,7 @@ describe("agent register init route", () => {
         humanIdentifier: "0x00000000000000000000000000000000000000fa",
         chainId: 11142220,
         registryAddress: "0xregistry",
+        nonce: 0,
       },
     );
     expect(mockBuildAdvancedRegisterUserDataAscii).toHaveBeenCalled();
@@ -830,7 +850,7 @@ describe("agent register export route", () => {
         agentAddress: "0xagent",
         agentId: 55,
         network: "testnet",
-        mode: "agent-identity",
+        mode: "linked",
       },
       secret: "session-secret",
     });
@@ -848,7 +868,7 @@ describe("agent register export route", () => {
       agentAddress: "0xagent",
       agentId: 55,
       network: "testnet",
-      mode: "agent-identity",
+      mode: "linked",
     });
   });
 

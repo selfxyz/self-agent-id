@@ -51,7 +51,7 @@ interface AgentEntry {
   agentAddress: string;
   isVerified: boolean;
   registeredAt: bigint;
-  mode: "simple" | "advanced" | "walletfree";
+  mode: "self-custody" | "linked" | "walletfree";
   guardian: string;
   hasMetadata: boolean;
   hasA2ACard: boolean;
@@ -190,9 +190,9 @@ async function buildAgentEntry(
 
     const agentAddress = "0x" + agentKey.slice(26);
 
-    let mode: "simple" | "advanced" | "walletfree" = "advanced";
+    let mode: "self-custody" | "linked" | "walletfree" = "linked";
     if (agentAddress.toLowerCase() === ownerAddress.toLowerCase()) {
-      mode = guardian !== ethers.ZeroAddress ? "walletfree" : "simple";
+      mode = guardian !== ethers.ZeroAddress ? "walletfree" : "self-custody";
     }
 
     const credentials = await fetchCredentials(registry, agentId);
@@ -338,9 +338,9 @@ export default function MyAgentsPage() {
 
       const agentAddress = "0x" + agentKey.slice(26);
 
-      let mode: "simple" | "advanced" | "walletfree" = "advanced";
+      let mode: "self-custody" | "linked" | "walletfree" = "linked";
       if (agentAddress.toLowerCase() === currentOwner.toLowerCase()) {
-        mode = guardian !== ethers.ZeroAddress ? "walletfree" : "simple";
+        mode = guardian !== ethers.ZeroAddress ? "walletfree" : "self-custody";
       }
 
       const credentials = await fetchCredentials(registry, agentId);
@@ -1012,17 +1012,17 @@ function renderAgentCards(
               </span>
               <Badge
                 variant={
-                  agent.mode === "simple"
+                  agent.mode === "self-custody"
                     ? "muted"
-                    : agent.mode === "advanced"
+                    : agent.mode === "linked"
                       ? "success"
                       : "info"
                 }
               >
-                {agent.mode === "simple"
-                  ? "Verified Wallet"
-                  : agent.mode === "advanced"
-                    ? "Agent Identity"
+                {agent.mode === "self-custody"
+                  ? "Self-Custody"
+                  : agent.mode === "linked"
+                    ? "Linked Agent"
                     : "Wallet-Free"}
               </Badge>
               {agent.guardian !== ethers.ZeroAddress && (
@@ -1057,7 +1057,7 @@ function renderAgentCards(
 
           <div className="space-y-1">
             <p className="text-xs text-muted">
-              {agent.mode === "simple" ? "Wallet" : "Agent"} Address
+              {agent.mode === "self-custody" ? "Wallet" : "Agent"} Address
             </p>
             <p className="font-mono text-sm break-all">{agent.agentAddress}</p>
           </div>

@@ -257,7 +257,7 @@ export default function IntegrationPage() {
                   label: "TypeScript",
                   language: "bash",
                   code: `npx @selfxyz/agent-sdk register init \\
-  --mode agent-identity \\
+  --mode linked \\
   --human-address 0xYourWalletAddress \\
   --network ${network.isTestnet ? "testnet" : "mainnet"} \\
   --out .self/session.json
@@ -275,7 +275,7 @@ npx @selfxyz/agent-sdk register export --session .self/session.json`,
                   label: "Python",
                   language: "bash",
                   code: `self-agent register init \\
-  --mode agent-identity \\
+  --mode linked \\
   --human-address 0xYourWalletAddress \\
   --network ${network.isTestnet ? "testnet" : "mainnet"} \\
   --out .self/session.json
@@ -288,7 +288,7 @@ self-agent register export --session .self/session.json`,
                   label: "Rust",
                   language: "bash",
                   code: `self-agent register init \\
-  --mode agent-identity \\
+  --mode linked \\
   --human-address 0xYourWalletAddress \\
   --network ${network.isTestnet ? "testnet" : "mainnet"} \\
   --out .self/session.json
@@ -457,7 +457,7 @@ claude plugin add /path/to/self-agent-id/plugin`,
                 ],
                 [
                   "register-agent",
-                  "Step-by-step registration in all 4 modes (wallet, agent-identity, wallet-free, smart-wallet)",
+                  "Step-by-step registration in all modes (self-custody, linked, wallet-free, smart-wallet, ed25519)",
                 ],
                 [
                   "sign-requests",

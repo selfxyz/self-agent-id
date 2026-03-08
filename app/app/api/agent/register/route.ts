@@ -4,7 +4,7 @@
 
 // POST /api/agent/register — Initiate agent registration
 //
-// Creates a session, generates keypair (for agent-identity / wallet-free modes),
+// Creates a session, generates keypair (for linked / wallet-free modes),
 // builds userDefinedData, and returns Self app QR data + deep link.
 
 import type { NextRequest } from "next/server";
@@ -43,20 +43,22 @@ import { ed25519 } from "@noble/curves/ed25519.js";
 import { typedRegistry } from "@/lib/contract-types";
 
 type Mode =
-  | "simple"
-  | "verified-wallet"
-  | "agent-identity"
+  | "self-custody"
+  | "linked"
   | "wallet-free"
+  | "ed25519"
+  | "ed25519-linked"
   | "privy"
-  | "ed25519";
+  | "smartwallet";
 
 const VALID_MODES = new Set<Mode>([
-  "simple",
-  "verified-wallet",
-  "agent-identity",
+  "self-custody",
+  "linked",
   "wallet-free",
-  "privy",
   "ed25519",
+  "ed25519-linked",
+  "privy",
+  "smartwallet",
 ]);
 
 interface RegisterRequestBody {
@@ -113,10 +115,10 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Validate mode ────────────────────────────────────────────────────────
-  const rawMode = body.mode === "verified-wallet" ? "simple" : body.mode;
+  const rawMode = body.mode;
   if (!rawMode || !VALID_MODES.has(rawMode as Mode)) {
     return errorResponse(
-      `Invalid mode: "${body.mode}". Valid modes: simple, verified-wallet, agent-identity, wallet-free, privy, ed25519`,
+      `Invalid mode: "${body.mode}". Valid modes: self-custody, linked, wallet-free, ed25519, ed25519-linked, privy, smartwallet`,
       400,
     );
   }
@@ -132,9 +134,9 @@ export async function POST(req: NextRequest) {
   const network = body.network;
   const networkConfig = getNetworkConfig(network);
 
-  // ── Validate humanAddress (required for simple + agent-identity) ────────
+  // ── Validate humanAddress (required for self-custody, linked, ed25519-linked, privy, smartwallet) ──
   const needsHumanAddress =
-    mode === "simple" || mode === "agent-identity" || mode === "privy" || mode === "ed25519";
+    mode === "self-custody" || mode === "linked" || mode === "ed25519-linked" || mode === "privy" || mode === "smartwallet";
   if (
     needsHumanAddress &&
     (!body.humanAddress || !isValidAddress(body.humanAddress))
@@ -165,13 +167,13 @@ export async function POST(req: NextRequest) {
     let humanAddress: string;
     let userDefinedData: string;
 
-    if (mode === "simple") {
-      // Simple / verified-wallet: agent address = human address
+    if (mode === "self-custody") {
+      // Self-custody: agent address = human address
       humanAddress = ethers.getAddress(body.humanAddress!);
       agentAddress = humanAddress;
       userDefinedData = buildSimpleRegisterUserDataAscii(disclosures);
-    } else if (mode === "agent-identity" || mode === "privy") {
-      // Agent-identity: generate fresh keypair, human wallet signs nothing server-side
+    } else if (mode === "linked" || mode === "privy" || mode === "smartwallet") {
+      // Linked: generate fresh keypair, human wallet signs nothing server-side
       humanAddress = ethers.getAddress(body.humanAddress!);
       const wallet = ethers.Wallet.createRandom();
       agentPrivateKey = wallet.privateKey;
@@ -191,7 +193,58 @@ export async function POST(req: NextRequest) {
         disclosures,
       });
     } else if (mode === "ed25519") {
-      // Ed25519: agent provides their own keypair and pre-signed challenge
+      // Ed25519 wallet-free: derive humanAddress from pubkey, no human wallet needed
+      const pubkey = body.ed25519Pubkey;
+      const signature = body.ed25519Signature;
+
+      if (!pubkey || !isValidEd25519PubkeyHex(pubkey)) {
+        return errorResponse(
+          "ed25519Pubkey is required and must be a valid 64-char hex Ed25519 public key",
+          400,
+        );
+      }
+      if (!signature || !/^[0-9a-fA-F]{128}$/.test(signature)) {
+        return errorResponse(
+          "ed25519Signature is required and must be 128 hex chars (64-byte Ed25519 signature)",
+          400,
+        );
+      }
+
+      agentAddress = deriveEd25519Address(pubkey);
+      humanAddress = agentAddress; // wallet-free: human = derived agent address
+
+      // Fetch nonce from contract
+      const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
+      const registry = typedRegistry(networkConfig.registryAddress, provider);
+      const nonce = await registry.ed25519Nonce("0x" + pubkey);
+
+      // Compute challenge hash using derived address
+      const challengeHash = computeEd25519ChallengeHash({
+        humanAddress,
+        chainId: BigInt(networkConfig.chainId),
+        registryAddress: networkConfig.registryAddress,
+        nonce,
+      });
+
+      // Verify Ed25519 signature off-chain
+      const msgBytes = ethers.getBytes(challengeHash);
+      const sigBytes = hexToBytes(signature);
+      const pubBytes = hexToBytes(pubkey);
+      const isValid = ed25519.verify(sigBytes, msgBytes, pubBytes);
+      if (!isValid) {
+        return errorResponse("Ed25519 signature verification failed", 400);
+      }
+
+      const extKpub = computeExtKpub(pubkey);
+      const configIndex = getRegistrationConfigIndex(disclosures);
+      userDefinedData = buildEd25519UserData({
+        configIndex,
+        ed25519Pubkey: pubkey,
+        signature: signature,
+        extKpub,
+      });
+    } else if (mode === "ed25519-linked") {
+      // Ed25519-linked: agent provides their own keypair and pre-signed challenge
       humanAddress = ethers.getAddress(body.humanAddress!);
 
       const pubkey = body.ed25519Pubkey;
@@ -285,7 +338,7 @@ export async function POST(req: NextRequest) {
     // userId for the Self app: lowercase address without 0x prefix (the builder strips 0x for hex type)
     // For ed25519 mode, the userId is the humanAddress (the human doing the passport scan)
     const userId =
-      mode === "wallet-free"
+      mode === "wallet-free" || mode === "ed25519"
         ? ethers.getAddress(agentAddress).toLowerCase()
         : humanAddress.toLowerCase();
 
@@ -318,7 +371,7 @@ export async function POST(req: NextRequest) {
     );
 
     // Store ed25519 pubkey in session for status polling
-    if (mode === "ed25519" && body.ed25519Pubkey) {
+    if ((mode === "ed25519" || mode === "ed25519-linked") && body.ed25519Pubkey) {
       sessionData.ed25519Pubkey = body.ed25519Pubkey;
     }
 

@@ -87,11 +87,13 @@ async function sendPushNotification(
 // ── Intent detection ────────────────────────────────────────────────────────
 
 type Intent =
-  | { type: "register"; network: string; humanAddress?: string; mode?: string; pushConfig?: TaskPushNotificationConfig }
+  | { type: "register"; network: string; humanAddress?: string; mode?: string; pushConfig?: TaskPushNotificationConfig; ed25519Pubkey?: string; ed25519Signature?: string }
   | { type: "register-status"; sessionToken: string }
   | { type: "register-poll"; taskId: string }
   | { type: "lookup"; agentId: number; chainId?: number }
   | { type: "verify"; agentId: number; chainId?: number }
+  | { type: "deregister"; agentId: number; network?: string }
+  | { type: "check-freshness"; agentId: number; chainId?: number }
   | { type: "help" }
   | { type: "unknown"; text: string };
 
@@ -117,14 +119,17 @@ function parseIntent(message: Message): Intent {
   if (data) {
     const intent = data.intent as string | undefined;
     if (intent === "register" || intent === "registration") {
+      const hasEd25519 = !!data.ed25519Pubkey;
       return {
         type: "register",
         network: (data.network as string) || "testnet",
         humanAddress: data.humanAddress as string | undefined,
-        mode: (data.mode as string) || "agent-identity",
+        mode: (data.mode as string) || (hasEd25519 ? (data.humanAddress ? "ed25519-linked" : "ed25519") : "wallet-free"),
         pushConfig: data.pushNotificationUrl
           ? { url: data.pushNotificationUrl as string, token: data.pushNotificationToken as string | undefined }
           : undefined,
+        ed25519Pubkey: data.ed25519Pubkey as string | undefined,
+        ed25519Signature: data.ed25519Signature as string | undefined,
       };
     }
     if (intent === "register-status" || intent === "status") {
@@ -154,11 +159,36 @@ function parseIntent(message: Message): Intent {
         chainId: data.chainId ? Number(data.chainId) : undefined,
       };
     }
+    if (intent === "deregister" || intent === "unregister" || intent === "revoke") {
+      return {
+        type: "deregister",
+        agentId: Number(data.agentId),
+        network: (data.network as string) || undefined,
+      };
+    }
+    if (intent === "freshness" || intent === "check-freshness" || intent === "refresh" || intent === "re-verify" || intent === "reauthenticate") {
+      return {
+        type: "check-freshness",
+        agentId: Number(data.agentId),
+        chainId: data.chainId ? Number(data.chainId) : undefined,
+      };
+    }
   }
 
   // Natural language parsing
+
+  // "deregister agent #5" / "unregister agent 5" / "revoke agent 5"
+  // Must come before the register check since "deregister" contains "register"
+  const deregMatch = text.match(
+    /(?:deregister|unregister|revoke|remove|delete)\s+(?:agent\s*)?#?(\d+)/,
+  );
+  if (deregMatch) {
+    const network = text.includes("mainnet") ? "mainnet" : text.includes("testnet") ? "testnet" : undefined;
+    return { type: "deregister", agentId: Number(deregMatch[1]), network };
+  }
+
   if (
-    text.includes("register") ||
+    (text.includes("register") && !text.includes("deregister") && !text.includes("unregister")) ||
     text.includes("sign up") ||
     text.includes("create agent") ||
     text.includes("new agent")
@@ -170,7 +200,17 @@ function parseIntent(message: Message): Intent {
       type: "register",
       network,
       humanAddress: addrMatch?.[0],
-      mode: text.includes("simple") ? "simple" : "agent-identity",
+      mode: text.includes("self-custody") || text.includes("self custody")
+        ? "self-custody"
+        : text.includes("ed25519-linked") || text.includes("ed25519 linked")
+          ? "ed25519-linked"
+          : text.includes("ed25519")
+            ? "ed25519"
+            : text.includes("linked")
+              ? "linked"
+              : addrMatch
+                ? "linked"
+                : "wallet-free",
     };
   }
 
@@ -179,6 +219,15 @@ function parseIntent(message: Message): Intent {
     const token = data?.sessionToken as string | undefined;
     if (token) return { type: "register-status", sessionToken: token };
     return { type: "unknown", text: "Please provide your session token to check registration status. Send a data part with { intent: 'register-status', sessionToken: '<token>' }." };
+  }
+
+  // "freshness agent #5" / "is agent 5 expired" / "renew agent 5" / "re-verify agent 5"
+  const freshMatch = text.match(
+    /(?:fresh|expir|renew|re-?auth|re-?verif|refresh)\w*\s+(?:agent\s*)?#?(\d+)/,
+  );
+  if (freshMatch) {
+    const chainId = text.includes("mainnet") ? 42220 : text.includes("testnet") ? 11142220 : undefined;
+    return { type: "check-freshness", agentId: Number(freshMatch[1]), chainId };
   }
 
   // "look up agent #5" / "info agent 5" / "agent 5"
@@ -246,8 +295,11 @@ async function handleRegister(
   taskId: string,
   req?: NextRequest,
 ): Promise<Task> {
-  if (!intent.humanAddress) {
-    // Need human address — return input-required
+  // wallet-free and ed25519 modes don't need a human address — the server generates everything
+  const isWalletFree = intent.mode === "wallet-free" || intent.mode === "ed25519";
+
+  if (!intent.humanAddress && !isWalletFree) {
+    // Non-wallet-free modes need a human address
     return {
       id: taskId,
       status: {
@@ -256,17 +308,25 @@ async function handleRegister(
           role: "agent",
           parts: [
             ...textParts(
-              "To register an agent, I need the human wallet address that will verify this agent.",
-              "Please provide your Ethereum address (0x...).",
-              "You can also send a structured request:",
+              "To register with this mode, I need the human wallet address that will verify this agent.",
+              "Please provide your Ethereum address (0x...), or use wallet-free mode (no wallet needed):",
             ),
             dataPart({
-              example: {
-                intent: "register",
-                network: "testnet",
-                humanAddress: "0xYourAddress...",
-                mode: "agent-identity",
-              },
+              examples: [
+                {
+                  intent: "register",
+                  network: "testnet",
+                  mode: "wallet-free",
+                  note: "Simplest — no human wallet needed, human just scans QR",
+                },
+                {
+                  intent: "register",
+                  network: "testnet",
+                  humanAddress: "0xYourAddress...",
+                  mode: "linked",
+                  note: "Ties agent to a specific human wallet",
+                },
+              ],
             }),
           ],
         },
@@ -292,15 +352,25 @@ async function handleRegister(
       fetchHeaders["cookie"] = cookies;
     }
 
+    const registerBody: Record<string, unknown> = {
+      mode: intent.mode || "wallet-free",
+      network: intent.network,
+      disclosures: { minimumAge: 18, ofac: true },
+    };
+    if (intent.humanAddress) {
+      registerBody.humanAddress = intent.humanAddress;
+    }
+    if (intent.ed25519Pubkey) {
+      registerBody.ed25519Pubkey = intent.ed25519Pubkey;
+    }
+    if (intent.ed25519Signature) {
+      registerBody.ed25519Signature = intent.ed25519Signature;
+    }
+
     const res = await fetch(`${appUrl}/api/agent/register`, {
       method: "POST",
       headers: fetchHeaders,
-      body: JSON.stringify({
-        mode: intent.mode || "agent-identity",
-        network: intent.network,
-        humanAddress: intent.humanAddress,
-        disclosures: { minimumAge: 18, ofac: true },
-      }),
+      body: JSON.stringify(registerBody),
     });
 
     const result = (await res.json()) as Record<string, unknown>;
@@ -360,27 +430,29 @@ async function handleRegister(
             ...textParts(
               "Registration initiated! A human must now verify this agent using the Self app.",
               "",
-              "Steps:",
-              "1. Open the Self app on your phone",
-              "2. Scan the QR code below (or open the deep link)",
-              "3. Follow the prompts to scan your passport",
-              "4. Wait for on-chain confirmation",
+              "A human needs to scan this QR code with their phone to open the Self app and verify this agent.",
+              "If the human is already on their phone, they can open this link directly instead:",
+              `${deepLink}`,
+              "",
+              "Steps for the human:",
+              "1. Scan the QR code below with your phone camera (or tap the link above if on mobile)",
+              "2. The Self app will open — follow the prompts",
+              "3. Scan your passport (NFC chip) when prompted",
+              "4. The agent will be verified on-chain automatically",
             ),
             ...qrParts,
             ...textParts(
               "",
-              `Deep link: ${deepLink}`,
-              "",
               `Session expires at: ${result.expiresAt} (${Math.round((result.timeRemainingMs as number) / 1000)}s remaining)`,
               "",
-              "To check status, send one of:",
+              "To check status, send:",
               `  { "intent": "status", "taskId": "${taskId}" }`,
-              `  { "intent": "register-status", "sessionToken": "<token>" }`,
             ),
             dataPart({
               taskId,
               sessionToken: result.sessionToken,
               deepLink,
+              qrImageIncluded: qrParts.length > 0,
               agentAddress: result.agentAddress,
               network: result.network,
               mode: result.mode,
@@ -817,6 +889,238 @@ async function handleVerify(
   }
 }
 
+async function handleDeregister(
+  intent: Extract<Intent, { type: "deregister" }>,
+  taskId: string,
+  req?: NextRequest,
+): Promise<Task> {
+  const appUrl = getAppBaseUrl(req);
+
+  try {
+    const fetchHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    if (bypassSecret) fetchHeaders["x-vercel-protection-bypass"] = bypassSecret;
+    const cookies = req?.headers.get("cookie");
+    if (cookies) fetchHeaders["cookie"] = cookies;
+
+    const res = await fetch(`${appUrl}/api/agent/deregister`, {
+      method: "POST",
+      headers: fetchHeaders,
+      body: JSON.stringify({
+        agentId: intent.agentId,
+        network: intent.network || "testnet",
+      }),
+    });
+
+    const result = (await res.json()) as Record<string, unknown>;
+
+    if (!res.ok) {
+      return {
+        id: taskId,
+        status: {
+          state: "failed",
+          message: { role: "agent", parts: textParts(`Deregistration failed: ${result.error || "Unknown error"}`) },
+          timestamp: new Date().toISOString(),
+        },
+      };
+    }
+
+    const deepLink = result.deepLink as string;
+    let qrParts: Part[] = [];
+    try {
+      const qrDataUrl = await generateQRBase64(deepLink);
+      const base64 = qrDataUrl.split(",")[1];
+      qrParts = [{
+        type: "file" as const,
+        file: { name: "deregister-qr.png", mimeType: "image/png", bytes: base64 },
+      }];
+    } catch { /* QR gen failed — deep link still available */ }
+
+    taskSessionStore.set(taskId, result.sessionToken as string);
+
+    return {
+      id: taskId,
+      status: {
+        state: "input-required",
+        message: {
+          role: "agent",
+          parts: [
+            ...textParts(
+              `Deregistration initiated for Agent #${intent.agentId}.`,
+              "",
+              "WARNING: This is permanent. The NFT will be burned and all on-chain proof data removed.",
+              "",
+              "A human must scan this QR code with the Self app to confirm deregistration.",
+              "If on mobile, open this link instead:",
+              `${deepLink}`,
+            ),
+            ...qrParts,
+            dataPart({
+              taskId,
+              sessionToken: result.sessionToken,
+              deepLink,
+              agentId: intent.agentId,
+              action: "deregister",
+            }),
+          ],
+        },
+        timestamp: new Date().toISOString(),
+      },
+    };
+  } catch (err) {
+    return {
+      id: taskId,
+      status: {
+        state: "failed",
+        message: { role: "agent", parts: textParts(`Deregistration failed: ${err instanceof Error ? err.message : "Network error"}`) },
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+}
+
+async function handleCheckFreshness(
+  agentId: number,
+  chainId: number | undefined,
+  taskId: string,
+): Promise<Task> {
+  const { chainId: cid, config } = resolveChainConfig(chainId);
+  if (!config) {
+    return {
+      id: taskId,
+      status: { state: "failed", message: { role: "agent", parts: textParts(`Unsupported chain: ${cid}`) }, timestamp: new Date().toISOString() },
+    };
+  }
+
+  try {
+    const rpc = new ethers.JsonRpcProvider(config.rpc);
+    const registry = typedRegistry(config.registry, rpc);
+
+    const [hasProof, expiresAt] = await Promise.all([
+      registry.hasHumanProof(BigInt(agentId)),
+      registry.proofExpiresAt(BigInt(agentId)),
+    ]);
+
+    if (!hasProof) {
+      return {
+        id: taskId,
+        status: {
+          state: "completed",
+          message: {
+            role: "agent",
+            parts: [
+              ...textParts(`Agent #${agentId} has no human proof. Registration required first.`),
+              dataPart({ agentId, hasProof: false, action: "register" }),
+            ],
+          },
+          timestamp: new Date().toISOString(),
+        },
+      };
+    }
+
+    const expiresAtMs = Number(expiresAt) * 1000;
+    const now = Date.now();
+    const remainingMs = expiresAtMs - now;
+    const remainingDays = Math.floor(remainingMs / (1000 * 60 * 60 * 24));
+    const isExpired = remainingMs <= 0;
+    const isWarning = !isExpired && remainingDays <= 30;
+
+    if (isExpired) {
+      return {
+        id: taskId,
+        status: {
+          state: "completed",
+          message: {
+            role: "agent",
+            parts: [
+              ...textParts(
+                `Agent #${agentId} proof has EXPIRED (expired ${new Date(expiresAtMs).toISOString()}).`,
+                "",
+                "To get a fresh proof, the agent must re-register:",
+                `1. Deregister: { intent: "deregister", agentId: ${agentId} }`,
+                `2. Re-register: { intent: "register", network: "testnet" }`,
+                "",
+                "The human will need to scan their passport again.",
+              ),
+              dataPart({
+                agentId,
+                hasProof: true,
+                isExpired: true,
+                expiresAt: new Date(expiresAtMs).toISOString(),
+                action: "re-register",
+                steps: [
+                  { intent: "deregister", agentId },
+                  { intent: "register", network: "testnet" },
+                ],
+              }),
+            ],
+          },
+          timestamp: new Date().toISOString(),
+        },
+      };
+    }
+
+    if (isWarning) {
+      return {
+        id: taskId,
+        status: {
+          state: "completed",
+          message: {
+            role: "agent",
+            parts: [
+              ...textParts(
+                `Agent #${agentId} proof expires in ${remainingDays} days (${new Date(expiresAtMs).toISOString()}).`,
+                "",
+                "Consider re-registering soon to maintain continuity:",
+                `1. Deregister: { intent: "deregister", agentId: ${agentId} }`,
+                `2. Re-register: { intent: "register", network: "testnet" }`,
+              ),
+              dataPart({
+                agentId,
+                hasProof: true,
+                isExpired: false,
+                isWarning: true,
+                remainingDays,
+                expiresAt: new Date(expiresAtMs).toISOString(),
+              }),
+            ],
+          },
+          timestamp: new Date().toISOString(),
+        },
+      };
+    }
+
+    return {
+      id: taskId,
+      status: {
+        state: "completed",
+        message: {
+          role: "agent",
+          parts: [
+            ...textParts(
+              `Agent #${agentId} proof is fresh. Expires in ${remainingDays} days (${new Date(expiresAtMs).toISOString()}).`,
+            ),
+            dataPart({
+              agentId,
+              hasProof: true,
+              isExpired: false,
+              isWarning: false,
+              remainingDays,
+              expiresAt: new Date(expiresAtMs).toISOString(),
+            }),
+          ],
+        },
+        timestamp: new Date().toISOString(),
+      },
+    };
+  } catch (err) {
+    return {
+      id: taskId,
+      status: { state: "failed", message: { role: "agent", parts: textParts(`Freshness check failed: ${err instanceof Error ? err.message : "Network error"}`) }, timestamp: new Date().toISOString() },
+    };
+  }
+}
+
 function handleHelp(taskId: string): Task {
   return {
     id: taskId,
@@ -830,11 +1134,44 @@ function handleHelp(taskId: string): Task {
             "",
             "I can help with:",
             "",
-            "1. Register an agent — Initiate human-verified agent registration",
-            '   Say: "Register a new agent" or send { intent: "register", humanAddress: "0x...", network: "testnet" }',
+            "1. Register an agent — Get human-verified on-chain identity",
+            '   Say: "Register a new agent" or send { intent: "register", network: "testnet" }',
+            "",
+            "   Registration modes:",
+            "",
+            "   - wallet-free (default): No wallet needed. Server generates everything.",
+            "     The human just scans a QR code with the Self app. Simplest option.",
+            '     Example: { intent: "register", network: "testnet" }',
+            "",
+            "   - ed25519: For agents using Ed25519 keys (OpenClaw, Eliza, IronClaw).",
+            "     No human wallet needed — derives address from pubkey. Bring your own",
+            "     public key and a pre-signed challenge to prove key ownership.",
+            '     Example: { intent: "register", ed25519Pubkey: "...", ed25519Signature: "..." }',
+            "",
+            "   - self-custody: Human's wallet IS the agent. For humans registering their",
+            "     own wallet address as an agent identity.",
+            '     Requires: { humanAddress: "0x...", mode: "self-custody" }',
+            "",
+            "   - linked: Separate agent EVM keys, linked to a human wallet. For agents",
+            "     that want their own keypair tied to a specific human wallet address.",
+            '     Requires: { humanAddress: "0x...", mode: "linked" }',
+            "",
+            "   - ed25519-linked: Agent's Ed25519 keys, linked to a human wallet.",
+            "     Like ed25519 but requires an explicit human wallet binding.",
+            '     Requires: { humanAddress: "0x...", ed25519Pubkey: "...", ed25519Signature: "..." }',
+            "",
+            "   Quick decision guide:",
+            "   ┌─ Do you have Ed25519 keys? (OpenClaw, Eliza, IronClaw)",
+            "   │  ├─ YES + want to link a human wallet? → ed25519-linked",
+            "   │  └─ YES + no human wallet needed?      → ed25519 (default for Ed25519 agents)",
+            "   └─ No Ed25519 keys?",
+            "      ├─ Want to link a human wallet?",
+            "      │  ├─ Human IS the agent?             → self-custody",
+            "      │  └─ Agent gets own keys?            → linked",
+            "      └─ No human wallet needed?            → wallet-free (default)",
             "",
             "2. Check registration status — Poll an in-progress registration",
-            '   Send: { intent: "register-status", sessionToken: "<token>" }',
+            '   Send: { intent: "status", taskId: "<taskId>" }',
             "",
             "3. Look up an agent — Get full on-chain details",
             '   Say: "Look up agent #1" or send { intent: "lookup", agentId: 1 }',
@@ -842,7 +1179,14 @@ function handleHelp(taskId: string): Task {
             "4. Verify an agent — Check if an agent has a valid human proof",
             '   Say: "Verify agent #1" or send { intent: "verify", agentId: 1 }',
             "",
-            "You can use natural language or structured data parts for programmatic access.",
+            "5. Deregister an agent — Permanently remove an agent (burns NFT, clears proof)",
+            '   Say: "Deregister agent #5" or send { intent: "deregister", agentId: 5 }',
+            "   WARNING: This is irreversible. The human must confirm via Self app scan.",
+            "",
+            "6. Check proof freshness — See if an agent's proof is still valid or expiring soon",
+            '   Say: "Is agent #5 still fresh?" or send { intent: "freshness", agentId: 5 }',
+            "   Returns: days remaining, expiry date, and re-registration steps if expired.",
+            "",
             "All queries default to testnet (Celo Sepolia). Add chainId: 42220 for mainnet.",
           ),
         ],
@@ -937,6 +1281,12 @@ const registryTaskHandler: TaskHandler = {
       case "verify":
         task = await handleVerify(intent.agentId, intent.chainId, taskId);
         break;
+      case "deregister":
+        task = await handleDeregister(intent, taskId, currentRequest);
+        break;
+      case "check-freshness":
+        task = await handleCheckFreshness(intent.agentId, intent.chainId, taskId);
+        break;
       case "help":
         task = handleHelp(taskId);
         break;
@@ -947,10 +1297,22 @@ const registryTaskHandler: TaskHandler = {
             state: "completed",
             message: {
               role: "agent",
-              parts: textParts(
-                `I didn't understand that request. ${intent.type === "unknown" ? "" : ""}`,
-                'Say "help" to see what I can do, or send a structured data part with an intent field.',
-              ),
+              parts: [
+                ...textParts(
+                  "I didn't understand that request.",
+                  'Send { intent: "help" } to see what I can do. Quick examples:',
+                ),
+                dataPart({
+                  examples: [
+                    { intent: "register", network: "testnet" },
+                    { intent: "lookup", agentId: 1 },
+                    { intent: "verify", agentId: 1 },
+                    { intent: "deregister", agentId: 1 },
+                    { intent: "freshness", agentId: 1 },
+                    { intent: "help" },
+                  ],
+                }),
+              ],
             },
             timestamp: new Date().toISOString(),
           },
@@ -1036,6 +1398,8 @@ const a2aServer = new A2AServer(registryTaskHandler);
  *   - register-status: Poll registration progress
  *   - lookup: Get full on-chain agent details
  *   - verify: Check human proof status
+ *   - deregister: Permanently remove an agent (burns NFT)
+ *   - check-freshness: Check if an agent's proof is still valid or expiring
  *   - help: List capabilities
  *
  * Optional agent verification: If the request includes an `X-Agent-Id` header,

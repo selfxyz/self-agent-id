@@ -78,7 +78,7 @@ interface AgentInfo {
   registeredAt: bigint;
   guardian: string;
   metadata: string;
-  mode: "simple" | "advanced" | "walletfree";
+  mode: "self-custody" | "linked" | "walletfree";
   isSmartWallet: boolean;
   credentials?: AgentCredentials;
   verificationStrength?: number;
@@ -212,7 +212,7 @@ function VerifyContent() {
             registeredAt: 0n,
             guardian: ethers.ZeroAddress,
             metadata: "",
-            mode: "simple",
+            mode: "self-custody",
             isSmartWallet: false,
           });
         } else {
@@ -231,10 +231,10 @@ function VerifyContent() {
 
           // Detect mode: wallet-free if owner === agent address (derived from key)
           const agentAddress = "0x" + keyHash.slice(26);
-          let mode: "simple" | "advanced" | "walletfree" = "advanced";
+          let mode: "self-custody" | "linked" | "walletfree" = "linked";
           if (owner !== ethers.ZeroAddress) {
             if (agentAddress.toLowerCase() === owner.toLowerCase()) {
-              mode = guardian !== ethers.ZeroAddress ? "walletfree" : "simple";
+              mode = guardian !== ethers.ZeroAddress ? "walletfree" : "self-custody";
             }
           }
 
@@ -354,7 +354,7 @@ function VerifyContent() {
     let userDefinedData: string;
     let userId: string;
 
-    if (agentInfo.mode === "simple") {
+    if (agentInfo.mode === "self-custody") {
       userDefinedData = "D0";
       userId = walletAddress || agentAddress;
     } else if (agentInfo.mode === "walletfree") {
@@ -472,17 +472,17 @@ function VerifyContent() {
                   <div className="flex items-center gap-2">
                     <span
                       className={`text-xs px-2 py-0.5 rounded-full ${
-                        agentInfo.mode === "simple"
+                        agentInfo.mode === "self-custody"
                           ? "bg-surface-2 text-muted"
-                          : agentInfo.mode === "advanced"
+                          : agentInfo.mode === "linked"
                             ? "bg-accent/10 text-accent"
                             : "bg-accent-2/10 text-accent-2"
                       }`}
                     >
-                      {agentInfo.mode === "simple"
-                        ? "Verified Wallet"
-                        : agentInfo.mode === "advanced"
-                          ? "Agent Identity"
+                      {agentInfo.mode === "self-custody"
+                        ? "Self-Custody"
+                        : agentInfo.mode === "linked"
+                          ? "Linked Agent"
                           : "Wallet-Free"}
                     </span>
                     {agentInfo.isSmartWallet && (

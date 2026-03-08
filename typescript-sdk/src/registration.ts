@@ -5,19 +5,22 @@
 import { ethers } from "ethers";
 
 /**
- * The four supported registration modes for the SelfAgentRegistry.
+ * The supported registration modes for the SelfAgentRegistry.
  *
- * - `"verified-wallet"` -- human address equals agent address (simple register).
- * - `"agent-identity"` -- human delegates to a separate agent address (advanced register).
+ * - `"self-custody"` -- human address equals agent address (simple register).
+ * - `"linked"` -- human delegates to a separate agent address (advanced register).
  * - `"wallet-free"` -- agent key is generated; no prior wallet required.
- * - `"smart-wallet"` -- like wallet-free but intended for smart-wallet deployment.
+ * - `"ed25519"` -- like wallet-free but uses Ed25519 key instead of secp256k1.
+ * - `"ed25519-linked"` -- Ed25519 agent key linked to a human's wallet.
+ * - `"smartwallet"` -- like wallet-free but intended for smart-wallet deployment.
  */
 export type RegistrationMode =
-  | "verified-wallet"
-  | "agent-identity"
   | "wallet-free"
-  | "smart-wallet"
-  | "privy";
+  | "ed25519"
+  | "self-custody"
+  | "linked"
+  | "ed25519-linked"
+  | "smartwallet";
 
 /**
  * Disclosure requirements that map to a verification config index (0..5)
@@ -281,7 +284,7 @@ export async function signRegistrationChallenge(
 }
 
 /**
- * Builds ASCII-encoded userData for a simple (verified-wallet) registration.
+ * Builds ASCII-encoded userData for a simple (self-custody) registration.
  * Format: `"R" + configDigit`.
  *
  * @param disclosures - Disclosure requirements (defaults to none).
@@ -295,7 +298,7 @@ export function buildSimpleRegisterUserDataAscii(
 }
 
 /**
- * Builds ASCII-encoded userData for a simple (verified-wallet) deregistration.
+ * Builds ASCII-encoded userData for a simple (self-custody) deregistration.
  * Format: `"D" + configDigit`.
  *
  * @param disclosures - Disclosure requirements (defaults to none).
@@ -309,7 +312,7 @@ export function buildSimpleDeregisterUserDataAscii(
 }
 
 /**
- * Builds ASCII-encoded userData for an advanced (agent-identity) registration.
+ * Builds ASCII-encoded userData for an advanced (linked) registration.
  * Format: `"K" + configDigit + agentAddressHex(40) + r(64) + s(64) + v(2)`.
  *
  * @param params.agentAddress - The delegated agent's Ethereum address.

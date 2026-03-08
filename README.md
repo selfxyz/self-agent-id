@@ -674,7 +674,7 @@ Sessions are persisted as JSON with restricted file permissions (0600):
   "sessionId": "uuid",
   "createdAt": 1708617600,
   "expiresAt": 1708619400,
-  "mode": "agent-identity",
+  "mode": "linked",
   "disclosures": { "minimumAge": 18, "ofac": true },
   "network": {
     "chainId": 11142220,
@@ -810,7 +810,7 @@ SDK default base URL can be overridden with env var `SELF_AGENT_API_BASE`.
 
 ```json
 {
-  "mode": "agent-identity",
+  "mode": "linked",
   "network": "testnet",
   "humanAddress": "0x...",
   "disclosures": {

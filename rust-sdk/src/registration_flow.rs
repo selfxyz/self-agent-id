@@ -12,7 +12,7 @@
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! # tokio::runtime::Runtime::new()?.block_on(async {
 //! let session = RegistrationSession::request(RegistrationRequest {
-//!     mode: "agent-identity".into(),
+//!     mode: "linked".into(),
 //!     network: "mainnet".into(),
 //!     ..Default::default()
 //! }, None).await?;
@@ -224,7 +224,7 @@ impl RegistrationSession {
 
     /// Export the agent private key generated during registration.
     ///
-    /// Only available for modes that created a new keypair (e.g. agent-identity).
+    /// Only available for modes that created a new keypair (e.g. linked).
     pub async fn export_key(&self) -> Result<String, RegistrationError> {
         let resp = self
             .http

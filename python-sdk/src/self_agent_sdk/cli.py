@@ -317,20 +317,20 @@ def cmd_init(args: argparse.Namespace, operation: str) -> None:
     smart_wallet_template: dict[str, Any] | None = None
     agent_private_key: str | None = None
 
-    if mode in ("verified-wallet", "agent-identity", "privy"):
+    if mode in ("self-custody", "linked"):
         if not args.human_address:
-            raise SystemExit("--human-address is required for verified-wallet, agent-identity, and privy")
+            raise SystemExit("--human-address is required for self-custody and linked modes")
         human_identifier = _to_checksum(args.human_address)
 
     if operation == "register":
-        if mode == "verified-wallet":
+        if mode == "self-custody":
             agent_address = human_identifier
             user_defined_data = build_simple_register_user_data_ascii(disclosures)
         else:
             acct = Account.create()
             agent_private_key = "0x" + acct.key.hex()
             agent_address = _to_checksum(acct.address)
-            if mode in ("wallet-free", "smart-wallet"):
+            if mode in ("wallet-free", "smartwallet"):
                 human_identifier = agent_address
 
             # Nonce is 0 for freshly generated agent wallets (never registered before)
@@ -344,7 +344,7 @@ def cmd_init(args: argparse.Namespace, operation: str) -> None:
             challenge_hash = signed.message_hash
             signature = {"r": signed.r, "s": signed.s, "v": signed.v}
 
-            if mode in ("agent-identity", "privy"):
+            if mode == "linked":
                 user_defined_data = build_advanced_register_user_data_ascii(
                     agent_address=agent_address,
                     signature_r=signed.r,
@@ -360,7 +360,7 @@ def cmd_init(args: argparse.Namespace, operation: str) -> None:
                     signature_v=signed.v,
                     disclosures=disclosures,
                 )
-            elif mode == "smart-wallet":
+            elif mode == "smartwallet":
                 smart_wallet_template = {
                     "agentAddress": agent_address,
                     "r": signed.r,
@@ -369,21 +369,21 @@ def cmd_init(args: argparse.Namespace, operation: str) -> None:
                     "configIndex": cfg_idx,
                 }
     else:
-        if mode == "verified-wallet":
+        if mode == "self-custody":
             agent_address = human_identifier
             user_defined_data = build_simple_deregister_user_data_ascii(disclosures)
-        elif mode in ("agent-identity", "privy"):
+        elif mode == "linked":
             if not args.agent_address:
-                raise SystemExit("--agent-address is required for agent-identity/privy deregistration")
+                raise SystemExit("--agent-address is required for linked deregistration")
             agent_address = _to_checksum(args.agent_address)
             user_defined_data = build_advanced_deregister_user_data_ascii(
                 agent_address=agent_address,
                 disclosures=disclosures,
             )
-        elif mode in ("wallet-free", "smart-wallet"):
+        elif mode in ("wallet-free", "smartwallet"):
             if not args.agent_address:
                 raise SystemExit(
-                    "--agent-address is required for wallet-free and smart-wallet deregistration"
+                    "--agent-address is required for wallet-free and smartwallet deregistration"
                 )
             agent_address = _to_checksum(args.agent_address)
             human_identifier = agent_address
@@ -855,7 +855,7 @@ def build_parser() -> argparse.ArgumentParser:
     reg_sub = register.add_subparsers(dest="register_command", required=True)
 
     init = reg_sub.add_parser("init", help="Create registration session")
-    init.add_argument("--mode", required=True, choices=["verified-wallet", "agent-identity", "wallet-free", "smart-wallet", "privy"])
+    init.add_argument("--mode", required=True, choices=["self-custody", "linked", "wallet-free", "ed25519", "ed25519-linked", "smartwallet"])
     init.add_argument("--human-address")
     init.add_argument("--agent-address")
     init.add_argument("--network", default="testnet", choices=["mainnet", "testnet"])
@@ -905,7 +905,7 @@ def build_parser() -> argparse.ArgumentParser:
     dreg_sub = deregister.add_subparsers(dest="deregister_command", required=True)
 
     dinit = dreg_sub.add_parser("init", help="Create deregistration session")
-    dinit.add_argument("--mode", required=True, choices=["verified-wallet", "agent-identity", "wallet-free", "smart-wallet", "privy"])
+    dinit.add_argument("--mode", required=True, choices=["self-custody", "linked", "wallet-free", "ed25519", "ed25519-linked", "smartwallet"])
     dinit.add_argument("--human-address")
     dinit.add_argument("--agent-address")
     dinit.add_argument("--network", default="testnet", choices=["mainnet", "testnet"])

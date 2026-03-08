@@ -131,21 +131,21 @@ pub async fn sign_registration_challenge(
     })
 }
 
-/// Build `userDefinedData` for **simple (verified-wallet) registration**.
+/// Build `userDefinedData` for **simple (self-custody) registration**.
 ///
 /// Format: `"R{config_index}"` — e.g. `"R0"`, `"R4"`.
 pub fn build_simple_register_user_data_ascii(disclosures: &RegistrationDisclosures) -> String {
     format!("R{}", get_registration_config_index(disclosures))
 }
 
-/// Build `userDefinedData` for **simple (verified-wallet) deregistration**.
+/// Build `userDefinedData` for **simple (self-custody) deregistration**.
 ///
 /// Format: `"D{config_index}"` — e.g. `"D0"`, `"D4"`.
 pub fn build_simple_deregister_user_data_ascii(disclosures: &RegistrationDisclosures) -> String {
     format!("D{}", get_registration_config_index(disclosures))
 }
 
-/// Build `userDefinedData` for **advanced (agent-identity) registration**.
+/// Build `userDefinedData` for **advanced (linked) registration**.
 ///
 /// Format: `"K{cfg}{addr40}{r64}{s64}{v2}"` where all hex is lowercase, no `0x` prefix.
 pub fn build_advanced_register_user_data_ascii(
@@ -161,7 +161,7 @@ pub fn build_advanced_register_user_data_ascii(
     format!("K{cfg}{addr_hex}{r_hex}{s_hex}{v_hex}")
 }
 
-/// Build `userDefinedData` for **advanced (agent-identity) deregistration**.
+/// Build `userDefinedData` for **advanced (linked) deregistration**.
 ///
 /// Format: `"X{cfg}{addr40}"`.
 pub fn build_advanced_deregister_user_data_ascii(

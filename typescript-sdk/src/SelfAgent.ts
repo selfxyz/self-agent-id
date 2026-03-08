@@ -298,7 +298,7 @@ export class SelfAgent {
    *
    * ```ts
    * const session = await SelfAgent.requestRegistration({
-   *   mode: "agent-identity",
+   *   mode: "linked",
    *   network: "mainnet",
    *   disclosures: { minimumAge: 18, ofac: true },
    *   humanAddress: "0x...",

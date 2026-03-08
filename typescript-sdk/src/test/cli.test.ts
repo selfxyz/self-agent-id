@@ -151,13 +151,13 @@ describe("CLI registration", () => {
     harness = null;
   });
 
-  it("creates agent-identity session and exports key only with unsafe flag", () => {
+  it("creates linked session and exports key only with unsafe flag", () => {
     const sessionPath = createTempSessionPath();
     const init = runCli([
       "register",
       "init",
       "--mode",
-      "agent-identity",
+      "linked",
       "--human-address",
       "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
       "--network",
@@ -188,13 +188,13 @@ describe("CLI registration", () => {
     assert.ok(existsSync(keyPath), "agent key file should be written");
   });
 
-  it("builds smart-wallet session with template payload", () => {
+  it("builds smartwallet session with template payload", () => {
     const sessionPath = createTempSessionPath();
     const init = runCli([
       "register",
       "init",
       "--mode",
-      "smart-wallet",
+      "smartwallet",
       "--network",
       "testnet",
       "--out",
@@ -208,21 +208,21 @@ describe("CLI registration", () => {
       registration: { smartWalletTemplate?: unknown; userDefinedData?: string };
     }>(sessionPath);
     assert.strictEqual(session.operation, "register");
-    assert.strictEqual(session.mode, "smart-wallet");
+    assert.strictEqual(session.mode, "smartwallet");
     assert.ok(
       session.registration.smartWalletTemplate,
-      "smart-wallet template required",
+      "smartwallet template required",
     );
     assert.strictEqual(session.registration.userDefinedData, undefined);
   });
 
-  it("builds agent-identity deregistration session", () => {
+  it("builds linked deregistration session", () => {
     const sessionPath = createTempSessionPath();
     const init = runCli([
       "deregister",
       "init",
       "--mode",
-      "agent-identity",
+      "linked",
       "--human-address",
       "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
       "--agent-address",
@@ -241,7 +241,7 @@ describe("CLI registration", () => {
       secrets?: { agentPrivateKey?: string };
     }>(sessionPath);
     assert.strictEqual(session.operation, "deregister");
-    assert.strictEqual(session.mode, "agent-identity");
+    assert.strictEqual(session.mode, "linked");
     assert.match(
       session.registration.userDefinedData || "",
       /^X[0-5][0-9a-f]{40}$/i,
@@ -255,7 +255,7 @@ describe("CLI registration", () => {
       "register",
       "init",
       "--mode",
-      "verified-wallet",
+      "self-custody",
       "--human-address",
       DEMO_VERIFIED_ADDRESS,
       "--network",
@@ -282,7 +282,7 @@ describe("CLI registration", () => {
       "register",
       "init",
       "--mode",
-      "verified-wallet",
+      "self-custody",
       "--human-address",
       ANVIL_ALT_HUMAN_ADDRESS,
       "--chain",
@@ -326,7 +326,7 @@ describe("CLI registration", () => {
       "register",
       "init",
       "--mode",
-      "verified-wallet",
+      "self-custody",
       "--human-address",
       local.deployerAddress,
       "--chain",
@@ -400,7 +400,7 @@ describe("CLI registration", () => {
       "deregister",
       "init",
       "--mode",
-      "verified-wallet",
+      "self-custody",
       "--human-address",
       local.deployerAddress,
       "--chain",

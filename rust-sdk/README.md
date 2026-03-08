@@ -185,11 +185,11 @@ use self_agent_sdk::registration::*;
 let d = RegistrationDisclosures { minimum_age: 18, ofac: true };
 get_registration_config_index(&d); // 4
 
-// Simple mode (verified-wallet) — human IS the agent
+// Simple mode (self-custody) — human IS the agent
 build_simple_register_user_data_ascii(&RegistrationDisclosures { minimum_age: 18, ofac: false });
 // "R1"
 
-// Advanced mode (agent-identity) — agent has own keypair
+// Advanced mode (linked) — agent has own keypair
 let signed = sign_registration_challenge(
     "0xagentPrivKey",
     human_address,
@@ -225,7 +225,7 @@ use self_agent_sdk::{RegistrationRequest, RegistrationSession};
 // Start a registration session
 let session = RegistrationSession::request(
     RegistrationRequest {
-        mode: "agent-identity".to_string(),
+        mode: "linked".to_string(),
         network: "mainnet".to_string(),
         ..Default::default()
     },
@@ -248,13 +248,13 @@ let private_key = session.export_key().await?;
 Interactive registration via the command line:
 
 ```bash
-# Register an agent (agent-identity mode)
-self-agent-cli register init --mode agent-identity --human-address 0x... --network testnet
+# Register an agent (linked mode)
+self-agent-cli register init --mode linked --human-address 0x... --network testnet
 self-agent-cli register open --session .self/session.json
 self-agent-cli register wait --session .self/session.json
 
 # Deregister
-self-agent-cli deregister init --mode agent-identity --human-address 0x... --agent-address 0x... --network testnet
+self-agent-cli deregister init --mode linked --human-address 0x... --agent-address 0x... --network testnet
 self-agent-cli deregister open --session .self/session.json
 self-agent-cli deregister wait --session .self/session.json
 
@@ -266,10 +266,12 @@ self-agent-cli register export --session .self/session.json --unsafe --print-pri
 
 | Mode | Description | `userDefinedData` |
 |------|-------------|-------------------|
-| `verified-wallet` | Human address = agent address | `R{cfg}` |
-| `agent-identity` | Agent has own keypair, signed challenge | `K{cfg}{addr}{r}{s}{v}` |
+| `self-custody` | Human address = agent address | `R{cfg}` |
+| `linked` | Agent has own keypair, signed challenge | `K{cfg}{addr}{r}{s}{v}` |
 | `wallet-free` | Agent as guardian, no human wallet needed | `W{cfg}{addr}{guardian}{r}{s}{v}` |
-| `smart-wallet` | ZeroDev Kernel + passkeys | Smart wallet template |
+| `ed25519` | Ed25519 wallet-free agent | `W{cfg}{addr}{guardian}{r}{s}{v}` |
+| `ed25519-linked` | Ed25519 agent linked to human wallet | `K{cfg}{addr}{r}{s}{v}` |
+| `smartwallet` | ZeroDev Kernel + passkeys | Smart wallet template |
 
 ## Configuration
 

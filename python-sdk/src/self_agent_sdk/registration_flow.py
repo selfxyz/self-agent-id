@@ -5,7 +5,7 @@
 """REST-based registration and deregistration flow for AI agents.
 
 Usage:
-    session = SelfAgent.request_registration(mode="agent-identity", network="mainnet")
+    session = SelfAgent.request_registration(mode="linked", network="mainnet")
     print(session.qr_url)              # show to human
     print(session.human_instructions)  # tell human what to do
     result = session.wait_for_completion()
@@ -111,7 +111,7 @@ class RegistrationSession:
     def export_key(self) -> str:
         """Export the agent private key generated during registration.
 
-        Only available for modes that created a new keypair (e.g. agent-identity,
+        Only available for modes that created a new keypair (e.g. linked,
         wallet-free). Raises RuntimeError if the server refuses.
         """
         resp = httpx.post(
