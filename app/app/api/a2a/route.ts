@@ -92,7 +92,7 @@ type Intent =
   | { type: "register-poll"; taskId: string }
   | { type: "lookup"; agentId: number; chainId?: number }
   | { type: "verify"; agentId: number; chainId?: number }
-  | { type: "deregister"; agentId: number; network?: string }
+  | { type: "deregister"; agentId: number; chainId?: number }
   | { type: "check-freshness"; agentId: number; chainId?: number }
   | { type: "help" }
   | { type: "unknown"; text: string };
@@ -174,7 +174,7 @@ function parseIntent(message: Message): Intent {
       return {
         type: "deregister",
         agentId: Number(data.agentId),
-        network: (data.network as string) || undefined,
+        chainId: data.chainId ? Number(data.chainId) : undefined,
       };
     }
     if (intent === "freshness" || intent === "check-freshness" || intent === "refresh" || intent === "re-verify" || intent === "reauthenticate") {
@@ -194,8 +194,8 @@ function parseIntent(message: Message): Intent {
     /(?:deregister|unregister|revoke|remove|delete)\s+(?:agent\s*)?#?(\d+)/,
   );
   if (deregMatch) {
-    const network = text.includes("mainnet") ? "mainnet" : text.includes("testnet") ? "testnet" : undefined;
-    return { type: "deregister", agentId: Number(deregMatch[1]), network };
+    const chainId = text.includes("mainnet") ? 42220 : text.includes("testnet") ? 11142220 : undefined;
+    return { type: "deregister", agentId: Number(deregMatch[1]), chainId };
   }
 
   if (
@@ -907,8 +907,32 @@ async function handleDeregister(
   req?: NextRequest,
 ): Promise<Task> {
   const appUrl = getAppBaseUrl(req);
+  const { chainId: cid, config } = resolveChainConfig(intent.chainId);
+  if (!config) {
+    return {
+      id: taskId,
+      status: { state: "failed", message: { role: "agent", parts: textParts(`Unsupported chain: ${cid}`) }, timestamp: new Date().toISOString() },
+    };
+  }
+
+  // Map chainId to the "mainnet"/"testnet" string the deregister API expects
+  const network = cid === "42220" ? "mainnet" : "testnet";
 
   try {
+    // Look up agent address from on-chain registry
+    const rpc = new ethers.JsonRpcProvider(config.rpc);
+    const registry = typedRegistry(config.registry, rpc);
+    const agentKey = await registry.agentIdToAgentKey(BigInt(intent.agentId));
+
+    if (agentKey === ethers.ZeroHash) {
+      return {
+        id: taskId,
+        status: { state: "failed", message: { role: "agent", parts: textParts(`Agent #${intent.agentId} not found on-chain.`) }, timestamp: new Date().toISOString() },
+      };
+    }
+
+    const agentAddress = ethers.getAddress("0x" + agentKey.slice(-40));
+
     const fetchHeaders: Record<string, string> = { "Content-Type": "application/json" };
     const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
     if (bypassSecret) fetchHeaders["x-vercel-protection-bypass"] = bypassSecret;
@@ -919,8 +943,8 @@ async function handleDeregister(
       method: "POST",
       headers: fetchHeaders,
       body: JSON.stringify({
-        agentId: intent.agentId,
-        network: intent.network || "testnet",
+        agentAddress,
+        network,
       }),
     });
 
