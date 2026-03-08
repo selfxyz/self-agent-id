@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npx tsc -p ../typescript-sdk/tsconfig.build.json && next build",
+    "build": "next build",
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -14,7 +14,7 @@
     "@noble/curves": "^2.0.1",
     "@noble/ed25519": "^3.0.0",
     "@privy-io/react-auth": "^2.12.1",
-    "@selfxyz/agent-sdk": "file:../typescript-sdk",
+    "@selfxyz/agent-sdk": "0.2.0-rc.1",
     "@selfxyz/qrcode": "^1.0.18",
     "@vercel/analytics": "^1.6.1",
     "@zerodev/passkey-validator": "^5.6.0",
