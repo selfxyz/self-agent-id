@@ -113,7 +113,16 @@ function extractData(message: Message): Record<string, unknown> | null {
 
 function parseIntent(message: Message): Intent {
   const text = extractText(message).toLowerCase();
-  const data = extractData(message);
+  let data = extractData(message);
+
+  // If no data part, try to parse text as JSON (agents sometimes send structured JSON as text)
+  if (!data && text.startsWith("{")) {
+    try {
+      data = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      // Not valid JSON, fall through to NLP
+    }
+  }
 
   // Structured data takes priority (for programmatic agent callers)
   if (data) {
@@ -222,8 +231,9 @@ function parseIntent(message: Message): Intent {
   }
 
   // "freshness agent #5" / "is agent 5 expired" / "renew agent 5" / "re-verify agent 5"
+  // "check freshness of agent #1" / "freshness of agent 5"
   const freshMatch = text.match(
-    /(?:fresh|expir|renew|re-?auth|re-?verif|refresh)\w*\s+(?:agent\s*)?#?(\d+)/,
+    /(?:fresh|expir|renew|re-?auth|re-?verif|refresh)\w*\s+(?:of\s+)?(?:agent\s*)?#?(\d+)/,
   );
   if (freshMatch) {
     const chainId = text.includes("mainnet") ? 42220 : text.includes("testnet") ? 11142220 : undefined;
