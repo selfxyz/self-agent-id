@@ -116,9 +116,11 @@ function parseIntent(message: Message): Intent {
   let data = extractData(message);
 
   // If no data part, try to parse text as JSON (agents sometimes send structured JSON as text)
+  // Use the raw (non-lowercased) text to preserve key casing
   if (!data && text.startsWith("{")) {
+    const rawText = extractText(message).trim();
     try {
-      data = JSON.parse(text) as Record<string, unknown>;
+      data = JSON.parse(rawText) as Record<string, unknown>;
     } catch {
       // Not valid JSON, fall through to NLP
     }
