@@ -14,7 +14,8 @@ from eth_account import Account
 from .constants import NETWORKS, DEFAULT_NETWORK, REGISTRY_ABI, PROVIDER_ABI, HEADERS, ZERO_ADDRESS, NetworkName
 from .types import AgentInfo, AgentCredentials
 from .agent_card import (
-    A2AAgentCard, AgentSkill, SelfProtocolExtension, TrustModel, CardCredentials,
+    ERC8004AgentDocument, AgentSkill, SelfProtocolExtension, TrustModel, CardCredentials,
+    ERC8004Service, AgentInterface,
     get_provider_label, build_agent_card_dict,
 )
 from ._signing import compute_body_hash, compute_message, sign_message, address_to_agent_key
@@ -131,9 +132,10 @@ class SelfAgent:
 
     # ─── A2A Agent Card Methods ───────────────────────────────────────────
 
-    def get_agent_card(self) -> A2AAgentCard | None:
-        """Read the A2A Agent Card from on-chain metadata (if set).
+    def get_agent_card(self) -> ERC8004AgentDocument | None:
+        """Read the agent card from on-chain metadata (if set).
 
+        Supports both the new ERC-8004 format and legacy A2A v0.1 cards.
         Returns None if the agent is not registered or has no card.
         """
         agent_id = self._registry.functions.getAgentId(self._agent_key).call()
@@ -144,8 +146,7 @@ class SelfAgent:
             return None
         try:
             parsed = json.loads(raw)
-            if parsed.get("a2aVersion"):
-                return self._dict_to_card(parsed)
+            return self._dict_to_card(parsed)
         except (json.JSONDecodeError, KeyError):
             pass
         return None
@@ -207,11 +208,22 @@ class SelfAgent:
 
         chain_id = self._w3.eth.chain_id
 
-        card = A2AAgentCard(
-            a2a_version="0.1",
+        # Build services and supportedInterfaces if a URL is provided
+        services: list[ERC8004Service] = []
+        supported_interfaces: list[AgentInterface] | None = None
+        if url:
+            services.append(ERC8004Service(name="A2A", endpoint=url, version="0.3.0"))
+            supported_interfaces = [
+                AgentInterface(url=url, protocol_binding="JSONRPC", protocol_version="0.3.0")
+            ]
+
+        card = ERC8004AgentDocument(
             name=name,
-            description=description,
+            description=description or "",
+            image="",
+            services=services,
             url=url,
+            supported_interfaces=supported_interfaces,
             skills=skills,
             self_protocol=SelfProtocolExtension(
                 agent_id=agent_id,
@@ -418,20 +430,19 @@ class SelfAgent:
         )
 
     @staticmethod
-    def _dict_to_card(d: dict) -> A2AAgentCard:
-        """Parse a JSON dict into an A2AAgentCard."""
-        sp = d["selfProtocol"]
-        tm = sp["trustModel"]
-        creds = sp.get("credentials")
-        return A2AAgentCard(
-            a2a_version=d["a2aVersion"],
-            name=d["name"],
-            description=d.get("description"),
-            url=d.get("url"),
-            capabilities=d.get("capabilities"),
-            skills=[AgentSkill(name=s["name"], description=s.get("description"))
-                    for s in d["skills"]] if d.get("skills") else None,
-            self_protocol=SelfProtocolExtension(
+    def _dict_to_card(d: dict) -> ERC8004AgentDocument:
+        """Parse a JSON dict into an ERC8004AgentDocument.
+
+        Supports both the new ERC-8004 format (with 'type' field) and
+        legacy A2A v0.1 format (with 'a2aVersion' field).
+        """
+        # Parse selfProtocol if present
+        self_protocol = None
+        sp = d.get("selfProtocol")
+        if sp:
+            tm = sp["trustModel"]
+            creds = sp.get("credentials")
+            self_protocol = SelfProtocolExtension(
                 agent_id=sp["agentId"],
                 registry=sp["registry"],
                 chain_id=sp["chainId"],
@@ -454,5 +465,55 @@ class SelfAgent:
                     has_gender=creds.get("hasGender"),
                     document_expiry=creds.get("documentExpiry"),
                 ) if creds else None,
-            ),
+            )
+
+        # Parse skills
+        skills = None
+        if d.get("skills"):
+            skills = [
+                AgentSkill(
+                    id=s.get("id", s["name"]),
+                    name=s["name"],
+                    description=s.get("description"),
+                    tags=s.get("tags"),
+                    examples=s.get("examples"),
+                    input_modes=s.get("inputModes"),
+                    output_modes=s.get("outputModes"),
+                )
+                for s in d["skills"]
+            ]
+
+        # Parse services
+        services = [
+            ERC8004Service(
+                name=s["name"],
+                endpoint=s["endpoint"],
+                version=s.get("version"),
+            )
+            for s in d.get("services", [])
+        ]
+
+        # Parse supportedInterfaces
+        supported_interfaces = None
+        if d.get("supportedInterfaces"):
+            supported_interfaces = [
+                AgentInterface(
+                    url=i["url"],
+                    protocol_binding=i["protocolBinding"],
+                    protocol_version=i["protocolVersion"],
+                )
+                for i in d["supportedInterfaces"]
+            ]
+
+        return ERC8004AgentDocument(
+            type=d.get("type", "https://eips.ethereum.org/EIPS/eip-8004#registration-v1"),
+            name=d.get("name", ""),
+            description=d.get("description", ""),
+            image=d.get("image", ""),
+            services=services,
+            version=d.get("version"),
+            url=d.get("url"),
+            supported_interfaces=supported_interfaces,
+            skills=skills,
+            self_protocol=self_protocol,
         )

@@ -10,8 +10,15 @@ from .types import (
     AgentInfo, VerificationResult, AgentCredentials,
 )
 from .agent_card import (
-    A2AAgentCard, SelfProtocolExtension, TrustModel, CardCredentials, AgentSkill,
+    SelfProtocolExtension, TrustModel, CardCredentials, AgentSkill,
+    AgentInterface, A2ACapabilities, A2AProvider,
+    APIKeySecurityScheme, HTTPAuthSecurityScheme, OAuth2SecurityScheme,
+    OpenIdConnectSecurityScheme,
+    JWSSignature, AgentExtension,
+    ERC8004Service, ERC8004Registration, ERC8004AgentDocument,
+    GenerateRegistrationJSONOptions, A2AOptions,
     PROVIDER_LABELS, get_provider_label, get_strength_color, build_agent_card_dict,
+    generate_registration_json,
 )
 from .registration import (
     SignedRegistrationChallenge,
@@ -37,7 +44,14 @@ __all__ = [
     "HEADERS", "NETWORKS", "DEFAULT_NETWORK", "REGISTRY_ABI", "PROVIDER_ABI",
     "AgentInfo", "VerificationResult", "AgentCredentials",
     "A2AAgentCard", "SelfProtocolExtension", "TrustModel", "CardCredentials", "AgentSkill",
+    "AgentInterface", "A2ACapabilities", "A2AProvider",
+    "APIKeySecurityScheme", "HTTPAuthSecurityScheme", "OAuth2SecurityScheme",
+    "OpenIdConnectSecurityScheme",
+    "JWSSignature", "AgentExtension",
+    "ERC8004Service", "ERC8004Registration", "ERC8004AgentDocument",
+    "GenerateRegistrationJSONOptions", "A2AOptions",
     "PROVIDER_LABELS", "get_provider_label", "get_strength_color", "build_agent_card_dict",
+    "generate_registration_json",
     "SignedRegistrationChallenge",
     "get_registration_config_index",
     "compute_registration_challenge_hash",

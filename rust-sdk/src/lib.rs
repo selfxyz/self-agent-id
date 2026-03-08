@@ -67,9 +67,14 @@ pub mod middleware;
 // Re-exports
 pub use agent::{AgentInfo, SelfAgent, SelfAgentConfig};
 pub use agent_card::{
-    A2AAgentCard, AgentSkill, CardCredentials, SelfProtocolExtension, TrustModel,
-    get_provider_label, get_strength_color,
+    AgentSkill, CardCredentials, SelfProtocolExtension, TrustModel,
+    AgentInterface, A2ACapabilities, A2AProvider,
+    SecurityScheme, JwsSignature, AgentExtension,
+    Erc8004Service, Erc8004Registration, Erc8004AgentDocument,
+    A2AOptions, GenerateRegistrationJsonOptions,
+    get_provider_label, get_strength_color, generate_registration_json,
 };
+
 pub use constants::{headers, NetworkName};
 pub use ed25519_agent::{Ed25519Agent, Ed25519AgentConfig};
 pub use registration::{
