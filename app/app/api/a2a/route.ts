@@ -278,9 +278,23 @@ async function handleRegister(
   // Call the registration API internally
   const appUrl = getAppBaseUrl(req);
   try {
+    const fetchHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    // Forward Vercel deployment protection bypass (one-time project env var)
+    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    if (bypassSecret) {
+      fetchHeaders["x-vercel-protection-bypass"] = bypassSecret;
+    }
+    // Forward cookies from the incoming request (handles SSO auth on previews)
+    const cookies = req?.headers.get("cookie");
+    if (cookies) {
+      fetchHeaders["cookie"] = cookies;
+    }
+
     const res = await fetch(`${appUrl}/api/agent/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: fetchHeaders,
       body: JSON.stringify({
         mode: intent.mode || "agent-identity",
         network: intent.network,
@@ -403,9 +417,21 @@ async function handleRegisterStatus(
 ): Promise<Task> {
   const appUrl = getAppBaseUrl(req);
   try {
+    const statusHeaders: Record<string, string> = {
+      Authorization: `Bearer ${sessionToken}`,
+    };
+    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    if (bypassSecret) {
+      statusHeaders["x-vercel-protection-bypass"] = bypassSecret;
+    }
+    const cookies = req?.headers.get("cookie");
+    if (cookies) {
+      statusHeaders["cookie"] = cookies;
+    }
+
     const res = await fetch(`${appUrl}/api/agent/register/status`, {
       method: "GET",
-      headers: { Authorization: `Bearer ${sessionToken}` },
+      headers: statusHeaders,
     });
 
     const result = (await res.json()) as Record<string, unknown>;
