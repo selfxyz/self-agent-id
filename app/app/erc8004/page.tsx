@@ -227,7 +227,7 @@ interface IHumanProofProvider {
     function providerName() external view returns (string memory);
 
     /// @notice Verification strength score (0-100)
-    /// @dev 100 = passport/NFC chip, 60 = government ID, 40 = liveness check
+    /// @dev 100 = biometric passport/ID, 80 = Aadhaar, 50 = third-party identity check
     function verificationStrength() external view returns (uint8);
 }`,
                 },
@@ -361,9 +361,10 @@ GET /.well-known/a2a/{agentId}?chain={chainId}  → Redirect to card resolver`}
               Self Protocol
             </a>{" "}
             as the proof provider, deployed on{" "}
-            {network.isTestnet ? "Celo Sepolia" : "Celo"}. It supports four
-            registration modes (verified wallet, agent identity, wallet-free,
-            and passkey smart wallet) with full sybil resistance and ZK privacy.
+            {network.isTestnet ? "Celo Sepolia" : "Celo"}. It supports six
+            registration modes (linked agent, wallet-free, smart wallet, social
+            login, Ed25519, and Ed25519 + guardian) with full sybil resistance
+            and ZK privacy.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">

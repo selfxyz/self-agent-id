@@ -1020,7 +1020,7 @@ function renderAgentCards(
                 }
               >
                 {agent.mode === "self-custody"
-                  ? "Self-Custody"
+                  ? "Direct Ownership"
                   : agent.mode === "linked"
                     ? "Linked Agent"
                     : "Wallet-Free"}

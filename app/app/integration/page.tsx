@@ -352,7 +352,7 @@ self-agent register export --session .self/session.json`,
             >
               MCP server
             </a>{" "}
-            exposes 10 tools for identity management &mdash; register, sign,
+            exposes tools for identity management &mdash; register, sign,
             verify, and query agents without leaving your editor.
           </p>
 
@@ -457,7 +457,7 @@ claude plugin add /path/to/self-agent-id/plugin`,
                 ],
                 [
                   "register-agent",
-                  "Step-by-step registration in all modes (linked, wallet-free, smart-wallet, ed25519)",
+                  "Step-by-step registration in all modes (linked, wallet-free, smart-wallet, privy, ed25519, ed25519+guardian)",
                 ],
                 [
                   "sign-requests",

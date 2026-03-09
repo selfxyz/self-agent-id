@@ -2014,7 +2014,7 @@ export default function DemoPage() {
       const signer = await provider.getSigner();
       const address = await signer.getAddress();
 
-      // Derive agent key (simple mode: address = agent)
+      // Derive agent key (wallet address = agent key)
       const agentKey = ethers.zeroPadValue(address, 32);
 
       // Check on-chain
@@ -2025,7 +2025,7 @@ export default function DemoPage() {
       if (!isVerified) {
         throw new Error(
           "This wallet is not registered as a verified agent. " +
-            "Register first using Simple (Verified Wallet) mode.",
+            "Register first using Linked Agent mode.",
         );
       }
 
@@ -2559,8 +2559,8 @@ export default function DemoPage() {
           ) : (
             <>
               <p className="text-xs text-muted mb-4">
-                Connect your browser wallet to load a Simple (Verified Wallet)
-                mode agent. Your wallet address is your agent identity.
+                Connect your browser wallet to load your agent. Your wallet
+                is used to look up agents registered under your address.
               </p>
               {walletError && (
                 <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4">

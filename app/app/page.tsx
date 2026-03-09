@@ -75,8 +75,8 @@ export default function Home() {
                     <Bot size={16} className="text-accent-2" />
                   </span>
                   <p className="text-base text-muted leading-relaxed">
-                    Your agents book travel, manage finances, and negotiate on
-                    your behalf.
+                    AI agents are entering the economy &mdash; transacting,
+                    communicating, and making decisions autonomously.
                   </p>
                 </div>
                 <div className="flex items-start gap-3">
@@ -84,8 +84,8 @@ export default function Home() {
                     <Shield size={16} className="text-accent-warn" />
                   </span>
                   <p className="text-base text-foreground font-medium leading-relaxed">
-                    But how does anyone know there&apos;s a real person behind
-                    them?
+                    Creating agents is trivial &mdash; proving there&apos;s a
+                    unique human behind each one isn&apos;t.
                   </p>
                 </div>
                 <div className="flex items-start gap-3">
@@ -98,6 +98,18 @@ export default function Home() {
                     <strong className="text-foreground">
                       No personal data shared. Ever.
                     </strong>
+                  </p>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="w-8 h-8 rounded-full bg-accent-2/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Users size={16} className="text-accent-2" />
+                  </span>
+                  <p className="text-base text-muted leading-relaxed">
+                    Sybil-resistant by design &mdash; each person maps to{" "}
+                    <strong className="text-foreground">
+                      one unique verified identity
+                    </strong>
+                    , so no one can game the system.
                   </p>
                 </div>
               </div>
@@ -293,13 +305,13 @@ export default function Home() {
             {[
               {
                 icon: ScanLine,
-                title: "Scan an Identity Document",
-                desc: "Open the Self app and scan the QR code. A cryptographic proof is generated on your phone. No personal data leaves your device.",
+                title: "Choose a Mode & Verify",
+                desc: "A guided wizard walks you through registration. Pick how you want to secure your agent, then scan your passport with the Self app. A zero-knowledge proof is generated on your phone — no personal data leaves your device.",
               },
               {
                 icon: Bot,
                 title: "Your Agent Gets an Identity",
-                desc: "A verified identity is created that links your agent to a real human. You stay completely anonymous. You choose exactly which credentials your agent can carry.",
+                desc: "Your agent receives a soulbound NFT and a verified identity linked to a real human. You stay completely anonymous — only the proof is stored on-chain.",
               },
               {
                 icon: Zap,
@@ -352,7 +364,7 @@ export default function Home() {
                 iconColor: "text-accent",
                 bgColor: "bg-accent/20",
                 title: "Agent Operators",
-                desc: "Register your AI agent with a passport scan. Choose from five modes \u2014 wallet-based, agent keypair, wallet-free, passkey smart wallet, or social login via Privy. Your agent gets a soulbound NFT and an A2A-compatible identity card that any service can verify instantly.",
+                desc: "A guided wizard walks you through registering your agent in minutes. Connect a wallet, use a passkey, social login, or go wallet-free \u2014 multiple options to match your setup. Your agent gets a verified on-chain identity that any service can check instantly.",
                 btnIcon: Key,
                 btnLabel: "Register Agent",
                 btnVariant: "primary" as const,
@@ -363,7 +375,7 @@ export default function Home() {
                 iconColor: "text-accent-2",
                 bgColor: "bg-accent-2/20",
                 title: "Service Developers",
-                desc: "Add one line of middleware to verify agents are human-backed. The SDK recovers the signer from ECDSA signatures and checks the on-chain registry \u2014 with configurable sybil limits, credential checks, and reputation-based access control.",
+                desc: "Add a few lines of middleware to verify that incoming agents are human-backed. Configure what credentials you require \u2014 age, sanctions compliance, sybil limits \u2014 and the SDK handles the rest. Available for TypeScript, Python, and Rust.",
                 btnIcon: Code2,
                 btnLabel: "Integration Guide",
                 btnVariant: "secondary" as const,
@@ -374,7 +386,7 @@ export default function Home() {
                 iconColor: "text-purple-400",
                 bgColor: "bg-purple-500/20",
                 title: "AI Coding Assistants",
-                desc: "Use the MCP server or Claude Code plugin to manage agent identity directly from your IDE. Register, sign requests, verify agents, and query credentials \u2014 10 tools that work in any MCP-compatible IDE (Claude Code, Cursor, Windsurf, Copilot, and more).",
+                desc: "Use the MCP server or Claude Code plugin to manage agent identity directly from your IDE. Register agents, sign requests, and query credentials \u2014 works in any MCP-compatible environment (Claude Code, Cursor, Windsurf, Copilot, and more).",
                 btnIcon: Bot,
                 btnLabel: "MCP & Plugin",
                 btnVariant: "secondary" as const,
@@ -425,8 +437,8 @@ export default function Home() {
               },
               {
                 icon: CalendarCheck,
-                title: "Operator is Over 18",
-                desc: "Age-gated services can verify your agent's operator meets the requirement.",
+                title: "Age Verified (18 or 21+)",
+                desc: "Age-gated services can verify your agent's operator meets their minimum age requirement.",
                 variant: "info" as const,
               },
               {
@@ -623,29 +635,6 @@ const res = await agent.fetch(url);`,
         </div>
       </section>
 
-      {/* ────────────── Bottom CTA ────────────── */}
-      <section className="px-6 py-20">
-        <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-3xl font-bold mb-4">
-            Ready to Give Your Agent an Identity?
-          </h2>
-          <p className="text-muted mb-8">
-            Register your first agent in minutes. No personal data required.
-          </p>
-          <div className="flex flex-col sm:flex-row justify-center gap-3">
-            <Link href="/agents/register">
-              <Button variant="primary" size="lg">
-                Register Your Agent
-              </Button>
-            </Link>
-            <Link href="/explainer">
-              <Button variant="secondary" size="lg">
-                Read the Docs
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
     </main>
   );
 }

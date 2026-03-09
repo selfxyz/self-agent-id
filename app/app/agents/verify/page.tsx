@@ -480,7 +480,7 @@ function VerifyContent() {
                       }`}
                     >
                       {agentInfo.mode === "self-custody"
-                        ? "Self-Custody"
+                        ? "Direct Ownership"
                         : agentInfo.mode === "linked"
                           ? "Linked Agent"
                           : "Wallet-Free"}
@@ -554,11 +554,9 @@ function VerifyContent() {
                         className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${
                           agentInfo.verificationStrength >= 80
                             ? "bg-green-500"
-                            : agentInfo.verificationStrength >= 60
+                            : agentInfo.verificationStrength >= 50
                               ? "bg-blue-500"
-                              : agentInfo.verificationStrength >= 40
-                                ? "bg-amber-500"
-                                : "bg-gray-500"
+                              : "bg-gray-500"
                         }`}
                       >
                         {agentInfo.verificationStrength}
@@ -567,12 +565,12 @@ function VerifyContent() {
                         Verification Strength:{" "}
                         <strong className="text-foreground">
                           {agentInfo.verificationStrength >= 100
-                            ? "Passport"
+                            ? "Biometric Document"
                             : agentInfo.verificationStrength >= 80
-                              ? "KYC"
-                              : agentInfo.verificationStrength >= 60
-                                ? "Govt ID"
-                                : "Liveness"}
+                              ? "Aadhaar"
+                              : agentInfo.verificationStrength >= 50
+                                ? "Third-Party Identity Check"
+                                : "Other"}
                         </strong>
                       </span>
                     </div>
