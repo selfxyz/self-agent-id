@@ -43,7 +43,6 @@ import { ed25519 } from "@noble/curves/ed25519.js";
 import { typedRegistry } from "@/lib/contract-types";
 
 type Mode =
-  | "self-custody"
   | "linked"
   | "wallet-free"
   | "ed25519"
@@ -52,7 +51,6 @@ type Mode =
   | "smartwallet";
 
 const VALID_MODES = new Set<Mode>([
-  "self-custody",
   "linked",
   "wallet-free",
   "ed25519",
@@ -118,7 +116,7 @@ export async function POST(req: NextRequest) {
   const rawMode = body.mode;
   if (!rawMode || !VALID_MODES.has(rawMode as Mode)) {
     return errorResponse(
-      `Invalid mode: "${body.mode}". Valid modes: self-custody, linked, wallet-free, ed25519, ed25519-linked, privy, smartwallet`,
+      `Invalid mode: "${body.mode}". Valid modes: linked, wallet-free, ed25519, ed25519-linked, privy, smartwallet`,
       400,
     );
   }
@@ -134,9 +132,9 @@ export async function POST(req: NextRequest) {
   const network = body.network;
   const networkConfig = getNetworkConfig(network);
 
-  // ── Validate humanAddress (required for self-custody, linked, ed25519-linked, privy, smartwallet) ──
+  // ── Validate humanAddress (required for linked, ed25519-linked, privy, smartwallet) ──
   const needsHumanAddress =
-    mode === "self-custody" || mode === "linked" || mode === "ed25519-linked" || mode === "privy" || mode === "smartwallet";
+    mode === "linked" || mode === "ed25519-linked" || mode === "privy" || mode === "smartwallet";
   if (
     needsHumanAddress &&
     (!body.humanAddress || !isValidAddress(body.humanAddress))
@@ -167,12 +165,7 @@ export async function POST(req: NextRequest) {
     let humanAddress: string;
     let userDefinedData: string;
 
-    if (mode === "self-custody") {
-      // Self-custody: agent address = human address
-      humanAddress = ethers.getAddress(body.humanAddress!);
-      agentAddress = humanAddress;
-      userDefinedData = buildSimpleRegisterUserDataAscii(disclosures);
-    } else if (mode === "linked" || mode === "privy" || mode === "smartwallet") {
+    if (mode === "linked" || mode === "privy" || mode === "smartwallet") {
       // Linked: generate fresh keypair, human wallet signs nothing server-side
       humanAddress = ethers.getAddress(body.humanAddress!);
       const wallet = ethers.Wallet.createRandom();

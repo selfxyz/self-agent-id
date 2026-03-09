@@ -457,7 +457,7 @@ claude plugin add /path/to/self-agent-id/plugin`,
                 ],
                 [
                   "register-agent",
-                  "Step-by-step registration in all modes (self-custody, linked, wallet-free, smart-wallet, ed25519)",
+                  "Step-by-step registration in all modes (linked, wallet-free, smart-wallet, ed25519)",
                 ],
                 [
                   "sign-requests",

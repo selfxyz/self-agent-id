@@ -16,7 +16,6 @@ const DISCOVERY = {
   registrationModes: [
     "wallet-free",
     "ed25519",
-    "self-custody",
     "linked",
     "ed25519-linked",
   ],

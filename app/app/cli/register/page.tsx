@@ -28,7 +28,6 @@ let SelfAppBuilderClass:
   | null = null;
 
 type HandoffMode =
-  | "self-custody"
   | "linked"
   | "wallet-free"
   | "smartwallet";

@@ -211,17 +211,15 @@ function parseIntent(message: Message): Intent {
       type: "register",
       network,
       humanAddress: addrMatch?.[0],
-      mode: text.includes("self-custody") || text.includes("self custody")
-        ? "self-custody"
-        : text.includes("ed25519-linked") || text.includes("ed25519 linked")
-          ? "ed25519-linked"
-          : text.includes("ed25519")
-            ? "ed25519"
-            : text.includes("linked")
+      mode: text.includes("ed25519-linked") || text.includes("ed25519 linked")
+        ? "ed25519-linked"
+        : text.includes("ed25519")
+          ? "ed25519"
+          : text.includes("linked")
+            ? "linked"
+            : addrMatch
               ? "linked"
-              : addrMatch
-                ? "linked"
-                : "wallet-free",
+              : "wallet-free",
     };
   }
 
@@ -1189,10 +1187,6 @@ function handleHelp(taskId: string): Task {
             "     public key and a pre-signed challenge to prove key ownership.",
             '     Example: { intent: "register", ed25519Pubkey: "...", ed25519Signature: "..." }',
             "",
-            "   - self-custody: Human's wallet IS the agent. For humans registering their",
-            "     own wallet address as an agent identity.",
-            '     Requires: { humanAddress: "0x...", mode: "self-custody" }',
-            "",
             "   - linked: Separate agent EVM keys, linked to a human wallet. For agents",
             "     that want their own keypair tied to a specific human wallet address.",
             '     Requires: { humanAddress: "0x...", mode: "linked" }',
@@ -1206,9 +1200,7 @@ function handleHelp(taskId: string): Task {
             "   │  ├─ YES + want to link a human wallet? → ed25519-linked",
             "   │  └─ YES + no human wallet needed?      → ed25519 (default for Ed25519 agents)",
             "   └─ No Ed25519 keys?",
-            "      ├─ Want to link a human wallet?",
-            "      │  ├─ Human IS the agent?             → self-custody",
-            "      │  └─ Agent gets own keys?            → linked",
+            "      ├─ Want to link a human wallet?       → linked (recommended)",
             "      └─ No human wallet needed?            → wallet-free (default)",
             "",
             "2. Check registration status — Poll an in-progress registration",

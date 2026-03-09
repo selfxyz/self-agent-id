@@ -222,7 +222,7 @@ describe("agent register init route", () => {
       makeNextRequest("https://example.com/api/agent/register", {
         method: "POST",
         body: JSON.stringify({
-          mode: "self-custody",
+          mode: "linked",
           network: "testnet",
           humanAddress: "0xabc",
         }),
@@ -252,7 +252,7 @@ describe("agent register init route", () => {
       makeNextRequest("https://example.com/api/agent/register", {
         method: "POST",
         body: JSON.stringify({
-          mode: "self-custody",
+          mode: "linked",
           network: "badnet",
           humanAddress: "0xabc",
         }),
@@ -264,14 +264,14 @@ describe("agent register init route", () => {
     );
   });
 
-  it("requires humanAddress for self-custody mode", async () => {
+  it("requires humanAddress for linked mode", async () => {
     mockHelpers.isValidAddress.mockReturnValue(false);
     const { POST } = await loadRegisterRoute();
     const res = await POST(
       makeNextRequest("https://example.com/api/agent/register", {
         method: "POST",
         body: JSON.stringify({
-          mode: "self-custody",
+          mode: "linked",
           network: "testnet",
           humanAddress: "not-an-address",
         }),
@@ -291,7 +291,7 @@ describe("agent register init route", () => {
       makeNextRequest("https://example.com/api/agent/register", {
         method: "POST",
         body: JSON.stringify({
-          mode: "self-custody",
+          mode: "linked",
           network: "testnet",
           humanAddress: "0xabc",
           disclosures: { minimumAge: 25 },
@@ -324,7 +324,7 @@ describe("agent register init route", () => {
     );
   });
 
-  it("creates a self-custody mode registration session", async () => {
+  it("rejects the removed self-custody mode", async () => {
     const { POST } = await loadRegisterRoute();
     const res = await POST(
       makeNextRequest("https://example.com/api/agent/register", {
@@ -333,22 +333,14 @@ describe("agent register init route", () => {
           mode: "self-custody",
           network: "testnet",
           humanAddress: "0x00000000000000000000000000000000000000FF",
-          disclosures: { minimumAge: 18, ofac: true },
         }),
       }),
     );
 
-    expect(res.status).toBe(200);
-    expect(mockBuildSimpleRegisterUserDataAscii).toHaveBeenCalledWith({
-      minimumAge: 18,
-      ofac: true,
-    });
-    expect(
-      await jsonBody<{ mode: string; sessionToken: string }>(res),
-    ).toMatchObject({
-      mode: "self-custody",
-      sessionToken: "encrypted-session-token",
-    });
+    expect(res.status).toBe(400);
+    expect((await jsonBody<{ error: string }>(res)).error).toContain(
+      "Invalid mode",
+    );
   });
 
   it("creates a linked registration with signed challenge", async () => {
