@@ -78,7 +78,7 @@ interface AgentInfo {
   registeredAt: bigint;
   guardian: string;
   metadata: string;
-  mode: "self-custody" | "linked" | "walletfree";
+  mode: "self-custody" | "linked" | "walletfree" | "ed25519" | "ed25519-linked" | "smartwallet" | "privy";
   isSmartWallet: boolean;
   credentials?: AgentCredentials;
   verificationStrength?: number;
@@ -190,9 +190,14 @@ function VerifyContent() {
       try {
         let keyHash: string;
         if (key.startsWith("0x") && key.length === 66) {
+          // Already a bytes32 key (zero-padded EVM address or Ed25519 pubkey)
           keyHash = key;
         } else if (key.startsWith("0x") && key.length === 42) {
+          // EVM address — zero-pad to bytes32
           keyHash = ethers.zeroPadValue(key, 32);
+        } else if (/^[0-9a-fA-F]{64}$/.test(key)) {
+          // 64-char hex without 0x prefix — Ed25519 public key
+          keyHash = "0x" + key.toLowerCase();
         } else {
           keyHash = ethers.keccak256(ethers.toUtf8Bytes(key));
         }
@@ -229,12 +234,27 @@ function VerifyContent() {
             // Token was burned (deregistered) or V3 contract without guardian/metadata
           }
 
-          // Detect mode: wallet-free if owner === agent address (derived from key)
+          // Detect smart wallet: guardian is a contract (has code)
+          let isSmartWallet = false;
+          if (guardian !== ethers.ZeroAddress) {
+            try {
+              const code = await provider.getCode(guardian);
+              isSmartWallet = code !== "0x" && code.length > 2;
+            } catch {}
+          }
+
+          // Detect mode based on key type and ownership
+          const isEd25519Key = keyHash.slice(2, 26) !== "000000000000000000000000";
           const agentAddress = "0x" + keyHash.slice(26);
-          let mode: "self-custody" | "linked" | "walletfree" = "linked";
-          if (owner !== ethers.ZeroAddress) {
+          let mode: AgentInfo["mode"] = "linked";
+          if (isEd25519Key) {
+            // Ed25519 key — first 12 bytes are non-zero (not a zero-padded EVM address)
+            mode = guardian !== ethers.ZeroAddress ? "ed25519-linked" : "ed25519";
+          } else if (owner !== ethers.ZeroAddress) {
             if (agentAddress.toLowerCase() === owner.toLowerCase()) {
               mode = guardian !== ethers.ZeroAddress ? "walletfree" : "self-custody";
+            } else if (isSmartWallet) {
+              mode = "smartwallet";
             }
           }
 
@@ -264,15 +284,6 @@ function VerifyContent() {
             }
           } catch {
             // V4 contract without getAgentCredentials — ignore
-          }
-
-          // Detect smart wallet: guardian is a contract (has code)
-          let isSmartWallet = false;
-          if (guardian !== ethers.ZeroAddress) {
-            try {
-              const code = await provider.getCode(guardian);
-              isSmartWallet = code !== "0x" && code.length > 2;
-            } catch {}
           }
 
           // Read verification strength from provider
@@ -354,15 +365,16 @@ function VerifyContent() {
     let userDefinedData: string;
     let userId: string;
 
-    if (agentInfo.mode === "self-custody") {
+    if (agentInfo.mode === "self-custody" || agentInfo.mode === "ed25519") {
+      // No guardian — deregister via passport scan
       userDefinedData = "D0";
-      userId = walletAddress || agentAddress;
+      userId = agentInfo.mode === "ed25519" ? resolvedKey.slice(2) : (walletAddress || agentAddress);
     } else if (agentInfo.mode === "walletfree") {
-      // Wallet-free: use "D" action with agent address as userId
+      // Wallet-free: deregister via passport scan
       userDefinedData = "D0";
       userId = agentAddress;
     } else {
-      // Advanced mode
+      // Guardian-linked modes (linked, ed25519-linked, smartwallet, privy)
       userDefinedData = "X0" + resolvedKey.slice(26);
       userId = walletAddress || agentAddress;
     }
@@ -421,7 +433,7 @@ function VerifyContent() {
           type="text"
           value={agentKey}
           onChange={(e) => setAgentKey(e.target.value)}
-          placeholder="Agent address (0x...) or bytes32 key"
+          placeholder="EVM address (0x...), bytes32 key, or Ed25519 pubkey (hex)"
           className="flex-1 px-4 py-3 bg-surface-2 border border-border rounded-lg focus:border-accent focus:ring-0"
         />
         <Button type="submit" disabled={loading || !agentKey} variant="primary">
@@ -474,16 +486,22 @@ function VerifyContent() {
                       className={`text-xs px-2 py-0.5 rounded-full ${
                         agentInfo.mode === "self-custody"
                           ? "bg-surface-2 text-muted"
-                          : agentInfo.mode === "linked"
-                            ? "bg-accent/10 text-accent"
-                            : "bg-accent-2/10 text-accent-2"
+                          : agentInfo.mode === "ed25519" || agentInfo.mode === "ed25519-linked"
+                            ? "bg-purple-500/10 text-purple-400"
+                            : agentInfo.mode === "linked" || agentInfo.mode === "smartwallet" || agentInfo.mode === "privy"
+                              ? "bg-accent/10 text-accent"
+                              : "bg-accent-2/10 text-accent-2"
                       }`}
                     >
-                      {agentInfo.mode === "self-custody"
-                        ? "Direct Ownership"
-                        : agentInfo.mode === "linked"
-                          ? "Linked Agent"
-                          : "Wallet-Free"}
+                      {({
+                        "self-custody": "Direct Ownership",
+                        linked: "Linked Agent",
+                        walletfree: "Wallet-Free",
+                        smartwallet: "Smart Wallet",
+                        privy: "Social Login (Privy)",
+                        ed25519: "Ed25519",
+                        "ed25519-linked": "Ed25519 + Guardian",
+                      })[agentInfo.mode]}
                     </span>
                     {agentInfo.isSmartWallet && (
                       <Badge variant="success">
@@ -743,8 +761,8 @@ function VerifyContent() {
 
           {agentInfo.isVerified && (
             <div className="w-full mt-2">
-              {agentInfo.mode === "walletfree" ? (
-                // Wallet-free: no wallet needed, deregister via passport scan
+              {agentInfo.mode === "walletfree" || agentInfo.mode === "ed25519" ? (
+                // Wallet-free / Ed25519 (no guardian): deregister via passport scan
                 !showDeregister ? (
                   <Button onClick={handleDeregister} variant="danger" size="sm">
                     Deregister (scan passport)
