@@ -86,6 +86,19 @@ export function getAgentDiscoveryJSON(): AgentDiscoveryJSON {
       { path: "/api/agent/register", description: "REST registration endpoint", method: "POST" },
       { path: "/api/agent/register/ed25519-challenge", description: "Ed25519 challenge-response flow", method: "POST" },
       { path: "/api/agent/register/status", description: "Poll registration status", method: "GET" },
+      { path: "/api/agent/deregister", description: "Deregister an agent (burn NFT)", method: "POST" },
+      { path: "/api/agent/deregister/status", description: "Poll deregistration status", method: "GET" },
+      { path: "/api/agent/refresh", description: "Refresh proof-of-human (re-verify)", method: "POST" },
+      { path: "/api/agent/refresh/status", description: "Poll refresh status", method: "GET" },
+      { path: "/api/agent/identify", description: "Identify agent from signed headers", method: "POST" },
+      { path: "/api/agent/identify/status", description: "Poll identification status", method: "GET" },
+      { path: "/api/agent/agents-by-nullifier/:chainId/:nullifier", description: "List all agents for a human nullifier", method: "GET" },
+      { path: "/api/demo/verify", description: "Demo: agent-to-service verification", method: "POST" },
+      { path: "/api/demo/agent-to-agent", description: "Demo: mutual agent verification + sameHuman", method: "POST" },
+      { path: "/api/demo/chain-verify", description: "Demo: on-chain ECDSA meta-tx verification", method: "POST" },
+      { path: "/api/demo/chain-verify-ed25519", description: "Demo: on-chain Ed25519 meta-tx verification", method: "POST" },
+      { path: "/api/demo/chat", description: "Demo: AI agent chat (LangChain proxy)", method: "POST" },
+      { path: "/api/demo/census", description: "Demo: anonymous credential census", method: "POST+GET" },
     ],
     erc8004: {
       description:
@@ -255,6 +268,130 @@ Content-Type: application/json
 \`\`\`
 
 The server generates an agent key. The response includes a QR code for the human to scan. Poll status at /api/agent/register/status?sessionToken=<token>.
+
+## Agent Lifecycle Endpoints
+
+### Deregister
+POST ${base}/api/agent/deregister
+Content-Type: application/json
+Headers: x-self-agent-signature, x-self-agent-timestamp
+
+Burns the agent's soulbound NFT. Irreversible. Poll status at:
+GET ${base}/api/agent/deregister/status?sessionToken=<token>
+
+### Refresh Proof-of-Human
+POST ${base}/api/agent/refresh
+Content-Type: application/json
+Headers: x-self-agent-signature, x-self-agent-timestamp
+
+Re-verifies the agent's human backing (e.g. after passport renewal or expiry). Returns a QR code for the human to scan. Poll status at:
+GET ${base}/api/agent/refresh/status?sessionToken=<token>
+
+### Identify Agent
+POST ${base}/api/agent/identify
+Content-Type: application/json
+Headers: x-self-agent-signature, x-self-agent-timestamp
+
+Resolves an agent's on-chain identity from signed request headers. Returns agentId, verification status, and credentials. Poll status at:
+GET ${base}/api/agent/identify/status?sessionToken=<token>
+
+### Agents by Nullifier
+GET ${base}/api/agent/agents-by-nullifier/:chainId/:nullifier
+
+Lists all agents registered by a specific human (identified by their nullifier hash). Useful for sybil detection and human-to-agent mapping.
+
+## Demo Endpoints (Test Your Agent)
+
+All demo endpoints require Self Agent ID signed headers. Use \`agent.fetch()\` from the SDK:
+
+\`\`\`typescript
+const res = await agent.fetch("${base}/api/demo/agent-to-agent?network=celo-sepolia", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ test: "hello" }),
+});
+\`\`\`
+
+### Agent-to-Service (simplest test)
+POST ${base}/api/demo/verify?network=celo-sepolia
+Verifies your agent's identity and returns credentials. Good first test.
+
+### Agent-to-Agent (recommended primary test)
+POST ${base}/api/demo/agent-to-agent?network=celo-sepolia
+A pre-registered demo agent verifies you, does a sameHuman check, and signs its response. Demonstrates mutual authentication.
+
+### Agent-to-Chain — ECDSA
+POST ${base}/api/demo/chain-verify
+Submits an EIP-712 meta-tx to the on-chain AgentDemoVerifier. Requires RELAYER_PRIVATE_KEY on the server.
+
+### Agent-to-Chain — Ed25519
+POST ${base}/api/demo/chain-verify-ed25519
+Submits an Ed25519 meta-tx to AgentDemoVerifierEd25519. Requires RELAYER_PRIVATE_KEY on the server.
+
+### AI Agent Chat
+POST ${base}/api/demo/chat?network=celo-sepolia
+LangChain-powered AI that verifies your identity on-chain before chatting. Requires LANGCHAIN_URL on the server.
+
+### Anonymous Census
+POST ${base}/api/demo/census?network=celo-sepolia — contribute credentials
+GET ${base}/api/demo/census?network=celo-sepolia — read aggregate stats (requires auth)
+GET ${base}/api/demo/census?help=1 — endpoint documentation (no auth required)
+
+Tip: Send a GET request to any demo endpoint (except census) to receive machine-readable usage documentation as JSON.
+
+## Agent Authentication Headers
+
+All authenticated endpoints use signed HTTP headers. The SDK handles this via \`agent.fetch()\` and \`agent.signRequest()\`.
+
+### Header Protocol
+  - x-self-agent-signature: HMAC-SHA256 signature of (method + url + body + timestamp)
+  - x-self-agent-timestamp: ISO 8601 timestamp (e.g. "2026-03-10T12:00:00.000Z")
+  - x-self-agent-address: Agent's Ethereum address (auto-derived by verifier)
+  - x-self-agent-keytype: "ed25519" for Ed25519 agents, omit for ECDSA
+  - x-self-agent-key: Agent's public key hex (required for Ed25519, optional for ECDSA)
+
+### Using the SDK (TypeScript)
+\`\`\`typescript
+import { SelfAgent, Ed25519Agent } from "@selfxyz/agent-sdk";
+
+// ECDSA agent
+const agent = new SelfAgent({ privateKey: "0x...", network: "testnet" });
+
+// Ed25519 agent
+const agent = new Ed25519Agent({ privateKey: "<64-hex-seed>", network: "testnet" });
+
+// Automatic signing — recommended
+const res = await agent.fetch("https://example.com/api/protected", {
+  method: "POST",
+  body: JSON.stringify({ data: "hello" }),
+});
+
+// Manual signing — for custom HTTP clients
+const headers = await agent.signRequest("POST", "https://example.com/api/protected", body);
+// headers = { "x-self-agent-signature": "...", "x-self-agent-timestamp": "...", ... }
+\`\`\`
+
+### Verifying Incoming Requests (Service-Side)
+\`\`\`typescript
+import { SelfAgentVerifier } from "@selfxyz/agent-sdk";
+
+const verifier = SelfAgentVerifier.create()
+  .network("testnet")
+  .sybilLimit(3)
+  .requireAge(18)
+  .build();
+
+const result = await verifier.verify({
+  signature: req.headers["x-self-agent-signature"],
+  timestamp: req.headers["x-self-agent-timestamp"],
+  method: "POST",
+  url: req.url,
+  body: reqBody,
+  keytype: req.headers["x-self-agent-keytype"],
+  agentKey: req.headers["x-self-agent-key"],
+});
+// result.valid, result.agentAddress, result.agentId, result.credentials
+\`\`\`
 
 ## Discovery Endpoints
   - ${base}/llms.txt — This file (plain text, for LLMs)
