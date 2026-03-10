@@ -1,6 +1,6 @@
 [package]
 name = "self-agent-sdk"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Rust SDK for Self Agent ID — on-chain AI agent identity with proof-of-human"
 license = "BUSL-1.1"
