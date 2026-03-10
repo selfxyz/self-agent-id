@@ -29,7 +29,7 @@ import {
   Bot,
 } from "lucide-react";
 import { WizardShell } from "./WizardShell";
-import type { Mode } from "./types";
+import type { Mode, UserRole } from "./types";
 import { PrivyIcon } from "@/components/PrivyIcon";
 import { connectWallet } from "@/lib/wallet";
 import { useNetwork } from "@/lib/NetworkContext";
@@ -80,6 +80,7 @@ export default function RegisterPage() {
   const router = useRouter();
   const { network } = useNetwork();
   const [mode, setMode] = useState<Mode>("linked");
+  const [wizardRole, setWizardRole] = useState<UserRole>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [selfApp, setSelfApp] = useState<ReturnType<
     InstanceType<typeof import("@selfxyz/qrcode").SelfAppBuilder>["build"]
@@ -704,7 +705,10 @@ export default function RegisterPage() {
       {/* Step 1: Wizard — who → mode → network */}
       {step === "wizard" && (
         <WizardShell
-          onWizardComplete={({ mode: selectedMode }) => {
+          initialStep={wizardRole ? "mode" : "who"}
+          initialRole={wizardRole}
+          onWizardComplete={({ role: selectedRole, mode: selectedMode }) => {
+            setWizardRole(selectedRole);
             setMode(selectedMode);
             setStep("connect");
           }}
@@ -732,7 +736,33 @@ export default function RegisterPage() {
                           : "How Wallet-Free works"}
               </p>
             </div>
-            {mode === "linked" || mode === "ed25519-linked" ? (
+            {mode === "ed25519-linked" ? (
+              <ul className="text-sm text-muted space-y-1.5 list-disc list-inside">
+                <li>
+                  Your agent&apos;s{" "}
+                  <strong className="text-foreground">existing Ed25519 key</strong>{" "}
+                  is used as its identity. No new keypair is generated.
+                </li>
+                <li>
+                  Connect your{" "}
+                  <strong className="text-foreground">browser wallet</strong>{" "}
+                  (MetaMask, etc.) as the{" "}
+                  <strong className="text-foreground">guardian</strong> &mdash;
+                  giving you direct revocation control over the agent.
+                </li>
+                <li>
+                  Scan your passport with the{" "}
+                  <strong className="text-foreground">Self app</strong> &mdash;
+                  the contract verifies the ZK proof, Ed25519 signature, and
+                  guardian link in one step.
+                </li>
+                <li>
+                  Your wallet key is never exposed to agent software. The guardian
+                  is set at registration and{" "}
+                  <strong className="text-foreground">cannot be changed later</strong>.
+                </li>
+              </ul>
+            ) : mode === "linked" ? (
               <ul className="text-sm text-muted space-y-1.5 list-disc list-inside">
                 <li>
                   Connect your{" "}
@@ -1052,7 +1082,7 @@ export default function RegisterPage() {
           </Card>
 
           {/* Ed25519 mode: pubkey + challenge + signature flow */}
-          {mode === "ed25519" && (
+          {(mode === "ed25519" || mode === "ed25519-linked") && (
             <Card className="w-full">
               <div className="flex items-center gap-2 mb-3">
                 <Terminal size={16} className="text-accent" />
@@ -1231,7 +1261,9 @@ IMPORTANT: Use your EXISTING key that matches public key ${ed25519PubkeyHex}. Do
               {!walletAddress ? (
                 <>
                   <p className="text-xs text-muted text-center max-w-md">
-                    Connect your wallet to prove the human. A separate agent keypair is generated in-browser for your agent.
+                    {mode === "ed25519-linked"
+                      ? "Connect your wallet as the guardian. Your agent\u2019s Ed25519 key (pasted above) is its identity — no new keypair is generated."
+                      : "Connect your wallet to prove the human. A separate agent keypair is generated in-browser for your agent."}
                   </p>
                   <Button
                     onClick={() => void handleConnect()}
@@ -1339,7 +1371,7 @@ IMPORTANT: Use your EXISTING key that matches public key ${ed25519PubkeyHex}. Do
             variant="ghost"
           >
             <ChevronLeft size={16} />
-            Back to Wizard
+            Back
           </Button>
         </div>
       )}

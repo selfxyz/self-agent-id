@@ -84,8 +84,8 @@ export default function Home() {
                     <Shield size={16} className="text-accent-warn" />
                   </span>
                   <p className="text-base text-foreground font-medium leading-relaxed">
-                    Creating agents is trivial &mdash; proving there&apos;s a
-                    unique human behind each one isn&apos;t.
+                    Creating agents is effortless &mdash; but there lacks a way
+                    to prove information about the human behind the agent.
                   </p>
                 </div>
                 <div className="flex items-start gap-3">
@@ -105,11 +105,11 @@ export default function Home() {
                     <Users size={16} className="text-accent-2" />
                   </span>
                   <p className="text-base text-muted leading-relaxed">
-                    Sybil-resistant by design &mdash; each person maps to{" "}
+                    Each agent maps to one unique verified human identity, so
+                    you can ensure{" "}
                     <strong className="text-foreground">
-                      one unique verified identity
-                    </strong>
-                    , so no one can game the system.
+                      1 agent = 1 human
+                    </strong>.
                   </p>
                 </div>
               </div>

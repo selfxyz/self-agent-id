@@ -82,7 +82,7 @@ export const MODE_INFO: Record<Mode, ModeInfo> = {
     icon: "Terminal",
     keyType: "Ed25519",
     walletNeeded: false,
-    bestFor: "Agents using Ed25519 keys (Eliza, OpenClaw, etc.)",
+    bestFor: "OpenClaw, ElizaOS, and other Ed25519 agents",
   },
   "ed25519-linked": {
     label: "Ed25519 + Guardian",

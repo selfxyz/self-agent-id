@@ -61,18 +61,20 @@ export function ModeSelector({ role, onSelect, onBack }: ModeSelectorProps) {
   const [question, setQuestion] = useState<Question>("has-ed25519");
   const [showAll, setShowAll] = useState(false);
   const modes = useMemo(() => availableModes(), []);
+  // Always show all modes in comparison table, even if privy isn't configured locally
+  const allModesForTable: Mode[] = ALL_MODES;
 
   return (
     <div className="space-y-6">
-      {/* Q2: Does your agent have Ed25519 keys? */}
+      {/* Q2: Does your agent already have signing keys? */}
       {question === "has-ed25519" && (
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-foreground text-center">
-            Does your agent have Ed25519 keys?
+            Does your agent already have signing keys?
           </h2>
           <p className="text-sm text-muted text-center max-w-md mx-auto">
-            Common in AI frameworks like Eliza, OpenClaw, and SSH-style agents.
-            If you&apos;re not sure, pick &ldquo;No&rdquo; — we&apos;ll generate keys for you.
+            Agents built with OpenClaw, IronClaw, ZeroClaw, OpenFang etc., or ElizaOS typically have Ed25519 keys.
+            Most other frameworks (CrewAI, AutoGen, LangChain, etc.) do not — pick &ldquo;No&rdquo; and we&apos;ll generate keys.
           </p>
 
           <button
@@ -93,10 +95,10 @@ export function ModeSelector({ role, onSelect, onBack }: ModeSelectorProps) {
             >
               <div className="flex items-center gap-2 mb-2">
                 <Terminal size={18} className="text-accent" />
-                <span className="font-bold text-sm">Yes, Ed25519 keys</span>
+                <span className="font-bold text-sm">Yes, my agent has Ed25519 keys</span>
               </div>
               <p className="text-xs text-muted">
-                I&apos;ll paste my agent&apos;s existing Ed25519 public key.
+                I&apos;ll paste my agent&apos;s existing public key. Common with OpenClaw, ElizaOS, and similar frameworks.
               </p>
             </button>
 
@@ -111,7 +113,7 @@ export function ModeSelector({ role, onSelect, onBack }: ModeSelectorProps) {
                 <span className="font-bold text-sm">No / Not sure</span>
               </div>
               <p className="text-xs text-muted">
-                We&apos;ll generate a fresh keypair for your agent automatically.
+                Works with any agent. We&apos;ll generate keys and you choose how to secure it.
               </p>
             </button>
           </div>
@@ -139,24 +141,25 @@ export function ModeSelector({ role, onSelect, onBack }: ModeSelectorProps) {
           </p>
 
           <div className="space-y-3">
-            {/* Connect crypto wallet */}
+            {/* Quick start — no wallet */}
             <button
               type="button"
               className="w-full rounded-xl border-2 border-border hover:border-accent p-5 text-left transition-colors cursor-pointer"
-              onClick={() => onSelect("linked")}
-              data-testid="secure-wallet"
+              onClick={() => onSelect("walletfree")}
+              data-testid="secure-quickstart"
             >
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent/20 shrink-0">
-                  <Wallet size={20} className="text-accent" />
+                  <Zap size={20} className="text-accent" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-sm">Connect crypto wallet</span>
+                    <span className="font-bold text-sm">Quick start — no wallet needed</span>
+                    <Badge variant="success">easiest</Badge>
                   </div>
                   <p className="text-xs text-muted mt-1">
-                    Use MetaMask or another browser wallet. Your wallet becomes the{" "}
-                    <span className="font-semibold text-accent">guardian</span> — you can revoke the agent anytime.
+                    No wallet or crypto knowledge needed. Just your passport and the Self app.
+                    Revoke anytime by scanning your passport again.
                   </p>
                 </div>
               </div>
@@ -223,22 +226,22 @@ export function ModeSelector({ role, onSelect, onBack }: ModeSelectorProps) {
               </div>
             )}
 
-            {/* No wallet / quick start */}
+            {/* Connect crypto wallet */}
             <button
               type="button"
               className="w-full rounded-xl border-2 border-border hover:border-accent p-5 text-left transition-colors cursor-pointer"
-              onClick={() => onSelect("walletfree")}
-              data-testid="secure-quickstart"
+              onClick={() => onSelect("linked")}
+              data-testid="secure-wallet"
             >
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent/20 shrink-0">
-                  <Zap size={20} className="text-accent" />
+                  <Wallet size={20} className="text-accent" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <span className="font-bold text-sm">No wallet — quick start</span>
+                  <span className="font-bold text-sm">Connect crypto wallet</span>
                   <p className="text-xs text-muted mt-1">
-                    No wallet or crypto knowledge needed. Just your passport and the Self app.
-                    Revoke anytime by scanning your passport again.
+                    Use MetaMask or another browser wallet. Your wallet becomes the{" "}
+                    <span className="font-semibold text-accent">guardian</span> — you can revoke the agent anytime.
                   </p>
                 </div>
               </div>
@@ -278,14 +281,22 @@ export function ModeSelector({ role, onSelect, onBack }: ModeSelectorProps) {
                 </tr>
               </thead>
               <tbody>
-                {modes.map((mode) => {
-                  const info = MODE_INFO[mode];
+                {allModesForTable.map((m) => {
+                  const info = MODE_INFO[m];
+                  const revocation: Record<Mode, string> = {
+                    linked: "Wallet tx",
+                    walletfree: "Passport scan",
+                    smartwallet: "Passkey (biometric)",
+                    privy: "Social login",
+                    ed25519: "Passport scan",
+                    "ed25519-linked": "Wallet tx",
+                  };
                   return (
                     <tr
-                      key={mode}
+                      key={m}
                       className="border-b border-border last:border-0 cursor-pointer hover:bg-surface-2 transition-colors"
-                      onClick={() => onSelect(mode)}
-                      data-testid={`table-row-${mode}`}
+                      onClick={() => onSelect(m)}
+                      data-testid={`table-row-${m}`}
                     >
                       <td className="py-2 pr-4 font-medium text-foreground">
                         <div className="flex items-center gap-1.5">
@@ -295,9 +306,7 @@ export function ModeSelector({ role, onSelect, onBack }: ModeSelectorProps) {
                         </div>
                       </td>
                       <td className="py-2 pr-4 text-muted">{info.keyType}</td>
-                      <td className="py-2 pr-4 text-muted">
-                        {info.walletNeeded ? "Wallet" : "Passport scan"}
-                      </td>
+                      <td className="py-2 pr-4 text-muted">{revocation[m]}</td>
                       <td className="py-2 text-muted">{info.bestFor}</td>
                     </tr>
                   );
@@ -347,19 +356,6 @@ function GuardianQuestion({
         )}
       </div>
 
-      <p className="text-xs text-muted text-center max-w-md mx-auto">
-        For Ed25519 agents, the guardian must be a browser wallet (e.g. MetaMask).
-        Passkey and social login guardians require a fresh EVM key — choose{" "}
-        <button
-          type="button"
-          onClick={onBack}
-          className="text-accent hover:text-accent-2 underline"
-        >
-          &ldquo;No / Not sure&rdquo;
-        </button>{" "}
-        on the previous step if you need those options.
-      </p>
-
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <button
           type="button"
@@ -370,7 +366,6 @@ function GuardianQuestion({
           <div className="flex items-center gap-2 mb-2">
             <Shield size={18} className="text-accent" />
             <span className="font-bold text-sm">Yes, link my wallet</span>
-            <Badge variant="success">recommended</Badge>
           </div>
           <p className="text-xs text-muted">
             Connect your browser wallet as guardian. Direct revocation via wallet.

@@ -13,12 +13,15 @@ import WhoAreYouStep from "./steps/WhoAreYouStep";
 import { ModeSelector } from "./steps/ModeSelector";
 
 interface WizardShellProps {
+  /** If set, skip straight to mode selection (e.g. when returning from connect step). */
+  initialStep?: "who" | "mode";
+  initialRole?: UserRole;
   onWizardComplete?: (config: { role: UserRole; mode: Mode }) => void;
 }
 
-export function WizardShell({ onWizardComplete }: WizardShellProps) {
-  const [step, setStep] = useState<"who" | "mode">("who");
-  const [role, setRole] = useState<UserRole>(null);
+export function WizardShell({ initialStep = "who", initialRole = null, onWizardComplete }: WizardShellProps) {
+  const [step, setStep] = useState<"who" | "mode">(initialStep);
+  const [role, setRole] = useState<UserRole>(initialRole);
 
   const goBack = useCallback(() => {
     if (role === "bot") {
