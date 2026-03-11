@@ -3,14 +3,15 @@
 [![npm](https://img.shields.io/npm/v/@selfxyz/agent-sdk?label=npm)](https://www.npmjs.com/package/@selfxyz/agent-sdk)
 [![PyPI](https://img.shields.io/pypi/v/selfxyz-agent-sdk?label=pypi)](https://pypi.org/project/selfxyz-agent-sdk/)
 [![crates.io](https://img.shields.io/crates/v/self-agent-sdk?label=crates.io)](https://crates.io/crates/self-agent-sdk)
-[![MCP](https://img.shields.io/badge/MCP-remote-blue)](https://self-agent-id.vercel.app/api/mcp)
+[![MCP](https://img.shields.io/badge/MCP-remote-blue)](https://app.ai.self.xyz/api/mcp)
 [![License: BUSL--1.1](https://img.shields.io/badge/license-BUSL--1.1-blue.svg)](LICENSE)
 
 Proof-of-human identity for AI agents on Celo.
 
-- **Live**: [self-agent-id.vercel.app](https://self-agent-id.vercel.app)
+- **Live**: [app.ai.self.xyz](https://app.ai.self.xyz)
 - **Standard**: [ERC-8004 Proof-of-Human extension](https://eips.ethereum.org/EIPS/eip-8004)
 - **SDKs**: TypeScript, Python, Rust — identical feature parity
+- **Docs**: [docs.self.xyz/agent-id](https://docs.self.xyz/agent-id)
 
 ## Quick Start
 
@@ -22,9 +23,40 @@ pip install selfxyz-agent-sdk      # Python
 cargo add self-agent-sdk           # Rust
 ```
 
-### Agent-side (sign requests)
+### Register an Agent
 
-```ts
+Agents need a human-backed identity before they can make authenticated requests. Registration binds an agent keypair to a human's passport via a ZK proof.
+
+**Option A — Web UI**: Visit [app.ai.self.xyz/register](https://app.ai.self.xyz/register) and follow the guided flow.
+
+**Option B — CLI** (all three SDKs ship the same CLI):
+
+```bash
+self-agent register init --mode agent-identity --human-address 0xYourWallet --network testnet
+self-agent register open --session .self/session.json   # Opens browser handoff
+self-agent register wait --session .self/session.json   # Polls until on-chain
+self-agent register export --session .self/session.json --unsafe --print-private-key
+```
+
+**Option C — REST API** (for programmatic/agent-guided flows):
+
+```typescript
+import { requestRegistration } from "@selfxyz/agent-sdk";
+
+const session = await requestRegistration({
+  mode: "agent-identity",
+  network: "testnet",
+  humanAddress: "0xYourWallet",
+  disclosures: { minimumAge: 18, ofac: true },
+  agentName: "My Agent",
+});
+// session.qrUrl → show QR to human
+// session.sessionToken → poll status with GET /api/agent/register/status
+```
+
+### Agent-Side (Sign Requests)
+
+```typescript
 import { SelfAgent } from "@selfxyz/agent-sdk";
 
 const agent = new SelfAgent({ privateKey: process.env.AGENT_PRIVATE_KEY! });
@@ -34,9 +66,9 @@ const res = await agent.fetch("https://api.example.com/protected", {
 });
 ```
 
-### Service-side (verify agents)
+### Service-Side (Verify Agents)
 
-```ts
+```typescript
 import { SelfAgentVerifier } from "@selfxyz/agent-sdk";
 
 const verifier = SelfAgentVerifier.create()
@@ -48,19 +80,11 @@ const verifier = SelfAgentVerifier.create()
 app.use("/api", verifier.auth());
 ```
 
-### Quickstart Prerequisites (Important)
+### Prerequisites
 
 1. Success-path verification requires an agent key that is already registered on-chain.
-2. If the key is not registered, a protected request is expected to fail with `401 Agent not verified on-chain`.
+2. If the key is not registered, a protected request will fail with `401 Agent not verified on-chain`.
 3. Ensure signer network matches verifier network (`mainnet` vs `testnet`) before debugging signatures.
-
-### Run the web app locally
-
-```bash
-cd app
-cp .env.example .env.local
-npm install && npm run dev
-```
 
 ---
 
@@ -110,20 +134,26 @@ Self Agent ID is an on-chain identity registry that binds AI agent identities to
 │             │              │              │                          │
 │  ┌──────────▼──┐ ┌────────▼─────┐ ┌─────▼──────────────────┐      │
 │  │ Reputation  │ │  Validation  │ │  Demo Contracts         │      │
-│  │ Provider    │ │  Provider    │ │  (DemoVerifier, Gate)   │      │
+│  │ Registry    │ │  Registry    │ │  (DemoVerifier, Gate)   │      │
 │  └─────────────┘ └──────────────┘ └────────────────────────┘      │
 │                                                                     │
 │  ┌─────────────────────────────────────────────────────────────┐   │
 │  │                    SDKs (TS / Python / Rust)                 │   │
-│  │  Agent-side: SelfAgent (signing, fetch, status, cards)      │   │
+│  │  Agent-side: SelfAgent / Ed25519Agent (signing, fetch)      │   │
 │  │  Service-side: SelfAgentVerifier (middleware, policy)        │   │
-│  │  CLI: register/deregister workflows                          │   │
+│  │  CLI: register / deregister workflows                       │   │
+│  │  REST: requestRegistration / requestDeregistration           │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 │                                                                     │
 │  ┌─────────────────────────────────────────────────────────────┐   │
 │  │                    MCP Server (@selfxyz/mcp-server)          │   │
 │  │  10 tools: register, verify, sign, discover, fetch          │   │
 │  │  Works with Claude Code / Cursor / Windsurf / Codex         │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │                    Discovery & A2A Protocol                  │   │
+│  │  /.well-known/agent-card.json · llms.txt · A2A JSON-RPC     │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 │                                                                     │
 │  ┌─────────────────────────────────────────────────────────────┐   │
@@ -144,6 +174,8 @@ Self Agent ID is an on-chain identity registry that binds AI agent identities to
 | ---------------------- | -------------------------------------------- |
 | SelfAgentRegistry      | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` |
 | SelfHumanProofProvider | `0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d` |
+| SelfReputationRegistry | `0x69Da18CF4Ac27121FD99cEB06e38c3DC78F363f4` |
+| SelfValidationRegistry | `0x71a025e0e338EAbcB45154F8b8CA50b41e7A0577` |
 | AgentDemoVerifier      | `0xD8ec054FD869A762bC977AC328385142303c7def` |
 | AgentGate              | `0x26e05bF632fb5bACB665ab014240EAC1413dAE35` |
 | Hub V2                 | `0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF` |
@@ -158,6 +190,8 @@ Self Agent ID is an on-chain identity registry that binds AI agent identities to
 | ---------------------- | -------------------------------------------- |
 | SelfAgentRegistry      | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` |
 | SelfHumanProofProvider | `0x5E61c3051Bf4115F90AacEAE6212bc419f8aBB6c` |
+| SelfReputationRegistry | `0x3Bb0A898C1C0918763afC22ff624131b8F420CC2` |
+| SelfValidationRegistry | `0x84cA20B8A1559F136dA03913dbe6A7F68B6B240B` |
 | AgentDemoVerifier      | `0xc31BAe8f2d7FCd19f737876892f05d9bDB294241` |
 | AgentGate              | `0x86Af07e30Aa42367cbcA7f2B1764Be346598bbc2` |
 | Hub V2                 | `0x16ECBA51e18a4a7e61fdC417f0d47AFEeDfbed74` |
@@ -170,9 +204,11 @@ Self Agent ID is an on-chain identity registry that binds AI agent identities to
 
 ---
 
-## 4. Registration Modes
+## 4. Registration
 
-### 4.1 Verified Wallet (`verified-wallet`)
+### 4.1 Registration Modes
+
+#### Verified Wallet (`verified-wallet`)
 
 The human's wallet address is the agent identity. Best for human-operated on-chain gating.
 
@@ -181,7 +217,7 @@ The human's wallet address is the agent identity. Best for human-operated on-cha
 - **Guardian**: None (human controls wallet directly)
 - **Use case**: Human-operated agents, DeFi gating, DAO membership
 
-### 4.2 Agent Identity (`agent-identity`)
+#### Agent Identity (`agent-identity`)
 
 Dedicated generated agent keypair. The human proves ownership via Self, then the agent operates independently. Recommended for autonomous agents.
 
@@ -191,7 +227,7 @@ Dedicated generated agent keypair. The human proves ownership via Self, then the
 - **Challenge**: Agent signs `keccak256("self-agent-id:register:" + humanAddress + chainId + registryAddress + nonce)`
 - **Use case**: Autonomous AI agents, API bots, server-side agents
 
-### 4.3 Wallet-Free (`wallet-free`)
+#### Wallet-Free (`wallet-free`)
 
 No user wallet required. Agent keypair is generated locally and the agent-owned NFT is minted directly.
 
@@ -201,7 +237,7 @@ No user wallet required. Agent keypair is generated locally and the agent-owned 
 - **Challenge**: Same as agent-identity mode
 - **Use case**: Embedded agents, IoT devices, CLI-only workflows
 
-### 4.4 Smart Wallet (`smart-wallet`)
+#### Smart Wallet (`smart-wallet`)
 
 Passkey-based smart wallet as guardian + dedicated agent keypair. Uses ZeroDev Kernel + Pimlico bundler/paymaster.
 
@@ -213,9 +249,81 @@ Passkey-based smart wallet as guardian + dedicated agent keypair. Uses ZeroDev K
 
 > Smart wallet mode manages guardian actions with passkeys, but agents still use their own ECDSA key for API request signing.
 
----
+### 4.2 Agent-Guided Registration Flow
 
-## 5. Verification Configs
+For programmatic registration (chatbots, agent frameworks, fleet management), use the REST API-based flow. The agent backend orchestrates the entire process without requiring the human to visit a web UI directly.
+
+**Flow:**
+
+```
+Agent Backend                    Human                     Self App / On-Chain
+     │                            │                              │
+     │  1. POST /api/agent/register                              │
+     │────────────────────────────────────────────────────────────▶
+     │  ◀── sessionToken + qrUrl                                 │
+     │                            │                              │
+     │  2. Show QR code to human  │                              │
+     │───────────────────────────▶│                              │
+     │                            │  3. Scan passport in Self app│
+     │                            │─────────────────────────────▶│
+     │                            │                              │
+     │  4. Poll GET /api/agent/register/status                   │
+     │────────────────────────────────────────────────────────────▶
+     │  ◀── stage: qr-ready → proof-received → pending → completed
+     │                            │                              │
+     │  5. Agent is now registered on-chain                      │
+```
+
+**SDK helpers** (all three SDKs):
+
+```typescript
+import { requestRegistration } from "@selfxyz/agent-sdk";
+
+// Step 1: Initiate registration
+const session = await requestRegistration({
+  mode: "agent-identity",
+  network: "testnet",
+  humanAddress: "0x...",
+  disclosures: { minimumAge: 18, ofac: true },
+  agentName: "My Bot",
+  agentDescription: "Answers questions about crypto markets",
+});
+
+// Step 2: Present QR to human (session.qrUrl)
+// Step 3: Poll status until completed
+// Step 4: Use the returned agent private key
+```
+
+```python
+from self_agent_sdk import request_registration
+
+session = request_registration(
+    mode="agent-identity",
+    network="testnet",
+    human_address="0x...",
+    disclosures={"minimum_age": 18, "ofac": True},
+)
+```
+
+**CLI orchestration** (recommended for agent backends that shell out):
+
+```bash
+# 1. Initialize — generates keypair, builds QR, writes session file
+self-agent register init --mode agent-identity --human-address 0x... --network testnet
+
+# 2. Open browser handoff URL (or extract URL from session JSON to show inline)
+self-agent register open --session .self/session.json
+
+# 3. Wait for human to scan passport → on-chain verification
+self-agent register wait --session .self/session.json
+
+# 4. Export the agent private key
+self-agent register export --session .self/session.json --unsafe --print-private-key
+```
+
+Session stages: `initialized` → `handoff_opened` → `callback_received` → `onchain_verified` / `failed` / `expired`.
+
+### 4.3 Verification Configs
 
 Six verification configurations combine age requirements with OFAC sanctions screening. The config is selected at registration time via the `userDefinedData[1]` byte.
 
@@ -240,9 +348,26 @@ The `userDefinedData[0]` byte encodes the action type:
 
 > **Warning — `userDefinedData` encoding**: The Self SDK passes `userDefinedData` as a **UTF-8 string**, not raw bytes. Each byte position uses the ASCII character (e.g., `'0'` not `0x00`). Use `bytes32(bytes1(uint8(x)))` for byte positioning in Solidity. This is the #1 integration mistake — see [Troubleshooting](https://docs.self.xyz/agent-id/troubleshooting) for details.
 
+### 4.4 Deregistration
+
+```bash
+self-agent deregister init --mode agent-identity --human-address 0x... --agent-address 0x... --network testnet
+self-agent deregister open --session .self/session.json
+self-agent deregister wait --session .self/session.json
+```
+
+Or via SDK:
+
+```typescript
+await agent.requestDeregistration({
+  mode: "agent-identity",
+  network: "testnet",
+});
+```
+
 ---
 
-## 6. SDKs
+## 5. SDKs
 
 ### Package Names
 
@@ -254,61 +379,63 @@ The `userDefinedData[0]` byte encodes the action type:
 
 All three SDKs export the same core classes with language-idiomatic naming.
 
-### 6.1 Agent-Side: `SelfAgent`
+### 5.1 Agent-Side: `SelfAgent` (ECDSA) / `Ed25519Agent`
 
-Creates a signing agent from a private key.
+Both key types produce authenticated HTTP requests with the same header protocol. Choose based on your ecosystem:
 
-**TypeScript:**
+| Feature             | `SelfAgent` (ECDSA)        | `Ed25519Agent`             |
+| ------------------- | -------------------------- | -------------------------- |
+| Ecosystem           | Ethereum, EVM chains       | Python, Rust, Solana, SSH  |
+| Key format          | `0x`-prefixed 66 hex chars | 64 hex chars (no `0x`)     |
+| On-chain verify gas | ~3K                        | ~456K                      |
+| Registration        | EIP-712 or wallet-free     | Ed25519 challenge-response |
+| SDK class           | `SelfAgent`                | `Ed25519Agent`             |
+
+**ECDSA (TypeScript):**
 
 ```typescript
 import { SelfAgent } from "@selfxyz/agent-sdk";
 
 const agent = new SelfAgent({
   privateKey: process.env.AGENT_PRIVATE_KEY!,
-  network: "mainnet", // or "testnet"
+  network: "mainnet",
 });
 
-// Auto-signed HTTP request
 const res = await agent.fetch("https://api.example.com/data", {
   method: "POST",
   body: JSON.stringify({ query: "test" }),
 });
+```
 
-// Check registration status
-const registered = await agent.isRegistered();
+**Ed25519 (TypeScript):**
 
-// Get full agent info (ID, nullifier, sybil count)
-const info = await agent.getInfo();
+```typescript
+import { Ed25519Agent } from "@selfxyz/agent-sdk";
 
-// Read ZK-attested credentials
-const creds = await agent.getCredentials();
-
-// Agent Card (A2A format)
-await agent.setAgentCard({
-  name: "My Agent",
-  description: "Does useful things",
-  skills: [{ name: "data-analysis" }],
+const agent = new Ed25519Agent({
+  privateKey: process.env.ED25519_SEED!, // 64-char hex, no 0x
+  network: "mainnet",
 });
-const card = await agent.getAgentCard();
+
+const res = await agent.fetch("https://api.example.com/data", {
+  method: "POST",
+  body: JSON.stringify({ query: "test" }),
+});
 ```
 
 **Python:**
 
 ```python
-from self_agent_sdk import SelfAgent
+from self_agent_sdk import SelfAgent, Ed25519Agent
 import os
 
-agent = SelfAgent(
-    private_key=os.environ["AGENT_PRIVATE_KEY"],
-    network="mainnet",  # or "testnet"
-)
+# ECDSA
+agent = SelfAgent(private_key=os.environ["AGENT_PRIVATE_KEY"], network="mainnet")
 
-res = agent.fetch("https://api.example.com/data",
-                   method="POST", body='{"query": "test"}')
+# Ed25519
+agent = Ed25519Agent(private_key=os.environ["ED25519_SEED"], network="mainnet")
 
-print("Registered:", agent.is_registered())
-info = agent.get_info()
-print(f"Agent ID: {info.agent_id}, Verified: {info.is_verified}")
+res = agent.fetch("https://api.example.com/data", method="POST", body='{"query": "test"}')
 ```
 
 **Rust:**
@@ -328,8 +455,6 @@ let res = agent.fetch(
     Some(reqwest::Method::POST),
     Some(r#"{"query":"test"}"#.to_string()),
 ).await.unwrap();
-
-let registered = agent.is_registered().await.unwrap();
 ```
 
 #### SelfAgent Methods (All SDKs)
@@ -354,15 +479,15 @@ let registered = agent.is_registered().await.unwrap();
 
 Every signed request includes three headers:
 
-| Header                   | Value                                                                |
-| ------------------------ | -------------------------------------------------------------------- |
-| `x-self-agent-address`   | Agent's Ethereum address                                             |
-| `x-self-agent-signature` | ECDSA signature of `keccak256(timestamp + METHOD + path + bodyHash)` |
-| `x-self-agent-timestamp` | Unix timestamp in milliseconds                                       |
+| Header                   | Value                                                          |
+| ------------------------ | -------------------------------------------------------------- |
+| `x-self-agent-address`   | Agent's Ethereum address                                       |
+| `x-self-agent-signature` | Signature of `keccak256(timestamp + METHOD + path + bodyHash)` |
+| `x-self-agent-timestamp` | Unix timestamp in milliseconds                                 |
 
 > **Critical integration note**: verify against the exact request bytes received by your server. If middleware rewrites or reserializes JSON before verification, signatures can fail even when the client is correct.
 
-### 6.2 Service-Side: `SelfAgentVerifier`
+### 5.2 Service-Side: `SelfAgentVerifier`
 
 Verifies inbound agent requests with configurable policy.
 
@@ -485,7 +610,7 @@ async fn handle(Extension(agent): Extension<VerifiedAgent>) -> Json<serde_json::
 The verifier performs these checks in order:
 
 1. Timestamp freshness (max 5 minutes old)
-2. ECDSA signature recovery
+2. ECDSA/Ed25519 signature recovery
 3. Replay protection (signature+timestamp cache)
 4. Agent key derivation from recovered address
 5. On-chain `isVerifiedAgent()` check (cached)
@@ -508,7 +633,7 @@ The verifier performs these checks in order:
 | `cacheTtlMs`          | `60000` (1 min)  |
 | `includeCredentials`  | `false`          |
 
-### 6.3 Registration Utilities
+### 5.3 Registration Utilities
 
 All SDKs export registration helper functions:
 
@@ -523,53 +648,9 @@ All SDKs export registration helper functions:
 | `buildAdvancedDeregisterUserDataAscii(params)`     | Returns `"X" + config + address`                      |
 | `buildWalletFreeRegisterUserDataAscii(params)`     | Returns `"W" + config + agent + guardian + r + s + v` |
 
-### 6.4 Agent Card (A2A Format)
-
-Agent cards follow a standardized format for agent-to-agent discovery:
-
-```json
-{
-  "a2aVersion": "0.1",
-  "name": "My Agent",
-  "description": "Analyzes data",
-  "url": "https://myagent.example.com",
-  "skills": [{ "name": "data-analysis", "description": "Analyzes CSV data" }],
-  "selfProtocol": {
-    "agentId": 5,
-    "registry": "0xaC3DF9ABf80d0F5c020C06B04Cced27763355944",
-    "chainId": 42220,
-    "proofProvider": "0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d",
-    "providerName": "self",
-    "verificationStrength": 100,
-    "trustModel": {
-      "proofType": "passport",
-      "sybilResistant": true,
-      "ofacScreened": true,
-      "minimumAgeVerified": 18
-    },
-    "credentials": {
-      "nationality": "US",
-      "olderThan": 18,
-      "ofacClean": true
-    }
-  }
-}
-```
-
-Cards are stored on-chain via `updateAgentMetadata()` and readable via `getAgentMetadata()`.
-
-### Examples
-
-| Example                                      | Language   | What it shows                               |
-| -------------------------------------------- | ---------- | ------------------------------------------- |
-| [Minimal TypeScript](examples/minimal-ts/)   | TypeScript | Agent signing + Express verifier middleware |
-| [Minimal Python](examples/minimal-python/)   | Python     | Agent signing + FastAPI verifier middleware |
-| [Minimal Rust](examples/minimal-rust/)       | Rust       | Agent signing + Axum verifier middleware    |
-| [LangChain Agent](examples/langchain-agent/) | Python     | AI agent with on-chain verification gate    |
-
 ---
 
-## 7. CLI
+## 6. CLI
 
 All three SDKs ship a CLI binary with identical command surface.
 
@@ -713,6 +794,93 @@ Session stages: `initialized` → `handoff_opened` → `callback_received` → `
 
 ---
 
+## 7. Discovery & A2A Protocol
+
+### Well-Known Endpoints
+
+| Endpoint                          | Description                                                      |
+| --------------------------------- | ---------------------------------------------------------------- |
+| `/.well-known/agent-card.json`    | A2A v0.3.0 agent card (supports `?agentId=&chain=` query params) |
+| `/.well-known/self-agent-id.json` | Agent discovery metadata with CORS                               |
+| `/.well-known/a2a/{agentId}`      | Redirects to `/api/cards/{chainId}/{agentId}`                    |
+| `/llms.txt`                       | LLM-readable agent discovery text (1-hour cache)                 |
+
+### A2A (Agent-to-Agent) Protocol
+
+The `/api/a2a` endpoint implements JSON-RPC 2.0 for task-based agent communication:
+
+- **Natural language agent lookup** — ask "is this agent human-verified?" in plain text
+- **Task management** — create, poll, and complete verification tasks
+- **Push notifications** — webhook delivery for task status updates
+- **Registration intents** — detect "register" commands and generate QR codes inline
+
+### Agent Cards
+
+Standardized metadata for agent-to-agent discovery, stored on-chain via `updateAgentMetadata()`:
+
+```json
+{
+  "a2aVersion": "0.1",
+  "name": "My Agent",
+  "description": "Analyzes data",
+  "url": "https://myagent.example.com",
+  "skills": [{ "name": "data-analysis", "description": "Analyzes CSV data" }],
+  "selfProtocol": {
+    "agentId": 5,
+    "registry": "0xaC3DF9ABf80d0F5c020C06B04Cced27763355944",
+    "chainId": 42220,
+    "proofProvider": "0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d",
+    "providerName": "self",
+    "verificationStrength": 100,
+    "trustModel": {
+      "proofType": "passport",
+      "sybilResistant": true,
+      "ofacScreened": true,
+      "minimumAgeVerified": 18
+    },
+    "credentials": {
+      "nationality": "US",
+      "olderThan": 18,
+      "ofacClean": true
+    }
+  }
+}
+```
+
+**Read/write agent cards via SDK:**
+
+```typescript
+await agent.setAgentCard({
+  name: "My Agent",
+  description: "Does useful things",
+  skills: [{ name: "data-analysis" }],
+});
+const card = await agent.getAgentCard();
+const uri = await agent.toAgentCardDataURI(); // base64 data URI
+```
+
+### REST API Discovery Endpoints
+
+```
+GET /api/cards/{chainId}/{agentId}            → Agent card metadata (A2A format)
+GET /api/reputation/{chainId}/{agentId}       → Reputation score and proof type
+GET /api/verify-status/{chainId}/{agentId}    → Verification status summary
+GET /api/agent/info/{chainId}/{agentId}       → Full agent info
+GET /api/agent/agents/{chainId}/{address}     → All agents for a human address
+GET /api/agent/verify/{chainId}/{agentId}     → Verification status and provider info
+```
+
+### On-Chain Queries
+
+```solidity
+bool verified = registry.isVerifiedAgent(agentKey);
+uint256 agentId = registry.getAgentId(agentKey);
+bool same = registry.sameHuman(agentIdA, agentIdB);
+string memory metadata = registry.getAgentMetadata(agentId);
+```
+
+---
+
 ## 8. MCP Server
 
 The [MCP server](https://github.com/selfxyz/self-agent-id-mcp) gives AI coding agents direct access to Self Agent ID through the [Model Context Protocol](https://modelcontextprotocol.io/). It works with Claude Code, Cursor, Windsurf, Codex, and any MCP-compatible client.
@@ -725,7 +893,7 @@ Connect any MCP-compatible client directly via URL — no local install required
 {
   "mcpServers": {
     "self-agent-id": {
-      "url": "https://self-agent-id.vercel.app/api/mcp"
+      "url": "https://app.ai.self.xyz/api/mcp"
     }
   }
 }
@@ -792,7 +960,7 @@ Set `SELF_AGENT_PRIVATE_KEY` in `env` for full mode (register, sign, fetch). Omi
 
 ## 9. REST API
 
-Base URL: `https://self-agent-id.vercel.app` (or your deployment)
+Base URL: `https://app.ai.self.xyz` (or your deployment)
 
 SDK default base URL can be overridden with env var `SELF_AGENT_API_BASE`.
 
@@ -956,7 +1124,28 @@ Metadata wrapper describing Self Protocol as a proof-of-human provider.
 - `verificationStrength()` → `100` (passport/NFC + biometric)
 - `verifyHumanProof()` — Always reverts (Self uses async Hub V2 callback)
 
-### 10.3 AgentDemoVerifier
+### 10.3 SelfReputationRegistry
+
+ERC-8004 compatible reputation scoring. Stateless view over registry.
+
+```solidity
+function getReputationScore(uint256 agentId) view returns (uint8)  // 0-100
+function getReputation(uint256 agentId) view returns (uint8 score, string providerName, bool hasProof, uint256 registeredAtBlock)
+function getReputationBatch(uint256[] agentIds) view returns (uint8[])
+```
+
+### 10.4 SelfValidationRegistry
+
+ERC-8004 compatible proof validation with freshness checks.
+
+```solidity
+function validateAgent(uint256 agentId) view returns (bool valid, bool fresh, uint256 registeredAt, uint256 blockAge, address proofProvider)
+function isValidAgent(uint256 agentId) view returns (bool) // valid + fresh
+function setFreshnessThreshold(uint256 blocks) // Owner-only (default: ~1 year)
+function validateBatch(uint256[] agentIds) view returns (bool[])
+```
+
+### 10.5 AgentDemoVerifier
 
 Demo contract for EIP-712 meta-transaction verification. Relayer submits signed typed data on behalf of the agent.
 
@@ -967,34 +1156,13 @@ function checkAccess(bytes32 agentKey) view returns (uint256 agentId)
 
 EIP-712 domain: `{name: "AgentDemoVerifier", version: "1", chainId, verifyingContract}`
 
-### 10.4 AgentGate
+### 10.6 AgentGate
 
 Demo contract gating access behind age-verified agent identity.
 
 ```solidity
 function checkAccess(bytes32 agentKey) view returns (uint256 agentId, uint256 olderThan, string nationality)
 function gatedAction(bytes32 agentKey) // Requires caller = agent address
-```
-
-### 10.5 SelfReputationProvider
-
-ERC-8004 compatible reputation scoring. Stateless view over registry.
-
-```solidity
-function getReputationScore(uint256 agentId) view returns (uint8)  // 0-100
-function getReputation(uint256 agentId) view returns (uint8 score, string providerName, bool hasProof, uint256 registeredAtBlock)
-function getReputationBatch(uint256[] agentIds) view returns (uint8[])
-```
-
-### 10.6 SelfValidationProvider
-
-ERC-8004 compatible proof validation with freshness checks.
-
-```solidity
-function validateAgent(uint256 agentId) view returns (bool valid, bool fresh, uint256 registeredAt, uint256 blockAge, address proofProvider)
-function isValidAgent(uint256 agentId) view returns (bool) // valid + fresh
-function setFreshnessThreshold(uint256 blocks) // Owner-only (default: ~1 year)
-function validateBatch(uint256[] agentIds) view returns (bool[])
 ```
 
 ### 10.7 LocalRegistryHarness
@@ -1011,9 +1179,9 @@ function getAgentId(bytes32 agentKey) view returns (uint256)
 
 ## 11. Verification Patterns
 
-### 11.1 Agent → Service (ECDSA Middleware)
+### 11.1 Agent → Service (Middleware)
 
-The agent signs each HTTP request with ECDSA. The service middleware recovers the signer, checks `isVerifiedAgent()` on-chain, and enforces policy.
+The agent signs each HTTP request. The service middleware recovers the signer, checks `isVerifiedAgent()` on-chain, and enforces policy.
 
 ```
 Agent                          Service
@@ -1217,47 +1385,33 @@ require(registry.isProofFresh(agentId), "Proof expired — agent must re-verify"
 
 ---
 
-## 14. Discovery & Lookup
+## 14. Examples
 
-### On-Chain Queries
+See the [`examples/`](examples/) directory for framework integrations:
 
-```solidity
-// Check if agent is verified
-bool verified = registry.isVerifiedAgent(agentKey);
+### Runtime-Tested
 
-// Get agent ID from public key
-uint256 agentId = registry.getAgentId(agentKey);
+| Example                                          | Language   | Key Type | What it shows                               |
+| ------------------------------------------------ | ---------- | -------- | ------------------------------------------- |
+| [Standalone TypeScript](examples/standalone-ts/) | TypeScript | Ed25519  | Ed25519 agent signing reference             |
+| [Standalone Python](examples/standalone-py/)     | Python     | Ed25519  | Ed25519 agent signing reference             |
+| [Minimal TypeScript](examples/minimal-ts/)       | TypeScript | ECDSA    | Agent signing + Express verifier middleware |
+| [Minimal Python](examples/minimal-python/)       | Python     | ECDSA    | Agent signing + FastAPI verifier middleware |
+| [LangChain Agent](examples/langchain-agent/)     | Python     | ECDSA    | Full AI agent with on-chain verification    |
 
-// Check if two agents are the same human
-bool same = registry.sameHuman(agentIdA, agentIdB);
+### Framework Integrations (Doc-Quality)
 
-// Get registration block
-uint256 block = registry.agentRegisteredAt(agentId);
+| Example                          | Language   | Key Type | What it shows                               |
+| -------------------------------- | ---------- | -------- | ------------------------------------------- |
+| [Eliza (ai16z)](examples/eliza/) | TypeScript | Ed25519  | Plugin for Eliza agents (reuses Solana key) |
+| [OpenClaw](examples/openclaw/)   | Python     | Ed25519  | Skill handler (reuses Clawdentity key)      |
+| [LangChain](examples/langchain/) | Python     | Ed25519  | Custom LangChain tools                      |
+| [CrewAI](examples/crewai/)       | Python     | Ed25519  | Custom CrewAI tools                         |
+| [AutoGen](examples/autogen/)     | Python     | Ed25519  | Function tools for AutoGen agents           |
 
-// Read metadata (agent card JSON)
-string memory metadata = registry.getAgentMetadata(agentId);
-```
+> **Eliza note**: Eliza agents on Solana already use Ed25519 keypairs. The plugin registers the same key with Self Agent ID — no new key generation required.
 
-### REST API Queries
-
-```
-GET /api/agent/info/{chainId}/{agentId}       → Full agent info
-GET /api/agent/agents/{chainId}/{address}     → All agents for human
-GET /api/agent/verify/{chainId}/{agentId}     → Verification status
-GET /api/cards/{chainId}/{agentId}            → Agent card metadata
-GET /api/reputation/{chainId}/{agentId}       → Reputation score
-GET /api/verify-status/{chainId}/{agentId}    → Proof status
-```
-
-### A2A Agent Cards
-
-Cards follow the Agent-to-Agent (A2A) format with a `selfProtocol` extension. Stored on-chain via `updateAgentMetadata()`. Can be read via:
-
-```typescript
-const card = await agent.getAgentCard();
-// or
-const uri = await agent.toAgentCardDataURI();
-```
+> **OpenClaw note**: OpenClaw uses Ed25519 for device identity (Clawdentity). The skill loads the existing device key directly.
 
 ---
 
@@ -1267,31 +1421,50 @@ const uri = await agent.toAgentCardDataURI();
 self-agent-id/
 ├── app/                  # Next.js web app + REST API
 │   ├── app/              # Pages and API routes
-│   │   ├── api/          # REST API (agent/, demo/, aa/, cards/, reputation/)
-│   │   ├── register/     # Registration flow pages
+│   │   ├── api/          # REST API (agent/, demo/, aa/, cards/, reputation/, a2a/)
+│   │   ├── register/     # Registration flow pages (4 modes)
+│   │   ├── .well-known/  # Agent discovery endpoints
+│   │   ├── llms.txt/     # LLM-readable discovery
 │   │   ├── explainer/    # Technical explainer page
 │   │   ├── api-docs/     # API documentation page
 │   │   ├── cli/          # CLI documentation + browser handoff
 │   │   ├── demo/         # Live demo page
+│   │   ├── verify/       # Agent inspection page
+│   │   ├── my-agents/    # Agent lookup by wallet/passkey/key
 │   │   └── erc8004/      # ERC-8004 spec page
 │   └── lib/              # Shared utilities (network.ts, snippets.ts)
-├── typescript-sdk/       # TypeScript SDK
-│   └── src/              # SelfAgent, SelfAgentVerifier, CLI, registration
-├── python-sdk/           # Python SDK
+├── typescript-sdk/       # TypeScript SDK (@selfxyz/agent-sdk)
+│   └── src/              # SelfAgent, Ed25519Agent, SelfAgentVerifier, CLI, registration
+├── python-sdk/           # Python SDK (selfxyz-agent-sdk)
 │   └── src/self_agent_sdk/  # agent, verifier, middleware, CLI
-├── rust-sdk/             # Rust SDK
+├── rust-sdk/             # Rust SDK (self-agent-sdk)
 │   └── src/              # agent, verifier, middleware, CLI binary
 ├── contracts/            # Solidity contracts (Foundry)
 │   ├── src/              # Registry, providers, demo contracts, interfaces
 │   └── test/             # Foundry tests
+├── examples/             # Framework integration examples (10+)
+│   ├── standalone-ts/    # Ed25519 TypeScript reference
+│   ├── standalone-py/    # Ed25519 Python reference
+│   ├── minimal-ts/       # ECDSA TypeScript + Express
+│   ├── minimal-python/   # ECDSA Python + FastAPI
+│   ├── langchain-agent/  # Production LangChain agent
+│   ├── eliza/            # Eliza (ai16z) plugin
+│   ├── openclaw/         # OpenClaw skill
+│   ├── langchain/        # LangChain Ed25519 tools
+│   ├── crewai/           # CrewAI tools
+│   └── autogen/          # AutoGen function tools
+├── plugin/               # Claude Code plugin (6 skills)
 ├── functions/            # Demo Cloud Functions
-└── docs/                 # Integration guides, CLI spec
+└── docs/                 # Integration guides, CLI spec, plans
 ```
 
 ## Additional Documentation
 
 - `docs/SELF_PROTOCOL_INTEGRATION.md` — Self Protocol integration guide
 - `docs/CLI_REGISTRATION.md` — CLI registration spec, flows, and agent-guided orchestration
+- `docs/EIP_DRAFT_PROOF_OF_HUMAN.md` — ERC-8004 Proof-of-Human extension proposal
+- `docs/SECURITY_AUDIT_REPORT.md` — Security audit findings
+- `docs/THREAT_MODEL_STRIDE.md` — STRIDE threat model
 
 ---
 
@@ -1339,6 +1512,14 @@ cd python-sdk && pip install -e ".[dev]" && pytest
 cd rust-sdk && cargo test
 ```
 
+### Run the web app locally
+
+```bash
+cd app
+cp .env.example .env.local
+npm install && npm run dev
+```
+
 ### Verification Smoke Checklist (Before Demos / Releases)
 
 1. Build and test all changed components.
@@ -1348,24 +1529,13 @@ cd rust-sdk && cargo test
 
 ### Environment Variables
 
-| Variable                 | Default                            | Purpose                 |
-| ------------------------ | ---------------------------------- | ----------------------- |
-| `SELF_AGENT_PRIVATE_KEY` | —                                  | Agent's hex private key |
-| `SELF_NETWORK`           | `testnet`                          | `mainnet` or `testnet`  |
-| `SELF_AGENT_API_BASE`    | `https://self-agent-id.vercel.app` | API base URL override   |
+| Variable                 | Default                   | Purpose                 |
+| ------------------------ | ------------------------- | ----------------------- |
+| `SELF_AGENT_PRIVATE_KEY` | —                         | Agent's hex private key |
+| `SELF_NETWORK`           | `testnet`                 | `mainnet` or `testnet`  |
+| `SELF_AGENT_API_BASE`    | `https://app.ai.self.xyz` | API base URL override   |
 
 Priority: explicit param > env var > default. Note: `SELF_API_URL` is removed — use `SELF_AGENT_API_BASE`.
-
----
-
-## Examples
-
-See the [`examples/`](examples/) directory:
-
-- **`minimal-ts/`** — TypeScript agent + Express verifier
-- **`minimal-python/`** — Python agent + FastAPI verifier
-- **`minimal-rust/`** — Rust agent + Axum verifier
-- **`langchain-agent/`** — Python LangChain agent with verification gate
 
 ---
 

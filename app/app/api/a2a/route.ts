@@ -96,6 +96,7 @@ type Intent =
       ed25519Pubkey?: string;
       ed25519Signature?: string;
     }
+  | { type: "register-ask"; network: string }
   | { type: "register-status"; sessionToken: string }
   | { type: "register-poll"; taskId: string }
   | { type: "lookup"; agentId: number; chainId?: number }
@@ -248,24 +249,39 @@ function parseIntent(message: Message): Intent {
     text.includes("create agent") ||
     text.includes("new agent")
   ) {
-    // Extract address if present (0x...)
-    const addrMatch = text.match(/0x[a-fA-F0-9]{40}/);
     const network = text.includes("testnet") ? "testnet" : "mainnet";
-    return {
-      type: "register",
-      network,
-      humanAddress: addrMatch?.[0],
-      mode:
-        text.includes("ed25519-linked") || text.includes("ed25519 linked")
-          ? "ed25519-linked"
-          : text.includes("ed25519")
-            ? "ed25519"
-            : text.includes("linked")
-              ? "linked"
-              : addrMatch
+
+    // If the user explicitly specified a mode or provided an address, proceed directly
+    const addrMatch = text.match(/0x[a-fA-F0-9]{40}/);
+    const hasExplicitMode =
+      text.includes("ed25519") ||
+      text.includes("linked") ||
+      text.includes("wallet-free") ||
+      text.includes("walletfree") ||
+      text.includes("wallet free") ||
+      text.includes("quick") ||
+      text.includes("simple");
+
+    if (hasExplicitMode || addrMatch) {
+      return {
+        type: "register",
+        network,
+        humanAddress: addrMatch?.[0],
+        mode:
+          text.includes("ed25519-linked") || text.includes("ed25519 linked")
+            ? "ed25519-linked"
+            : text.includes("ed25519")
+              ? "ed25519"
+              : text.includes("linked")
                 ? "linked"
-                : "wallet-free",
-    };
+                : addrMatch
+                  ? "linked"
+                  : "wallet-free",
+      };
+    }
+
+    // No mode specified — ask the user about their setup first
+    return { type: "register-ask", network };
   }
 
   if (text.includes("status") && text.includes("registration")) {
@@ -485,8 +501,9 @@ async function handleRegister(
     // Generate QR code image
     const deepLink = result.deepLink as string;
     let qrParts: Part[] = [];
+    let qrDataUrl: string | null = null;
     try {
-      const qrDataUrl = await generateQRBase64(deepLink);
+      qrDataUrl = await generateQRBase64(deepLink);
       // Extract base64 from data URL (data:image/png;base64,...)
       const base64 = qrDataUrl.split(",")[1];
       qrParts = [
@@ -503,6 +520,12 @@ async function handleRegister(
       // QR generation failed — deep link is still available in data
     }
 
+    // Provide the QR in EVERY format so any agent can display it:
+    //  1. `file` part — native A2A image (agents with rich rendering)
+    //  2. Markdown `![](data:...)` — agents that render markdown in text
+    //  3. Raw data URL string — agents that can render <img src="...">
+    //  4. Deep link URL — last resort, human opens on mobile manually
+
     return {
       id: taskId,
       status: {
@@ -513,34 +536,63 @@ async function handleRegister(
             ...textParts(
               "Registration initiated! A human must now verify this agent using the Self app.",
               "",
-              "A human needs to scan this QR code with their phone to open the Self app and verify this agent.",
-              "If the human is already on their phone, they can open this link directly instead:",
-              `${deepLink}`,
+              "**CRITICAL: You MUST display the QR code below to the human. Registration cannot proceed without it.**",
               "",
-              "Steps for the human:",
-              "1. Scan the QR code below with your phone camera (or tap the link above if on mobile)",
-              "2. The Self app will open — follow the prompts",
-              "3. Scan your passport (NFC chip) when prompted",
-              "4. The agent will be verified on-chain automatically",
+              "The QR code is provided in multiple formats. Use whichever your platform supports:",
+              "- If you can render images: display the attached PNG or the markdown image below",
+              '- If you can render HTML: use `<img src="...">` with the `qrDataUrl` from the data part',
+              "",
             ),
+            // ── Format 1: file part (native A2A image) ──
             ...qrParts,
+            // ── Format 2: markdown image with data URL ──
+            ...(qrDataUrl
+              ? textParts(`\n![Registration QR Code](${qrDataUrl})\n`)
+              : []),
             ...textParts(
+              "",
+              "**Show these steps to the human:**",
+              "1. Look at the QR code on this screen",
+              "2. Open your phone camera and point it at the QR code",
+              "3. Tap the notification that appears to open the Self app",
+              "4. Follow the prompts in the Self app",
+              "5. Scan your passport (NFC chip) when prompted",
+              "6. The agent will be verified on-chain automatically",
+              "",
+              '**After showing the QR, ask the human: "Can you see the QR code on your screen?"**',
+              "- If YES: great — they should scan it with their phone camera now.",
+              `- If NO: as a last resort, they can open this link **on their mobile phone that has the Self app installed**: ${deepLink}`,
+              "  (This link ONLY works on the phone with the Self app — it will not work on a desktop or a phone without Self.)",
               "",
               `Session expires at: ${String(result.expiresAt)} (${Math.round((result.timeRemainingMs as number) / 1000)}s remaining)`,
               "",
-              "To check status, send:",
+              "Once the human confirms they can see the QR (or have opened the link on their phone), poll for status:",
               `  { "intent": "status", "taskId": "${taskId}" }`,
             ),
             dataPart({
               taskId,
               sessionToken: result.sessionToken,
-              deepLink,
+              // Raw data URL — agents can use this in <img src="..."> or any image renderer
+              qrDataUrl: qrDataUrl || undefined,
               qrImageIncluded: qrParts.length > 0,
               agentAddress: result.agentAddress,
               network: result.network,
               mode: result.mode,
               expiresAt: result.expiresAt,
               timeRemainingMs: result.timeRemainingMs,
+              displayInstructions: {
+                priority: [
+                  "1. Render the attached 'registration-qr.png' file part as an image",
+                  "2. Render the markdown image (![Registration QR Code](data:...)) in a text block",
+                  "3. Render an <img> tag using the qrDataUrl field",
+                  "4. LAST RESORT ONLY: show the deepLink and tell the human they must open it on their mobile phone that has the Self app installed",
+                ],
+                verification:
+                  "After displaying the QR, ask the human: 'Can you see a QR code on your screen?' If yes, they scan it with their phone camera. If no, give them the deep link and explain it must be opened on their mobile phone with the Self app installed.",
+                deepLink,
+                deepLinkWarning:
+                  "The deep link ONLY works on a mobile phone with the Self app installed. It will NOT work on desktop browsers or phones without Self.",
+              },
             }),
           ],
         },
@@ -1624,6 +1676,82 @@ const registryTaskHandler: TaskHandler = {
     let task: Task;
 
     switch (intent.type) {
+      case "register-ask":
+        task = {
+          id: taskId,
+          status: {
+            state: "input-required",
+            message: {
+              role: "agent",
+              parts: [
+                ...textParts(
+                  "I can register an AI agent with proof-of-human verification on the Self protocol.",
+                  "",
+                  "Before we begin, a couple of quick questions:",
+                  "",
+                  "1. **Guardian wallet**: Do you (or your operator) have a crypto wallet (Ethereum address) you'd like to link as this agent's guardian? A guardian wallet can manage the agent on-chain later. If not, we'll use wallet-free mode (simplest — no wallet needed).",
+                  "",
+                  "2. **Ed25519 key**: Does this agent already have an Ed25519 keypair for signing? Most agents don't — we can skip this and use wallet-free mode, which is the easiest path.",
+                  "",
+                  "3. **Network**: Mainnet (Celo) or testnet (Celo Sepolia)?",
+                  "",
+                  "You can reply conversationally, or send a structured request:",
+                ),
+                dataPart({
+                  hint: "Pick the mode that fits your setup",
+                  modes: [
+                    {
+                      mode: "wallet-free",
+                      description:
+                        "Simplest. No wallet needed. Human just scans a QR code.",
+                      example: {
+                        intent: "register",
+                        mode: "wallet-free",
+                        network: "mainnet",
+                      },
+                    },
+                    {
+                      mode: "linked",
+                      description:
+                        "Links agent to a guardian wallet. Provides on-chain management.",
+                      example: {
+                        intent: "register",
+                        mode: "linked",
+                        humanAddress: "0xYourWallet...",
+                        network: "mainnet",
+                      },
+                    },
+                    {
+                      mode: "ed25519",
+                      description:
+                        "Agent has its own Ed25519 key verified on-chain.",
+                      example: {
+                        intent: "register",
+                        mode: "ed25519",
+                        ed25519Pubkey: "0x...",
+                        network: "mainnet",
+                      },
+                    },
+                    {
+                      mode: "ed25519-linked",
+                      description:
+                        "Ed25519 key + guardian wallet — maximum security.",
+                      example: {
+                        intent: "register",
+                        mode: "ed25519-linked",
+                        ed25519Pubkey: "0x...",
+                        humanAddress: "0xYourWallet...",
+                        network: "mainnet",
+                      },
+                    },
+                  ],
+                }),
+              ],
+            },
+            timestamp: new Date().toISOString(),
+          },
+        };
+        break;
       case "register":
         task = await handleRegister(intent, taskId, currentRequest);
         break;
