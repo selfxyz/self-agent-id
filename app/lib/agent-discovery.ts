@@ -237,7 +237,7 @@ export function getAgentDiscoveryText(): string {
 Self app generates ZK proofs on-device. No personal data is ever uploaded, stored, or shared. Only a cryptographic proof is stored on-chain.
 
 ## Human Requirement
-A human must scan their passport or ID card with the Self app (iOS/Android) to complete registration. The agent CANNOT complete this step — it requires physical interaction with the document's NFC chip.
+A human must use the Self app (iOS/Android) to complete registration by scanning a QR code. The agent CANNOT complete this step. Note: the human's passport/ID is scanned ONCE when they first set up the Self app — after that, they only need to scan QR codes shown by the agent.
 
 ## Registration Modes
 ${modeLines}
@@ -277,41 +277,13 @@ Verification strength scale:
   - POST ${base}/api/agent/register/ed25519-challenge — Ed25519 challenge-response flow
   - GET  ${base}/api/agent/register/status — Poll registration status
 
-## SDK Packages
-  - npm: @selfxyz/agent-sdk
-  - PyPI: selfxyz-agent-sdk
-  - crates.io: self-agent-sdk
+## How to Register (for AI agents)
 
-## Registration Guide
+**You do NOT need to install any SDK.** Just send a JSON-RPC message to the A2A endpoint below. The SDK packages exist for post-registration features (signed requests, verification) but are NOT needed for registration itself.
 
-### Option 1: A2A JSON-RPC (recommended for agent-to-agent)
+All options below are plain HTTP — no SDK or special client library needed. Just POST JSON with fetch, curl, requests, etc.
 
-POST ${base}/api/a2a
-Content-Type: application/json
-
-Request:
-\`\`\`json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "message/send",
-  "params": {
-    "message": {
-      "role": "user",
-      "parts": [
-        {
-          "kind": "text",
-          "text": "{ \\"intent\\": \\"register\\", \\"humanAddress\\": \\"0xYourAddress\\", \\"network\\": \\"testnet\\" }"
-        }
-      ]
-    }
-  }
-}
-\`\`\`
-
-The response will include a QR code URL. A human must scan this QR code with the Self app (iOS/Android) to complete the proof-of-human step. Poll the task status using the returned taskId until the status is "completed".
-
-### Option 2: REST Ed25519 Flow
+### Option 1: REST Ed25519 Flow (recommended for most agents)
 
 Step 1 — Request a challenge:
 POST ${base}/api/agent/register/ed25519-challenge
@@ -343,7 +315,7 @@ The response will include a QR code for the human to scan with the Self app.
 Step 3 — Poll status:
 GET ${base}/api/agent/register/status?sessionToken=<token>
 
-### Option 3: Wallet-Free Flow
+### Option 2: Wallet-Free REST Flow (simplest — human does it)
 
 POST ${base}/api/agent/register
 Content-Type: application/json
@@ -355,7 +327,35 @@ Content-Type: application/json
 }
 \`\`\`
 
-The server generates an agent key. The response includes a QR code for the human to scan. Poll status at /api/agent/register/status?sessionToken=<token>.
+The server generates an agent key. The response includes a QR code for the human to scan with the Self app. Poll status at /api/agent/register/status?sessionToken=<token>.
+
+### Option 3: A2A JSON-RPC (for agents with A2A protocol support)
+
+If your agent framework supports the A2A protocol (Google A2A / JSON-RPC), you can use the conversational endpoint. This is the same as the REST options above but wrapped in A2A message format:
+
+POST ${base}/api/a2a
+Content-Type: application/json
+
+\`\`\`json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "message/send",
+  "params": {
+    "message": {
+      "role": "user",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "{ \\"intent\\": \\"register\\", \\"network\\": \\"testnet\\" }"
+        }
+      ]
+    }
+  }
+}
+\`\`\`
+
+The response includes a QR code. A human must scan it with the Self app to complete verification. Poll the task status using the returned taskId.
 
 ## Agent Lifecycle Endpoints
 
@@ -372,7 +372,7 @@ POST ${base}/api/agent/refresh
 Content-Type: application/json
 Headers: x-self-agent-signature, x-self-agent-timestamp
 
-Re-verifies the agent's human backing (e.g. after passport renewal or expiry). Returns a QR code for the human to scan. Poll status at:
+Re-verifies the agent's human backing (e.g. after proof expiry). Returns a QR code for the human to scan with the Self app. Poll status at:
 GET ${base}/api/agent/refresh/status?sessionToken=<token>
 
 ### Identify Agent
@@ -480,6 +480,13 @@ const result = await verifier.verify({
 });
 // result.valid, result.agentAddress, result.agentId, result.credentials
 \`\`\`
+
+## SDK Packages (for post-registration use — NOT needed for registration)
+  - npm: @selfxyz/agent-sdk
+  - PyPI: selfxyz-agent-sdk
+  - crates.io: self-agent-sdk
+
+The SDKs provide signed request helpers, verification, and agent lifecycle management AFTER registration. For registration itself, just use the A2A endpoint or REST API above.
 
 ## Discovery Endpoints
   - ${base}/llms.txt — This file (plain text, for LLMs)
