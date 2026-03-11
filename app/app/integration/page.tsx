@@ -257,7 +257,7 @@ export default function IntegrationPage() {
                   label: "TypeScript",
                   language: "bash",
                   code: `npx @selfxyz/agent-sdk register init \\
-  --mode agent-identity \\
+  --mode linked \\
   --human-address 0xYourWalletAddress \\
   --network ${network.isTestnet ? "testnet" : "mainnet"} \\
   --out .self/session.json
@@ -275,7 +275,7 @@ npx @selfxyz/agent-sdk register export --session .self/session.json`,
                   label: "Python",
                   language: "bash",
                   code: `self-agent register init \\
-  --mode agent-identity \\
+  --mode linked \\
   --human-address 0xYourWalletAddress \\
   --network ${network.isTestnet ? "testnet" : "mainnet"} \\
   --out .self/session.json
@@ -288,7 +288,7 @@ self-agent register export --session .self/session.json`,
                   label: "Rust",
                   language: "bash",
                   code: `self-agent register init \\
-  --mode agent-identity \\
+  --mode linked \\
   --human-address 0xYourWalletAddress \\
   --network ${network.isTestnet ? "testnet" : "mainnet"} \\
   --out .self/session.json
@@ -352,7 +352,7 @@ self-agent register export --session .self/session.json`,
             >
               MCP server
             </a>{" "}
-            exposes 10 tools for identity management &mdash; register, sign,
+            exposes tools for identity management &mdash; register, sign,
             verify, and query agents without leaving your editor.
           </p>
 
@@ -380,7 +380,7 @@ self-agent register export --session .self/session.json`,
     "env": {
       "SELF_AGENT_PRIVATE_KEY": "0x...",
       "SELF_NETWORK": "${network.isTestnet ? "testnet" : "mainnet"}",
-      "SELF_AGENT_API_BASE": "https://self-agent-id.vercel.app"
+      "SELF_AGENT_API_BASE": "https://app.ai.self.xyz"
     }
   }
 }`,
@@ -457,7 +457,7 @@ claude plugin add /path/to/self-agent-id/plugin`,
                 ],
                 [
                   "register-agent",
-                  "Step-by-step registration in all 4 modes (wallet, agent-identity, wallet-free, smart-wallet)",
+                  "Step-by-step registration in all modes (linked, wallet-free, smart-wallet, privy, ed25519, ed25519+guardian)",
                 ],
                 [
                   "sign-requests",

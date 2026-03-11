@@ -31,7 +31,9 @@ import {
   Bot,
   Send,
 } from "lucide-react";
-import { SelfAgent, SelfAgentVerifier } from "@selfxyz/agent-sdk";
+import { SelfAgent, HEADERS } from "@selfxyz/agent-sdk";
+import type { Ed25519Agent } from "@selfxyz/agent-sdk";
+import type { SelfAgentVerifier } from "@selfxyz/agent-sdk";
 import TestCard, { type StepEntry } from "@/components/TestCard";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
@@ -49,7 +51,11 @@ import { useNetwork } from "@/lib/NetworkContext";
 import type { NetworkConfig } from "@/lib/network";
 import { TESTS } from "@/lib/demo-constants";
 
-import { typedDemoVerifier, typedRegistry } from "@/lib/contract-types";
+import {
+  typedDemoVerifier,
+  typedDemoVerifierEd25519,
+  typedRegistry,
+} from "@/lib/contract-types";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -657,7 +663,7 @@ type Dispatch = React.Dispatch<Action>;
 type LogFn = (testId: string, message: string) => void;
 
 async function runServiceTest(
-  agent: SelfAgent,
+  agent: SelfAgent | Ed25519Agent,
   agentLabel: string,
   dispatch: Dispatch,
   log: LogFn,
@@ -895,7 +901,7 @@ async function runServiceTest(
 }
 
 async function runPeerTest(
-  agent: SelfAgent,
+  agent: SelfAgent | Ed25519Agent,
   agentLabel: string,
   dispatch: Dispatch,
   log: LogFn,
@@ -1019,7 +1025,9 @@ async function runPeerTest(
     if (demoTs) log(id, `x-self-agent-timestamp: ${demoTs}`);
 
     if (demoSig && demoTs) {
-      const responseVerifier = new SelfAgentVerifier({
+      const { SelfAgentVerifier: VerifierClass } =
+        await import("@selfxyz/agent-sdk");
+      const responseVerifier = new VerifierClass({
         registryAddress: net.registryAddress,
         rpcUrl: net.rpcUrl,
         maxAgentsPerHuman: 0,
@@ -1185,27 +1193,38 @@ async function runPeerTest(
 }
 
 async function runGateTest(
-  agent: SelfAgent,
+  agent: SelfAgent | Ed25519Agent,
   privateKey: string,
   agentLabel: string,
   dispatch: Dispatch,
   log: LogFn,
   net: NetworkConfig,
+  keyType: "ecdsa" | "ed25519" = "ecdsa",
 ) {
   const id = "gate";
-  const steps = [
-    "Read nonce + sign EIP-712 meta-transaction...",
-    "POST /api/demo/chain-verify (relayer submits tx)...",
-    "Waiting for block confirmation...",
-  ];
+  const isEd25519 = keyType === "ed25519";
+  const steps = isEd25519
+    ? [
+        "Read nonce + sign Ed25519 meta-transaction...",
+        "POST /api/demo/chain-verify-ed25519 (relayer submits tx)...",
+        "Waiting for block confirmation...",
+      ]
+    : [
+        "Read nonce + sign EIP-712 meta-transaction...",
+        "POST /api/demo/chain-verify (relayer submits tx)...",
+        "Waiting for block confirmation...",
+      ];
   const t: (number | undefined)[] = [];
   const totalStart = performance.now();
 
   try {
-    log(id, `Starting Agent-to-Chain test...`);
+    log(
+      id,
+      `Starting Agent-to-Chain test (${isEd25519 ? "Ed25519" : "ECDSA"})...`,
+    );
     log(id, `Agent: ${agentLabel}`);
 
-    // Step 0: Read nonce + EIP-712 signing
+    // Step 0: Read nonce + signing
     dispatch({
       type: "UPDATE_TEST",
       testId: id,
@@ -1213,84 +1232,186 @@ async function runGateTest(
     });
     await new Promise((r) => setTimeout(r, 0));
 
-    const agentKey = ethers.zeroPadValue(agent.address, 32);
-    const provider = new ethers.JsonRpcProvider(net.rpcUrl);
-    const verifierContract = typedDemoVerifier(
-      net.agentDemoVerifierAddress,
-      provider,
-    );
+    let agentKey: string;
+    let res: Response;
+    let t0: number;
 
-    log(id, "Reading nonce from contract...");
-    const nonce = await verifierContract.nonces(agentKey);
-    log(id, `nonce=${nonce.toString()}`);
+    if (isEd25519) {
+      // Ed25519 path — sign plain keccak256 message
+      const ed25519Agent = agent as Ed25519Agent;
+      agentKey = ed25519Agent.agentKey;
 
-    const deadline = Math.floor(Date.now() / 1000) + 300;
-    log(id, "Constructing EIP-712 typed data (MetaVerify)");
-    log(
-      id,
-      `domain: AgentDemoVerifier v1, chainId=${net.chainId}, deadline=${deadline}`,
-    );
+      if (!net.agentDemoVerifierEd25519Address) {
+        throw new Error(`Ed25519 demo verifier not deployed on ${net.label}`);
+      }
 
-    // Use raw wallet if private key available, otherwise prompt browser wallet
-    let eip712Signer: ethers.Signer & {
-      signTypedData: typeof ethers.Wallet.prototype.signTypedData;
-    };
-    if (privateKey) {
-      eip712Signer = new ethers.Wallet(privateKey);
-      log(id, "Signing EIP-712 with agent key (secp256k1)...");
-    } else if (window.ethereum) {
-      const browserProvider = new ethers.BrowserProvider(
-        window.ethereum as unknown as ethers.Eip1193Provider,
+      const provider = new ethers.JsonRpcProvider(net.rpcUrl);
+      const verifierContract = typedDemoVerifierEd25519(
+        net.agentDemoVerifierEd25519Address,
+        provider,
       );
-      const signer = await browserProvider.getSigner();
-      eip712Signer = signer as ethers.Signer & {
+
+      log(id, "Reading nonce from Ed25519 demo verifier contract...");
+      const nonce = await verifierContract.nonces(agentKey);
+      log(id, `nonce=${nonce.toString()}`);
+
+      const deadline = Math.floor(Date.now() / 1000) + 300;
+      log(id, `Constructing Ed25519 meta-transaction (deadline=${deadline})`);
+
+      // The contract expects: keccak256(abi.encodePacked(agentKey, nonce, deadline))
+      const messageHash = ethers.keccak256(
+        ethers.solidityPacked(
+          ["bytes32", "uint256", "uint256"],
+          [agentKey, nonce, BigInt(deadline)],
+        ),
+      );
+
+      log(id, "Signing message with Ed25519 key...");
+
+      // Ed25519Agent.signRaw() signs raw bytes — we need the raw signature + extKpub
+      // Since Ed25519Agent doesn't expose signRaw directly, we'll use the underlying
+      // @noble/ed25519 library. The agent's private key is accessible via the constructor.
+      const ed = await import("@noble/ed25519");
+      const { sha512 } = await import("@noble/hashes/sha512");
+
+      // Set SHA-512 for noble/ed25519 v3 (required before sign/getPublicKey)
+      if (!ed.hashes.sha512) {
+        ed.hashes.sha512 = (msg: Uint8Array) => sha512(msg);
+      }
+
+      const privKeyHex = privateKey.replace(/^0x/, "");
+      const privKeyBytes = new Uint8Array(32);
+      for (let i = 0; i < 32; i++) {
+        privKeyBytes[i] = parseInt(privKeyHex.slice(i * 2, i * 2 + 2), 16);
+      }
+
+      const msgBytes = ethers.getBytes(messageHash);
+      const sigBytes = ed.sign(msgBytes, privKeyBytes);
+      const pubKeyBytes = ed.getPublicKey(privKeyBytes);
+
+      // Convert signature to R and S (each 32 bytes, little-endian)
+      const sigR = "0x" + Buffer.from(sigBytes.slice(0, 32)).toString("hex");
+      const sigS = "0x" + Buffer.from(sigBytes.slice(32, 64)).toString("hex");
+
+      log(id, `Ed25519 signature: R=${shortAddr(sigR)}, S=${shortAddr(sigS)}`);
+
+      // We need the extended public key (extKpub) for on-chain verification.
+      // This is computed by the SCL library's SetKey function.
+      // The TypeScript SDK should have a utility for this, but if not,
+      // we pass the raw pubkey and let the relayer compute extKpub.
+      // For now, include pubkey in the request — the API route will need
+      // to compute extKpub or accept it pre-computed.
+      const pubkeyHex = "0x" + Buffer.from(pubKeyBytes).toString("hex");
+
+      t0 = performance.now();
+      t.push(Math.round(t0 - totalStart));
+
+      // Step 1: POST to chain-verify-ed25519
+      dispatch({
+        type: "UPDATE_TEST",
+        testId: id,
+        state: { steps: makeSteps(steps, 1, t) },
+      });
+      log(id, "Signing HTTP request via SDK...");
+      log(id, "POST /api/demo/chain-verify-ed25519 — awaiting response...");
+
+      res = await agent.fetch(
+        window.location.origin + "/api/demo/chain-verify-ed25519",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentKey,
+            nonce: nonce.toString(),
+            deadline,
+            pubkey: pubkeyHex,
+            sigR,
+            sigS,
+            networkId: net.id,
+          }),
+        },
+      );
+    } else {
+      // ECDSA path — EIP-712 typed data signing
+      agentKey = ethers.zeroPadValue(agent.address, 32);
+      const provider = new ethers.JsonRpcProvider(net.rpcUrl);
+      const verifierContract = typedDemoVerifier(
+        net.agentDemoVerifierAddress,
+        provider,
+      );
+
+      log(id, "Reading nonce from contract...");
+      const nonce = await verifierContract.nonces(agentKey);
+      log(id, `nonce=${nonce.toString()}`);
+
+      const deadline = Math.floor(Date.now() / 1000) + 300;
+      log(id, "Constructing EIP-712 typed data (MetaVerify)");
+      log(
+        id,
+        `domain: AgentDemoVerifier v1, chainId=${net.chainId}, deadline=${deadline}`,
+      );
+
+      // Use raw wallet if private key available, otherwise prompt browser wallet
+      let eip712Signer: ethers.Signer & {
         signTypedData: typeof ethers.Wallet.prototype.signTypedData;
       };
-      log(id, "Signing EIP-712 via browser wallet...");
-    } else {
-      throw new Error(
-        "No private key or browser wallet available for EIP-712 signing.",
+      if (privateKey) {
+        eip712Signer = new ethers.Wallet(privateKey);
+        log(id, "Signing EIP-712 with agent key (secp256k1)...");
+      } else if (window.ethereum) {
+        const browserProvider = new ethers.BrowserProvider(
+          window.ethereum as unknown as ethers.Eip1193Provider,
+        );
+        const signer = await browserProvider.getSigner();
+        eip712Signer = signer as ethers.Signer & {
+          signTypedData: typeof ethers.Wallet.prototype.signTypedData;
+        };
+        log(id, "Signing EIP-712 via browser wallet...");
+      } else {
+        throw new Error(
+          "No private key or browser wallet available for EIP-712 signing.",
+        );
+      }
+
+      const eip712Signature = await eip712Signer.signTypedData(
+        {
+          name: "AgentDemoVerifier",
+          version: "1",
+          chainId: BigInt(net.chainId),
+          verifyingContract: net.agentDemoVerifierAddress as `0x${string}`,
+        },
+        EIP712_TYPES,
+        { agentKey, nonce, deadline },
+      );
+      log(id, `EIP-712 signature: ${shortAddr(eip712Signature)}`);
+
+      t0 = performance.now();
+      t.push(Math.round(t0 - totalStart));
+
+      // Step 1: POST to chain-verify
+      dispatch({
+        type: "UPDATE_TEST",
+        testId: id,
+        state: { steps: makeSteps(steps, 1, t) },
+      });
+      log(id, "Signing HTTP request via SDK...");
+      log(id, "POST /api/demo/chain-verify — awaiting response...");
+
+      res = await agent.fetch(
+        window.location.origin + "/api/demo/chain-verify",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentKey,
+            nonce: nonce.toString(),
+            deadline,
+            eip712Signature,
+            networkId: net.id,
+          }),
+        },
       );
     }
-
-    const eip712Signature = await eip712Signer.signTypedData(
-      {
-        name: "AgentDemoVerifier",
-        version: "1",
-        chainId: BigInt(net.chainId),
-        verifyingContract: net.agentDemoVerifierAddress as `0x${string}`,
-      },
-      EIP712_TYPES,
-      { agentKey, nonce, deadline },
-    );
-    log(id, `EIP-712 signature: ${shortAddr(eip712Signature)}`);
-
-    const t0 = performance.now();
-    t.push(Math.round(t0 - totalStart));
-
-    // Step 1: POST to chain-verify
-    dispatch({
-      type: "UPDATE_TEST",
-      testId: id,
-      state: { steps: makeSteps(steps, 1, t) },
-    });
-    log(id, "Signing HTTP request via SDK...");
-    log(id, "POST /api/demo/chain-verify — awaiting response...");
-
-    const res = await agent.fetch(
-      window.location.origin + "/api/demo/chain-verify",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agentKey,
-          nonce: nonce.toString(),
-          deadline,
-          eip712Signature,
-          networkId: net.id,
-        }),
-      },
-    );
 
     const elapsed1 = Math.round(performance.now() - t0);
     t.push(elapsed1);
@@ -1441,8 +1562,9 @@ async function runGateTest(
 export default function DemoPage() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const { network } = useNetwork();
-  const agentRef = useRef<SelfAgent | null>(null);
+  const agentRef = useRef<SelfAgent | Ed25519Agent | null>(null);
   const privateKeyRef = useRef<string>("");
+  const keyTypeRef = useRef<"ecdsa" | "ed25519">("ecdsa");
   const chatUnlockedRef = useRef(false);
   const [setupMode, setSetupMode] = useState<
     "private-key" | "passkey" | "wallet" | "social"
@@ -1493,20 +1615,43 @@ export default function DemoPage() {
 
     try {
       let key = state.privateKey.trim();
-      if (!key.startsWith("0x")) key = "0x" + key;
+
+      // Auto-detect key type: 64 hex chars without 0x prefix → Ed25519 seed
+      const isEd25519 =
+        !key.startsWith("0x") &&
+        key.length === 64 &&
+        /^[0-9a-fA-F]{64}$/.test(key);
+
+      if (!isEd25519 && !key.startsWith("0x")) key = "0x" + key;
 
       bootLog("Initializing Self Agent SDK...");
       await delay(150);
 
-      const agent = new SelfAgent({
-        privateKey: key,
-        registryAddress: network.registryAddress,
-        rpcUrl: network.rpcUrl,
-      });
+      let agent: SelfAgent | Ed25519Agent;
+      if (isEd25519) {
+        bootLog("Detected Ed25519 key (64-char hex without 0x prefix)");
+        const { Ed25519Agent: Ed25519AgentClass } =
+          await import("@selfxyz/agent-sdk");
+        agent = new Ed25519AgentClass({
+          privateKey: key,
+          registryAddress: network.registryAddress,
+          rpcUrl: network.rpcUrl,
+        });
+        keyTypeRef.current = "ed25519";
+      } else {
+        agent = new SelfAgent({
+          privateKey: key,
+          registryAddress: network.registryAddress,
+          rpcUrl: network.rpcUrl,
+        });
+        keyTypeRef.current = "ecdsa";
+      }
 
       agentRef.current = agent;
-      privateKeyRef.current = key;
-      saveAgentPrivateKey({ agentAddress: agent.address, privateKey: key });
+      privateKeyRef.current = isEd25519 ? key : key;
+      if (!isEd25519) {
+        saveAgentPrivateKey({ agentAddress: agent.address, privateKey: key });
+      }
       setLoadedViaPasskey(false);
       setPasskeyWalletAddress(null);
       setPasskeyHasSigningKey(true);
@@ -1598,7 +1743,9 @@ export default function DemoPage() {
       }
       await delay(80);
 
-      bootLog("Signing protocol: ECDSA + x-self-agent-* headers");
+      bootLog(
+        `Signing protocol: ${keyTypeRef.current === "ed25519" ? "Ed25519" : "ECDSA"} + x-self-agent-* headers`,
+      );
       await delay(80);
 
       // Log target endpoints
@@ -1874,7 +2021,7 @@ export default function DemoPage() {
       const signer = await provider.getSigner();
       const address = await signer.getAddress();
 
-      // Derive agent key (simple mode: address = agent)
+      // Derive agent key (wallet address = agent key)
       const agentKey = ethers.zeroPadValue(address, 32);
 
       // Check on-chain
@@ -1885,7 +2032,7 @@ export default function DemoPage() {
       if (!isVerified) {
         throw new Error(
           "This wallet is not registered as a verified agent. " +
-            "Register first using Simple (Verified Wallet) mode.",
+            "Register first using Linked Agent mode.",
         );
       }
 
@@ -2079,12 +2226,28 @@ export default function DemoPage() {
       );
       await runServiceTest(agent, agentLabel, dispatch, log, network);
       await runPeerTest(agent, agentLabel, dispatch, log, network);
-      await runGateTest(agent, pk, agentLabel, dispatch, log, network);
+      await runGateTest(
+        agent,
+        pk,
+        agentLabel,
+        dispatch,
+        log,
+        network,
+        keyTypeRef.current,
+      );
     } else {
       await Promise.all([
         runServiceTest(agent, agentLabel, dispatch, log, network),
         runPeerTest(agent, agentLabel, dispatch, log, network),
-        runGateTest(agent, pk, agentLabel, dispatch, log, network),
+        runGateTest(
+          agent,
+          pk,
+          agentLabel,
+          dispatch,
+          log,
+          network,
+          keyTypeRef.current,
+        ),
       ]);
     }
   }, [state.agent, loadedViaPasskey, walletAddress, log, network]);
@@ -2419,8 +2582,8 @@ export default function DemoPage() {
           ) : (
             <>
               <p className="text-xs text-muted mb-4">
-                Connect your browser wallet to load a Simple (Verified Wallet)
-                mode agent. Your wallet address is your agent identity.
+                Connect your browser wallet to load your agent. Your wallet is
+                used to look up agents registered under your address.
               </p>
               {walletError && (
                 <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4">

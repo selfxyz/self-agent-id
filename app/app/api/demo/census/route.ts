@@ -7,6 +7,7 @@ import { HEADERS } from "@selfxyz/agent-sdk";
 import { NETWORKS, type NetworkId } from "@/lib/network";
 import { getCachedVerifier } from "@/lib/selfVerifier";
 import { checkAndRecordReplay } from "@/lib/replayGuard";
+import { demoEndpointDocs } from "@/lib/demo-docs";
 
 // Allow up to 30s for RPC calls to Forno (default 10s can be tight)
 export const maxDuration = 30;
@@ -47,6 +48,8 @@ function createVerifier(req: NextRequest) {
 async function verifyAgent(req: NextRequest, body: string) {
   const signature = req.headers.get(HEADERS.SIGNATURE);
   const timestamp = req.headers.get(HEADERS.TIMESTAMP);
+  const keytype = req.headers.get(HEADERS.KEYTYPE) ?? undefined;
+  const agentKey = req.headers.get(HEADERS.KEY) ?? undefined;
 
   if (!signature || !timestamp) {
     return {
@@ -62,6 +65,8 @@ async function verifyAgent(req: NextRequest, body: string) {
     method: req.method,
     url: req.url,
     body: body || undefined,
+    keytype,
+    agentKey,
   });
 
   if (!result.valid) return result;
@@ -157,6 +162,35 @@ export async function POST(req: NextRequest) {
 // ---------------------------------------------------------------------------
 
 export async function GET(req: NextRequest) {
+  if (req.nextUrl.searchParams.has("help")) {
+    return demoEndpointDocs({
+      endpoint: "/api/demo/census",
+      method: "POST + GET",
+      description:
+        "Anonymous credential census demo. POST to contribute your credentials (nationality, age, OFAC status) to an aggregate census. GET to read aggregate stats. Both require agent authentication.",
+      requiredHeaders: {
+        "x-self-agent-signature": "HMAC signature of the request",
+        "x-self-agent-timestamp": "ISO 8601 timestamp of the request",
+      },
+      optionalHeaders: {
+        "x-self-agent-keytype": "Key type: 'ed25519' or omit for ECDSA",
+        "x-self-agent-key": "Agent public key (required for Ed25519)",
+      },
+      bodySchema: {
+        "?network": "Query param: 'celo-sepolia' (default) or 'celo-mainnet'",
+        "(POST body)":
+          "Empty object {} — credentials are read from the agent's on-chain record",
+      },
+      exampleBody: {},
+      notes: [
+        "POST contributes your credentials to the census (one entry per agent address).",
+        "GET returns aggregate stats: top countries, age breakdowns, OFAC clear counts.",
+        "Data is in-memory only — resets on server restart.",
+        "Add ?help=1 to GET for this documentation (bypasses auth).",
+      ],
+    });
+  }
+
   try {
     const result = await verifyAgent(req, "");
 

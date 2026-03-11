@@ -5,7 +5,7 @@
 /**
  * Registration and deregistration flow management via the Self Agent ID REST API.
  *
- * These functions call the hosted API at self-agent-id.vercel.app by default
+ * These functions call the hosted API at app.ai.self.xyz by default
  * (or SELF_AGENT_API_BASE / a custom base URL) and return session objects
  * with polling capabilities.
  */
@@ -14,7 +14,7 @@ import type { NetworkName } from "./constants";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const DEFAULT_API_BASE = "https://self-agent-id.vercel.app";
+const DEFAULT_API_BASE = "https://app.ai.self.xyz";
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -27,7 +27,13 @@ const CHAIN_IDS: Record<NetworkName, number> = {
 
 export interface RegistrationRequest {
   /** Registration mode */
-  mode: "verified-wallet" | "agent-identity" | "wallet-free" | "smart-wallet";
+  mode:
+    | "self-custody"
+    | "linked"
+    | "wallet-free"
+    | "ed25519"
+    | "ed25519-linked"
+    | "smartwallet";
   /** Network: "mainnet" (default) or "testnet" */
   network?: NetworkName;
   /** Credential disclosures to request */
@@ -36,13 +42,13 @@ export interface RegistrationRequest {
     ofac?: boolean;
     nationality?: boolean;
   };
-  /** Human's wallet address (required for verified-wallet and agent-identity) */
+  /** Human's wallet address (required for self-custody and linked) */
   humanAddress?: string;
   /** Agent display name */
   agentName?: string;
   /** Agent description */
   agentDescription?: string;
-  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://self-agent-id.vercel.app) */
+  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://app.ai.self.xyz) */
   apiBase?: string;
 }
 
@@ -79,6 +85,42 @@ export interface RegistrationSession {
   exportKey(): Promise<string>;
 }
 
+export interface ProofRefreshRequest {
+  /** Agent ID (token ID) to refresh the proof for */
+  agentId: number;
+  /** Network: "mainnet" (default) or "testnet" */
+  network?: NetworkName;
+  /** Credential disclosures to request (should match original registration) */
+  disclosures?: {
+    minimumAge?: number;
+    ofac?: boolean;
+    nationality?: boolean;
+  };
+  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://app.ai.self.xyz) */
+  apiBase?: string;
+}
+
+export interface RefreshSession {
+  /** Encrypted session token */
+  sessionToken: string;
+  /** Current stage */
+  stage: string;
+  /** Deep link for Self app */
+  deepLink: string;
+  /** When the session expires */
+  expiresAt: string;
+  /** Milliseconds until expiry */
+  timeRemainingMs: number;
+  /** Human-readable instructions */
+  humanInstructions: string[];
+
+  /** Poll until proof refresh completes or times out */
+  waitForCompletion(opts?: {
+    timeoutMs?: number;
+    pollIntervalMs?: number;
+  }): Promise<{ proofExpiresAt: Date }>;
+}
+
 export interface DeregistrationRequest {
   /** Network: "mainnet" (default) or "testnet" */
   network?: NetworkName;
@@ -90,7 +132,7 @@ export interface DeregistrationRequest {
     ofac?: boolean;
     nationality?: boolean;
   };
-  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://self-agent-id.vercel.app) */
+  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://app.ai.self.xyz) */
   apiBase?: string;
 }
 
@@ -239,6 +281,19 @@ interface RegisterInitResponse {
   mode: string;
 }
 
+// ── Refresh Init Response Shape ─────────────────────────────────────────────
+
+interface RefreshInitResponse {
+  sessionToken: string;
+  stage: string;
+  deepLink: string;
+  agentId: number;
+  expiresAt: string;
+  timeRemainingMs: number;
+  humanInstructions: string[];
+  network: string;
+}
+
 // ── Deregistration Init Response Shape ──────────────────────────────────────
 
 interface DeregisterInitResponse {
@@ -312,6 +367,36 @@ export async function requestDeregistration(
   );
 
   return buildDeregistrationSession(data, base);
+}
+
+/**
+ * Initiate a proof refresh for an existing agent through the Self Agent ID REST API.
+ *
+ * Returns a session object with a deep link for the human to scan in the Self app,
+ * and a polling method to wait for the new proof to be recorded on-chain.
+ */
+export async function requestProofRefresh(
+  opts: ProofRefreshRequest,
+): Promise<RefreshSession> {
+  const base = resolveApiBase(opts.apiBase);
+  const network = opts.network ?? "mainnet";
+
+  const payload = {
+    agentId: opts.agentId,
+    network,
+    disclosures: opts.disclosures,
+  };
+
+  const data = await apiFetch<RefreshInitResponse>(
+    `${base}/api/agent/refresh`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+
+  return buildRefreshSession(data, base);
 }
 
 /**
@@ -420,6 +505,76 @@ function buildRegistrationSession(
         },
       );
       return status.privateKey;
+    },
+  };
+}
+
+function buildRefreshSession(
+  data: RefreshInitResponse,
+  apiBase: string,
+): RefreshSession {
+  let currentToken = data.sessionToken;
+
+  return {
+    sessionToken: data.sessionToken,
+    stage: data.stage,
+    deepLink: data.deepLink,
+    expiresAt: data.expiresAt,
+    timeRemainingMs: data.timeRemainingMs,
+    humanInstructions: data.humanInstructions,
+
+    async waitForCompletion(opts) {
+      const timeout = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+      const interval = opts?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+      const deadline = Date.now() + timeout;
+
+      while (Date.now() < deadline) {
+        await sleep(interval);
+
+        let status: StatusResponse;
+        try {
+          status = await apiFetch<StatusResponse>(
+            `${apiBase}/api/agent/refresh/status?token=${encodeURIComponent(currentToken)}`,
+          );
+        } catch (err) {
+          if (
+            err instanceof RegistrationError &&
+            err.message.toLowerCase().includes("expired")
+          ) {
+            throw new ExpiredSessionError(
+              "Proof refresh session expired. Call requestProofRefresh() again to start a new session.",
+            );
+          }
+          throw err;
+        }
+
+        currentToken = status.sessionToken;
+
+        if (status.stage === "completed") {
+          // The status response includes the new proof expiry timestamp
+          const expiresAtRaw = (
+            status as StatusResponse & { proofExpiresAt?: string }
+          ).proofExpiresAt;
+          const proofExpiresAt = expiresAtRaw
+            ? new Date(expiresAtRaw)
+            : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // fallback: 1 year from now
+          return { proofExpiresAt };
+        }
+
+        if (status.stage === "failed") {
+          throw new RegistrationError("Proof refresh failed on-chain.");
+        }
+
+        if (status.stage === "expired") {
+          throw new ExpiredSessionError(
+            "Proof refresh session expired. Call requestProofRefresh() again to start a new session.",
+          );
+        }
+      }
+
+      throw new RegistrationError(
+        `Proof refresh did not complete within ${timeout}ms. The session may still be active — call waitForCompletion() again to resume polling.`,
+      );
     },
   };
 }

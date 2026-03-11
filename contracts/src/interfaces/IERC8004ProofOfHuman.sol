@@ -44,6 +44,17 @@ interface IERC8004ProofOfHuman is IERC8004 {
     /// @notice Emitted when the per-human agent cap is updated
     event MaxAgentsPerHumanUpdated(uint256 newMax);
 
+    /// @notice Emitted when an agent's human proof is refreshed in-place
+    event HumanProofRefreshed(uint256 indexed agentId, uint256 nullifier, uint256 newExpiresAt, bytes32 configId);
+
+    /// @notice Emitted when a human identifies themselves via passport scan (read-only, no state changes)
+    event NullifierIdentified(uint256 indexed nullifier, uint256 agentCount);
+
+    // ---- Errors ----
+
+    error ConfigMismatch(bytes32 expected, bytes32 actual);
+    error RefreshNotSupported(uint256 agentId);
+
     // ---- Proof-of-Human Registration ----
 
     /// @notice Register an agent with a human proof from an approved provider
@@ -86,6 +97,12 @@ interface IERC8004ProofOfHuman is IERC8004 {
 
     /// @notice Returns the number of active agents registered by the same human
     function getAgentCountForHuman(uint256 nullifier) external view returns (uint256);
+
+    /// @notice Returns all agent IDs registered by the human identified by nullifier
+    function getAgentsForNullifier(uint256 nullifier) external view returns (uint256[] memory);
+
+    /// @notice Returns a paginated slice of agent IDs for a nullifier
+    function getAgentsForNullifier(uint256 nullifier, uint256 offset, uint256 limit) external view returns (uint256[] memory);
 
     /// @notice Returns true if two agents belong to the same human (same nullifier)
     function sameHuman(uint256 agentIdA, uint256 agentIdB) external view returns (bool);

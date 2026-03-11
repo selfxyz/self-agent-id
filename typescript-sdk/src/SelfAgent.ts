@@ -47,6 +47,11 @@ export interface AgentInfo {
   isVerified: boolean;
   nullifier: bigint;
   agentCount: bigint;
+  proofExpiresAt: bigint;
+  isProofFresh: boolean;
+  daysUntilExpiry: number;
+  isExpiringSoon: boolean;
+  siblingAgentIds: bigint[];
 }
 
 /**
@@ -123,6 +128,11 @@ export class SelfAgent {
         isVerified: false,
         nullifier: 0n,
         agentCount: 0n,
+        proofExpiresAt: 0n,
+        isProofFresh: false,
+        daysUntilExpiry: -1,
+        isExpiringSoon: false,
+        siblingAgentIds: [],
       };
     }
 
@@ -131,8 +141,18 @@ export class SelfAgent {
       this.registry.getHumanNullifier(agentId),
     ]);
 
-    const agentCount: bigint =
-      await this.registry.getAgentCountForHuman(nullifier);
+    const [agentCount, proofExpiresAt, isProofFresh, siblingAgentIds] =
+      await Promise.all([
+        this.registry.getAgentCountForHuman(nullifier),
+        this.registry.proofExpiresAt(agentId),
+        this.registry.isProofFresh(agentId),
+        this.registry.getAgentsForNullifier(nullifier),
+      ]);
+
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    const daysUntilExpiry =
+      proofExpiresAt > 0n ? Number((proofExpiresAt - now) / 86400n) : -1;
+    const isExpiringSoon = daysUntilExpiry >= 0 && daysUntilExpiry <= 30;
 
     return {
       address: this.wallet.address,
@@ -141,6 +161,11 @@ export class SelfAgent {
       isVerified,
       nullifier,
       agentCount,
+      proofExpiresAt,
+      isProofFresh,
+      daysUntilExpiry,
+      isExpiringSoon,
+      siblingAgentIds,
     };
   }
 
@@ -298,7 +323,7 @@ export class SelfAgent {
    *
    * ```ts
    * const session = await SelfAgent.requestRegistration({
-   *   mode: "agent-identity",
+   *   mode: "linked",
    *   network: "mainnet",
    *   disclosures: { minimumAge: 18, ofac: true },
    *   humanAddress: "0x...",

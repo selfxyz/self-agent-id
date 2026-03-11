@@ -95,7 +95,7 @@ def test_cli_init_open_export_roundtrip(tmp_path: Path):
         "register",
         "init",
         "--mode",
-        "agent-identity",
+        "linked",
         "--human-address",
         "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
         "--network",
@@ -133,7 +133,7 @@ def test_cli_deregister_init_roundtrip(tmp_path: Path):
         "deregister",
         "init",
         "--mode",
-        "agent-identity",
+        "linked",
         "--human-address",
         "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
         "--agent-address",
@@ -146,7 +146,7 @@ def test_cli_deregister_init_roundtrip(tmp_path: Path):
     assert init.returncode == 0, init.stderr
     data = json.loads(session.read_text(encoding="utf-8"))
     assert data["operation"] == "deregister"
-    assert data["mode"] == "agent-identity"
+    assert data["mode"] == "linked"
     assert data["registration"]["userDefinedData"].startswith("X")
     assert data.get("secrets") is None
 
@@ -158,7 +158,7 @@ def test_cli_wait_live_verified_address(tmp_path: Path, local_harness: dict):
         "register",
         "init",
         "--mode",
-        "verified-wallet",
+        "self-custody",
         "--human-address",
         ANVIL_ALT_HUMAN_ADDRESS,
         "--chain",
@@ -197,7 +197,7 @@ def test_cli_wait_live_deregistered_address(tmp_path: Path, local_harness: dict)
         "deregister",
         "init",
         "--mode",
-        "verified-wallet",
+        "self-custody",
         "--human-address",
         local_harness["deployerAddress"],
         "--chain",
@@ -238,7 +238,7 @@ def test_cli_wait_accepts_callback_payload(tmp_path: Path, local_harness: dict):
         "register",
         "init",
         "--mode",
-        "verified-wallet",
+        "self-custody",
         "--human-address",
         local_harness["deployerAddress"],
         "--chain",

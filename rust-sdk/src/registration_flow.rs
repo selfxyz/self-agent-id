@@ -12,7 +12,7 @@
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! # tokio::runtime::Runtime::new()?.block_on(async {
 //! let session = RegistrationSession::request(RegistrationRequest {
-//!     mode: "agent-identity".into(),
+//!     mode: "linked".into(),
 //!     network: "mainnet".into(),
 //!     ..Default::default()
 //! }, None).await?;
@@ -224,7 +224,7 @@ impl RegistrationSession {
 
     /// Export the agent private key generated during registration.
     ///
-    /// Only available for modes that created a new keypair (e.g. agent-identity).
+    /// Only available for modes that created a new keypair (e.g. linked).
     pub async fn export_key(&self) -> Result<String, RegistrationError> {
         let resp = self
             .http
@@ -352,6 +352,167 @@ impl DeregistrationSession {
 
         Err(RegistrationError::Timeout)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Proof Refresh
+// ---------------------------------------------------------------------------
+
+/// Request payload for initiating a proof refresh.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProofRefreshRequest {
+    /// Agent ID (token ID) to refresh the proof for.
+    pub agent_id: u64,
+    /// Network: "mainnet" (default) or "testnet".
+    pub network: String,
+    /// Credential disclosures to request (should match original registration).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disclosures: Option<serde_json::Value>,
+}
+
+/// Successful proof refresh result.
+#[derive(Debug, Clone)]
+pub struct ProofRefreshResult {
+    /// Unix timestamp (seconds) when the new proof expires.
+    pub proof_expires_at: u64,
+}
+
+/// An in-progress proof refresh session.
+#[derive(Debug, Clone)]
+pub struct RefreshSession {
+    pub session_token: String,
+    pub stage: String,
+    pub deep_link: String,
+    pub expires_at: String,
+    pub time_remaining_ms: u64,
+    pub human_instructions: Vec<String>,
+    api_base: String,
+    http: Client,
+}
+
+impl RefreshSession {
+    /// Initiate a proof refresh via the REST API.
+    pub async fn request(
+        req: ProofRefreshRequest,
+        api_base: Option<&str>,
+    ) -> Result<Self, RegistrationError> {
+        let base = resolve_api_base(api_base);
+        let http = Client::new();
+        let resp = http
+            .post(format!("{}/api/agent/refresh", base))
+            .json(&req)
+            .send()
+            .await
+            .map_err(|e| RegistrationError::Http(e.to_string()))?;
+
+        let data: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| RegistrationError::Http(e.to_string()))?;
+
+        if let Some(err) = data.get("error").and_then(|v| v.as_str()) {
+            return Err(RegistrationError::Api(err.to_string()));
+        }
+
+        Ok(Self {
+            session_token: json_str(&data, "sessionToken"),
+            stage: json_str(&data, "stage"),
+            deep_link: json_str(&data, "deepLink"),
+            expires_at: json_str(&data, "expiresAt"),
+            time_remaining_ms: data
+                .get("timeRemainingMs")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0),
+            human_instructions: json_str_array(&data, "humanInstructions"),
+            api_base: base,
+            http,
+        })
+    }
+
+    /// Poll until proof refresh completes or times out.
+    pub async fn wait_for_completion(
+        &self,
+        timeout_ms: Option<u64>,
+        poll_interval_ms: Option<u64>,
+    ) -> Result<ProofRefreshResult, RegistrationError> {
+        let timeout = Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS));
+        let interval = Duration::from_millis(poll_interval_ms.unwrap_or(DEFAULT_POLL_INTERVAL_MS));
+        let deadline = Instant::now() + timeout;
+        let mut token = self.session_token.clone();
+
+        while Instant::now() < deadline {
+            let resp = self
+                .http
+                .get(format!("{}/api/agent/refresh/status", self.api_base))
+                .query(&[("token", &token)])
+                .send()
+                .await
+                .map_err(|e| RegistrationError::Http(e.to_string()))?;
+
+            let data: serde_json::Value = resp
+                .json()
+                .await
+                .map_err(|e| RegistrationError::Http(e.to_string()))?;
+
+            if let Some(err) = data.get("error").and_then(|v| v.as_str()) {
+                if err.to_lowercase().contains("expired") {
+                    return Err(RegistrationError::ExpiredSession);
+                }
+            }
+
+            let stage = json_str(&data, "stage");
+            if let Some(t) = data.get("sessionToken").and_then(|v| v.as_str()) {
+                token = t.to_string();
+            }
+
+            match stage.as_str() {
+                "completed" => {
+                    // The status response may include proofExpiresAt as a unix
+                    // timestamp (number) or an ISO date string. Try number first,
+                    // then fall back to string-as-number, then 1 year default.
+                    let proof_expires_at = data
+                        .get("proofExpiresAt")
+                        .and_then(|v| {
+                            v.as_u64().or_else(|| {
+                                v.as_str().and_then(|s| s.parse::<u64>().ok())
+                            })
+                        })
+                        // Fallback: 1 year from now
+                        .unwrap_or_else(|| {
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .expect("system clock before UNIX epoch")
+                                .as_secs()
+                                + 365 * 24 * 60 * 60
+                        });
+                    return Ok(ProofRefreshResult { proof_expires_at });
+                }
+                "failed" => {
+                    return Err(RegistrationError::Failed(
+                        "Proof refresh failed on-chain".into(),
+                    ));
+                }
+                "expired" => return Err(RegistrationError::ExpiredSession),
+                _ => {}
+            }
+
+            tokio::time::sleep(interval).await;
+        }
+
+        Err(RegistrationError::Timeout)
+    }
+}
+
+/// Initiate a proof refresh for an existing agent through the Self Agent ID REST API.
+///
+/// Returns a session object with a deep link for the human to scan in the Self app,
+/// and a polling method to wait for the new proof to be recorded on-chain.
+pub async fn request_proof_refresh(
+    req: ProofRefreshRequest,
+    api_base: Option<&str>,
+) -> Result<RefreshSession, RegistrationError> {
+    RefreshSession::request(req, api_base).await
 }
 
 /// Helper: extract a string from a JSON value, defaulting to empty string.

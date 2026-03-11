@@ -43,13 +43,24 @@ export const REGISTRY_ABI = [
   "function getAgentCredentials(uint256 agentId) view returns ((string issuingState, string[] name, string idNumber, string nationality, string dateOfBirth, string gender, string expiryDate, uint256 olderThan, bool[3] ofac))",
   // V5: per-agent nonce for replay-attack prevention on advanced/wallet-free registration
   "function agentNonces(address agent) view returns (uint256)",
+  // Ed25519 registration nonce
+  "function ed25519Nonce(bytes32 pubkey) view returns (uint256)",
   // Standard interface aliases (match SDK REGISTRY_ABI naming)
   "function getProofProvider(uint256 agentId) view returns (address)",
   "function selfProofProvider() view returns (address)",
   // ERC-8004: proof expiry
   "function proofExpiresAt(uint256 agentId) view returns (uint256)",
   "function isProofFresh(uint256 agentId) view returns (bool)",
+  // ERC-8004: agents-by-nullifier lookup
+  "function getAgentsForNullifier(uint256 nullifier) view returns (uint256[])",
+  "function getAgentsForNullifier(uint256 nullifier, uint256 offset, uint256 limit) view returns (uint256[])",
+  // Agent config identifier (used for proof refresh)
+  "function agentConfigId(uint256 agentId) view returns (bytes32)",
+  "function configIds(uint256 index) view returns (bytes32)",
   "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
+  // Proof refresh event
+  "event HumanProofRefreshed(uint256 indexed agentId, uint256 newExpiry, uint256 nullifier, bytes32 configId)",
+  "event NullifierIdentified(uint256 indexed nullifier, uint256 agentCount)",
 ] as const;
 
 // Provider ABI — used to query provider metadata
@@ -67,6 +78,24 @@ export const AGENT_DEMO_VERIFIER_ABI = [
   "function nonces(bytes32 agentKey) view returns (uint256)",
   "function totalVerifications() view returns (uint256)",
   "function DOMAIN_SEPARATOR() view returns (bytes32)",
+  "function registry() view returns (address)",
+  "error NotVerifiedAgent()",
+  "error MetaTxExpired()",
+  "error MetaTxInvalidNonce()",
+  "error MetaTxInvalidSignature()",
+  "event AgentChainVerified(bytes32 indexed agentKey, uint256 indexed agentId)",
+  "event VerificationCompleted(bytes32 indexed agentKey, uint256 agentCount, uint256 totalCount)",
+  "event GasSponsored(address indexed relayer, bytes32 indexed agentKey)",
+] as const;
+
+// AgentDemoVerifierEd25519 — Ed25519 meta-tx contract (parallel to ECDSA version)
+export const AGENT_DEMO_VERIFIER_ED25519_ABI = [
+  "function metaVerifyAgent(bytes32 agentKey, uint256 nonce, uint256 deadline, uint256[5] extKpub, uint256 sigR, uint256 sigS) returns (uint256 agentId)",
+  "function checkAccess(bytes32 agentKey) view returns (uint256 agentId)",
+  "function hasVerified(bytes32 agentKey) view returns (bool)",
+  "function verificationCount(bytes32 agentKey) view returns (uint256)",
+  "function nonces(bytes32 agentKey) view returns (uint256)",
+  "function totalVerifications() view returns (uint256)",
   "function registry() view returns (address)",
   "error NotVerifiedAgent()",
   "error MetaTxExpired()",

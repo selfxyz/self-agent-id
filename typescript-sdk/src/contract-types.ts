@@ -44,6 +44,8 @@ export interface TypedRegistryContract extends ethers.BaseContract {
   proofExpiresAt(agentId: bigint): Promise<bigint>;
   isProofFresh(agentId: bigint): Promise<boolean>;
   agentNonces(agent: string): Promise<bigint>;
+  getAgentsForNullifier(nullifier: bigint): Promise<bigint[]>;
+  agentConfigId(agentId: bigint): Promise<string>; // bytes32
 }
 
 /** Typed view of the IHumanProofProvider contract. */

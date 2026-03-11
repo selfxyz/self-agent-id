@@ -28,9 +28,10 @@ import {
   Terminal,
   Bot,
 } from "lucide-react";
+import { WizardShell } from "./WizardShell";
+import type { Mode, UserRole } from "./types";
 import { PrivyIcon } from "@/components/PrivyIcon";
 import { connectWallet } from "@/lib/wallet";
-import {} from "@/lib/constants";
 import { useNetwork } from "@/lib/NetworkContext";
 import { getAgentSnippets, AGENT_FEATURES } from "@/lib/snippets";
 import CodeBlock from "@/components/CodeBlock";
@@ -42,7 +43,16 @@ import { savePasskey } from "@/lib/passkey-storage";
 import { saveAgentPrivateKey } from "@/lib/agentKeyVault";
 import { usePrivyState, isPrivyConfigured } from "@/lib/privy";
 
-import { typedProvider, typedRegistry } from "@/lib/contract-types";
+import { typedRegistry } from "@/lib/contract-types";
+import { writeAgentCard as writeAgentCardShared } from "@/lib/writeAgentCard";
+import {
+  computeEd25519ChallengeHash,
+  computeExtKpub,
+  buildEd25519UserData,
+  isValidEd25519PubkeyHex,
+  base64ToHex,
+  deriveEd25519Address,
+} from "@/lib/ed25519";
 // Dynamic import to avoid SSR issues with Self QR SDK
 const SelfQRcodeWrapper = dynamic(
   () => import("@selfxyz/qrcode").then((mod) => mod.SelfQRcodeWrapper),
@@ -54,8 +64,7 @@ let SelfAppBuilderClass:
   | typeof import("@selfxyz/qrcode").SelfAppBuilder
   | null = null;
 
-type Mode = "simple" | "advanced" | "walletfree" | "smartwallet" | "privy";
-type Step = "mode" | "connect" | "scan" | "success";
+type Step = "wizard" | "connect" | "scan" | "success";
 
 /** Map disclosure choices → config index digit (0-5) for the contract's configIds array */
 function getConfigIndex(disc: { minimumAge: number; ofac: boolean }): string {
@@ -70,12 +79,13 @@ function getConfigIndex(disc: { minimumAge: number; ofac: boolean }): string {
 export default function RegisterPage() {
   const router = useRouter();
   const { network } = useNetwork();
-  const [mode, setMode] = useState<Mode>("advanced");
+  const [mode, setMode] = useState<Mode>("linked");
+  const [wizardRole, setWizardRole] = useState<UserRole>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [selfApp, setSelfApp] = useState<ReturnType<
     InstanceType<typeof import("@selfxyz/qrcode").SelfAppBuilder>["build"]
   > | null>(null);
-  const [step, setStep] = useState<Step>("mode");
+  const [step, setStep] = useState<Step>("wizard");
   const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -85,6 +95,17 @@ export default function RegisterPage() {
   );
   const [passkeySupported, setPasskeySupported] = useState(true);
   const [loading, setLoading] = useState(false);
+
+  // Ed25519 mode state
+  const [ed25519PubkeyInput, setEd25519PubkeyInput] = useState("");
+  const [ed25519PubkeyHex, setEd25519PubkeyHex] = useState<string | null>(null);
+  const [ed25519SignatureInput, setEd25519SignatureInput] = useState("");
+  const [ed25519ChallengeHex, setEd25519ChallengeHex] = useState<string | null>(
+    null,
+  );
+  const [ed25519Step, setEd25519Step] = useState<
+    "pubkey" | "challenge" | "signature" | "scan"
+  >("pubkey");
 
   // Privy mode state
   const [privyWalletAddress, setPrivyWalletAddress] = useState<string | null>(
@@ -163,9 +184,32 @@ export default function RegisterPage() {
   // poll the contract to detect successful registration while on the scan step.
   useEffect(() => {
     if (step !== "scan") return;
+    // For Ed25519 mode, poll using the pubkey as agentKey
+    if (mode === "ed25519") {
+      if (!ed25519PubkeyHex) return;
+      const agentKey = "0x" + ed25519PubkeyHex.padStart(64, "0");
+      const interval = setInterval(() => {
+        void (async () => {
+          try {
+            const provider = new ethers.JsonRpcProvider(network.rpcUrl);
+            const registry = typedRegistry(network.registryAddress, provider);
+            const isVerified = await registry.isVerifiedAgent(agentKey);
+            if (isVerified) {
+              console.log(
+                "[on-chain poll] Ed25519 agent registered, triggering success",
+              );
+              clearInterval(interval);
+              handleSuccess();
+            }
+          } catch (err) {
+            console.warn("[on-chain poll] Ed25519 check failed:", err);
+          }
+        })();
+      }, 5000);
+      return () => clearInterval(interval);
+    }
 
-    const addressToCheck =
-      mode === "simple" ? walletAddress : agentWallet?.address;
+    const addressToCheck = agentWallet?.address;
     if (!addressToCheck) return;
 
     const interval = setInterval(() => {
@@ -277,21 +321,111 @@ export default function RegisterPage() {
     return sig;
   };
 
+  // --- Ed25519 handler functions ---
+
+  const handleEd25519ValidateKey = async () => {
+    setErrorMessage("");
+    let hex = ed25519PubkeyInput.trim();
+
+    // Try base64 if not valid hex
+    if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+      try {
+        hex = base64ToHex(hex);
+      } catch {
+        setErrorMessage("Invalid key. Paste 64 hex chars or 44-char base64.");
+        return;
+      }
+    }
+
+    if (!isValidEd25519PubkeyHex(hex)) {
+      setErrorMessage("Invalid Ed25519 public key — not a valid curve point.");
+      return;
+    }
+
+    setEd25519PubkeyHex(hex);
+
+    // Fetch nonce from contract
+    try {
+      const provider = new ethers.JsonRpcProvider(network.rpcUrl);
+      const registry = typedRegistry(network.registryAddress, provider);
+      const pubkeyBytes32 = "0x" + hex.padStart(64, "0");
+      const nonce: bigint = await registry.ed25519Nonce(pubkeyBytes32);
+
+      // The humanAddress is unknown at this point — it comes from the ZK proof.
+      // Use address(0) as placeholder; the contract derives humanAddress from output.userIdentifier.
+      // Actually, for the challenge, we need to use the same address the contract will see.
+      // In the Ed25519 flow, the userId passed to Self app becomes the humanAddress.
+      // We use the derived address as the userId.
+      const derivedAddr = deriveEd25519Address(hex);
+
+      const challengeHash = computeEd25519ChallengeHash({
+        humanAddress: derivedAddr,
+        chainId: BigInt(network.chainId),
+        registryAddress: network.registryAddress,
+        nonce,
+      });
+
+      setEd25519ChallengeHex(challengeHash);
+      setEd25519Step("challenge");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMessage(`Failed to fetch nonce: ${msg}`);
+    }
+  };
+
+  const handleEd25519SubmitSignature = () => {
+    setErrorMessage("");
+    const sigHex = ed25519SignatureInput.trim().replace(/^0x/, "");
+
+    if (!/^[0-9a-fA-F]{128}$/.test(sigHex)) {
+      setErrorMessage(
+        "Invalid signature. Must be 128 hex characters (64 bytes).",
+      );
+      return;
+    }
+
+    if (!ed25519PubkeyHex) return;
+
+    try {
+      setLoading(true);
+
+      // Compute extKpub (this is computationally intensive)
+      const extKpub = computeExtKpub(ed25519PubkeyHex);
+
+      // Build userData
+      const cfgIdx = getConfigIndex(disclosures);
+      const userData = buildEd25519UserData({
+        configIndex: parseInt(cfgIdx),
+        ed25519Pubkey: ed25519PubkeyHex,
+        signature: sigHex,
+        extKpub,
+        guardian: undefined, // No guardian for basic Ed25519 flow
+      });
+
+      if (!SelfAppBuilderClass) {
+        setErrorMessage("Self SDK still loading. Please try again.");
+        return;
+      }
+
+      // Use derived address as userId
+      const derivedAddr = deriveEd25519Address(ed25519PubkeyHex);
+      setSelfApp(buildSelfApp(derivedAddr.toLowerCase(), userData));
+      setEd25519Step("scan");
+      setStep("scan");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMessage(`Failed to build registration data: ${msg}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleConnect = async () => {
     setErrorMessage("");
     const address = await connectWallet(network);
     if (!address) return;
 
     setWalletAddress(address);
-
-    if (mode === "simple") {
-      const registered = await checkIfRegistered(address);
-      if (registered) {
-        setAlreadyRegistered(true);
-        setStep("connect");
-        return;
-      }
-    }
 
     if (!SelfAppBuilderClass) {
       setErrorMessage("Self SDK still loading. Please try again.");
@@ -303,24 +437,19 @@ export default function RegisterPage() {
 
     const cfgIdx = getConfigIndex(disclosures);
 
-    if (mode === "simple") {
-      setSelfApp(buildSelfApp(address, "R" + cfgIdx));
-      setStep("scan");
-    } else {
-      // Advanced mode: generate keypair, sign challenge
-      const newWallet = ethers.Wallet.createRandom();
-      setAgentWallet(newWallet);
+    // Generate keypair, sign challenge
+    const newWallet = ethers.Wallet.createRandom();
+    setAgentWallet(newWallet);
 
-      const sig = await signAgentChallenge(newWallet, address);
-      const agentAddrHex = newWallet.address.slice(2).toLowerCase();
-      const rHex = sig.r.slice(2);
-      const sHex = sig.s.slice(2);
-      const vHex = sig.v.toString(16).padStart(2, "0");
-      const userDefinedData = "K" + cfgIdx + agentAddrHex + rHex + sHex + vHex;
+    const sig = await signAgentChallenge(newWallet, address);
+    const agentAddrHex = newWallet.address.slice(2).toLowerCase();
+    const rHex = sig.r.slice(2);
+    const sHex = sig.s.slice(2);
+    const vHex = sig.v.toString(16).padStart(2, "0");
+    const userDefinedData = "K" + cfgIdx + agentAddrHex + rHex + sHex + vHex;
 
-      setSelfApp(buildSelfApp(address, userDefinedData));
-      setStep("scan");
-    }
+    setSelfApp(buildSelfApp(address, userDefinedData));
+    setStep("scan");
   };
 
   const handleWalletFreeStart = async () => {
@@ -509,8 +638,7 @@ export default function RegisterPage() {
         setCardStep("skipped");
         return;
       }
-      const agentAddress =
-        mode === "simple" ? walletAddress! : agentWallet!.address;
+      const agentAddress = agentWallet!.address;
       const agentKey = ethers.zeroPadValue(agentAddress, 32);
 
       const provider = new ethers.BrowserProvider(
@@ -524,73 +652,17 @@ export default function RegisterPage() {
         return;
       }
       setAgentIdResult(agentId.toString());
-
-      // Read provider strength
-      let resolvedVerificationStrength: number | null = null;
-      const providerAddr: string = await registry.agentProofProvider(agentId);
-      if (providerAddr && providerAddr !== ethers.ZeroAddress) {
-        const prov = typedProvider(providerAddr, provider);
-        const strength: number = await prov.verificationStrength();
-        resolvedVerificationStrength = Number(strength);
-        setVerificationStrength(resolvedVerificationStrength);
-      }
-
-      // Read credentials for card
-      let credentials = null;
-      try {
-        credentials = await registry.getAgentCredentials(agentId);
-      } catch {
-        /* no creds */
-      }
-
-      // Build card JSON
-      const card = {
-        a2aVersion: "0.1",
-        name: `Agent #${agentId}`,
-        description: "Human-verified AI agent on Self Protocol",
-        selfProtocol: {
-          agentId: Number(agentId),
-          registry: network.registryAddress,
-          chainId: network.chainId,
-          proofProvider: providerAddr,
-          providerName:
-            providerAddr !== ethers.ZeroAddress ? "self" : "unknown",
-          verificationStrength: resolvedVerificationStrength ?? 100,
-          trustModel: {
-            proofType: "passport",
-            sybilResistant: true,
-            ofacScreened: disclosures.ofac,
-            minimumAgeVerified: disclosures.minimumAge,
-          },
-          ...(credentials
-            ? {
-                credentials: {
-                  nationality: credentials.nationality || undefined,
-                  issuingState: credentials.issuingState || undefined,
-                  olderThan: Number(credentials.olderThan) || undefined,
-                  ofacClean: credentials.ofac?.[0] ?? undefined,
-                  hasName: credentials.name?.length > 0 ? true : undefined,
-                  hasDateOfBirth: credentials.dateOfBirth ? true : undefined,
-                  hasGender: credentials.gender ? true : undefined,
-                  documentExpiry: credentials.expiryDate || undefined,
-                },
-              }
-            : {}),
-        },
-      };
-
-      const json = JSON.stringify(card, null, 2);
-      setCardJson(json);
       setCardStep("writing");
 
-      // Write on-chain
       const signer = await provider.getSigner();
-      const registryWrite = typedRegistry(network.registryAddress, signer);
-      const tx = await registryWrite.updateAgentMetadata(
+      const result = await writeAgentCardShared(
         agentId,
-        JSON.stringify(card),
+        network.registryAddress,
+        network,
+        signer,
       );
-      await tx.wait();
+      setCardJson(result.cardJson);
+      setVerificationStrength(result.verificationStrength);
       setCardStep("done");
     } catch (err) {
       console.warn("[writeAgentCard] Skipped:", err);
@@ -638,169 +710,72 @@ export default function RegisterPage() {
     <div className="max-w-xl mx-auto">
       <h1 className="text-3xl font-bold text-center mb-8">Register Agent</h1>
 
-      {/* Step 1: Choose mode */}
-      {step === "mode" && (
+      {/* Step 1: Wizard — who → mode → network */}
+      {step === "wizard" && (
+        <WizardShell
+          initialStep={wizardRole ? "mode" : "who"}
+          initialRole={wizardRole}
+          onWizardComplete={({ role: selectedRole, mode: selectedMode }) => {
+            setWizardRole(selectedRole);
+            setMode(selectedMode);
+            setStep("connect");
+          }}
+        />
+      )}
+
+      {/* Step 2: Configure — security explainer + disclosures + mode-specific action */}
+      {step === "connect" && (
         <div className="flex flex-col items-center gap-6 w-full">
-          <p className="text-muted text-center max-w-md">
-            Choose how you want to register on-chain: wallet identity for direct
-            human use, or a dedicated agent identity for autonomous software.
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
-            {/* Advanced mode card — recommended, shown first */}
-            <button
-              onClick={() => setMode("advanced")}
-              className={`text-left p-5 rounded-xl border-2 transition-all ${
-                mode === "advanced"
-                  ? "border-accent bg-surface-2"
-                  : "border-border hover:border-border-strong"
-              }`}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <span className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
-                  <Key size={16} className="text-accent" />
-                </span>
-                <span className="font-bold text-sm">Agent Identity</span>
-              </div>
-              <Badge variant="success">recommended</Badge>
-              <p className="text-xs text-muted mt-2">
-                Agent gets its own independent keypair. Your wallet key stays
-                safe.
-              </p>
-            </button>
-
-            {/* Simple mode card */}
-            <button
-              onClick={() => setMode("simple")}
-              className={`text-left p-5 rounded-xl border-2 transition-all ${
-                mode === "simple"
-                  ? "border-accent bg-surface-2"
-                  : "border-border hover:border-border-strong"
-              }`}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <span className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
-                  <Wallet size={16} className="text-accent" />
-                </span>
-                <span className="font-bold text-sm">Verified Wallet</span>
-              </div>
-              <p className="text-xs text-muted mt-2">
-                Your wallet address is the verified identity. Best for
-                human-operated, on-chain actions.
-              </p>
-            </button>
-
-            {/* Wallet-free mode card */}
-            <button
-              onClick={() => setMode("walletfree")}
-              className={`text-left p-5 rounded-xl border-2 transition-all ${
-                mode === "walletfree"
-                  ? "border-accent bg-surface-2"
-                  : "border-border hover:border-border-strong"
-              }`}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <span className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
-                  <Smartphone size={16} className="text-accent" />
-                </span>
-                <span className="font-bold text-sm">No Wallet</span>
-              </div>
-              <p className="text-xs text-muted mt-2">
-                No crypto wallet needed. Just your passport and the Self app.
-              </p>
-            </button>
-
-            {/* Smart Wallet mode card */}
-            <button
-              onClick={() => passkeySupported && setMode("smartwallet")}
-              className={`text-left p-5 rounded-xl border-2 transition-all ${
-                !passkeySupported
-                  ? "border-border opacity-50 cursor-not-allowed"
-                  : mode === "smartwallet"
-                    ? "border-accent-success bg-surface-2"
-                    : "border-border hover:border-border-strong"
-              }`}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <span className="w-8 h-8 rounded-full bg-accent-success/20 flex items-center justify-center">
-                  <Fingerprint size={16} className="text-accent-success" />
-                </span>
-                <span className="font-bold text-sm">Smart Wallet</span>
-              </div>
-              <p className="text-xs text-muted mt-2">
-                {passkeySupported
-                  ? "Face ID or fingerprint. No MetaMask, no seed phrase. Gasless on Celo mainnet."
-                  : "Passkeys not supported in this browser."}
-              </p>
-            </button>
-
-            {/* Privy (Social Login) mode card */}
-            {isPrivyConfigured() && (
-              <button
-                onClick={() => setMode("privy")}
-                className={`text-left p-5 rounded-xl border-2 transition-all sm:col-span-2 ${
-                  mode === "privy"
-                    ? "border-purple-500 bg-surface-2"
-                    : "border-border hover:border-border-strong"
-                }`}
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <PrivyIcon size={20} />
-                  <span className="font-bold text-sm">
-                    Social Login (Privy)
-                  </span>
-                </div>
-                <p className="text-xs text-muted mt-2">
-                  Sign in with email, Google, or Twitter. No browser extension
-                  needed. Privy creates an embedded wallet for you.
-                </p>
-              </button>
-            )}
-          </div>
-
           {/* Security explainer for selected mode */}
           <Card className="w-full">
             <div className="flex items-center gap-2 mb-3">
               <Lock size={16} className="text-accent" />
               <p className="font-bold text-sm">
-                {mode === "simple"
-                  ? "How Verified Wallet works"
-                  : mode === "advanced"
-                    ? "How Agent Identity works"
-                    : mode === "smartwallet"
-                      ? "How Smart Wallet works"
-                      : mode === "privy"
-                        ? "How Social Login works"
-                        : "How No Wallet works"}
+                {mode === "linked"
+                  ? "How Linked Agent works"
+                  : mode === "smartwallet"
+                    ? "How Smart Wallet works"
+                    : mode === "privy"
+                      ? "How Social Login works"
+                      : mode === "ed25519"
+                        ? "How Ed25519 Registration works"
+                        : mode === "ed25519-linked"
+                          ? "How Ed25519 + Linked works"
+                          : "How Wallet-Free works"}
               </p>
             </div>
-            {mode === "simple" ? (
+            {mode === "ed25519-linked" ? (
               <ul className="text-sm text-muted space-y-1.5 list-disc list-inside">
+                <li>
+                  Your agent&apos;s{" "}
+                  <strong className="text-foreground">
+                    existing Ed25519 key
+                  </strong>{" "}
+                  is used as its identity. No new keypair is generated.
+                </li>
                 <li>
                   Connect your{" "}
                   <strong className="text-foreground">browser wallet</strong>{" "}
-                  (MetaMask, etc.). That address becomes your on-chain identity.
+                  (MetaMask, etc.) as the{" "}
+                  <strong className="text-foreground">guardian</strong> &mdash;
+                  giving you direct revocation control over the agent.
                 </li>
                 <li>
                   Scan your passport with the{" "}
-                  <strong className="text-foreground">Self app</strong>. A ZK
-                  proof binds your wallet to a unique human nullifier.
+                  <strong className="text-foreground">Self app</strong> &mdash;
+                  the contract verifies the ZK proof, Ed25519 signature, and
+                  guardian link in one step.
                 </li>
                 <li>
-                  Smart contracts can then check{" "}
-                  <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded text-xs">
-                    isVerifiedAgent(your_address)
-                  </code>{" "}
-                  to gate access to verified humans.
-                </li>
-                <li>
-                  Best for{" "}
-                  <strong className="text-foreground">on-chain gating</strong>{" "}
-                  where you transact directly (DAOs, token access). For
-                  autonomous agents, choose Agent Identity.
+                  Your wallet key is never exposed to agent software. The
+                  guardian is set at registration and{" "}
+                  <strong className="text-foreground">
+                    cannot be changed later
+                  </strong>
+                  .
                 </li>
               </ul>
-            ) : mode === "advanced" ? (
+            ) : mode === "linked" ? (
               <ul className="text-sm text-muted space-y-1.5 list-disc list-inside">
                 <li>
                   Connect your{" "}
@@ -883,7 +858,7 @@ export default function RegisterPage() {
                   A fresh{" "}
                   <strong className="text-foreground">agent keypair</strong> is
                   generated in your browser. The agent signs a challenge proving
-                  key ownership, same as Agent Identity mode.
+                  key ownership, same as Linked Agent mode.
                 </li>
                 <li>
                   Scan your passport with the{" "}
@@ -896,6 +871,30 @@ export default function RegisterPage() {
                   <strong className="text-foreground">its own key</strong>. The
                   Privy wallet is only used during registration. No Privy
                   dependency at runtime.
+                </li>
+              </ul>
+            ) : mode === "ed25519" ? (
+              <ul className="text-sm text-muted space-y-1.5 list-disc list-inside">
+                <li>
+                  Your agent already has an{" "}
+                  <strong className="text-foreground">Ed25519 keypair</strong>.
+                  Paste the 32-byte public key.
+                </li>
+                <li>
+                  Sign a registration challenge with your agent&apos;s private
+                  key (instructions provided).
+                </li>
+                <li>
+                  Scan your passport with the{" "}
+                  <strong className="text-foreground">Self app</strong>. The
+                  contract verifies both the ZK proof and your Ed25519 signature
+                  on-chain.
+                </li>
+                <li>
+                  Your agent&apos;s public key becomes the on-chain identity.{" "}
+                  <strong className="text-foreground">
+                    No EVM wallet needed.
+                  </strong>
                 </li>
               </ul>
             ) : (
@@ -1097,7 +1096,144 @@ export default function RegisterPage() {
             )}
           </Card>
 
-          {mode === "walletfree" ? (
+          {/* Ed25519 mode: pubkey + challenge + signature flow */}
+          {(mode === "ed25519" || mode === "ed25519-linked") && (
+            <Card className="w-full">
+              <div className="flex items-center gap-2 mb-3">
+                <Terminal size={16} className="text-accent" />
+                <p className="font-bold text-sm">Ed25519 Agent Registration</p>
+              </div>
+
+              {ed25519Step === "pubkey" && (
+                <>
+                  <p className="text-sm text-muted mb-4">
+                    Paste your agent&apos;s existing Ed25519 public key. No EVM
+                    wallet needed.
+                  </p>
+                  <label className="block text-sm font-medium text-foreground mb-1">
+                    Your agent&apos;s Ed25519 public key
+                  </label>
+                  <input
+                    type="text"
+                    value={ed25519PubkeyInput}
+                    onChange={(e) => setEd25519PubkeyInput(e.target.value)}
+                    placeholder="Paste hex (64 chars) or base64 (44 chars)"
+                    className="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm font-mono placeholder:text-subtle focus:border-accent focus:outline-none"
+                  />
+                  <Button
+                    onClick={() => void handleEd25519ValidateKey()}
+                    variant="primary"
+                    size="lg"
+                    className="mt-4 w-full"
+                    disabled={!ed25519PubkeyInput.trim()}
+                  >
+                    <Key size={18} />
+                    Validate Key &amp; Get Challenge
+                  </Button>
+                </>
+              )}
+
+              {ed25519Step === "challenge" && ed25519ChallengeHex && (
+                <>
+                  <div className="flex items-center gap-2 mb-2">
+                    <CheckCircle2 size={14} className="text-accent-success" />
+                    <p className="text-sm text-accent-success">Key validated</p>
+                  </div>
+                  <p className="text-sm text-muted mb-3">
+                    Copy the prompt below and send it to your agent. Paste the
+                    signature it returns into the field below.{" "}
+                    <strong className="text-foreground">
+                      Never paste a private key here — only the signature.
+                    </strong>
+                  </p>
+                  <label className="block text-sm font-medium text-foreground mb-1">
+                    Prompt for your agent
+                  </label>
+                  <div className="relative mb-4">
+                    <pre className="bg-surface-2 border border-border rounded-lg px-3 py-2 pr-10 text-xs font-mono break-all whitespace-pre-wrap">
+                      {`TASK: Sign a Self Agent ID registration challenge using your EXISTING Ed25519 private key. Do NOT generate a new keypair.
+
+CHALLENGE (hex): ${ed25519ChallengeHex.replace(/^0x/, "")}
+
+STEPS:
+1. Find your Ed25519 private key (64-char hex string). Check common locations:
+   - ~/.self/ed25519-privkey.hex
+   - ~/.openclaw/workspace/.self/ed25519-privkey.hex
+   - Your agent's key/identity directory
+2. Sign the challenge bytes with your private key using one of:
+
+   Node.js: node -e "const{ed25519}=require('@noble/curves/ed25519');const k=require('fs').readFileSync('PRIVKEY_PATH','utf8').trim();console.log(Buffer.from(ed25519.sign(Buffer.from('${ed25519ChallengeHex.replace(/^0x/, "")}','hex'),k)).toString('hex'))"
+
+   Python: python3 -c "import nacl.signing as n;k=open('PRIVKEY_PATH').read().strip();print(n.SigningKey(bytes.fromhex(k)).sign(bytes.fromhex('${ed25519ChallengeHex.replace(/^0x/, "")}')).signature.hex())"
+
+   Replace PRIVKEY_PATH with your actual key file path.
+
+3. Return ONLY the 128-character hex signature (64 bytes, R||S format).
+
+IMPORTANT: Use your EXISTING key that matches public key ${ed25519PubkeyHex}. Do NOT generate a new key.`}
+                    </pre>
+                    <button
+                      onClick={() =>
+                        copyToClipboard(
+                          `TASK: Sign a Self Agent ID registration challenge using your EXISTING Ed25519 private key. Do NOT generate a new keypair.\n\nCHALLENGE (hex): ${ed25519ChallengeHex.replace(/^0x/, "")}\n\nSTEPS:\n1. Find your Ed25519 private key (64-char hex string). Check common locations:\n   - ~/.self/ed25519-privkey.hex\n   - ~/.openclaw/workspace/.self/ed25519-privkey.hex\n   - Your agent's key/identity directory\n2. Sign the challenge bytes with your private key using one of:\n\n   Node.js: node -e "const{ed25519}=require('@noble/curves/ed25519');const k=require('fs').readFileSync('PRIVKEY_PATH','utf8').trim();console.log(Buffer.from(ed25519.sign(Buffer.from('${ed25519ChallengeHex.replace(/^0x/, "")}','hex'),k)).toString('hex'))"\n\n   Python: python3 -c "import nacl.signing as n;k=open('PRIVKEY_PATH').read().strip();print(n.SigningKey(bytes.fromhex(k)).sign(bytes.fromhex('${ed25519ChallengeHex.replace(/^0x/, "")}')).signature.hex())"\n\n   Replace PRIVKEY_PATH with your actual key file path.\n\n3. Return ONLY the 128-character hex signature (64 bytes, R||S format).\n\nIMPORTANT: Use your EXISTING key that matches public key ${ed25519PubkeyHex}. Do NOT generate a new key.`,
+                          "challenge",
+                        )
+                      }
+                      className="absolute top-2 right-2 p-1.5 rounded-lg hover:bg-surface-3 transition-colors"
+                      title="Copy prompt"
+                    >
+                      {copiedField === "challenge" ? (
+                        <Check size={16} className="text-accent-success" />
+                      ) : (
+                        <Copy size={16} className="text-muted" />
+                      )}
+                    </button>
+                  </div>
+                  <label className="block text-sm font-medium text-foreground mb-1">
+                    Ed25519 signature (128 hex chars)
+                  </label>
+                  <textarea
+                    value={ed25519SignatureInput}
+                    onChange={(e) => setEd25519SignatureInput(e.target.value)}
+                    placeholder="Paste 128-char hex signature (r + s)"
+                    rows={3}
+                    className="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm font-mono placeholder:text-subtle focus:border-accent focus:outline-none resize-none"
+                  />
+                  <Button
+                    onClick={() => void handleEd25519SubmitSignature()}
+                    variant="primary"
+                    size="lg"
+                    className="mt-4 w-full"
+                    disabled={!ed25519SignatureInput.trim() || loading}
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" />
+                        Computing...
+                      </>
+                    ) : (
+                      <>
+                        <Rocket size={18} />
+                        Submit Signature &amp; Scan Passport
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
+
+              {ed25519Step === "scan" && (
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={14} className="text-accent-success" />
+                  <p className="text-sm text-accent-success">
+                    Signature verified — scan your passport below.
+                  </p>
+                </div>
+              )}
+            </Card>
+          )}
+
+          {/* Mode-specific action buttons */}
+          {mode === "walletfree" && (
             <Button
               onClick={() => void handleWalletFreeStart()}
               variant="primary"
@@ -1106,7 +1242,8 @@ export default function RegisterPage() {
               <Smartphone size={18} />
               Generate Agent &amp; Scan Passport
             </Button>
-          ) : mode === "smartwallet" ? (
+          )}
+          {mode === "smartwallet" && (
             <Button
               onClick={() => void handleSmartWalletStart()}
               variant="primary"
@@ -1125,7 +1262,8 @@ export default function RegisterPage() {
                 </>
               )}
             </Button>
-          ) : mode === "privy" ? (
+          )}
+          {mode === "privy" && (
             <Button
               onClick={() => handlePrivyStart()}
               variant="primary"
@@ -1144,22 +1282,68 @@ export default function RegisterPage() {
                 </>
               )}
             </Button>
-          ) : (
-            <div className="w-full flex flex-col items-center gap-2">
-              <p className="text-xs text-muted text-center max-w-md">
-                {mode === "simple"
-                  ? "Next step: connect your wallet. That same address will be your verified on-chain identity."
-                  : "Next step: connect your wallet to prove the human. A separate agent keypair is generated in-browser for your agent."}
-              </p>
-              <Button
-                onClick={() => setStep("connect")}
-                variant="primary"
-                size="lg"
-              >
-                {mode === "simple"
-                  ? "Continue: Connect Verified Wallet"
-                  : "Continue: Connect Wallet for Agent Identity"}
-              </Button>
+          )}
+          {(mode === "linked" || mode === "ed25519-linked") && (
+            <div className="w-full flex flex-col items-center gap-4">
+              {!walletAddress ? (
+                <>
+                  <p className="text-xs text-muted text-center max-w-md">
+                    {mode === "ed25519-linked"
+                      ? "Connect your wallet as the guardian. Your agent\u2019s Ed25519 key (pasted above) is its identity — no new keypair is generated."
+                      : "Connect your wallet to prove the human. A separate agent keypair is generated in-browser for your agent."}
+                  </p>
+                  <Button
+                    onClick={() => void handleConnect()}
+                    variant="primary"
+                    size="lg"
+                  >
+                    <Wallet size={18} />
+                    Connect Wallet
+                  </Button>
+                </>
+              ) : alreadyRegistered ? (
+                <>
+                  <Card variant="warn" className="w-full text-center">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      <AlertTriangle size={18} className="text-accent-warn" />
+                      <p className="font-bold text-accent-warn">
+                        Already Registered
+                      </p>
+                    </div>
+                    <p className="text-sm text-muted">
+                      Wallet{" "}
+                      <span className="font-mono text-foreground">
+                        {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+                      </span>{" "}
+                      is already registered as an agent.
+                    </p>
+                  </Card>
+                  <Button
+                    onClick={() => {
+                      const agentKey = ethers.zeroPadValue(walletAddress, 32);
+                      router.push(
+                        "/agents/verify?key=" + encodeURIComponent(agentKey),
+                      );
+                    }}
+                    variant="primary"
+                    size="lg"
+                  >
+                    View Agent
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted">
+                    Wallet connected but Self SDK is loading...
+                  </p>
+                  <Button
+                    onClick={() => void handleConnect()}
+                    variant="primary"
+                  >
+                    Retry
+                  </Button>
+                </>
+              )}
             </div>
           )}
 
@@ -1205,74 +1389,10 @@ export default function RegisterPage() {
               {errorMessage}
             </p>
           )}
-        </div>
-      )}
 
-      {/* Step 2: Connect wallet (not shown for wallet-free mode) */}
-      {step === "connect" && (
-        <div className="flex flex-col items-center gap-4 w-full">
-          {!walletAddress ? (
-            <>
-              <p className="text-muted text-center max-w-md">
-                {mode === "simple"
-                  ? "Connect your browser wallet (MetaMask, etc.). Your wallet address will become your agent\u2019s on-chain identity."
-                  : "Connect your browser wallet (MetaMask, etc.). A new agent keypair will be generated and linked to your wallet."}
-              </p>
-              <Button
-                onClick={() => void handleConnect()}
-                variant="primary"
-                size="lg"
-              >
-                <Wallet size={18} />
-                Connect Wallet
-              </Button>
-            </>
-          ) : alreadyRegistered ? (
-            <>
-              <Card variant="warn" className="w-full text-center">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <AlertTriangle size={18} className="text-accent-warn" />
-                  <p className="font-bold text-accent-warn">
-                    Already Registered
-                  </p>
-                </div>
-                <p className="text-sm text-muted">
-                  Wallet{" "}
-                  <span className="font-mono text-foreground">
-                    {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
-                  </span>{" "}
-                  is already registered as an agent.
-                </p>
-              </Card>
-              <Button
-                onClick={() => {
-                  const agentKey = ethers.zeroPadValue(walletAddress, 32);
-                  router.push(
-                    "/agents/verify?key=" + encodeURIComponent(agentKey),
-                  );
-                }}
-                variant="primary"
-                size="lg"
-              >
-                View Agent
-              </Button>
-            </>
-          ) : (
-            <>
-              <p className="text-sm text-muted">
-                Wallet connected but Self SDK is loading...
-              </p>
-              <Button onClick={() => void handleConnect()} variant="primary">
-                Retry
-              </Button>
-            </>
-          )}
-          {errorMessage && (
-            <p className="text-sm text-accent-error">{errorMessage}</p>
-          )}
           <Button
             onClick={() => {
-              setStep("mode");
+              setStep("wizard");
               setWalletAddress(null);
               setAlreadyRegistered(false);
               setErrorMessage("");
@@ -1290,14 +1410,7 @@ export default function RegisterPage() {
       {step === "scan" && (
         <div className="flex flex-col items-center gap-4">
           <Card className="w-full text-center">
-            {mode === "simple" ? (
-              <>
-                <p className="text-xs text-muted mb-1">
-                  Registering wallet as agent
-                </p>
-                <p className="font-mono text-sm">{walletAddress}</p>
-              </>
-            ) : mode === "advanced" ? (
+            {mode === "linked" ? (
               <>
                 <p className="text-xs text-muted mb-1">
                   Registering agent{" "}
@@ -1448,18 +1561,11 @@ export default function RegisterPage() {
           )}
           <Button
             onClick={() => {
-              if (
-                mode === "walletfree" ||
-                mode === "smartwallet" ||
-                mode === "privy"
-              ) {
-                setStep("mode");
-                setAgentWallet(null);
-                setSmartWalletAddress(null);
-                setPrivyWalletAddress(null);
-              } else {
-                setStep("connect");
-              }
+              setStep("connect");
+              setAgentWallet(null);
+              setSmartWalletAddress(null);
+              setPrivyWalletAddress(null);
+              setWalletAddress(null);
               setSelfApp(null);
               setErrorMessage("");
               successTriggeredRef.current = false;
@@ -1628,373 +1734,315 @@ export default function RegisterPage() {
             </Card>
           )}
 
-          {mode === "simple" ? (
-            <>
-              <Card className="w-full">
-                <p className="font-bold text-sm mb-3">Verified Wallet</p>
-                <div className="space-y-3 text-sm">
+          <>
+            {/* Agent credentials (shown for both advanced and walletfree) */}
+            <Card variant="warn" className="w-full">
+              <div className="flex items-center gap-2 mb-1">
+                <AlertTriangle size={16} className="text-accent-warn" />
+                <p className="font-bold text-sm text-accent-warn">
+                  Agent Credentials
+                </p>
+              </div>
+              <p className="text-sm text-muted mb-3">
+                A fresh Ethereum keypair was generated in your browser for your
+                agent. Copy these credentials now &mdash; this is the only place
+                we display the private key.
+                {mode === "smartwallet"
+                  ? " For demo convenience, this browser keeps a local copy linked to your passkey wallet."
+                  : " If you leave without saving it, it cannot be recovered."}
+              </p>
+
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-accent-warn mb-1">
+                    Agent Address
+                    <span className="font-normal text-muted">
+                      {" "}
+                      (your agent&apos;s public identity)
+                    </span>
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1 text-sm flex-1">
+                      {agentWallet?.address}
+                    </p>
+                    <button
+                      onClick={() =>
+                        copyToClipboard(agentWallet?.address || "", "address")
+                      }
+                      className="p-2 text-muted hover:text-foreground bg-surface-2 hover:bg-surface-1 rounded border border-border transition-colors shrink-0"
+                      title="Copy"
+                    >
+                      {copiedField === "address" ? (
+                        <Check size={14} className="text-accent-success" />
+                      ) : (
+                        <Copy size={14} />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-medium text-accent-warn mb-1">
+                    Agent Private Key
+                    <span className="font-normal text-muted">
+                      {" "}
+                      (used by your agent to sign requests)
+                    </span>
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1 text-xs flex-1">
+                      {showPrivateKey
+                        ? agentWallet?.privateKey
+                        : "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"}
+                    </p>
+                    <button
+                      onClick={() => setShowPrivateKey(!showPrivateKey)}
+                      className="p-2 text-muted hover:text-foreground bg-surface-2 hover:bg-surface-1 rounded border border-border transition-colors shrink-0"
+                      title={showPrivateKey ? "Hide" : "Show"}
+                    >
+                      {showPrivateKey ? (
+                        <EyeOff size={14} />
+                      ) : (
+                        <Eye size={14} />
+                      )}
+                    </button>
+                    <button
+                      onClick={() =>
+                        copyToClipboard(
+                          agentWallet?.privateKey || "",
+                          "privateKey",
+                        )
+                      }
+                      className="p-2 text-muted hover:text-foreground bg-surface-2 hover:bg-surface-1 rounded border border-border transition-colors shrink-0"
+                      title="Copy"
+                    >
+                      {copiedField === "privateKey" ? (
+                        <Check size={14} className="text-accent-success" />
+                      ) : (
+                        <Copy size={14} />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            {/* How to use your agent */}
+            <div className="w-full space-y-3">
+              <p className="font-bold text-sm">How to use your agent</p>
+              <p className="text-xs text-muted">
+                Set{" "}
+                <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">
+                  AGENT_PRIVATE_KEY
+                </code>{" "}
+                in your agent&apos;s environment, then use one of these
+                patterns. If the key is{" "}
+                <strong className="text-foreground">lost</strong>, deregister
+                and create a new agent. If{" "}
+                <strong className="text-foreground">leaked</strong>, deregister
+                immediately.
+              </p>
+
+              <div className="flex gap-2 flex-wrap">
+                {agentSnippets.map((snippet, i) => (
+                  <button
+                    key={snippet.title}
+                    onClick={() => setActiveAgentSnippet(i)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
+                      i === activeAgentSnippet
+                        ? "bg-gradient-to-r from-accent to-accent-2 text-white border-transparent"
+                        : "bg-surface-1 text-foreground border-border hover:bg-surface-2"
+                    }`}
+                  >
+                    {snippet.title}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex gap-1.5 flex-wrap">
+                {AGENT_FEATURES.map((feat) => {
+                  const active = activeAgentFeatures.has(feat.id);
+                  return (
+                    <button
+                      key={feat.id}
+                      onClick={() => toggleAgentFeature(feat.id)}
+                      title={feat.description}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                        active
+                          ? "bg-accent/15 text-accent border border-accent/40"
+                          : "bg-surface-2 text-muted border border-transparent hover:text-foreground"
+                      }`}
+                    >
+                      {active ? "\u2713" : "+"} {feat.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <p className="text-xs text-muted">
+                {agentSnippets[activeAgentSnippet].description}
+              </p>
+              <CodeBlock tabs={agentSnippets[activeAgentSnippet].snippets} />
+            </div>
+
+            {/* Registration details */}
+            <Card className="w-full">
+              <p className="font-bold text-sm mb-3">Registration Details</p>
+              <div className="space-y-3 text-sm">
+                {mode === "walletfree" ||
+                mode === "smartwallet" ||
+                mode === "privy" ? (
+                  <>
+                    <div>
+                      <p className="text-xs text-muted mb-1">
+                        Registration Mode
+                      </p>
+                      <div className="flex items-center gap-2">
+                        {mode === "smartwallet" ? (
+                          <>
+                            <Badge variant="success">Smart Wallet</Badge>
+                            <span className="text-xs text-muted">
+                              Passkey guardian, gasless management
+                            </span>
+                          </>
+                        ) : mode === "privy" ? (
+                          <>
+                            <Badge variant="info">Social Login (Privy)</Badge>
+                            <span className="text-xs text-muted">
+                              Embedded wallet as owner
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <Badge variant="info">Wallet-Free</Badge>
+                            <span className="text-xs text-muted">
+                              Agent owns its own NFT
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {mode === "privy" && privyWalletAddress ? (
+                      <div>
+                        <p className="text-xs text-muted mb-1">
+                          NFT Owner (Privy Wallet)
+                          <span className="text-subtle">
+                            {" "}
+                            (your social login wallet)
+                          </span>
+                        </p>
+                        <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1">
+                          {privyWalletAddress}
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-xs text-muted mb-1">
+                          NFT Owner
+                          <span className="text-subtle">
+                            {" "}
+                            (the agent&apos;s address, self-owned)
+                          </span>
+                        </p>
+                        <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1">
+                          {agentWallet?.address}
+                        </p>
+                      </div>
+                    )}
+                    {mode === "smartwallet" && smartWalletAddress && (
+                      <div>
+                        <p className="text-xs text-muted mb-1">
+                          Guardian (Smart Wallet)
+                          <span className="text-subtle">
+                            {" "}
+                            (your passkey controls this address)
+                          </span>
+                        </p>
+                        <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1">
+                          {smartWalletAddress}
+                        </p>
+                      </div>
+                    )}
+                  </>
+                ) : (
                   <div>
                     <p className="text-xs text-muted mb-1">
-                      Your Wallet Address
+                      Registered by
+                      <span className="text-subtle">
+                        {" "}
+                        (your wallet, the NFT owner who can deregister)
+                      </span>
                     </p>
                     <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1">
                       {walletAddress}
                     </p>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted mb-1">
-                      On-chain Agent Key (bytes32)
-                    </p>
-                    <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1 text-xs">
-                      {walletAddress && ethers.zeroPadValue(walletAddress, 32)}
-                    </p>
-                  </div>
-                </div>
-              </Card>
-              <Card className="w-full">
-                <p className="font-bold text-sm mb-2">How this works</p>
-                <ul className="text-xs text-muted space-y-1.5 list-disc list-inside">
-                  <li>
-                    Your wallet address is now registered as a{" "}
-                    <strong className="text-foreground">verified human</strong>{" "}
-                    on-chain.
-                  </li>
-                  <li>
-                    Smart contracts can check{" "}
-                    <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">
-                      isVerifiedAgent(bytes32(your_address))
-                    </code>{" "}
-                    to gate access to verified humans only.
-                  </li>
-                  <li>
-                    <strong className="text-foreground">
-                      You transact directly.
-                    </strong>{" "}
-                    There is no separate agent. This is best for on-chain gating
-                    (DAOs, token access, DeFi).
-                  </li>
-                  <li>
-                    For autonomous agents that sign requests to services, use{" "}
-                    <strong className="text-foreground">Agent Identity</strong>{" "}
-                    mode instead.
-                  </li>
-                </ul>
-              </Card>
-            </>
-          ) : (
-            <>
-              {/* Agent credentials (shown for both advanced and walletfree) */}
-              <Card variant="warn" className="w-full">
-                <div className="flex items-center gap-2 mb-1">
-                  <AlertTriangle size={16} className="text-accent-warn" />
-                  <p className="font-bold text-sm text-accent-warn">
-                    Agent Credentials
+                )}
+                <div>
+                  <p className="text-xs text-muted mb-1">
+                    Agent Key (bytes32)
+                    <span className="text-subtle">
+                      {" "}
+                      (the on-chain identifier services use to verify)
+                    </span>
+                  </p>
+                  <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1 text-xs">
+                    {agentWallet &&
+                      ethers.zeroPadValue(agentWallet.address, 32)}
                   </p>
                 </div>
-                <p className="text-sm text-muted mb-3">
-                  A fresh Ethereum keypair was generated in your browser for
-                  your agent. Copy these credentials now &mdash; this is the
-                  only place we display the private key.
-                  {mode === "smartwallet"
-                    ? " For demo convenience, this browser keeps a local copy linked to your passkey wallet."
-                    : " If you leave without saving it, it cannot be recovered."}
-                </p>
-
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-xs font-medium text-accent-warn mb-1">
-                      Agent Address
-                      <span className="font-normal text-muted">
-                        {" "}
-                        (your agent&apos;s public identity)
-                      </span>
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1 text-sm flex-1">
-                        {agentWallet?.address}
-                      </p>
-                      <button
-                        onClick={() =>
-                          copyToClipboard(agentWallet?.address || "", "address")
-                        }
-                        className="p-2 text-muted hover:text-foreground bg-surface-2 hover:bg-surface-1 rounded border border-border transition-colors shrink-0"
-                        title="Copy"
-                      >
-                        {copiedField === "address" ? (
-                          <Check size={14} className="text-accent-success" />
-                        ) : (
-                          <Copy size={14} />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-medium text-accent-warn mb-1">
-                      Agent Private Key
-                      <span className="font-normal text-muted">
-                        {" "}
-                        (used by your agent to sign requests)
-                      </span>
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1 text-xs flex-1">
-                        {showPrivateKey
-                          ? agentWallet?.privateKey
-                          : "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"}
-                      </p>
-                      <button
-                        onClick={() => setShowPrivateKey(!showPrivateKey)}
-                        className="p-2 text-muted hover:text-foreground bg-surface-2 hover:bg-surface-1 rounded border border-border transition-colors shrink-0"
-                        title={showPrivateKey ? "Hide" : "Show"}
-                      >
-                        {showPrivateKey ? (
-                          <EyeOff size={14} />
-                        ) : (
-                          <Eye size={14} />
-                        )}
-                      </button>
-                      <button
-                        onClick={() =>
-                          copyToClipboard(
-                            agentWallet?.privateKey || "",
-                            "privateKey",
-                          )
-                        }
-                        className="p-2 text-muted hover:text-foreground bg-surface-2 hover:bg-surface-1 rounded border border-border transition-colors shrink-0"
-                        title="Copy"
-                      >
-                        {copiedField === "privateKey" ? (
-                          <Check size={14} className="text-accent-success" />
-                        ) : (
-                          <Copy size={14} />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-
-              {/* How to use your agent */}
-              <div className="w-full space-y-3">
-                <p className="font-bold text-sm">How to use your agent</p>
-                <p className="text-xs text-muted">
-                  Set{" "}
-                  <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">
-                    AGENT_PRIVATE_KEY
-                  </code>{" "}
-                  in your agent&apos;s environment, then use one of these
-                  patterns. If the key is{" "}
-                  <strong className="text-foreground">lost</strong>, deregister
-                  and create a new agent. If{" "}
-                  <strong className="text-foreground">leaked</strong>,
-                  deregister immediately.
-                </p>
-
-                <div className="flex gap-2 flex-wrap">
-                  {agentSnippets.map((snippet, i) => (
-                    <button
-                      key={snippet.title}
-                      onClick={() => setActiveAgentSnippet(i)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
-                        i === activeAgentSnippet
-                          ? "bg-gradient-to-r from-accent to-accent-2 text-white border-transparent"
-                          : "bg-surface-1 text-foreground border-border hover:bg-surface-2"
-                      }`}
-                    >
-                      {snippet.title}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="flex gap-1.5 flex-wrap">
-                  {AGENT_FEATURES.map((feat) => {
-                    const active = activeAgentFeatures.has(feat.id);
-                    return (
-                      <button
-                        key={feat.id}
-                        onClick={() => toggleAgentFeature(feat.id)}
-                        title={feat.description}
-                        className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                          active
-                            ? "bg-accent/15 text-accent border border-accent/40"
-                            : "bg-surface-2 text-muted border border-transparent hover:text-foreground"
-                        }`}
-                      >
-                        {active ? "\u2713" : "+"} {feat.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <p className="text-xs text-muted">
-                  {agentSnippets[activeAgentSnippet].description}
-                </p>
-                <CodeBlock tabs={agentSnippets[activeAgentSnippet].snippets} />
               </div>
+            </Card>
 
-              {/* Registration details */}
+            {mode === "smartwallet" && (
               <Card className="w-full">
-                <p className="font-bold text-sm mb-3">Registration Details</p>
-                <div className="space-y-3 text-sm">
-                  {mode === "walletfree" ||
-                  mode === "smartwallet" ||
-                  mode === "privy" ? (
-                    <>
-                      <div>
-                        <p className="text-xs text-muted mb-1">
-                          Registration Mode
-                        </p>
-                        <div className="flex items-center gap-2">
-                          {mode === "smartwallet" ? (
-                            <>
-                              <Badge variant="success">Smart Wallet</Badge>
-                              <span className="text-xs text-muted">
-                                Passkey guardian, gasless management
-                              </span>
-                            </>
-                          ) : mode === "privy" ? (
-                            <>
-                              <Badge variant="info">Social Login (Privy)</Badge>
-                              <span className="text-xs text-muted">
-                                Embedded wallet as owner
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <Badge variant="info">Wallet-Free</Badge>
-                              <span className="text-xs text-muted">
-                                Agent owns its own NFT
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      {mode === "privy" && privyWalletAddress ? (
-                        <div>
-                          <p className="text-xs text-muted mb-1">
-                            NFT Owner (Privy Wallet)
-                            <span className="text-subtle">
-                              {" "}
-                              (your social login wallet)
-                            </span>
-                          </p>
-                          <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1">
-                            {privyWalletAddress}
-                          </p>
-                        </div>
-                      ) : (
-                        <div>
-                          <p className="text-xs text-muted mb-1">
-                            NFT Owner
-                            <span className="text-subtle">
-                              {" "}
-                              (the agent&apos;s address, self-owned)
-                            </span>
-                          </p>
-                          <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1">
-                            {agentWallet?.address}
-                          </p>
-                        </div>
-                      )}
-                      {mode === "smartwallet" && smartWalletAddress && (
-                        <div>
-                          <p className="text-xs text-muted mb-1">
-                            Guardian (Smart Wallet)
-                            <span className="text-subtle">
-                              {" "}
-                              (your passkey controls this address)
-                            </span>
-                          </p>
-                          <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1">
-                            {smartWalletAddress}
-                          </p>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div>
-                      <p className="text-xs text-muted mb-1">
-                        Registered by
-                        <span className="text-subtle">
-                          {" "}
-                          (your wallet, the NFT owner who can deregister)
-                        </span>
-                      </p>
-                      <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1">
-                        {walletAddress}
-                      </p>
-                    </div>
-                  )}
-                  <div>
-                    <p className="text-xs text-muted mb-1">
-                      Agent Key (bytes32)
-                      <span className="text-subtle">
-                        {" "}
-                        (the on-chain identifier services use to verify)
-                      </span>
-                    </p>
-                    <p className="font-mono break-all bg-surface-2 border border-border rounded px-2 py-1 text-xs">
-                      {agentWallet &&
-                        ethers.zeroPadValue(agentWallet.address, 32)}
-                    </p>
-                  </div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Fingerprint size={16} className="text-accent-success" />
+                  <p className="font-bold text-sm">Passkey Management</p>
                 </div>
+                <p className="text-xs text-muted">
+                  Your passkey can revoke this agent anytime via Face ID /
+                  fingerprint. Visit{" "}
+                  <strong className="text-foreground">My Agents</strong> and
+                  sign in with your passkey to manage your agent gaslessly. The
+                  smart wallet deploys on first management action.
+                </p>
               </Card>
+            )}
 
-              {mode === "smartwallet" && (
-                <Card className="w-full">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Fingerprint size={16} className="text-accent-success" />
-                    <p className="font-bold text-sm">Passkey Management</p>
-                  </div>
-                  <p className="text-xs text-muted">
-                    Your passkey can revoke this agent anytime via Face ID /
-                    fingerprint. Visit{" "}
-                    <strong className="text-foreground">My Agents</strong> and
-                    sign in with your passkey to manage your agent gaslessly.
-                    The smart wallet deploys on first management action.
-                  </p>
-                </Card>
-              )}
+            {mode === "walletfree" && (
+              <Card className="w-full">
+                <p className="font-bold text-sm mb-2">How to deregister</p>
+                <p className="text-xs text-muted">
+                  Since no wallet was used, you can deregister by visiting the{" "}
+                  <strong className="text-foreground">Verify</strong> page,
+                  looking up your agent, and scanning your passport again. The
+                  ZK proof links to your unique identity, so only you can
+                  deregister your agent.
+                </p>
+              </Card>
+            )}
 
-              {mode === "walletfree" && (
-                <Card className="w-full">
-                  <p className="font-bold text-sm mb-2">How to deregister</p>
-                  <p className="text-xs text-muted">
-                    Since no wallet was used, you can deregister by visiting the{" "}
-                    <strong className="text-foreground">Verify</strong> page,
-                    looking up your agent, and scanning your passport again. The
-                    ZK proof links to your unique identity, so only you can
-                    deregister your agent.
-                  </p>
-                </Card>
-              )}
-
-              {mode === "privy" && (
-                <Card className="w-full">
-                  <div className="flex items-center gap-2 mb-2">
-                    <PrivyIcon size={16} />
-                    <p className="font-bold text-sm">Privy Wallet Info</p>
-                  </div>
-                  <p className="text-xs text-muted">
-                    Your Privy embedded wallet owns the agent NFT. To
-                    deregister, use the Agent Identity deregister flow with the
-                    same wallet. Your agent operates independently with its own
-                    private key &mdash; no Privy dependency at runtime.
-                  </p>
-                </Card>
-              )}
-            </>
-          )}
+            {mode === "privy" && (
+              <Card className="w-full">
+                <div className="flex items-center gap-2 mb-2">
+                  <PrivyIcon size={16} />
+                  <p className="font-bold text-sm">Privy Wallet Info</p>
+                </div>
+                <p className="text-xs text-muted">
+                  Your Privy embedded wallet owns the agent NFT. To deregister,
+                  use the Linked Agent deregister flow with the same wallet.
+                  Your agent operates independently with its own private key
+                  &mdash; no Privy dependency at runtime.
+                </p>
+              </Card>
+            )}
+          </>
 
           <div className="flex gap-3">
             <Button
               onClick={() => {
-                const key =
-                  mode === "simple"
-                    ? ethers.zeroPadValue(walletAddress!, 32)
-                    : ethers.zeroPadValue(agentWallet!.address, 32);
+                const key = ethers.zeroPadValue(agentWallet!.address, 32);
                 router.push("/agents/verify?key=" + encodeURIComponent(key));
               }}
               variant="primary"

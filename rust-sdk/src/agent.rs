@@ -11,7 +11,8 @@ use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::agent_card::{
-    A2AAgentCard, AgentSkill, CardCredentials, SelfProtocolExtension, TrustModel,
+    Erc8004AgentDocument, AgentSkill, CardCredentials, SelfProtocolExtension, TrustModel,
+    Erc8004Service, AgentInterface,
     get_provider_label,
 };
 use crate::constants::{
@@ -52,7 +53,6 @@ pub struct AgentInfo {
 /// For off-chain authentication, the agent signs each request with its private key.
 pub struct SelfAgent {
     signer: PrivateKeySigner,
-    private_key: String,
     network_name: NetworkName,
     registry_address: Address,
     rpc_url: String,
@@ -73,7 +73,6 @@ impl SelfAgent {
 
         Ok(Self {
             signer,
-            private_key: config.private_key,
             network_name,
             registry_address: config.registry_address.unwrap_or(net.registry_address),
             rpc_url: config.rpc_url.unwrap_or_else(|| net.rpc_url.to_string()),
@@ -248,8 +247,9 @@ impl SelfAgent {
 
     // ─── A2A Agent Card Methods ────────────────────────────────────────────
 
-    /// Read the A2A Agent Card from on-chain metadata (if set).
-    pub async fn get_agent_card(&self) -> Result<Option<A2AAgentCard>, crate::Error> {
+    /// Read the agent card from on-chain metadata (if set).
+    /// Supports both the new ERC-8004 format and legacy A2A v0.1 cards.
+    pub async fn get_agent_card(&self) -> Result<Option<Erc8004AgentDocument>, crate::Error> {
         let provider = self.make_provider()?;
         let registry = IAgentRegistry::new(self.registry_address, provider);
 
@@ -271,8 +271,8 @@ impl SelfAgent {
             return Ok(None);
         }
 
-        match serde_json::from_str::<A2AAgentCard>(&raw) {
-            Ok(card) if card.a2a_version == "0.1" => Ok(Some(card)),
+        match serde_json::from_str::<Erc8004AgentDocument>(&raw) {
+            Ok(card) => Ok(Some(card)),
             _ => Ok(None),
         }
     }
@@ -360,14 +360,45 @@ impl SelfAgent {
             .await
             .map_err(|e: alloy::transports::RpcError<alloy::transports::TransportErrorKind>| crate::Error::RpcError(e.to_string()))?;
 
-        let card = A2AAgentCard {
-            a2a_version: "0.1".into(),
+        // Build services and supportedInterfaces if a URL is provided
+        let mut services = Vec::new();
+        let mut supported_interfaces = None;
+        if let Some(ref agent_url) = url {
+            services.push(Erc8004Service {
+                name: "A2A".to_string(),
+                endpoint: agent_url.clone(),
+                version: Some("0.3.0".to_string()),
+            });
+            supported_interfaces = Some(vec![AgentInterface {
+                url: agent_url.clone(),
+                protocol_binding: "JSONRPC".to_string(),
+                protocol_version: "0.3.0".to_string(),
+            }]);
+        }
+
+        let card = Erc8004AgentDocument {
+            doc_type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1".to_string(),
             name,
-            description,
+            description: description.unwrap_or_default(),
+            image: String::new(),
+            services,
+            active: None,
+            registrations: None,
+            supported_trust: None,
+            version: None,
             url,
+            provider: None,
             capabilities: None,
-            skills,
-            self_protocol: SelfProtocolExtension {
+            security_schemes: None,
+            security: None,
+            default_input_modes: None,
+            default_output_modes: None,
+            supported_interfaces,
+            icon_url: None,
+            documentation_url: None,
+            signatures: None,
+            extensions: None,
+            self_protocol: Some(SelfProtocolExtension {
                 agent_id: agent_id.try_into().unwrap_or(0),
                 registry: format!("{:#x}", self.registry_address),
                 chain_id,
@@ -376,7 +407,8 @@ impl SelfAgent {
                 verification_strength: strength,
                 trust_model,
                 credentials: card_credentials,
-            },
+            }),
+            skills,
         };
 
         let json =

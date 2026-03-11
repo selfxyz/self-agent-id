@@ -65,10 +65,16 @@ export async function GET(req: NextRequest) {
       return errorResponse("Session missing agentAddress", 500);
     }
 
-    const { isVerified, agentId } = await checkAgentOnChain(
-      agentAddress,
-      networkConfig,
-    );
+    // For Ed25519 agents, use the pubkey as the agentKey (0x-prefixed, 32 bytes).
+    // For wallet-based agents, zero-pad the address to 32 bytes.
+    const isEd25519 = session.mode === "ed25519" && session.ed25519Pubkey;
+    const { isVerified, agentId } = isEd25519
+      ? await checkAgentOnChain(
+          "0x" + (session.ed25519Pubkey as string),
+          networkConfig,
+          true,
+        )
+      : await checkAgentOnChain(agentAddress, networkConfig);
 
     if (isVerified) {
       // Fetch credentials if available

@@ -45,6 +45,8 @@ def _setup_verified(registry):
     registry.functions.getAgentCountForHuman.return_value.call.return_value = 1
     registry.functions.getProofProvider.return_value.call.return_value = PROVIDER_ADDR
     registry.functions.selfProofProvider.return_value.call.return_value = PROVIDER_ADDR
+    registry.functions.isProofFresh.return_value.call.return_value = True
+    registry.functions.proofExpiresAt.return_value.call.return_value = int(time.time()) + 86400 * 365
 
 
 def test_verify_valid_signature(mock_web3):
@@ -125,6 +127,8 @@ def test_provider_rpc_error_fails_closed(mock_web3):
     registry.functions.getAgentCountForHuman.return_value.call.return_value = 1
     registry.functions.getProofProvider.return_value.call.return_value = PROVIDER_ADDR
     registry.functions.selfProofProvider.return_value.call.side_effect = Exception("RPC down")
+    registry.functions.isProofFresh.return_value.call.return_value = True
+    registry.functions.proofExpiresAt.return_value.call.return_value = int(time.time()) + 86400 * 365
 
     verifier = SelfAgentVerifier(network="testnet")
     sig, ts = _make_signature("GET", "/api")

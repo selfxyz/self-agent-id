@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
 
   if (!session.agentPrivateKey) {
     return errorResponse(
-      "No private key available. Simple/verified-wallet mode does not generate an agent keypair.",
+      "No private key available. Self-custody mode does not generate an agent keypair.",
       400,
     );
   }

@@ -1,6 +1,6 @@
 {
   "name": "@selfxyz/agent-sdk",
-  "version": "0.1.1",
+  "version": "0.2.1",
   "description": "TypeScript SDK for Self Agent ID — agent signing + service verification",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -49,6 +49,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "@noble/ed25519": "^3.0.0",
     "ethers": "^6.16.0"
   },
   "devDependencies": {

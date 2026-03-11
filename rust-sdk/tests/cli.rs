@@ -153,7 +153,7 @@ fn cli_init_open_export_roundtrip() {
         "register",
         "init",
         "--mode",
-        "agent-identity",
+        "linked",
         "--human-address",
         "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
         "--network",
@@ -211,7 +211,7 @@ fn cli_deregister_init_roundtrip() {
         "deregister",
         "init",
         "--mode",
-        "agent-identity",
+        "linked",
         "--human-address",
         "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
         "--agent-address",
@@ -232,15 +232,15 @@ fn cli_deregister_init_roundtrip() {
     );
     assert_eq!(
         session_json["mode"].as_str(),
-        Some("agent-identity"),
-        "mode should be agent-identity"
+        Some("linked"),
+        "mode should be linked"
     );
     let user_data = session_json["registration"]["userDefinedData"]
         .as_str()
         .unwrap_or_default();
     assert!(
         user_data.starts_with('X'),
-        "deregister agent-identity should encode X* user data"
+        "deregister linked should encode X* user data"
     );
     assert!(
         session_json["secrets"].is_null(),
@@ -260,7 +260,7 @@ fn cli_wait_live_verified_address() {
         "register",
         "init",
         "--mode",
-        "verified-wallet",
+        "self-custody",
         "--human-address",
         ANVIL_ALT_HUMAN_ADDRESS,
         "--chain",
@@ -311,7 +311,7 @@ fn cli_wait_accepts_callback_payload() {
         "register",
         "init",
         "--mode",
-        "verified-wallet",
+        "self-custody",
         "--human-address",
         &cfg.deployer_address,
         "--chain",
@@ -405,7 +405,7 @@ fn cli_wait_live_deregistered_address() {
         "deregister",
         "init",
         "--mode",
-        "verified-wallet",
+        "self-custody",
         "--human-address",
         &cfg.deployer_address,
         "--chain",

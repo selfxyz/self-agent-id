@@ -152,6 +152,82 @@ contract UpgradesTest is Test {
     }
 
     // ====================================================
+    // New storage fields preserved and functional after upgrade
+    // ====================================================
+
+    function test_NewStorageFieldsAfterUpgrade() public {
+        // Register an agent (pre-upgrade)
+        address human = makeAddr("human");
+        uint256 nullifier = 42;
+        _registerViaHub(human, nullifier);
+        uint256 agentId = registry.getAgentId(bytes32(uint256(uint160(human))));
+
+        // Verify pre-upgrade state
+        assertEq(registry.getAgentCountForHuman(nullifier), 1);
+
+        // Upgrade
+        SelfAgentRegistry newImpl = new SelfAgentRegistry();
+        vm.prank(owner);
+        registry.upgradeToAndCall(address(newImpl), "");
+
+        // Verify new view functions work after upgrade
+        // getAgentsForNullifier should return the agent registered pre-upgrade
+        uint256[] memory agents = registry.getAgentsForNullifier(nullifier);
+        assertEq(agents.length, 1);
+        assertEq(agents[0], agentId);
+
+        // agentConfigId should be set (from Task 3)
+        assertEq(registry.agentConfigId(agentId), fakeConfigId);
+
+        // Verify paginated overload works
+        uint256[] memory paginated = registry.getAgentsForNullifier(nullifier, 0, 10);
+        assertEq(paginated.length, 1);
+        assertEq(paginated[0], agentId);
+    }
+
+    function test_RefreshWorksAfterUpgrade() public {
+        // Register pre-upgrade
+        address human = makeAddr("human");
+        uint256 nullifier = 42;
+        _registerViaHub(human, nullifier);
+        uint256 agentId = registry.getAgentId(bytes32(uint256(uint160(human))));
+
+        // Upgrade
+        SelfAgentRegistry newImpl = new SelfAgentRegistry();
+        vm.prank(owner);
+        registry.upgradeToAndCall(address(newImpl), "");
+
+        // Refresh should work post-upgrade since agent was registered with configId
+        vm.warp(block.timestamp + 180 days);
+        bytes memory refreshUserData = abi.encodePacked(uint8(0x46), uint8(0), agentId);
+
+        string[] memory names = new string[](3);
+        names[0] = "ALICE"; names[1] = ""; names[2] = "SMITH";
+        ISelfVerificationRoot.GenericDiscloseOutputV2 memory output = ISelfVerificationRoot
+            .GenericDiscloseOutputV2({
+                attestationId: bytes32(uint256(1)),
+                userIdentifier: uint256(uint160(human)),
+                nullifier: nullifier,
+                forbiddenCountriesListPacked: [uint256(0), uint256(0), uint256(0), uint256(0)],
+                issuingState: "GBR",
+                name: names,
+                idNumber: "123456789",
+                nationality: "GBR",
+                dateOfBirth: "950101",
+                gender: "F",
+                expiryDate: "300101",
+                olderThan: 0,
+                ofac: [false, false, false]
+            });
+
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(abi.encode(output), refreshUserData);
+
+        assertTrue(registry.isProofFresh(agentId));
+        assertGt(registry.proofExpiresAt(agentId), block.timestamp + 300 days);
+    }
+
+    // ====================================================
     // Rep + Val upgrade tests
     // ====================================================
 

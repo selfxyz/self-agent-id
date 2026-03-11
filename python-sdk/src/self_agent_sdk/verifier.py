@@ -8,9 +8,15 @@ from __future__ import annotations
 import time
 from web3 import Web3
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.exceptions import InvalidSignature
+
+from datetime import datetime, timezone
+
 from .constants import (
     NETWORKS, DEFAULT_NETWORK, REGISTRY_ABI, DEFAULT_MAX_AGE_MS,
     DEFAULT_CACHE_TTL_MS, ZERO_ADDRESS, NetworkName,
+    EXPIRY_WARNING_THRESHOLD_SECS,
 )
 from .types import VerificationResult, AgentCredentials
 from ._signing import compute_body_hash, compute_message, recover_signer, address_to_agent_key
@@ -345,11 +351,15 @@ class SelfAgentVerifier:
     def verify(
         self, signature: str, timestamp: str,
         method: str, url: str, body: str | None = None,
+        *, keytype: str | None = None, agent_key_hex: str | None = None,
     ) -> VerificationResult:
         """Verify a signed agent request.
 
-        Performs: timestamp freshness, ECDSA recovery, on-chain status,
+        Performs: timestamp freshness, signature verification, on-chain status,
         provider check, sybil check, credential checks, and rate limiting.
+
+        For Ed25519 agents, pass ``keytype="ed25519"`` and ``agent_key_hex``
+        (the 0x-prefixed 32-byte public key).
         """
         empty = VerificationResult(
             valid=False, agent_address=ZERO_ADDRESS,
@@ -378,15 +388,46 @@ class SelfAgentVerifier:
         body_hash = compute_body_hash(body)
         message = compute_message(timestamp, method, url, body_hash)
 
-        # 3. Recover signer (cryptographic -- can't be faked)
-        try:
-            signer = recover_signer(message, signature)
-        except Exception:
-            return VerificationResult(
-                valid=False, agent_address=empty.agent_address,
-                agent_key=empty.agent_key, agent_id=0, agent_count=0,
-                error="Invalid signature",
-            )
+        if keytype == "ed25519":
+            # ── Ed25519 verification path ──
+            if not agent_key_hex:
+                return VerificationResult(
+                    valid=False, agent_address=empty.agent_address,
+                    agent_key=empty.agent_key, agent_id=0, agent_count=0,
+                    error="Missing agent key for Ed25519 verification",
+                )
+
+            try:
+                pubkey_bytes = bytes.fromhex(agent_key_hex.removeprefix("0x"))
+                pub = Ed25519PublicKey.from_public_bytes(pubkey_bytes)
+                sig_bytes = bytes.fromhex(signature.removeprefix("0x"))
+                pub.verify(sig_bytes, message)
+            except (InvalidSignature, Exception):
+                return VerificationResult(
+                    valid=False, agent_address=empty.agent_address,
+                    agent_key=empty.agent_key, agent_id=0, agent_count=0,
+                    error="Invalid Ed25519 signature",
+                )
+
+            agent_key = pubkey_bytes
+            # Derive deterministic address from keccak256(pubkey)
+            h = Web3.keccak(pubkey_bytes)
+            signer = Web3.to_checksum_address("0x" + h[-20:].hex())
+        else:
+            # ── secp256k1 ECDSA verification path (unchanged) ──
+
+            # 3. Recover signer (cryptographic -- can't be faked)
+            try:
+                signer = recover_signer(message, signature)
+            except Exception:
+                return VerificationResult(
+                    valid=False, agent_address=empty.agent_address,
+                    agent_key=empty.agent_key, agent_id=0, agent_count=0,
+                    error="Invalid signature",
+                )
+
+            # 5. Derive agent key
+            agent_key = address_to_agent_key(signer)
 
         # 4. Replay cache check (after signature validity to avoid cache poisoning)
         if self._enable_replay_protection:
@@ -394,21 +435,24 @@ class SelfAgentVerifier:
             if replay_error is not None:
                 return VerificationResult(
                     valid=False, agent_address=signer,
-                    agent_key=address_to_agent_key(signer), agent_id=0, agent_count=0,
+                    agent_key=agent_key, agent_id=0, agent_count=0,
                     error=replay_error,
                 )
 
-        # 5. Derive agent key
-        agent_key = address_to_agent_key(signer)
-
         # 6. On-chain check (with cache)
         chain = self._check_on_chain(agent_key)
+
+        # Compute expiry fields from on-chain timestamp
+        expiry = self._compute_expiry_fields(chain.get("proof_expires_at_timestamp", 0))
 
         if not chain["is_verified"]:
             return VerificationResult(
                 valid=False, agent_address=signer, agent_key=agent_key,
                 agent_id=chain["agent_id"], agent_count=chain["agent_count"],
                 nullifier=chain["nullifier"],
+                proof_expires_at=expiry["proof_expires_at"],
+                days_until_expiry=expiry["days_until_expiry"],
+                is_expiring_soon=expiry["is_expiring_soon"],
                 error="Agent not verified on-chain",
             )
 
@@ -418,6 +462,9 @@ class SelfAgentVerifier:
                 valid=False, agent_address=signer, agent_key=agent_key,
                 agent_id=chain["agent_id"], agent_count=chain["agent_count"],
                 nullifier=chain["nullifier"],
+                proof_expires_at=expiry["proof_expires_at"],
+                days_until_expiry=expiry["days_until_expiry"],
+                is_expiring_soon=expiry["is_expiring_soon"],
                 error="Agent's human proof has expired",
             )
 
@@ -430,6 +477,9 @@ class SelfAgentVerifier:
                     valid=False, agent_address=signer, agent_key=agent_key,
                     agent_id=chain["agent_id"], agent_count=chain["agent_count"],
                     nullifier=chain["nullifier"],
+                    proof_expires_at=expiry["proof_expires_at"],
+                    days_until_expiry=expiry["days_until_expiry"],
+                    is_expiring_soon=expiry["is_expiring_soon"],
                     error="Unable to verify proof provider -- RPC error",
                 )
             if chain["provider"].lower() != self_provider.lower():
@@ -437,6 +487,9 @@ class SelfAgentVerifier:
                     valid=False, agent_address=signer, agent_key=agent_key,
                     agent_id=chain["agent_id"], agent_count=chain["agent_count"],
                     nullifier=chain["nullifier"],
+                    proof_expires_at=expiry["proof_expires_at"],
+                    days_until_expiry=expiry["days_until_expiry"],
+                    is_expiring_soon=expiry["is_expiring_soon"],
                     error="Agent was not verified by Self -- proof provider mismatch",
                 )
 
@@ -446,6 +499,9 @@ class SelfAgentVerifier:
                 valid=False, agent_address=signer, agent_key=agent_key,
                 agent_id=chain["agent_id"], agent_count=chain["agent_count"],
                 nullifier=chain["nullifier"],
+                proof_expires_at=expiry["proof_expires_at"],
+                days_until_expiry=expiry["days_until_expiry"],
+                is_expiring_soon=expiry["is_expiring_soon"],
                 error=f"Human has {chain['agent_count']} agents (max {self._max_agents_per_human})",
             )
 
@@ -461,6 +517,9 @@ class SelfAgentVerifier:
                     valid=False, agent_address=signer, agent_key=agent_key,
                     agent_id=chain["agent_id"], agent_count=chain["agent_count"],
                     nullifier=chain["nullifier"], credentials=credentials,
+                    proof_expires_at=expiry["proof_expires_at"],
+                    days_until_expiry=expiry["days_until_expiry"],
+                    is_expiring_soon=expiry["is_expiring_soon"],
                     error=(
                         f"Agent's human does not meet minimum age "
                         f"(required: {self._minimum_age}, got: {credentials.older_than})"
@@ -472,6 +531,9 @@ class SelfAgentVerifier:
                     valid=False, agent_address=signer, agent_key=agent_key,
                     agent_id=chain["agent_id"], agent_count=chain["agent_count"],
                     nullifier=chain["nullifier"], credentials=credentials,
+                    proof_expires_at=expiry["proof_expires_at"],
+                    days_until_expiry=expiry["days_until_expiry"],
+                    is_expiring_soon=expiry["is_expiring_soon"],
                     error="Agent's human did not pass OFAC screening",
                 )
 
@@ -481,6 +543,9 @@ class SelfAgentVerifier:
                         valid=False, agent_address=signer, agent_key=agent_key,
                         agent_id=chain["agent_id"], agent_count=chain["agent_count"],
                         nullifier=chain["nullifier"], credentials=credentials,
+                        proof_expires_at=expiry["proof_expires_at"],
+                        days_until_expiry=expiry["days_until_expiry"],
+                        is_expiring_soon=expiry["is_expiring_soon"],
                         error=f'Nationality "{credentials.nationality}" not in allowed list',
                     )
 
@@ -494,12 +559,18 @@ class SelfAgentVerifier:
                     nullifier=chain["nullifier"], credentials=credentials,
                     error=limited["error"],
                     retry_after_ms=limited["retry_after_ms"],
+                    proof_expires_at=expiry["proof_expires_at"],
+                    days_until_expiry=expiry["days_until_expiry"],
+                    is_expiring_soon=expiry["is_expiring_soon"],
                 )
 
         return VerificationResult(
             valid=True, agent_address=signer, agent_key=agent_key,
             agent_id=chain["agent_id"], agent_count=chain["agent_count"],
             nullifier=chain["nullifier"], credentials=credentials,
+            proof_expires_at=expiry["proof_expires_at"],
+            days_until_expiry=expiry["days_until_expiry"],
+            is_expiring_soon=expiry["is_expiring_soon"],
         )
 
     # -- Internal -----------------------------------------------------------
@@ -518,9 +589,11 @@ class SelfAgentVerifier:
         nullifier = 0
         provider = ""
         is_proof_fresh = False
+        proof_expires_at_timestamp = 0
 
         if agent_id > 0:
             is_proof_fresh = self._registry.functions.isProofFresh(agent_id).call()
+            proof_expires_at_timestamp = self._registry.functions.proofExpiresAt(agent_id).call()
             if self._max_agents_per_human > 0:
                 nullifier = self._registry.functions.getHumanNullifier(agent_id).call()
                 agent_count = self._registry.functions.getAgentCountForHuman(nullifier).call()
@@ -534,6 +607,7 @@ class SelfAgentVerifier:
             "agent_count": agent_count,
             "nullifier": nullifier,
             "provider": provider,
+            "proof_expires_at_timestamp": proof_expires_at_timestamp,
             "expires_at": time.time() * 1000 + self._cache_ttl_ms,
         }
         self._cache[cache_key] = entry
@@ -562,6 +636,25 @@ class SelfAgentVerifier:
             )
         except Exception:
             return None
+
+    @staticmethod
+    def _compute_expiry_fields(proof_expires_at_timestamp: int) -> dict:
+        """Derive expiry helper fields from an on-chain proofExpiresAt timestamp."""
+        if proof_expires_at_timestamp > 0:
+            proof_expires_at = datetime.fromtimestamp(proof_expires_at_timestamp, tz=timezone.utc)
+            now_secs = int(time.time())
+            secs_until = proof_expires_at_timestamp - now_secs
+            days_until_expiry = secs_until // 86400
+            is_expiring_soon = 0 <= secs_until < EXPIRY_WARNING_THRESHOLD_SECS
+        else:
+            proof_expires_at = None
+            days_until_expiry = None
+            is_expiring_soon = False
+        return {
+            "proof_expires_at": proof_expires_at,
+            "days_until_expiry": days_until_expiry,
+            "is_expiring_soon": is_expiring_soon,
+        }
 
     def clear_cache(self) -> None:
         """Clear both agent status and provider address caches."""

@@ -2,8 +2,33 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
+import webpack from "next/dist/compiled/webpack/webpack-lib.js";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  transpilePackages: ["@noble/curves", "@noble/hashes"],
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      // Ed25519Agent and SelfAgentVerifier use require("node:crypto") —
+      // rewrite to bare "crypto" so webpack's fallback can resolve it.
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(
+          /^node:crypto$/,
+          "crypto-browserify",
+        ),
+        new webpack.NormalModuleReplacementPlugin(
+          /^node:stream$/,
+          "stream-browserify",
+        ),
+      );
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        crypto: "crypto-browserify",
+        stream: "stream-browserify",
+      };
+    }
+    return config;
+  },
   async headers() {
     return [
       {

@@ -623,6 +623,95 @@ contract SelfAgentRegistryTest is Test {
     }
 
     // ====================================================
+    // Nullifier Reverse Mapping
+    // ====================================================
+
+    function test_GetAgentsForNullifier_Empty() public view {
+        uint256[] memory agents = registry.getAgentsForNullifier(999);
+        assertEq(agents.length, 0);
+    }
+
+    function test_GetAgentsForNullifier_SingleAgent() public {
+        _registerViaHub(human1, nullifier1);
+        uint256[] memory agents = registry.getAgentsForNullifier(nullifier1);
+        assertEq(agents.length, 1);
+        assertEq(agents[0], 1);
+    }
+
+    function test_GetAgentsForNullifier_MultipleAgents() public {
+        vm.prank(owner);
+        registry.setMaxAgentsPerHuman(5);
+        _registerViaHub(human1, nullifier1);
+        _registerViaHub(human1alt, nullifier1);
+        uint256[] memory agents = registry.getAgentsForNullifier(nullifier1);
+        assertEq(agents.length, 2);
+        assertEq(agents[0], 1);
+        assertEq(agents[1], 2);
+    }
+
+    function test_GetAgentsForNullifier_DifferentHumans() public {
+        _registerViaHub(human1, nullifier1);
+        _registerViaHub(human2, nullifier2);
+        uint256[] memory agents1 = registry.getAgentsForNullifier(nullifier1);
+        uint256[] memory agents2 = registry.getAgentsForNullifier(nullifier2);
+        assertEq(agents1.length, 1);
+        assertEq(agents2.length, 1);
+        assertEq(agents1[0], 1);
+        assertEq(agents2[0], 2);
+    }
+
+    function test_GetAgentsForNullifier_AfterDeregister() public {
+        vm.prank(owner);
+        registry.setMaxAgentsPerHuman(5);
+        _registerViaHub(human1, nullifier1);
+        _registerViaHub(human1alt, nullifier1);
+        _deregisterViaHub(human1, nullifier1);
+        uint256[] memory agents = registry.getAgentsForNullifier(nullifier1);
+        assertEq(agents.length, 1);
+        assertEq(agents[0], 2);
+    }
+
+    function test_GetAgentsForNullifier_AfterDeregisterAll() public {
+        _registerViaHub(human1, nullifier1);
+        _deregisterViaHub(human1, nullifier1);
+        uint256[] memory agents = registry.getAgentsForNullifier(nullifier1);
+        assertEq(agents.length, 0);
+    }
+
+    function test_GetAgentsForNullifier_SwapAndPop_MiddleElement() public {
+        vm.prank(owner);
+        registry.setMaxAgentsPerHuman(5);
+        _registerViaHub(human1, nullifier1);
+        _registerViaHub(human1alt, nullifier1);
+        address human1third = makeAddr("human1third");
+        _registerViaHub(human1third, nullifier1);
+        _deregisterViaHub(human1alt, nullifier1);
+        uint256[] memory agents = registry.getAgentsForNullifier(nullifier1);
+        assertEq(agents.length, 2);
+        assertEq(agents[0], 1);
+        assertEq(agents[1], 3);
+    }
+
+    function test_GetAgentsForNullifier_Paginated() public {
+        vm.prank(owner);
+        registry.setMaxAgentsPerHuman(5);
+        _registerViaHub(human1, nullifier1);
+        _registerViaHub(human1alt, nullifier1);
+        address human1third = makeAddr("human1third");
+        _registerViaHub(human1third, nullifier1);
+        // Get page: offset=1, limit=1
+        uint256[] memory agents = registry.getAgentsForNullifier(nullifier1, 1, 1);
+        assertEq(agents.length, 1);
+        assertEq(agents[0], 2);
+    }
+
+    function test_GetAgentsForNullifier_Paginated_OffsetBeyondLength() public {
+        _registerViaHub(human1, nullifier1);
+        uint256[] memory agents = registry.getAgentsForNullifier(nullifier1, 10, 5);
+        assertEq(agents.length, 0);
+    }
+
+    // ====================================================
     // ERC-721 Basics
     // ====================================================
 
@@ -2635,5 +2724,280 @@ contract SelfAgentRegistryTest is Test {
         vm.expectEmit(true, false, false, false);
         emit IERC8004ProofOfHuman.ProofProviderRemoved(oldProvider);
         registry.setSelfProofProvider(address(newProvider));
+    }
+
+    // ====================================================
+    // agentConfigId — Tracks verification config used at registration
+    // ====================================================
+
+    function test_AgentConfigId_StoredOnRegistration() public {
+        _registerViaHub(human1, nullifier1);
+        bytes32 configId = registry.agentConfigId(1);
+        assertEq(configId, fakeConfigId);
+    }
+
+    function test_AgentConfigId_ZeroForExternalProvider() public {
+        vm.prank(owner);
+        registry.setRequireHumanProof(false);
+        vm.prank(human1);
+        uint256 agentId = registry.registerWithHumanProof(
+            "",
+            address(mockProvider),
+            abi.encode(true, nullifier1),
+            abi.encodePacked(bytes32(uint256(uint160(human1))))
+        );
+        assertEq(registry.agentConfigId(agentId), bytes32(0));
+    }
+
+    function test_AgentConfigId_ClearedOnRevocation() public {
+        _registerViaHub(human1, nullifier1);
+        assertEq(registry.agentConfigId(1), fakeConfigId);
+        _deregisterViaHub(human1, nullifier1);
+        assertEq(registry.agentConfigId(1), bytes32(0));
+    }
+
+    // ====================================================
+    // Proof Refresh (ACTION_REFRESH = 0x46)
+    // ====================================================
+
+    function test_RefreshHumanProof_UpdatesExpiry() public {
+        _registerViaHub(human1, nullifier1);
+        vm.warp(block.timestamp + 180 days);
+
+        bytes memory refreshUserData = abi.encodePacked(uint8(0x46), uint8(0), uint256(1));
+        bytes memory output = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(output, refreshUserData);
+
+        uint256 newExpiry = registry.proofExpiresAt(1);
+        assertGt(newExpiry, block.timestamp + 300 days);
+        assertTrue(registry.isProofFresh(1));
+    }
+
+    function test_RefreshHumanProof_EmitsEvent() public {
+        _registerViaHub(human1, nullifier1);
+        vm.warp(block.timestamp + 180 days);
+
+        bytes memory refreshUserData = abi.encodePacked(uint8(0x46), uint8(0), uint256(1));
+        bytes memory output = _buildEncodedOutput(human1, nullifier1);
+
+        vm.expectEmit(true, false, false, false);
+        emit IERC8004ProofOfHuman.HumanProofRefreshed(1, 0, 0, bytes32(0));
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(output, refreshUserData);
+    }
+
+    function test_RefreshHumanProof_PreservesAgentId() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 originalId = registry.getAgentId(_agentKeyFor(human1));
+
+        vm.warp(block.timestamp + 180 days);
+        bytes memory refreshUserData = abi.encodePacked(uint8(0x46), uint8(0), uint256(1));
+        bytes memory output = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(output, refreshUserData);
+
+        assertEq(registry.getAgentId(_agentKeyFor(human1)), originalId);
+        assertEq(registry.ownerOf(originalId), human1);
+    }
+
+    function test_RefreshHumanProof_DoesNotChangeAgentCount() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 countBefore = registry.getAgentCountForHuman(nullifier1);
+
+        vm.warp(block.timestamp + 180 days);
+        bytes memory refreshUserData = abi.encodePacked(uint8(0x46), uint8(0), uint256(1));
+        bytes memory output = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(output, refreshUserData);
+
+        assertEq(registry.getAgentCountForHuman(nullifier1), countBefore);
+    }
+
+    function test_RefreshHumanProof_WorksAfterExpiry() public {
+        _registerViaHub(human1, nullifier1);
+        vm.warp(block.timestamp + 400 days);
+        assertFalse(registry.isProofFresh(1));
+
+        bytes memory refreshUserData = abi.encodePacked(uint8(0x46), uint8(0), uint256(1));
+        bytes memory output = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(output, refreshUserData);
+
+        assertTrue(registry.isProofFresh(1));
+    }
+
+    function test_RefreshHumanProof_MultipleRefreshes() public {
+        _registerViaHub(human1, nullifier1);
+
+        vm.warp(block.timestamp + 180 days);
+        bytes memory refreshUserData = abi.encodePacked(uint8(0x46), uint8(0), uint256(1));
+        bytes memory output = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(output, refreshUserData);
+        uint256 firstExpiry = registry.proofExpiresAt(1);
+
+        vm.warp(block.timestamp + 180 days);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(output, refreshUserData);
+        uint256 secondExpiry = registry.proofExpiresAt(1);
+
+        assertGt(secondExpiry, firstExpiry);
+    }
+
+    function test_RevertWhen_RefreshWithWrongNullifier() public {
+        _registerViaHub(human1, nullifier1);
+
+        bytes memory refreshUserData = abi.encodePacked(uint8(0x46), uint8(0), uint256(1));
+        bytes memory output = _buildEncodedOutput(human2, nullifier2);
+        vm.prank(hubMock);
+        vm.expectRevert(abi.encodeWithSelector(
+            SelfAgentRegistry.NotAgentOwner.selector, nullifier1, nullifier2
+        ));
+        registry.onVerificationSuccess(output, refreshUserData);
+    }
+
+    function test_RevertWhen_RefreshRevokedAgent() public {
+        _registerViaHub(human1, nullifier1);
+        _deregisterViaHub(human1, nullifier1);
+
+        bytes memory refreshUserData = abi.encodePacked(uint8(0x46), uint8(0), uint256(1));
+        bytes memory output = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        vm.expectRevert(abi.encodeWithSelector(
+            SelfAgentRegistry.AgentHasNoHumanProof.selector, 1
+        ));
+        registry.onVerificationSuccess(output, refreshUserData);
+    }
+
+    function test_RevertWhen_RefreshNotSupported_ExternalProvider() public {
+        vm.prank(owner);
+        registry.setRequireHumanProof(false);
+        vm.prank(human1);
+        uint256 agentId = registry.registerWithHumanProof(
+            "",
+            address(mockProvider),
+            abi.encode(true, nullifier1),
+            abi.encodePacked(bytes32(uint256(uint160(human1))))
+        );
+
+        bytes memory refreshUserData = abi.encodePacked(uint8(0x46), uint8(0), agentId);
+        bytes memory output = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        vm.expectRevert(abi.encodeWithSelector(
+            IERC8004ProofOfHuman.RefreshNotSupported.selector, agentId
+        ));
+        registry.onVerificationSuccess(output, refreshUserData);
+    }
+
+    function test_RevertWhen_RefreshWithConfigMismatch() public {
+        _registerViaHub(human1, nullifier1);
+        assertEq(registry.agentConfigId(1), fakeConfigId);
+
+        // Use vm.record + vm.accesses to find the storage slot for agentConfigId[1]
+        vm.record();
+        registry.agentConfigId(1);
+        (bytes32[] memory reads, ) = vm.accesses(address(registry));
+        // Find the slot that currently holds fakeConfigId
+        bytes32 configSlot;
+        bool found = false;
+        for (uint256 i = 0; i < reads.length; i++) {
+            if (vm.load(address(registry), reads[i]) == fakeConfigId) {
+                configSlot = reads[i];
+                found = true;
+                break;
+            }
+        }
+        assertTrue(found, "Could not find configId storage slot");
+
+        // Overwrite stored configId with a different value to simulate mismatch
+        bytes32 differentConfig = bytes32(uint256(0xDEAD));
+        vm.store(address(registry), configSlot, differentConfig);
+        assertEq(registry.agentConfigId(1), differentConfig);
+
+        // Refresh should revert: stored=differentConfig vs hub-resolved=fakeConfigId
+        bytes memory refreshUserData = abi.encodePacked(uint8(0x46), uint8(0), uint256(1));
+        bytes memory output2 = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        vm.expectRevert(abi.encodeWithSelector(
+            IERC8004ProofOfHuman.ConfigMismatch.selector, differentConfig, fakeConfigId
+        ));
+        registry.onVerificationSuccess(output2, refreshUserData);
+    }
+
+    function test_RevertWhen_RefreshWithShortUserData() public {
+        _registerViaHub(human1, nullifier1);
+
+        // Only 2 bytes (action + config), missing the agentId
+        bytes memory shortUserData = abi.encodePacked(uint8(0x46), uint8(0));
+        bytes memory output = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        vm.expectRevert(SelfAgentRegistry.InvalidUserData.selector);
+        registry.onVerificationSuccess(output, shortUserData);
+    }
+
+    // ====================================================
+    // ACTION_IDENTIFY — Read-only nullifier identification
+    // ====================================================
+
+    function test_Identify_EmitsNullifierIdentified() public {
+        // Register an agent first so there's something to find
+        _registerViaHub(human1, nullifier1);
+
+        bytes memory identifyData = abi.encodePacked(uint8(0x49), uint8(0));
+        bytes memory output = _buildEncodedOutput(human1, nullifier1);
+
+        vm.expectEmit(true, false, false, true, address(registry));
+        emit IERC8004ProofOfHuman.NullifierIdentified(nullifier1, 1);
+
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(output, identifyData);
+    }
+
+    function test_Identify_NoStateChanges() public {
+        _registerViaHub(human1, nullifier1);
+        uint256 agentId = registry.getAgentId(agentKey1);
+        uint256 countBefore = registry.getAgentCountForHuman(nullifier1);
+        uint256 expiryBefore = registry.proofExpiresAt(agentId);
+
+        bytes memory identifyData = abi.encodePacked(uint8(0x49), uint8(0));
+        bytes memory output = _buildEncodedOutput(human1, nullifier1);
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(output, identifyData);
+
+        // Nothing changed
+        assertEq(registry.getAgentCountForHuman(nullifier1), countBefore);
+        assertEq(registry.proofExpiresAt(agentId), expiryBefore);
+        assertTrue(registry.isVerifiedAgent(agentKey1));
+    }
+
+    function test_Identify_ZeroAgentsEmitsZeroCount() public {
+        // Identify with a nullifier that has no agents registered
+        bytes memory identifyData = abi.encodePacked(uint8(0x49), uint8(0));
+        bytes memory output = _buildEncodedOutput(human1, nullifier1);
+
+        vm.expectEmit(true, false, false, true, address(registry));
+        emit IERC8004ProofOfHuman.NullifierIdentified(nullifier1, 0);
+
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(output, identifyData);
+    }
+
+    function test_Identify_MultipleAgentsReportsCorrectCount() public {
+        _registerViaHub(human1, nullifier1);
+
+        // Register a second agent for the same human (different wallet)
+        vm.prank(owner);
+        registry.setMaxAgentsPerHuman(3);
+        _registerViaHub(human1alt, nullifier1);
+
+        bytes memory identifyData = abi.encodePacked(uint8(0x49), uint8(0));
+        bytes memory output = _buildEncodedOutput(human1, nullifier1);
+
+        vm.expectEmit(true, false, false, true, address(registry));
+        emit IERC8004ProofOfHuman.NullifierIdentified(nullifier1, 2);
+
+        vm.prank(hubMock);
+        registry.onVerificationSuccess(output, identifyData);
     }
 }

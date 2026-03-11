@@ -45,7 +45,7 @@ _allowed_origins = [
     if o.strip()
 ]
 if not _allowed_origins:
-    _allowed_origins = ["https://self-agent-id.vercel.app"]
+    _allowed_origins = ["https://app.ai.self.xyz"]
 
 app.add_middleware(
     CORSMiddleware,

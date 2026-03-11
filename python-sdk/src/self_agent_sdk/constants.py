@@ -37,11 +37,20 @@ ZERO_ADDRESS = "0x" + "0" * 40
 DEFAULT_MAX_AGE_MS = 5 * 60 * 1000       # 5 minutes
 DEFAULT_CACHE_TTL_MS = 60_000             # 1 minute
 
+# Self Hub V2 action byte for proof refresh
+ACTION_REFRESH = 0x46  # 'F'
+ACTION_IDENTIFY = 0x49  # 'I'
+
+# Seconds before expiry at which the proof is considered "expiring soon" (30 days)
+EXPIRY_WARNING_THRESHOLD_SECS = 30 * 24 * 60 * 60
+
 # HTTP header names used in agent-to-agent signed requests
 HEADERS = {
     "ADDRESS": "x-self-agent-address",
     "SIGNATURE": "x-self-agent-signature",
     "TIMESTAMP": "x-self-agent-timestamp",
+    "KEYTYPE": "x-self-agent-keytype",
+    "KEY": "x-self-agent-key",
 }
 
 # JSON ABI for web3.py — mirrors sdk/src/constants.ts REGISTRY_ABI
@@ -108,6 +117,25 @@ REGISTRY_ABI = [
     {"name": "agentNonces", "type": "function", "stateMutability": "view",
      "inputs": [{"name": "agent", "type": "address"}],
      "outputs": [{"name": "", "type": "uint256"}]},
+    # Nullifier → agent lookups
+    {"name": "getAgentsForNullifier", "type": "function", "stateMutability": "view",
+     "inputs": [{"name": "nullifier", "type": "uint256"}],
+     "outputs": [{"name": "", "type": "uint256[]"}]},
+    {"name": "getAgentsForNullifier", "type": "function", "stateMutability": "view",
+     "inputs": [{"name": "nullifier", "type": "uint256"}, {"name": "offset", "type": "uint256"}, {"name": "limit", "type": "uint256"}],
+     "outputs": [{"name": "", "type": "uint256[]"}]},
+    # Agent config identifier
+    {"name": "agentConfigId", "type": "function", "stateMutability": "view",
+     "inputs": [{"name": "agentId", "type": "uint256"}],
+     "outputs": [{"name": "", "type": "bytes32"}]},
+    # Proof refresh event
+    {"name": "HumanProofRefreshed", "type": "event",
+     "inputs": [
+         {"name": "agentId", "type": "uint256", "indexed": True},
+         {"name": "newExpiry", "type": "uint256", "indexed": False},
+         {"name": "nullifier", "type": "uint256", "indexed": False},
+         {"name": "configId", "type": "bytes32", "indexed": False},
+     ]},
 ]
 
 # ABI for IHumanProofProvider — used to query provider metadata

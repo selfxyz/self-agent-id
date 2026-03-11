@@ -15,7 +15,7 @@ const AUTH_TAG_LENGTH = 16;
 
 export interface SessionData {
   id: string;
-  type: "register" | "deregister";
+  type: "register" | "deregister" | "refresh" | "identify";
   mode?: string;
   stage?: string;
   network?: string;
@@ -89,7 +89,7 @@ export function decryptSession(token: string, secret: string): SessionData {
 /** Create a fresh session token with standard fields populated */
 export function createSessionToken(
   params: {
-    type: "register" | "deregister";
+    type: "register" | "deregister" | "refresh" | "identify";
     mode?: string;
     network?: string;
     agentPrivateKey?: string;

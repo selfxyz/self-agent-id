@@ -43,19 +43,19 @@ describe("mcp authz", () => {
     expect(result?.scopes).toContain(MCP_PRIVILEGED_SCOPE);
   });
 
-  it("rejects invalid tokens", async () => {
+  it("rejects invalid tokens", () => {
     vi.stubEnv("MCP_PRIVILEGED_API_KEYS", "alpha,beta");
-    await expect(
+    expect(() =>
       verifyMcpBearerToken(new Request("https://example.com/api/mcp"), "wrong"),
-    ).rejects.toThrow("Invalid MCP bearer token");
+    ).toThrow("Invalid MCP bearer token");
   });
 
-  it("rejects bearer tokens when privileged auth is not configured", async () => {
+  it("rejects bearer tokens when privileged auth is not configured", () => {
     vi.stubEnv("MCP_PRIVILEGED_API_KEY", "");
     vi.stubEnv("MCP_PRIVILEGED_API_KEYS", "");
-    await expect(
+    expect(() =>
       verifyMcpBearerToken(new Request("https://example.com/api/mcp"), "token"),
-    ).rejects.toThrow("Privileged MCP authentication is not configured");
+    ).toThrow("Privileged MCP authentication is not configured");
   });
 
   it("detects privileged scope", () => {

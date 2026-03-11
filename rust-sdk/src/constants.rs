@@ -45,14 +45,27 @@ pub const DEFAULT_MAX_AGE_MS: u64 = 5 * 60 * 1000;
 /// Default cache TTL for on-chain status (1 minute).
 pub const DEFAULT_CACHE_TTL_MS: u64 = 60_000;
 
+/// Warning threshold: proofs expiring within this many days trigger `is_expiring_soon`.
+pub const EXPIRY_WARNING_DAYS: i32 = 30;
+
+/// Action byte for proof refresh requests.
+pub const ACTION_REFRESH: u8 = 0x46;
+
+/// Action byte for read-only nullifier identification.
+pub const ACTION_IDENTIFY: u8 = 0x49;
+
 /// Request headers used by the signing protocol.
 pub mod headers {
     /// Agent's Ethereum address (informational — identity is recovered from signature).
     pub const ADDRESS: &str = "x-self-agent-address";
-    /// ECDSA signature over the request.
+    /// ECDSA or Ed25519 signature over the request.
     pub const SIGNATURE: &str = "x-self-agent-signature";
     /// Unix timestamp (milliseconds) for replay protection.
     pub const TIMESTAMP: &str = "x-self-agent-timestamp";
+    /// Key type: "ed25519" for Ed25519 agents; absent implies secp256k1 ECDSA.
+    pub const KEYTYPE: &str = "x-self-agent-keytype";
+    /// Agent's public key (used for Ed25519 agents).
+    pub const KEY: &str = "x-self-agent-key";
 }
 
 // Registry ABI — matches the TS SDK's REGISTRY_ABI exactly.

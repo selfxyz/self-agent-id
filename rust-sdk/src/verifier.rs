@@ -11,8 +11,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::agent::{address_to_agent_key, compute_signing_message};
 use crate::constants::{
     network_config, IAgentRegistry, NetworkName, DEFAULT_CACHE_TTL_MS, DEFAULT_MAX_AGE_MS,
-    DEFAULT_NETWORK,
+    DEFAULT_NETWORK, EXPIRY_WARNING_DAYS,
 };
+use crate::ed25519_agent::derive_address_from_pubkey;
 
 // ---------------------------------------------------------------------------
 // Configuration structs
@@ -134,6 +135,12 @@ pub struct VerificationResult {
     pub error: Option<String>,
     /// Milliseconds until the rate limit resets (only set when rate limited).
     pub retry_after_ms: Option<u64>,
+    /// Unix timestamp (seconds) when the agent's proof expires. `None` if no expiry set.
+    pub proof_expires_at: Option<u64>,
+    /// Number of days until the proof expires. Negative if already expired, `None` if no expiry set.
+    pub days_until_expiry: Option<i32>,
+    /// Whether the proof is expiring within 30 days.
+    pub is_expiring_soon: bool,
 }
 
 impl VerificationResult {
@@ -148,6 +155,9 @@ impl VerificationResult {
             credentials: None,
             error: Some(error.to_string()),
             retry_after_ms: None,
+            proof_expires_at: None,
+            days_until_expiry: None,
+            is_expiring_soon: false,
         }
     }
 }
@@ -401,6 +411,7 @@ struct CacheEntry {
     agent_count: U256,
     nullifier: U256,
     provider_address: Address,
+    proof_expires_at_timestamp: U256,
     expires_at: u64,
 }
 
@@ -411,6 +422,7 @@ struct OnChainStatus {
     agent_count: U256,
     nullifier: U256,
     provider_address: Address,
+    proof_expires_at_timestamp: U256,
 }
 
 // ---------------------------------------------------------------------------
@@ -590,6 +602,9 @@ impl SelfAgentVerifier {
                     credentials: None,
                     error: Some(err),
                     retry_after_ms: None,
+                    proof_expires_at: None,
+                    days_until_expiry: None,
+                    is_expiring_soon: false,
                 };
             }
         }
@@ -611,9 +626,15 @@ impl SelfAgentVerifier {
                     credentials: None,
                     error: Some(format!("RPC error: {}", e)),
                     retry_after_ms: None,
+                    proof_expires_at: None,
+                    days_until_expiry: None,
+                    is_expiring_soon: false,
                 };
             }
         };
+
+        // Compute expiry fields from the on-chain timestamp
+        let expiry = compute_expiry_fields(on_chain.proof_expires_at_timestamp);
 
         if !on_chain.is_verified {
             return VerificationResult {
@@ -626,6 +647,9 @@ impl SelfAgentVerifier {
                 credentials: None,
                 error: Some("Agent not verified on-chain".to_string()),
                 retry_after_ms: None,
+                proof_expires_at: expiry.proof_expires_at,
+                days_until_expiry: expiry.days_until_expiry,
+                is_expiring_soon: expiry.is_expiring_soon,
             };
         }
 
@@ -641,6 +665,9 @@ impl SelfAgentVerifier {
                 credentials: None,
                 error: Some("Agent's human proof has expired".to_string()),
                 retry_after_ms: None,
+                proof_expires_at: expiry.proof_expires_at,
+                days_until_expiry: expiry.days_until_expiry,
+                is_expiring_soon: expiry.is_expiring_soon,
             };
         }
 
@@ -661,6 +688,9 @@ impl SelfAgentVerifier {
                             "Unable to verify proof provider — RPC error".to_string(),
                         ),
                         retry_after_ms: None,
+                        proof_expires_at: expiry.proof_expires_at,
+                        days_until_expiry: expiry.days_until_expiry,
+                        is_expiring_soon: expiry.is_expiring_soon,
                     };
                 }
             };
@@ -677,6 +707,9 @@ impl SelfAgentVerifier {
                         "Agent was not verified by Self — proof provider mismatch".to_string(),
                     ),
                     retry_after_ms: None,
+                    proof_expires_at: expiry.proof_expires_at,
+                    days_until_expiry: expiry.days_until_expiry,
+                    is_expiring_soon: expiry.is_expiring_soon,
                 };
             }
         }
@@ -698,6 +731,9 @@ impl SelfAgentVerifier {
                     on_chain.agent_count, self.max_agents_per_human
                 )),
                 retry_after_ms: None,
+                proof_expires_at: expiry.proof_expires_at,
+                days_until_expiry: expiry.days_until_expiry,
+                is_expiring_soon: expiry.is_expiring_soon,
             };
         }
 
@@ -725,6 +761,9 @@ impl SelfAgentVerifier {
                             min_age, creds.older_than
                         )),
                         retry_after_ms: None,
+                        proof_expires_at: expiry.proof_expires_at,
+                        days_until_expiry: expiry.days_until_expiry,
+                        is_expiring_soon: expiry.is_expiring_soon,
                     };
                 }
             }
@@ -740,6 +779,9 @@ impl SelfAgentVerifier {
                     credentials: credentials.clone(),
                     error: Some("Agent's human did not pass OFAC screening".to_string()),
                     retry_after_ms: None,
+                    proof_expires_at: expiry.proof_expires_at,
+                    days_until_expiry: expiry.days_until_expiry,
+                    is_expiring_soon: expiry.is_expiring_soon,
                 };
             }
 
@@ -758,6 +800,9 @@ impl SelfAgentVerifier {
                             creds.nationality
                         )),
                         retry_after_ms: None,
+                        proof_expires_at: expiry.proof_expires_at,
+                        days_until_expiry: expiry.days_until_expiry,
+                        is_expiring_soon: expiry.is_expiring_soon,
                     };
                 }
             }
@@ -777,6 +822,9 @@ impl SelfAgentVerifier {
                     credentials,
                     error: Some(limited.error),
                     retry_after_ms: Some(limited.retry_after_ms),
+                    proof_expires_at: expiry.proof_expires_at,
+                    days_until_expiry: expiry.days_until_expiry,
+                    is_expiring_soon: expiry.is_expiring_soon,
                 };
             }
         }
@@ -791,6 +839,389 @@ impl SelfAgentVerifier {
             credentials,
             error: None,
             retry_after_ms: None,
+            proof_expires_at: expiry.proof_expires_at,
+            days_until_expiry: expiry.days_until_expiry,
+            is_expiring_soon: expiry.is_expiring_soon,
+        }
+    }
+
+    /// Verify a signed agent request with key type awareness.
+    ///
+    /// When `keytype` is `Some("ed25519")`, uses Ed25519 verification with the
+    /// provided `agent_key` (32-byte public key). Otherwise falls through to
+    /// standard ECDSA verification via [`verify`].
+    pub async fn verify_with_keytype(
+        &mut self,
+        signature: &str,
+        timestamp: &str,
+        method: &str,
+        url: &str,
+        body: Option<&str>,
+        keytype: Option<&str>,
+        agent_key: Option<&str>,
+    ) -> VerificationResult {
+        if keytype == Some("ed25519") {
+            return self
+                .verify_ed25519(signature, timestamp, method, url, body, agent_key)
+                .await;
+        }
+
+        // Default: ECDSA verification
+        self.verify(signature, timestamp, method, url, body).await
+    }
+
+    /// Verify an Ed25519-signed agent request.
+    ///
+    /// The agent's public key must be provided in `agent_key_hex`. The signature
+    /// is verified directly against the Ed25519 public key (no EIP-191 prefix).
+    /// The agent address is derived from `keccak256(pubkey)`.
+    async fn verify_ed25519(
+        &mut self,
+        signature: &str,
+        timestamp: &str,
+        method: &str,
+        url: &str,
+        body: Option<&str>,
+        agent_key_hex: Option<&str>,
+    ) -> VerificationResult {
+        // 1. Require agent key for Ed25519
+        let key_hex = match agent_key_hex {
+            Some(k) => k,
+            None => {
+                return VerificationResult::empty_with_error(
+                    "Missing agent key for Ed25519 verification",
+                );
+            }
+        };
+
+        // 2. Check timestamp freshness
+        let ts: u64 = match timestamp.parse() {
+            Ok(v) => v,
+            Err(_) => {
+                return VerificationResult::empty_with_error("Timestamp expired or invalid");
+            }
+        };
+        let now = now_millis();
+        let diff = if now > ts { now - ts } else { ts - now };
+        if diff > self.max_age_ms {
+            return VerificationResult::empty_with_error("Timestamp expired or invalid");
+        }
+
+        // 3. Reconstruct the signed message
+        let message = compute_signing_message(timestamp, method, url, body);
+        let message_key = format!("{:#x}", message);
+
+        // 4. Parse the Ed25519 public key
+        let key_stripped = key_hex.strip_prefix("0x").unwrap_or(key_hex);
+        let key_bytes = match hex::decode(key_stripped) {
+            Ok(b) => b,
+            Err(_) => {
+                return VerificationResult::empty_with_error("Invalid Ed25519 agent key");
+            }
+        };
+        let key_array: [u8; 32] = match key_bytes.try_into() {
+            Ok(a) => a,
+            Err(_) => {
+                return VerificationResult::empty_with_error("Invalid Ed25519 agent key");
+            }
+        };
+        let verifying_key = match ed25519_dalek::VerifyingKey::from_bytes(&key_array) {
+            Ok(vk) => vk,
+            Err(_) => {
+                return VerificationResult::empty_with_error("Invalid Ed25519 agent key");
+            }
+        };
+
+        // 5. Parse and verify the signature
+        let sig_stripped = signature.strip_prefix("0x").unwrap_or(signature);
+        let sig_bytes = match hex::decode(sig_stripped) {
+            Ok(b) => b,
+            Err(_) => {
+                return VerificationResult::empty_with_error("Invalid Ed25519 signature");
+            }
+        };
+        let sig_array: [u8; 64] = match sig_bytes.try_into() {
+            Ok(a) => a,
+            Err(_) => {
+                return VerificationResult::empty_with_error("Invalid Ed25519 signature");
+            }
+        };
+        let ed_signature = ed25519_dalek::Signature::from_bytes(&sig_array);
+
+        {
+            use ed25519_dalek::Verifier;
+            if verifying_key.verify(message.as_ref(), &ed_signature).is_err() {
+                return VerificationResult::empty_with_error("Invalid Ed25519 signature");
+            }
+        }
+
+        // 6. Derive address from keccak256(pubkey)
+        let signer_address = derive_address_from_pubkey(&key_array);
+
+        // Agent key for Ed25519 is the raw 32-byte public key (already bytes32)
+        let agent_key = B256::from(key_array);
+
+        // 7. Replay cache check
+        if self.enable_replay_protection {
+            if let Some(err) = self.check_and_record_replay(signature, &message_key, ts, now) {
+                return VerificationResult {
+                    valid: false,
+                    agent_address: signer_address,
+                    agent_key,
+                    agent_id: U256::ZERO,
+                    agent_count: U256::ZERO,
+                    nullifier: U256::ZERO,
+                    credentials: None,
+                    error: Some(err),
+                    retry_after_ms: None,
+                    proof_expires_at: None,
+                    days_until_expiry: None,
+                    is_expiring_soon: false,
+                };
+            }
+        }
+
+        // 8+ Remaining checks (on-chain, provider, sybil, credentials, rate limit)
+        // are identical to the ECDSA path — delegate to shared logic.
+        self.verify_on_chain_and_policy(signer_address, agent_key)
+            .await
+    }
+
+    /// Shared on-chain + policy verification logic used by both ECDSA and Ed25519 paths.
+    async fn verify_on_chain_and_policy(
+        &mut self,
+        signer_address: Address,
+        agent_key: B256,
+    ) -> VerificationResult {
+        // Check on-chain status (with cache)
+        let on_chain = match self.check_on_chain(agent_key).await {
+            Ok(v) => v,
+            Err(e) => {
+                return VerificationResult {
+                    valid: false,
+                    agent_address: signer_address,
+                    agent_key,
+                    agent_id: U256::ZERO,
+                    agent_count: U256::ZERO,
+                    nullifier: U256::ZERO,
+                    credentials: None,
+                    error: Some(format!("RPC error: {}", e)),
+                    retry_after_ms: None,
+                    proof_expires_at: None,
+                    days_until_expiry: None,
+                    is_expiring_soon: false,
+                };
+            }
+        };
+
+        // Compute expiry fields from the on-chain timestamp
+        let expiry = compute_expiry_fields(on_chain.proof_expires_at_timestamp);
+
+        if !on_chain.is_verified {
+            return VerificationResult {
+                valid: false,
+                agent_address: signer_address,
+                agent_key,
+                agent_id: on_chain.agent_id,
+                agent_count: on_chain.agent_count,
+                nullifier: on_chain.nullifier,
+                credentials: None,
+                error: Some("Agent not verified on-chain".to_string()),
+                retry_after_ms: None,
+                proof_expires_at: expiry.proof_expires_at,
+                days_until_expiry: expiry.days_until_expiry,
+                is_expiring_soon: expiry.is_expiring_soon,
+            };
+        }
+
+        if !on_chain.is_proof_fresh {
+            return VerificationResult {
+                valid: false,
+                agent_address: signer_address,
+                agent_key,
+                agent_id: on_chain.agent_id,
+                agent_count: on_chain.agent_count,
+                nullifier: on_chain.nullifier,
+                credentials: None,
+                error: Some("Agent's human proof has expired".to_string()),
+                retry_after_ms: None,
+                proof_expires_at: expiry.proof_expires_at,
+                days_until_expiry: expiry.days_until_expiry,
+                is_expiring_soon: expiry.is_expiring_soon,
+            };
+        }
+
+        // Provider check
+        if self.require_self_provider && on_chain.agent_id > U256::ZERO {
+            let self_provider = match self.get_self_provider_address().await {
+                Ok(addr) => addr,
+                Err(_) => {
+                    return VerificationResult {
+                        valid: false,
+                        agent_address: signer_address,
+                        agent_key,
+                        agent_id: on_chain.agent_id,
+                        agent_count: on_chain.agent_count,
+                        nullifier: on_chain.nullifier,
+                        credentials: None,
+                        error: Some(
+                            "Unable to verify proof provider — RPC error".to_string(),
+                        ),
+                        retry_after_ms: None,
+                        proof_expires_at: expiry.proof_expires_at,
+                        days_until_expiry: expiry.days_until_expiry,
+                        is_expiring_soon: expiry.is_expiring_soon,
+                    };
+                }
+            };
+            if on_chain.provider_address != self_provider {
+                return VerificationResult {
+                    valid: false,
+                    agent_address: signer_address,
+                    agent_key,
+                    agent_id: on_chain.agent_id,
+                    agent_count: on_chain.agent_count,
+                    nullifier: on_chain.nullifier,
+                    credentials: None,
+                    error: Some(
+                        "Agent was not verified by Self — proof provider mismatch".to_string(),
+                    ),
+                    retry_after_ms: None,
+                    proof_expires_at: expiry.proof_expires_at,
+                    days_until_expiry: expiry.days_until_expiry,
+                    is_expiring_soon: expiry.is_expiring_soon,
+                };
+            }
+        }
+
+        // Sybil resistance
+        if self.max_agents_per_human > 0
+            && on_chain.agent_count > U256::from(self.max_agents_per_human)
+        {
+            return VerificationResult {
+                valid: false,
+                agent_address: signer_address,
+                agent_key,
+                agent_id: on_chain.agent_id,
+                agent_count: on_chain.agent_count,
+                nullifier: on_chain.nullifier,
+                credentials: None,
+                error: Some(format!(
+                    "Human has {} agents (max {})",
+                    on_chain.agent_count, self.max_agents_per_human
+                )),
+                retry_after_ms: None,
+                proof_expires_at: expiry.proof_expires_at,
+                days_until_expiry: expiry.days_until_expiry,
+                is_expiring_soon: expiry.is_expiring_soon,
+            };
+        }
+
+        // Fetch credentials if requested
+        let credentials = if self.include_credentials && on_chain.agent_id > U256::ZERO {
+            self.fetch_credentials(on_chain.agent_id).await.ok()
+        } else {
+            None
+        };
+
+        // Credential checks
+        if let Some(ref creds) = credentials {
+            if let Some(min_age) = self.minimum_age {
+                if creds.older_than < U256::from(min_age) {
+                    return VerificationResult {
+                        valid: false,
+                        agent_address: signer_address,
+                        agent_key,
+                        agent_id: on_chain.agent_id,
+                        agent_count: on_chain.agent_count,
+                        nullifier: on_chain.nullifier,
+                        credentials: credentials.clone(),
+                        error: Some(format!(
+                            "Agent's human does not meet minimum age (required: {}, got: {})",
+                            min_age, creds.older_than
+                        )),
+                        retry_after_ms: None,
+                        proof_expires_at: expiry.proof_expires_at,
+                        days_until_expiry: expiry.days_until_expiry,
+                        is_expiring_soon: expiry.is_expiring_soon,
+                    };
+                }
+            }
+
+            if self.require_ofac_passed && !creds.ofac.first().copied().unwrap_or(false) {
+                return VerificationResult {
+                    valid: false,
+                    agent_address: signer_address,
+                    agent_key,
+                    agent_id: on_chain.agent_id,
+                    agent_count: on_chain.agent_count,
+                    nullifier: on_chain.nullifier,
+                    credentials: credentials.clone(),
+                    error: Some("Agent's human did not pass OFAC screening".to_string()),
+                    retry_after_ms: None,
+                    proof_expires_at: expiry.proof_expires_at,
+                    days_until_expiry: expiry.days_until_expiry,
+                    is_expiring_soon: expiry.is_expiring_soon,
+                };
+            }
+
+            if let Some(ref allowed) = self.allowed_nationalities {
+                if !allowed.is_empty() && !allowed.contains(&creds.nationality) {
+                    return VerificationResult {
+                        valid: false,
+                        agent_address: signer_address,
+                        agent_key,
+                        agent_id: on_chain.agent_id,
+                        agent_count: on_chain.agent_count,
+                        nullifier: on_chain.nullifier,
+                        credentials: credentials.clone(),
+                        error: Some(format!(
+                            "Nationality \"{}\" not in allowed list",
+                            creds.nationality
+                        )),
+                        retry_after_ms: None,
+                        proof_expires_at: expiry.proof_expires_at,
+                        days_until_expiry: expiry.days_until_expiry,
+                        is_expiring_soon: expiry.is_expiring_soon,
+                    };
+                }
+            }
+        }
+
+        // Rate limiting
+        if let Some(ref mut limiter) = self.rate_limiter {
+            let addr_str = format!("{:#x}", signer_address);
+            if let Some(limited) = limiter.check(&addr_str) {
+                return VerificationResult {
+                    valid: false,
+                    agent_address: signer_address,
+                    agent_key,
+                    agent_id: on_chain.agent_id,
+                    agent_count: on_chain.agent_count,
+                    nullifier: on_chain.nullifier,
+                    credentials,
+                    error: Some(limited.error),
+                    retry_after_ms: Some(limited.retry_after_ms),
+                    proof_expires_at: expiry.proof_expires_at,
+                    days_until_expiry: expiry.days_until_expiry,
+                    is_expiring_soon: expiry.is_expiring_soon,
+                };
+            }
+        }
+
+        VerificationResult {
+            valid: true,
+            agent_address: signer_address,
+            agent_key,
+            agent_id: on_chain.agent_id,
+            agent_count: on_chain.agent_count,
+            nullifier: on_chain.nullifier,
+            credentials,
+            error: None,
+            retry_after_ms: None,
+            proof_expires_at: expiry.proof_expires_at,
+            days_until_expiry: expiry.days_until_expiry,
+            is_expiring_soon: expiry.is_expiring_soon,
         }
     }
 
@@ -806,6 +1237,7 @@ impl SelfAgentVerifier {
                     agent_count: cached.agent_count,
                     nullifier: cached.nullifier,
                     provider_address: cached.provider_address,
+                    proof_expires_at_timestamp: cached.proof_expires_at_timestamp,
                 });
             }
         }
@@ -828,10 +1260,18 @@ impl SelfAgentVerifier {
         let mut nullifier = U256::ZERO;
         let mut provider_address = Address::ZERO;
         let mut is_proof_fresh = false;
+        let mut proof_expires_at_timestamp = U256::ZERO;
 
         if agent_id > U256::ZERO {
             is_proof_fresh = registry
                 .isProofFresh(agent_id)
+                .call()
+                .await
+                .map_err(|e| crate::Error::RpcError(e.to_string()))?;
+
+            // Always fetch proof expiry timestamp
+            proof_expires_at_timestamp = registry
+                .proofExpiresAt(agent_id)
                 .call()
                 .await
                 .map_err(|e| crate::Error::RpcError(e.to_string()))?;
@@ -867,6 +1307,7 @@ impl SelfAgentVerifier {
                 agent_count,
                 nullifier,
                 provider_address,
+                proof_expires_at_timestamp,
                 expires_at: now + self.cache_ttl_ms,
             },
         );
@@ -878,6 +1319,7 @@ impl SelfAgentVerifier {
             agent_count,
             nullifier,
             provider_address,
+            proof_expires_at_timestamp,
         })
     }
 
@@ -975,6 +1417,40 @@ impl SelfAgentVerifier {
         for (key, _) in items.into_iter().take(overflow) {
             self.replay_cache.remove(&key);
         }
+    }
+}
+
+/// Computed expiry fields derived from the on-chain `proofExpiresAt` timestamp.
+struct ExpiryFields {
+    proof_expires_at: Option<u64>,
+    days_until_expiry: Option<i32>,
+    is_expiring_soon: bool,
+}
+
+/// Compute expiry fields from an on-chain `proofExpiresAt` value (seconds since epoch).
+/// A value of zero means no expiry is set.
+fn compute_expiry_fields(proof_expires_at_timestamp: U256) -> ExpiryFields {
+    if proof_expires_at_timestamp == U256::ZERO {
+        return ExpiryFields {
+            proof_expires_at: None,
+            days_until_expiry: None,
+            is_expiring_soon: false,
+        };
+    }
+
+    let expires_at_secs: u64 = proof_expires_at_timestamp.try_into().unwrap_or(u64::MAX);
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock before UNIX epoch")
+        .as_secs();
+    let days = ((expires_at_secs as i64) - (now_secs as i64)) / 86400;
+    let days_i32 = days.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+    let is_expiring_soon = days_i32 >= 0 && days_i32 <= EXPIRY_WARNING_DAYS;
+
+    ExpiryFields {
+        proof_expires_at: Some(expires_at_secs),
+        days_until_expiry: Some(days_i32),
+        is_expiring_soon,
     }
 }
 

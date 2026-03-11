@@ -245,11 +245,12 @@ fn flag_u16(flags: &HashMap<String, String>, key: &str) -> Result<Option<u16>, S
 
 fn parse_mode(mode: &str) -> Result<&'static str, String> {
     match mode {
-        "verified-wallet" => Ok("verified-wallet"),
-        "agent-identity" => Ok("agent-identity"),
+        "self-custody" => Ok("self-custody"),
+        "linked" => Ok("linked"),
         "wallet-free" => Ok("wallet-free"),
-        "smart-wallet" => Ok("smart-wallet"),
-        "privy" => Ok("privy"),
+        "ed25519" => Ok("ed25519"),
+        "ed25519-linked" => Ok("ed25519-linked"),
+        "smartwallet" => Ok("smartwallet"),
         _ => Err(format!("Unsupported mode: {mode}")),
     }
 }
@@ -424,11 +425,11 @@ async fn command_init(flags: &HashMap<String, String>, operation: &str) -> Resul
     let mut smart_wallet_template: Option<SmartWalletTemplate> = None;
     let mut private_key: Option<String> = None;
 
-    if mode == "verified-wallet" || mode == "agent-identity" || mode == "privy" {
+    if mode == "self-custody" || mode == "linked" {
         let human = flags
             .get("human-address")
             .cloned()
-            .ok_or("--human-address is required for verified-wallet, agent-identity, and privy")?;
+            .ok_or("--human-address is required for self-custody and linked modes")?;
         human_identifier = format!(
             "{:#x}",
             Address::from_str(&human).map_err(|e| e.to_string())?
@@ -438,7 +439,7 @@ async fn command_init(flags: &HashMap<String, String>, operation: &str) -> Resul
     let reg_d = to_reg_disclosures(&disclosures);
 
     if operation == OP_REGISTER {
-        if mode == "verified-wallet" {
+        if mode == "self-custody" {
             agent_address = human_identifier.clone();
             user_defined_data = Some(build_simple_register_user_data_ascii(&reg_d));
         } else {
@@ -448,7 +449,7 @@ async fn command_init(flags: &HashMap<String, String>, operation: &str) -> Resul
             private_key = Some(pk.clone());
             agent_address = format!("{:#x}", signer.address());
 
-            if mode == "wallet-free" || mode == "smart-wallet" {
+            if mode == "wallet-free" || mode == "smartwallet" {
                 human_identifier = agent_address.clone();
             }
 
@@ -463,7 +464,7 @@ async fn command_init(flags: &HashMap<String, String>, operation: &str) -> Resul
             let sig_parts = signed.parts.clone();
             signature = Some(sig_parts.clone());
 
-            if mode == "agent-identity" || mode == "privy" {
+            if mode == "linked" {
                 user_defined_data = Some(build_advanced_register_user_data_ascii(
                     &agent_address,
                     &sig_parts,
@@ -476,7 +477,7 @@ async fn command_init(flags: &HashMap<String, String>, operation: &str) -> Resul
                     &sig_parts,
                     &reg_d,
                 ));
-            } else if mode == "smart-wallet" {
+            } else if mode == "smartwallet" {
                 smart_wallet_template = Some(SmartWalletTemplate {
                     agent_address: agent_address.clone(),
                     r: sig_parts.r.clone(),
@@ -487,23 +488,23 @@ async fn command_init(flags: &HashMap<String, String>, operation: &str) -> Resul
             }
         }
     } else {
-        if mode == "verified-wallet" {
+        if mode == "self-custody" {
             agent_address = human_identifier.clone();
             user_defined_data = Some(build_simple_deregister_user_data_ascii(&reg_d));
-        } else if mode == "agent-identity" || mode == "privy" {
+        } else if mode == "linked" {
             let agent = flags
                 .get("agent-address")
                 .cloned()
-                .ok_or("--agent-address is required for agent-identity/privy deregistration")?;
+                .ok_or("--agent-address is required for linked deregistration")?;
             let parsed = Address::from_str(&agent).map_err(|e| e.to_string())?;
             agent_address = format!("{:#x}", parsed);
             user_defined_data = Some(build_advanced_deregister_user_data_ascii(
                 &agent_address,
                 &reg_d,
             ));
-        } else if mode == "wallet-free" || mode == "smart-wallet" {
+        } else if mode == "wallet-free" || mode == "smartwallet" {
             let agent = flags.get("agent-address").cloned().ok_or(
-                "--agent-address is required for wallet-free and smart-wallet deregistration",
+                "--agent-address is required for wallet-free and smartwallet deregistration",
             )?;
             let parsed = Address::from_str(&agent).map_err(|e| e.to_string())?;
             agent_address = format!("{:#x}", parsed);
@@ -1082,10 +1083,10 @@ fn usage() -> String {
         "  deregister status Show session status",
         "",
         "Examples:",
-        "  self-agent-cli register init --mode verified-wallet --human-address 0x... --network testnet --out .self/session.json",
+        "  self-agent-cli register init --mode self-custody --human-address 0x... --network testnet --out .self/session.json",
         "  self-agent-cli register open --session .self/session.json",
         "  self-agent-cli register wait --session .self/session.json --timeout-seconds 1800",
-        "  self-agent-cli deregister init --mode verified-wallet --human-address 0x... --network testnet --out .self/session.json",
+        "  self-agent-cli deregister init --mode self-custody --human-address 0x... --network testnet --out .self/session.json",
         "  self-agent-cli deregister open --session .self/session.json",
         "  self-agent-cli deregister wait --session .self/session.json --timeout-seconds 1800",
     ]

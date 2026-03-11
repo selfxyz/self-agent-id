@@ -5,12 +5,29 @@ Last updated: 2026-02-22
 
 This document defines the shared CLI contract for agent registration and deregistration used by TypeScript, Python, and Rust implementations, along with step-by-step usage guides and integration patterns.
 
+## Registration Modes
+
+### Off-chain (no human wallet needed)
+
+| Mode | Keys | Use when |
+|---|---|---|
+| `wallet-free` | Server-generated EVM | You have no keys and don't need any |
+| `ed25519` | Your Ed25519 keypair | You're an OpenClaw/Eliza/IronClaw agent |
+
+### On-chain (human wallet required)
+
+| Mode | Keys | Use when |
+|---|---|---|
+| `self-custody` | Human's wallet = agent | You ARE the agent (human-operated) |
+| `linked` | Separate EVM keypair | You want agent keys linked to a human wallet |
+| `ed25519-linked` | Your Ed25519 keypair | You want Ed25519 keys linked to a human wallet |
+
 ## 1. Overview & Supported Modes
 
-1. `verified-wallet` — use when human wallet itself is the on-chain identity.
-2. `agent-identity` — default for autonomous agents and API signing.
+1. `self-custody` — use when human wallet itself is the on-chain identity.
+2. `linked` — default for autonomous agents and API signing.
 3. `wallet-free` — use when user should not need a wallet at registration time.
-4. `smart-wallet` — passkey guardian UX plus dedicated agent API key.
+4. `smartwallet` — passkey guardian UX plus dedicated agent API key.
 
 ### Prerequisites
 
@@ -21,12 +38,12 @@ This document defines the shared CLI contract for agent registration and deregis
    3. Rust: `self-agent-cli`
 3. Access to a supported chain RPC and registry, or use `--network testnet|mainnet`.
 4. Self mobile app for passport proof.
-5. For `smart-wallet` mode: browser/device with passkey support.
+5. For `smartwallet` mode: browser/device with passkey support.
 6. For service verification demos, use an agent key that is already registered on the same network as your verifier.
 
 ## 2. Canonical Challenge Domain
 
-All advanced/wallet-free/smart-wallet challenge signatures use:
+All advanced/wallet-free/smartwallet challenge signatures use:
 
 1. Prefix: `"self-agent-id:register:"`
 2. `humanIdentifier` (`address`)
@@ -43,11 +60,11 @@ Creates a local session file and mode-specific payload material.
 
 Required:
 
-1. `--mode <verified-wallet|agent-identity|wallet-free|smart-wallet>`
+1. `--mode <self-custody|linked|wallet-free|smartwallet>`
 
 Mode-specific:
 
-1. `--human-address` is required for `verified-wallet` and `agent-identity`
+1. `--human-address` is required for `self-custody` and `linked`
 
 Network selection:
 
@@ -117,13 +134,13 @@ Creates a local session file for proof-based revocation.
 
 Required:
 
-1. `--mode <verified-wallet|agent-identity|wallet-free|smart-wallet>`
+1. `--mode <self-custody|linked|wallet-free|smartwallet>`
 
 Mode-specific:
 
-1. `--human-address` is required for `verified-wallet` and `agent-identity`
+1. `--human-address` is required for `self-custody` and `linked`
 2. `--agent-address` is required for:
-   `agent-identity`, `wallet-free`, `smart-wallet`
+   `linked`, `wallet-free`, `smartwallet`
 
 Network selection:
 
@@ -179,21 +196,21 @@ Required:
 
 #### Step 1: Create session
 
-Example (`agent-identity`):
+Example (`linked`):
 
 ```bash
 self-agent register init \
-  --mode agent-identity \
+  --mode linked \
   --human-address 0x... \
   --network testnet \
   --out .self/session.json
 ```
 
-Example (`smart-wallet`):
+Example (`smartwallet`):
 
 ```bash
 self-agent register init \
-  --mode smart-wallet \
+  --mode smartwallet \
   --network testnet \
   --out .self/session.json
 ```
@@ -209,7 +226,7 @@ Copy the returned `url` into your browser.
 #### Step 3: Complete proof in browser
 
 1. Scan QR in Self app and complete disclosure proof.
-2. If mode is `smart-wallet`, create passkey wallet first in browser flow, then complete Self proof.
+2. If mode is `smartwallet`, create passkey wallet first in browser flow, then complete Self proof.
 
 #### Step 4: Wait for completion in terminal
 
@@ -226,33 +243,33 @@ Expected output includes:
 
 #### Step 5: Export key only when needed
 
-Generated-key modes (`agent-identity`, `wallet-free`, `smart-wallet`) may export:
+Generated-key modes (`linked`, `wallet-free`, `smartwallet`) may export:
 
 ```bash
 self-agent register export --session .self/session.json --unsafe --out-key .self/agent.key
 ```
 
-`verified-wallet` mode has no generated agent private key to export.
+`self-custody` mode has no generated agent private key to export.
 
 ### Human Deregistration Flow
 
 #### Step 1: Create deregistration session
 
-Example (`verified-wallet`):
+Example (`self-custody`):
 
 ```bash
 self-agent deregister init \
-  --mode verified-wallet \
+  --mode self-custody \
   --human-address 0x... \
   --network testnet \
   --out .self/session-deregister.json
 ```
 
-Example (`agent-identity`):
+Example (`linked`):
 
 ```bash
 self-agent deregister init \
-  --mode agent-identity \
+  --mode linked \
   --human-address 0x... \
   --agent-address 0x... \
   --network testnet \
@@ -325,7 +342,7 @@ To refresh an expired proof, deregister then re-register:
 ```bash
 # Step 1: Deregister the expired agent
 self-agent deregister init \
-  --mode agent-identity \
+  --mode linked \
   --human-address 0x... \
   --agent-address 0x... \
   --network mainnet \
@@ -337,7 +354,7 @@ self-agent deregister wait --session .self/session-deregister.json
 
 # Step 2: Re-register with the same mode
 self-agent register init \
-  --mode agent-identity \
+  --mode linked \
   --human-address 0x... \
   --network mainnet \
   --out .self/session-refresh.json
@@ -384,10 +401,10 @@ Top-level:
 
 1. `humanIdentifier`
 2. `agentAddress`
-3. `userDefinedData` (except smart-wallet template pre-step)
-4. `challengeHash` (non-verified-wallet modes)
-5. `signature` (non-verified-wallet modes)
-6. `smartWalletTemplate` (smart-wallet mode only before browser passkey step)
+3. `userDefinedData` (except smartwallet template pre-step)
+4. `challengeHash` (non-self-custody modes)
+5. `signature` (non-self-custody modes)
+6. `smartWalletTemplate` (smartwallet mode only before browser passkey step)
 
 `callback`:
 

@@ -7,6 +7,7 @@ import { HEADERS } from "@selfxyz/agent-sdk";
 import { NETWORKS, type NetworkId } from "@/lib/network";
 import { getCachedVerifier } from "@/lib/selfVerifier";
 import { checkAndRecordReplay } from "@/lib/replayGuard";
+import { demoEndpointDocs } from "@/lib/demo-docs";
 
 // Allow up to 30s for RPC calls to Forno (default 10s can be tight)
 export const maxDuration = 30;
@@ -20,9 +21,36 @@ function resolveNetwork(req: NextRequest): NetworkId {
   return "celo-sepolia";
 }
 
+export function GET() {
+  return demoEndpointDocs({
+    endpoint: "/api/demo/verify",
+    method: "POST",
+    description:
+      "Agent-to-Service verification demo. A service verifies that the calling agent is registered and backed by a real human. Returns the agent's on-chain identity and credentials.",
+    requiredHeaders: {
+      "x-self-agent-signature": "HMAC signature of the request",
+      "x-self-agent-timestamp": "ISO 8601 timestamp of the request",
+    },
+    optionalHeaders: {
+      "x-self-agent-keytype": "Key type: 'ed25519' or omit for ECDSA",
+      "x-self-agent-key": "Agent public key (required for Ed25519)",
+    },
+    bodySchema: {
+      "?network": "Query param: 'celo-sepolia' (default) or 'celo-mainnet'",
+    },
+    exampleBody: { message: "Hello from my agent" },
+    notes: [
+      "This is the simplest demo — verifies your agent's identity and returns credentials.",
+      "Replay protection is enabled: each signature can only be used once.",
+    ],
+  });
+}
+
 export async function POST(req: NextRequest) {
   const signature = req.headers.get(HEADERS.SIGNATURE);
   const timestamp = req.headers.get(HEADERS.TIMESTAMP);
+  const keytype = req.headers.get(HEADERS.KEYTYPE) ?? undefined;
+  const agentKey = req.headers.get(HEADERS.KEY) ?? undefined;
 
   if (!signature || !timestamp) {
     return NextResponse.json(
@@ -46,6 +74,8 @@ export async function POST(req: NextRequest) {
       method: "POST",
       url: req.url,
       body: body || undefined,
+      keytype,
+      agentKey,
     });
 
     if (result.valid) {

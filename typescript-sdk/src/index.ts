@@ -5,6 +5,9 @@
 export { SelfAgent } from "./SelfAgent";
 export type { SelfAgentConfig, AgentInfo } from "./SelfAgent";
 
+export { Ed25519Agent } from "./Ed25519Agent";
+export type { Ed25519AgentConfig } from "./Ed25519Agent";
+
 export {
   SelfAgentVerifier,
   VerifierBuilder,
@@ -56,7 +59,6 @@ export type {
   ERC8004AgentDocument,
   A2ACapabilities,
   A2AProvider,
-  A2ASecurityScheme,
   ERC8004Service,
   ERC8004Registration,
   GenerateRegistrationJSONOptions,
@@ -64,7 +66,49 @@ export type {
   TrustModel,
   CardCredentials,
   AgentSkill,
+  AgentInterface,
+  APIKeySecurityScheme,
+  HTTPAuthSecurityScheme,
+  OAuth2SecurityScheme,
+  OpenIdConnectSecurityScheme,
+  SecurityScheme,
+  SecuritySchemes,
+  SecurityRequirement,
+  JWSSignature,
+  AgentExtension,
 } from "./agentCard";
+
+// A2A Task Protocol (JSON-RPC 2.0)
+export { A2AErrorCodes, A2AClient, A2AError, A2AServer } from "./a2a";
+export type {
+  TextPart,
+  FilePart,
+  DataPart,
+  Part,
+  Message,
+  TaskState,
+  TaskStatus,
+  Artifact,
+  Task,
+  TaskPushNotificationConfig,
+  JSONRPCRequest,
+  JSONRPCError,
+  JSONRPCResponse,
+  SendMessageParams,
+  GetTaskParams,
+  CancelTaskParams,
+  SendMessageRequest,
+  SendStreamingMessageRequest,
+  GetTaskRequest,
+  CancelTaskRequest,
+  A2ARequest,
+  TaskStatusUpdateEvent,
+  TaskArtifactUpdateEvent,
+  A2AStreamEvent,
+  A2AErrorCode,
+  A2AClientOptions,
+  TaskHandler,
+} from "./a2a";
 
 export {
   HEADERS,
@@ -86,6 +130,7 @@ export type {
 export {
   requestRegistration,
   requestDeregistration,
+  requestProofRefresh,
   getAgentInfo,
   getAgentsForHuman,
   ExpiredSessionError,
@@ -97,6 +142,8 @@ export type {
   RegistrationResult,
   DeregistrationRequest,
   DeregistrationSession,
+  ProofRefreshRequest,
+  RefreshSession,
   ApiAgentInfo,
   ApiAgentsForHuman,
 } from "./registration-flow";

@@ -23,13 +23,13 @@ Self Agent ID lets you:
 
 ## Supported registration modes
 
-1. `agent-identity`:
+1. `linked`:
    Dedicated generated agent keypair. Recommended for autonomous agents.
-2. `verified-wallet`:
+2. `self-custody`:
    Wallet address is the verified identity. Best for human-operated on-chain gating.
 3. `wallet-free`:
    No user wallet required. Agent keypair is generated locally.
-4. `smart-wallet`:
+4. `smartwallet`:
    Passkey smart wallet guardian + generated agent keypair.
 
 ## SDKs

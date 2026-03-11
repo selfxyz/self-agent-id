@@ -27,11 +27,7 @@ let SelfAppBuilderClass:
   | typeof import("@selfxyz/qrcode").SelfAppBuilder
   | null = null;
 
-type HandoffMode =
-  | "verified-wallet"
-  | "agent-identity"
-  | "wallet-free"
-  | "smart-wallet";
+type HandoffMode = "linked" | "wallet-free" | "smartwallet";
 type HandoffOperation = "register" | "deregister";
 
 interface CliDisclosures {
@@ -198,7 +194,7 @@ export default function CliRegisterHandoffPage() {
   const canBuildSimpleFlow = useMemo(() => {
     if (!payload) return false;
     if (payload.operation === "deregister") return true;
-    return payload.mode !== "smart-wallet";
+    return payload.mode !== "smartwallet";
   }, [payload]);
 
   useEffect(() => {
@@ -270,7 +266,7 @@ export default function CliRegisterHandoffPage() {
 
   const handleSmartWalletPrepare = async () => {
     if (!payload || !network) return;
-    if (payload.mode !== "smart-wallet") return;
+    if (payload.mode !== "smartwallet") return;
     if (!payload.smartWalletTemplate) {
       setError("Missing smart wallet template payload.");
       return;
@@ -399,7 +395,7 @@ export default function CliRegisterHandoffPage() {
             </p>
           </Card>
 
-          {payload.mode === "smart-wallet" &&
+          {payload.mode === "smartwallet" &&
           payload.operation === "register" &&
           !selfApp ? (
             <Card>

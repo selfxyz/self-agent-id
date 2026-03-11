@@ -9,6 +9,7 @@ import {} from "@/lib/constants";
 import { getNetwork, NETWORKS, type NetworkId } from "@/lib/network";
 import { getCachedVerifier } from "@/lib/selfVerifier";
 import { checkAndRecordReplay } from "@/lib/replayGuard";
+import { demoEndpointDocs } from "@/lib/demo-docs";
 
 import { typedDemoVerifier, typedRegistry } from "@/lib/contract-types";
 
@@ -54,6 +55,39 @@ function checkRateLimit(nullifier: string): {
 // We only do a staticCall simulation first (free, no gas) to catch reverts
 // before spending gas on the real tx.
 // ---------------------------------------------------------------------------
+
+export function GET() {
+  return demoEndpointDocs({
+    endpoint: "/api/demo/chain-verify",
+    method: "POST",
+    description:
+      "Agent-to-Chain verification demo (ECDSA). Submits an EIP-712 meta-transaction to the AgentDemoVerifier contract, which verifies the agent's identity entirely on-chain via ecrecover + isVerifiedAgent(). A gas relayer submits the transaction on behalf of the agent.",
+    requiredHeaders: {
+      "x-self-agent-signature": "HMAC signature of the request",
+      "x-self-agent-timestamp": "ISO 8601 timestamp of the request",
+    },
+    bodySchema: {
+      agentKey: "bytes32 — the agent's public key in the registry",
+      nonce: "string — meta-tx nonce (increments per agent)",
+      deadline: "number — unix timestamp when the meta-tx expires",
+      eip712Signature: "string — EIP-712 typed data signature",
+      "networkId?": "'celo-sepolia' (default) or 'celo-mainnet'",
+    },
+    exampleBody: {
+      agentKey: "0x000000000000000000000000<your-address>",
+      nonce: "0",
+      deadline: 1700000000,
+      eip712Signature: "0x...",
+      networkId: "celo-sepolia",
+    },
+    notes: [
+      "Requires RELAYER_PRIVATE_KEY server env var (gas relayer pays for the transaction).",
+      "Rate limited: 3 verifications per hour per human nullifier.",
+      "The contract does its own verification — the relayer only submits the tx.",
+      "For ECDSA agents only. Ed25519 agents should use /api/demo/chain-verify-ed25519.",
+    ],
+  });
+}
 
 export async function POST(req: NextRequest) {
   if (!RELAYER_PK) {

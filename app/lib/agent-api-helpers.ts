@@ -198,20 +198,24 @@ export function sessionResponse(
 
 /**
  * Query the on-chain SelfAgentRegistry to check whether an agent is verified.
- * @param agentAddress - The Ethereum address of the agent.
+ * @param agentAddress - The Ethereum address of the agent (or a raw 32-byte agentKey for Ed25519).
  * @param networkConfig - Network configuration (RPC URL and registry address).
+ * @param isRawAgentKey - If true, treat agentAddress as a raw 32-byte agentKey (skip zeroPadValue).
  * @returns An object with `isVerified` status and the agent's on-chain `agentId` (0 if unverified).
  */
 export async function checkAgentOnChain(
   agentAddress: string,
   networkConfig: NetworkConfig,
+  isRawAgentKey = false,
 ): Promise<{
   isVerified: boolean;
   agentId: bigint;
 }> {
   const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
   const registry = typedRegistry(networkConfig.registryAddress, provider);
-  const agentKey = ethers.zeroPadValue(agentAddress, 32);
+  const agentKey = isRawAgentKey
+    ? agentAddress
+    : ethers.zeroPadValue(agentAddress, 32);
   const isVerified: boolean = await registry.isVerifiedAgent(agentKey);
   let agentId = 0n;
   if (isVerified) {

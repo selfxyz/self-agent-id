@@ -5,6 +5,8 @@
 """Data types for agent identity, credentials, and verification results."""
 
 from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Optional
 
 
 @dataclass
@@ -18,6 +20,11 @@ class AgentInfo:
         is_verified: Whether the agent has a valid human proof.
         nullifier: The human's nullifier (unique per human, shared across agents).
         agent_count: Number of agents registered by the same human.
+        proof_expires_at: Unix timestamp (seconds) when the proof expires (0 if unset).
+        is_proof_fresh: Whether the on-chain proof is still fresh (not expired).
+        days_until_expiry: Days until proof expires (-1 if no expiry set).
+        is_expiring_soon: Whether the proof expires within 30 days.
+        sibling_agent_ids: Token IDs of other agents registered by the same human.
     """
 
     address: str
@@ -26,6 +33,11 @@ class AgentInfo:
     is_verified: bool
     nullifier: int
     agent_count: int
+    proof_expires_at: int = 0
+    is_proof_fresh: bool = False
+    days_until_expiry: int = -1
+    is_expiring_soon: bool = False
+    sibling_agent_ids: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -76,6 +88,9 @@ class VerificationResult:
         credentials: Disclosed credentials, if available.
         error: Human-readable error message on failure.
         retry_after_ms: Backoff hint in milliseconds when rate-limited.
+        proof_expires_at: When the agent's human proof expires (None if no expiry set).
+        days_until_expiry: Days until proof expires (None if no expiry set, negative if expired).
+        is_expiring_soon: Whether the proof expires within 30 days.
     """
 
     valid: bool
@@ -87,3 +102,6 @@ class VerificationResult:
     credentials: AgentCredentials | None = None
     error: str | None = None
     retry_after_ms: int | None = None  # Only set when rate limited
+    proof_expires_at: Optional[datetime] = None
+    days_until_expiry: Optional[int] = None
+    is_expiring_soon: bool = False

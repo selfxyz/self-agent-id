@@ -17,6 +17,7 @@ export interface NetworkConfig {
   providerAddress: string;
   agentDemoVerifierAddress: string;
   agentGateAddress: string;
+  agentDemoVerifierEd25519Address: string;
   hubV2Address: string;
   selfEndpointType: "celo" | "staging_celo";
   isTestnet: boolean;
@@ -41,6 +42,7 @@ const CELO_MAINNET: NetworkConfig = {
   providerAddress: "0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d",
   agentDemoVerifierAddress: "0xD8ec054FD869A762bC977AC328385142303c7def",
   agentGateAddress: "0x26e05bF632fb5bACB665ab014240EAC1413dAE35",
+  agentDemoVerifierEd25519Address: "", // TODO: deploy to mainnet
   hubV2Address: "0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF",
   selfEndpointType: "celo",
   isTestnet: false,
@@ -66,6 +68,7 @@ const CELO_SEPOLIA: NetworkConfig = {
   providerAddress: "0x5E61c3051Bf4115F90AacEAE6212bc419f8aBB6c",
   agentDemoVerifierAddress: "0xc31BAe8f2d7FCd19f737876892f05d9bDB294241",
   agentGateAddress: "0x86Af07e30Aa42367cbcA7f2B1764Be346598bbc2",
+  agentDemoVerifierEd25519Address: "", // TODO: deploy to Sepolia
   hubV2Address: "0x16ECBA51e18a4a7e61fdC417f0d47AFEeDfbed74",
   selfEndpointType: "staging_celo",
   isTestnet: true,

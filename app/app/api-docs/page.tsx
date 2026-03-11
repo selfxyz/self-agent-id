@@ -58,7 +58,7 @@ const ENDPOINT_GROUPS: GroupDef[] = [
         parameters: [],
         requestBody: {
           example: `{
-  "mode": "agent-identity",
+  "mode": "linked",
   "network": "testnet",
   "humanAddress": "0x...",
   "disclosures": {
@@ -69,7 +69,7 @@ const ENDPOINT_GROUPS: GroupDef[] = [
   }
 }`,
           description:
-            'Modes: "verified-wallet", "agent-identity", "wallet-free". Networks: "mainnet", "testnet".',
+            'Modes: "self-custody", "linked", "wallet-free", "ed25519", "ed25519-linked". Networks: "mainnet", "testnet".',
         },
         responses: [
           {
@@ -80,14 +80,14 @@ const ENDPOINT_GROUPS: GroupDef[] = [
   "deepLink": "selfapp://verify?scope=...",
   "qrData": "selfapp://verify?scope=...",
   "agentAddress": "0x83fa...ff00",
-  "mode": "agent-identity",
+  "mode": "linked",
   "network": "testnet"
 }`,
           },
           {
             status: 400,
             description: "Invalid parameters or missing fields",
-            example: `{ "error": "humanAddress is required for agent-identity mode" }`,
+            example: `{ "error": "humanAddress is required for linked mode" }`,
           },
         ],
       },
@@ -156,7 +156,7 @@ const ENDPOINT_GROUPS: GroupDef[] = [
         path: "/api/agent/register/export",
         summary: "Export agent private key",
         description:
-          'After registration completes, export the agent\'s private key. Only available for "agent-identity" and "wallet-free" modes.',
+          'After registration completes, export the agent\'s private key. Only available for "linked", "wallet-free", "ed25519", and "ed25519-linked" modes.',
         parameters: [],
         requestBody: {
           description:
@@ -400,9 +400,9 @@ const ENDPOINT_GROUPS: GroupDef[] = [
             status: 200,
             description: "Discovery document",
             example: `{
-  "api": "https://self-agent-id.vercel.app/api/agent",
+  "api": "https://app.ai.self.xyz/api/agent",
   "networks": ["mainnet", "testnet"],
-  "modes": ["verified-wallet", "agent-identity", "wallet-free"],
+  "modes": ["self-custody", "linked", "wallet-free", "ed25519", "ed25519-linked"],
   "capabilities": ["register", "deregister", "query", "verify"]
 }`,
           },
@@ -676,7 +676,7 @@ export default function ApiDocsPage() {
             <p>
               <span className="text-foreground font-medium">Base URL:</span>{" "}
               <code className="bg-surface-2 px-1 rounded text-accent-2">
-                https://self-agent-id.vercel.app/api/agent
+                https://app.ai.self.xyz/api/agent
               </code>
             </p>
             <p>
@@ -743,10 +743,10 @@ export default function ApiDocsPage() {
                 label: "curl",
                 language: "bash",
                 code: `# 1. Initiate registration
-curl -X POST https://self-agent-id.vercel.app/api/agent/register \\
+curl -X POST https://app.ai.self.xyz/api/agent/register \\
   -H "Content-Type: application/json" \\
   -d '{
-    "mode": "agent-identity",
+    "mode": "linked",
     "network": "testnet",
     "humanAddress": "0xYourWalletAddress"
   }'
@@ -756,12 +756,12 @@ curl -X POST https://self-agent-id.vercel.app/api/agent/register \\
 #    User scans QR with Self app → passport proof submitted
 
 # 3. Poll for completion
-curl "https://self-agent-id.vercel.app/api/agent/register/status" \\
+curl "https://app.ai.self.xyz/api/agent/register/status" \\
   -H "Authorization: Bearer SESSION_TOKEN"
 # → { stage: "completed", agentId: 42, ... }
 
 # 4. (Optional) Export agent private key
-curl -X POST https://self-agent-id.vercel.app/api/agent/register/export \\
+curl -X POST https://app.ai.self.xyz/api/agent/register/export \\
   -H "Content-Type: application/json" \\
   -d '{"token":"SESSION_TOKEN"}'
 # → { privateKey, agentAddress, agentId }`,
@@ -793,13 +793,13 @@ curl -X POST https://self-agent-id.vercel.app/api/agent/register/export \\
                 code: `import { SelfAgent } from "@selfxyz/agent-sdk";
 
 const agent = new SelfAgent({
-  endpoint: "https://self-agent-id.vercel.app",
+  endpoint: "https://app.ai.self.xyz",
   network: "testnet",
 });
 
 // Request registration — returns session with QR link
 const session = await agent.requestRegistration({
-  mode: "agent-identity",
+  mode: "linked",
   humanAddress: "0xYourWallet",
   disclosures: { minimumAge: 18, ofac: true },
 });
@@ -817,13 +817,13 @@ console.log(result.agentId); // on-chain agent ID`,
                 code: `from self_agent_sdk import SelfAgent
 
 agent = SelfAgent(
-    endpoint="https://self-agent-id.vercel.app",
+    endpoint="https://app.ai.self.xyz",
     network="testnet",
 )
 
 # Request registration
 session = agent.request_registration(
-    mode="agent-identity",
+    mode="linked",
     human_address="0xYourWallet",
     disclosures={"minimum_age": 18, "ofac": True},
 )
@@ -841,13 +841,13 @@ print(result.agent_id)  # on-chain agent ID`,
                 code: `use self_agent_sdk::SelfAgent;
 
 let agent = SelfAgent::new(
-    "https://self-agent-id.vercel.app",
+    "https://app.ai.self.xyz",
     "testnet",
 );
 
 // Request registration
 let session = agent.request_registration(
-    "agent-identity",
+    "linked",
     "0xYourWallet",
     Disclosures { minimum_age: 18, ofac: true, ..Default::default() },
 ).await?;

@@ -23,6 +23,15 @@ export const REGISTRY_ABI = [
   "function isProofFresh(uint256 agentId) view returns (bool)",
   // Replay-protection nonces for registration signatures
   "function agentNonces(address agent) view returns (uint256)",
+  // Nullifier → agent lookups
+  "function getAgentsForNullifier(uint256 nullifier) view returns (uint256[])",
+  "function getAgentsForNullifier(uint256 nullifier, uint256 offset, uint256 limit) view returns (uint256[])",
+  // Agent config identifier
+  "function agentConfigId(uint256 agentId) view returns (bytes32)",
+  // Proof refresh event
+  "event HumanProofRefreshed(uint256 indexed agentId, uint256 newExpiry, uint256 nullifier, bytes32 configId)",
+  // Nullifier identification event (read-only passport scan)
+  "event NullifierIdentified(uint256 indexed nullifier, uint256 agentCount)",
 ] as const;
 
 /** ABI for IHumanProofProvider — used to query provider metadata */
@@ -58,6 +67,10 @@ export const DEFAULT_REGISTRY_ADDRESS = NETWORKS.mainnet.registryAddress;
 /** @deprecated Use NETWORKS[network].rpcUrl instead */
 export const DEFAULT_RPC_URL = NETWORKS.mainnet.rpcUrl;
 
+/** Self Hub V2 action byte for proof refresh */
+export const ACTION_REFRESH = 0x46; // 'F'
+export const ACTION_IDENTIFY = 0x49; // 'I'
+
 /** Default signature validity window (5 minutes) */
 export const DEFAULT_MAX_AGE_MS = 5 * 60 * 1000;
 
@@ -65,14 +78,18 @@ export const DEFAULT_MAX_AGE_MS = 5 * 60 * 1000;
 export const DEFAULT_CACHE_TTL_MS = 60_000;
 
 /** Base URL for the human proof re-authentication portal. */
-export const REAUTH_BASE_URL = "https://self-agent-id.vercel.app";
+export const REAUTH_BASE_URL = "https://app.ai.self.xyz";
 
 /** Request headers used by the signing protocol */
 export const HEADERS = {
   /** Agent's Ethereum address (informational — identity is recovered from signature) */
   ADDRESS: "x-self-agent-address",
-  /** ECDSA signature over the request */
+  /** ECDSA or Ed25519 signature over the request */
   SIGNATURE: "x-self-agent-signature",
   /** Unix timestamp (milliseconds) for replay protection */
   TIMESTAMP: "x-self-agent-timestamp",
+  /** Key type: "ed25519" for Ed25519 agents; absent implies secp256k1 ECDSA */
+  KEYTYPE: "x-self-agent-keytype",
+  /** Agent's public key (used for Ed25519 agents) */
+  KEY: "x-self-agent-key",
 } as const;

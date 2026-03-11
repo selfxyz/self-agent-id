@@ -8,6 +8,7 @@ import { SelfAgent, HEADERS } from "@selfxyz/agent-sdk";
 import { getNetwork, NETWORKS, type NetworkId } from "@/lib/network";
 import { getCachedVerifier } from "@/lib/selfVerifier";
 import { checkAndRecordReplay } from "@/lib/replayGuard";
+import { demoEndpointDocs } from "@/lib/demo-docs";
 
 import { typedRegistry } from "@/lib/contract-types";
 
@@ -30,6 +31,33 @@ function resolveNetwork(req: NextRequest): NetworkId {
   return "celo-sepolia";
 }
 
+export function GET() {
+  return demoEndpointDocs({
+    endpoint: "/api/demo/agent-to-agent",
+    method: "POST",
+    description:
+      "Agent-to-Agent mutual verification demo. A pre-registered demo agent verifies your agent's identity on-chain, performs a sameHuman check, and signs its response so you can verify it came from a real agent. This is the primary demo endpoint for testing your integration.",
+    requiredHeaders: {
+      "x-self-agent-signature": "HMAC signature of the request",
+      "x-self-agent-timestamp": "ISO 8601 timestamp of the request",
+    },
+    optionalHeaders: {
+      "x-self-agent-keytype": "Key type: 'ed25519' or omit for ECDSA",
+      "x-self-agent-key": "Agent public key (required for Ed25519)",
+    },
+    bodySchema: {
+      "?network": "Query param: 'celo-sepolia' (default) or 'celo-mainnet'",
+    },
+    exampleBody: { test: "agent-to-agent-demo" },
+    notes: [
+      "This is the recommended first test for any new agent integration.",
+      "The response includes signed headers from the demo agent, demonstrating mutual authentication.",
+      "The sameHuman field tells you if your agent and the demo agent share the same human backer.",
+      "Requires DEMO_AGENT_PRIVATE_KEY_SEPOLIA or DEMO_AGENT_PRIVATE_KEY_MAINNET on the server.",
+    ],
+  });
+}
+
 export async function POST(req: NextRequest) {
   const network = getNetwork(resolveNetwork(req));
   const demoAgentPk = DEMO_KEYS[network.id];
@@ -46,6 +74,8 @@ export async function POST(req: NextRequest) {
   // 1. Extract caller's signature headers
   const signature = req.headers.get(HEADERS.SIGNATURE);
   const timestamp = req.headers.get(HEADERS.TIMESTAMP);
+  const keytype = req.headers.get(HEADERS.KEYTYPE) ?? undefined;
+  const agentKeyHeader = req.headers.get(HEADERS.KEY) ?? undefined;
 
   if (!signature || !timestamp) {
     return NextResponse.json(
@@ -70,6 +100,8 @@ export async function POST(req: NextRequest) {
       method: "POST",
       url: req.url,
       body: body || undefined,
+      keytype,
+      agentKey: agentKeyHeader,
     });
 
     if (!verifyResult.valid) {

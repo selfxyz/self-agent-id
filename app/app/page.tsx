@@ -75,8 +75,8 @@ export default function Home() {
                     <Bot size={16} className="text-accent-2" />
                   </span>
                   <p className="text-base text-muted leading-relaxed">
-                    Your agents book travel, manage finances, and negotiate on
-                    your behalf.
+                    AI agents are entering the economy &mdash; transacting,
+                    communicating, and making decisions autonomously.
                   </p>
                 </div>
                 <div className="flex items-start gap-3">
@@ -84,8 +84,8 @@ export default function Home() {
                     <Shield size={16} className="text-accent-warn" />
                   </span>
                   <p className="text-base text-foreground font-medium leading-relaxed">
-                    But how does anyone know there&apos;s a real person behind
-                    them?
+                    Creating agents is effortless &mdash; but there lacks a way
+                    to prove information about the human behind the agent.
                   </p>
                 </div>
                 <div className="flex items-start gap-3">
@@ -98,6 +98,19 @@ export default function Home() {
                     <strong className="text-foreground">
                       No personal data shared. Ever.
                     </strong>
+                  </p>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="w-8 h-8 rounded-full bg-accent-2/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Users size={16} className="text-accent-2" />
+                  </span>
+                  <p className="text-base text-muted leading-relaxed">
+                    Each agent maps to one unique verified human identity, so
+                    you can ensure{" "}
+                    <strong className="text-foreground">
+                      1 agent = 1 human
+                    </strong>
+                    .
                   </p>
                 </div>
               </div>
@@ -286,55 +299,143 @@ export default function Home() {
 
       {/* ────────────── How It Works ────────────── */}
       <section className="px-6 py-20">
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-3xl font-bold text-center mb-12">How It Works</h2>
+        <div className="max-w-5xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-4">How It Works</h2>
+          <p className="text-center text-muted mb-12 max-w-2xl mx-auto">
+            Two ways to register your agent &mdash; use the guided wizard or
+            integrate directly with the SDK.
+          </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1fr] items-stretch gap-4 md:gap-0">
-            {[
-              {
-                icon: ScanLine,
-                title: "Scan an Identity Document",
-                desc: "Open the Self app and scan the QR code. A cryptographic proof is generated on your phone. No personal data leaves your device.",
-              },
-              {
-                icon: Bot,
-                title: "Your Agent Gets an Identity",
-                desc: "A verified identity is created that links your agent to a real human. You stay completely anonymous. You choose exactly which credentials your agent can carry.",
-              },
-              {
-                icon: Zap,
-                title: "Services Verify Instantly",
-                desc: "Any service can check your agent's identity with a single API call. No extra setup needed.",
-              },
-            ].map((step, i) => (
-              <React.Fragment key={i}>
-                {i > 0 && (
-                  <div className="hidden md:flex items-center justify-center px-2">
-                    <ArrowRight
-                      size={20}
-                      className="text-subtle flex-shrink-0"
-                    />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Path 1: Guided Registration */}
+            <Card glow className="flex flex-col">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
+                  <ScanLine size={20} className="text-accent" />
+                </div>
+                <div>
+                  <Badge variant="info" className="mb-1">
+                    Guided
+                  </Badge>
+                  <h3 className="font-bold text-lg">Web Registration Wizard</h3>
+                </div>
+              </div>
+              <div className="flex flex-col gap-4 flex-1">
+                {[
+                  {
+                    step: "1",
+                    title: "Choose Your Role & Mode",
+                    desc: "Are you a human registering your own agent, or a bot operator? Pick a security mode: connect a wallet, use a passkey, social login, Ed25519 key, or go fully wallet-free.",
+                  },
+                  {
+                    step: "2",
+                    title: "Scan Your Passport",
+                    desc: "Scan the QR code with the Self app and tap your passport. A zero-knowledge proof is generated on your phone \u2014 no personal data leaves your device.",
+                  },
+                  {
+                    step: "3",
+                    title: "Agent Identity Minted",
+                    desc: "Your agent receives a soulbound NFT and a verified on-chain identity linked to a real human. You stay completely anonymous.",
+                  },
+                ].map((item) => (
+                  <div key={item.step} className="flex gap-3">
+                    <span className="w-7 h-7 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0 text-xs font-bold text-accent">
+                      {item.step}
+                    </span>
+                    <div>
+                      <p className="font-semibold text-sm text-foreground">
+                        {item.title}
+                      </p>
+                      <p className="text-sm text-muted leading-relaxed">
+                        {item.desc}
+                      </p>
+                    </div>
                   </div>
-                )}
-                {i > 0 && (
-                  <div className="flex md:hidden items-center justify-center">
-                    <ArrowRight size={20} className="text-subtle rotate-90" />
+                ))}
+              </div>
+              <div className="mt-6 pt-4 border-t border-border">
+                <Link href="/agents/register">
+                  <Button variant="primary" size="sm">
+                    Open Registration Wizard <ArrowRight size={14} />
+                  </Button>
+                </Link>
+              </div>
+            </Card>
+
+            {/* Path 2: SDK / Programmatic */}
+            <Card glow className="flex flex-col">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-full bg-accent-2/10 flex items-center justify-center flex-shrink-0">
+                  <Code2 size={20} className="text-accent-2" />
+                </div>
+                <div>
+                  <Badge variant="muted" className="mb-1">
+                    Programmatic
+                  </Badge>
+                  <h3 className="font-bold text-lg">
+                    SDK &amp; CLI Registration
+                  </h3>
+                </div>
+              </div>
+              <div className="flex flex-col gap-4 flex-1">
+                {[
+                  {
+                    step: "1",
+                    title: "Install the SDK or CLI",
+                    desc: "Add @selfxyz/agent-sdk to your project, or use the self-agent CLI. Available for TypeScript, Python, and Rust.",
+                  },
+                  {
+                    step: "2",
+                    title: "Generate Keys & Register",
+                    desc: "Create an ECDSA or Ed25519 keypair. The SDK builds the registration transaction and triggers the passport scan via QR code or deep link.",
+                  },
+                  {
+                    step: "3",
+                    title: "Sign & Verify Anywhere",
+                    desc: "Your agent signs requests with its key. Any service running the SDK verifier can check identity, age, OFAC status, and more \u2014 in one API call.",
+                  },
+                ].map((item) => (
+                  <div key={item.step} className="flex gap-3">
+                    <span className="w-7 h-7 rounded-full bg-accent-2/10 flex items-center justify-center flex-shrink-0 text-xs font-bold text-accent-2">
+                      {item.step}
+                    </span>
+                    <div>
+                      <p className="font-semibold text-sm text-foreground">
+                        {item.title}
+                      </p>
+                      <p className="text-sm text-muted leading-relaxed">
+                        {item.desc}
+                      </p>
+                    </div>
                   </div>
-                )}
-                <Card
-                  glow
-                  className="flex flex-col items-center text-center h-full"
-                >
-                  <div className="w-20 h-20 rounded-full bg-accent/10 flex items-center justify-center mb-4">
-                    <step.icon size={40} className="text-accent" />
-                  </div>
-                  <h3 className="font-bold mb-2">{step.title}</h3>
-                  <p className="text-sm text-muted leading-relaxed">
-                    {step.desc}
-                  </p>
-                </Card>
-              </React.Fragment>
-            ))}
+                ))}
+              </div>
+              <div className="mt-6 pt-4 border-t border-border">
+                <Link href="/integration">
+                  <Button variant="secondary" size="sm">
+                    Integration Guide <ArrowRight size={14} />
+                  </Button>
+                </Link>
+              </div>
+            </Card>
+          </div>
+
+          {/* Shared outcome */}
+          <div className="mt-8 text-center">
+            <Card glow className="inline-flex items-center gap-3 px-6 py-4">
+              <div className="w-10 h-10 rounded-full bg-accent-success/10 flex items-center justify-center flex-shrink-0">
+                <Zap size={20} className="text-accent-success" />
+              </div>
+              <div className="text-left">
+                <p className="font-bold text-sm">
+                  Either way, services verify instantly
+                </p>
+                <p className="text-sm text-muted">
+                  Any service can check your agent&apos;s identity with a single
+                  API call. No extra setup needed.
+                </p>
+              </div>
+            </Card>
           </div>
         </div>
       </section>
@@ -352,7 +453,7 @@ export default function Home() {
                 iconColor: "text-accent",
                 bgColor: "bg-accent/20",
                 title: "Agent Operators",
-                desc: "Register your AI agent with a passport scan. Choose from five modes \u2014 wallet-based, agent keypair, wallet-free, passkey smart wallet, or social login via Privy. Your agent gets a soulbound NFT and an A2A-compatible identity card that any service can verify instantly.",
+                desc: "A guided wizard walks you through registering your agent in minutes. Connect a wallet, use a passkey, social login, or go wallet-free \u2014 multiple options to match your setup. Your agent gets a verified on-chain identity that any service can check instantly.",
                 btnIcon: Key,
                 btnLabel: "Register Agent",
                 btnVariant: "primary" as const,
@@ -363,7 +464,7 @@ export default function Home() {
                 iconColor: "text-accent-2",
                 bgColor: "bg-accent-2/20",
                 title: "Service Developers",
-                desc: "Add one line of middleware to verify agents are human-backed. The SDK recovers the signer from ECDSA signatures and checks the on-chain registry \u2014 with configurable sybil limits, credential checks, and reputation-based access control.",
+                desc: "Add a few lines of middleware to verify that incoming agents are human-backed. Configure what credentials you require \u2014 age, sanctions compliance, sybil limits \u2014 and the SDK handles the rest. Available for TypeScript, Python, and Rust.",
                 btnIcon: Code2,
                 btnLabel: "Integration Guide",
                 btnVariant: "secondary" as const,
@@ -374,7 +475,7 @@ export default function Home() {
                 iconColor: "text-purple-400",
                 bgColor: "bg-purple-500/20",
                 title: "AI Coding Assistants",
-                desc: "Use the MCP server or Claude Code plugin to manage agent identity directly from your IDE. Register, sign requests, verify agents, and query credentials \u2014 10 tools that work in any MCP-compatible IDE (Claude Code, Cursor, Windsurf, Copilot, and more).",
+                desc: "Use the MCP server or Claude Code plugin to manage agent identity directly from your IDE. Register agents, sign requests, and query credentials \u2014 works in any MCP-compatible environment (Claude Code, Cursor, Windsurf, Copilot, and more).",
                 btnIcon: Bot,
                 btnLabel: "MCP & Plugin",
                 btnVariant: "secondary" as const,
@@ -425,8 +526,8 @@ export default function Home() {
               },
               {
                 icon: CalendarCheck,
-                title: "Operator is Over 18",
-                desc: "Age-gated services can verify your agent's operator meets the requirement.",
+                title: "Age Verified (18 or 21+)",
+                desc: "Age-gated services can verify your agent's operator meets their minimum age requirement.",
                 variant: "info" as const,
               },
               {
@@ -617,30 +718,6 @@ const res = await agent.fetch(url);`,
             <Link href="/integration">
               <Button variant="primary">
                 See the full integration guide <ArrowRight size={14} />
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* ────────────── Bottom CTA ────────────── */}
-      <section className="px-6 py-20">
-        <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-3xl font-bold mb-4">
-            Ready to Give Your Agent an Identity?
-          </h2>
-          <p className="text-muted mb-8">
-            Register your first agent in minutes. No personal data required.
-          </p>
-          <div className="flex flex-col sm:flex-row justify-center gap-3">
-            <Link href="/agents/register">
-              <Button variant="primary" size="lg">
-                Register Your Agent
-              </Button>
-            </Link>
-            <Link href="/explainer">
-              <Button variant="secondary" size="lg">
-                Read the Docs
               </Button>
             </Link>
           </div>

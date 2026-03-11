@@ -7,6 +7,7 @@ import { HEADERS } from "@selfxyz/agent-sdk";
 import { NETWORKS, type NetworkId } from "@/lib/network";
 import { getCachedVerifier } from "@/lib/selfVerifier";
 import { checkAndRecordReplay } from "@/lib/replayGuard";
+import { demoEndpointDocs } from "@/lib/demo-docs";
 
 const LANGCHAIN_URL = process.env.LANGCHAIN_URL || "http://127.0.0.1:8090";
 
@@ -14,6 +15,39 @@ function resolveNetwork(req: NextRequest): NetworkId {
   const param = req.nextUrl.searchParams.get("network");
   if (param && param in NETWORKS) return param as NetworkId;
   return "celo-sepolia";
+}
+
+export function GET() {
+  return demoEndpointDocs({
+    endpoint: "/api/demo/chat",
+    method: "POST",
+    description:
+      "AI Agent Chat demo. Proxies your query to a LangChain-powered AI agent that verifies your on-chain identity before engaging in conversation. Supports both signed (verified) and unsigned (anonymous) requests.",
+    requiredHeaders: {
+      "x-self-agent-signature":
+        "HMAC signature (optional — unsigned requests treated as anonymous)",
+      "x-self-agent-timestamp":
+        "ISO 8601 timestamp (required if signature is present)",
+    },
+    optionalHeaders: {
+      "x-self-agent-keytype": "Key type: 'ed25519' or omit for ECDSA",
+      "x-self-agent-key": "Agent public key (required for Ed25519)",
+    },
+    bodySchema: {
+      "query?": "string — your message to the AI agent",
+      "session_id?": "string — session ID for conversation continuity",
+      "?network": "Query param: 'celo-sepolia' (default) or 'celo-mainnet'",
+    },
+    exampleBody: {
+      query: "Hello, I am a verified agent. What can you tell me?",
+      session_id: "my-session-123",
+    },
+    notes: [
+      "Requires LANGCHAIN_URL server env var pointing to the LangChain agent service.",
+      "Unsigned requests are treated as anonymous — the AI may refuse to engage.",
+      "Signed requests are cryptographically verified on-chain before the AI responds.",
+    ],
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -37,6 +71,8 @@ export async function POST(req: NextRequest) {
 
   const signature = req.headers.get(HEADERS.SIGNATURE);
   const timestamp = req.headers.get(HEADERS.TIMESTAMP);
+  const keytype = req.headers.get(HEADERS.KEYTYPE) ?? undefined;
+  const agentKeyHeader = req.headers.get(HEADERS.KEY) ?? undefined;
   let agentAddress = "anonymous";
 
   // Signed requests are cryptographically verified.
@@ -61,6 +97,8 @@ export async function POST(req: NextRequest) {
       method: "POST",
       url: req.url,
       body: body || undefined,
+      keytype,
+      agentKey: agentKeyHeader,
     });
 
     if (!result.valid) {

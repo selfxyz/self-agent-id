@@ -56,6 +56,7 @@
 pub mod agent;
 pub mod agent_card;
 pub mod constants;
+pub mod ed25519_agent;
 pub mod registration;
 pub mod registration_flow;
 pub mod verifier;
@@ -66,10 +67,16 @@ pub mod middleware;
 // Re-exports
 pub use agent::{AgentInfo, SelfAgent, SelfAgentConfig};
 pub use agent_card::{
-    A2AAgentCard, AgentSkill, CardCredentials, SelfProtocolExtension, TrustModel,
-    get_provider_label, get_strength_color,
+    AgentSkill, CardCredentials, SelfProtocolExtension, TrustModel,
+    AgentInterface, A2ACapabilities, A2AProvider,
+    SecurityScheme, JwsSignature, AgentExtension,
+    Erc8004Service, Erc8004Registration, Erc8004AgentDocument,
+    A2AOptions, GenerateRegistrationJsonOptions,
+    get_provider_label, get_strength_color, generate_registration_json,
 };
+
 pub use constants::{headers, NetworkName};
+pub use ed25519_agent::{Ed25519Agent, Ed25519AgentConfig};
 pub use registration::{
     RegistrationDisclosures, SignatureParts, SignedRegistrationChallenge,
     build_advanced_deregister_user_data_ascii, build_advanced_register_user_data_ascii,
@@ -78,8 +85,9 @@ pub use registration::{
     get_registration_config_index, sign_registration_challenge,
 };
 pub use registration_flow::{
-    DeregistrationRequest, DeregistrationSession, RegistrationError, RegistrationRequest,
-    RegistrationResult, RegistrationSession,
+    DeregistrationRequest, DeregistrationSession, ProofRefreshRequest, ProofRefreshResult,
+    RefreshSession, RegistrationError, RegistrationRequest, RegistrationResult,
+    RegistrationSession, request_proof_refresh,
 };
 pub use verifier::{
     AgentCredentials, RateLimitConfig, SelfAgentVerifier, VerificationResult, VerifierBuilder,

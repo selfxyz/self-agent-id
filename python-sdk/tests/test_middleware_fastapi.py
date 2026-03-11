@@ -47,6 +47,8 @@ def mock_verifier():
         registry.functions.getAgentCountForHuman.return_value.call.return_value = 1
         registry.functions.getProofProvider.return_value.call.return_value = PROVIDER_ADDR
         registry.functions.selfProofProvider.return_value.call.return_value = PROVIDER_ADDR
+        registry.functions.isProofFresh.return_value.call.return_value = True
+        registry.functions.proofExpiresAt.return_value.call.return_value = int(time.time()) + 86400 * 365
 
         from self_agent_sdk import SelfAgentVerifier
         verifier = SelfAgentVerifier(network="testnet")

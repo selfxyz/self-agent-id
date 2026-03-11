@@ -7,6 +7,7 @@ import {
   REGISTRY_ABI,
   PROVIDER_ABI,
   AGENT_DEMO_VERIFIER_ABI,
+  AGENT_DEMO_VERIFIER_ED25519_ABI,
   AGENT_GATE_ABI,
 } from "./constants";
 
@@ -68,10 +69,14 @@ export interface TypedRegistryContract extends ethers.BaseContract {
   >;
   getAgentCredentials(agentId: bigint): Promise<AgentCredentials>;
   agentNonces(agent: string): Promise<bigint>;
+  ed25519Nonce(pubkey: string): Promise<bigint>;
   getProofProvider(agentId: bigint): Promise<string>;
   selfProofProvider(): Promise<string>;
   proofExpiresAt(agentId: bigint): Promise<bigint>;
   isProofFresh(agentId: bigint): Promise<boolean>;
+  agentConfigId(agentId: bigint): Promise<string>;
+  configIds(index: bigint): Promise<string>;
+  getAgentsForNullifier(nullifier: bigint): Promise<bigint[]>;
 }
 
 /** Typed view of the IHumanProofProvider contract. */
@@ -93,6 +98,28 @@ export interface TypedDemoVerifierContract extends ethers.BaseContract {
   nonces(agentKey: string): Promise<bigint>;
   totalVerifications(): Promise<bigint>;
   DOMAIN_SEPARATOR(): Promise<string>;
+  registry(): Promise<string>;
+}
+
+/** Typed view of the AgentDemoVerifierEd25519 contract. */
+export interface TypedDemoVerifierEd25519Contract extends ethers.BaseContract {
+  metaVerifyAgent: ethers.BaseContractMethod<
+    [
+      string,
+      bigint,
+      bigint,
+      [bigint, bigint, bigint, bigint, bigint],
+      bigint,
+      bigint,
+    ],
+    bigint,
+    ethers.ContractTransactionResponse
+  >;
+  checkAccess(agentKey: string): Promise<bigint>;
+  hasVerified(agentKey: string): Promise<boolean>;
+  verificationCount(agentKey: string): Promise<bigint>;
+  nonces(agentKey: string): Promise<bigint>;
+  totalVerifications(): Promise<bigint>;
   registry(): Promise<string>;
 }
 
@@ -143,6 +170,18 @@ export function typedDemoVerifier(
     AGENT_DEMO_VERIFIER_ABI,
     runner,
   ) as unknown as TypedDemoVerifierContract;
+}
+
+/** Create a typed Ed25519 demo verifier contract instance. */
+export function typedDemoVerifierEd25519(
+  address: string,
+  runner: ethers.ContractRunner,
+): TypedDemoVerifierEd25519Contract {
+  return new ethers.Contract(
+    address,
+    AGENT_DEMO_VERIFIER_ED25519_ABI,
+    runner,
+  ) as unknown as TypedDemoVerifierEd25519Contract;
 }
 
 /** Create a typed gate contract instance. */

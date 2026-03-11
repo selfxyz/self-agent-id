@@ -19,6 +19,7 @@ import {
   Key,
   ExternalLink,
   Code2,
+  Terminal,
 } from "lucide-react";
 import { PrivyIcon } from "@/components/PrivyIcon";
 import CodeBlock from "@/components/CodeBlock";
@@ -109,7 +110,7 @@ export default function ExplainerPage() {
           {/* Flow diagram */}
           <div className="flex flex-col md:flex-row items-center justify-center gap-3 mb-16">
             {[
-              { icon: Users, label: "Human", sub: "Scans passport" },
+              { icon: Users, label: "Human", sub: "Scans document" },
               { icon: Lock, label: "ZK Proof", sub: "Generated locally" },
               {
                 icon: FileCode2,
@@ -219,29 +220,30 @@ export default function ExplainerPage() {
             Security Model
           </h2>
           <p className="text-center text-muted max-w-2xl mx-auto mb-12">
-            The registry supports five registration modes. All produce the same
+            The registry supports six registration modes. All produce the same
             on-chain result (a verified, sybil-resistant agent NFT) but they
-            differ in who holds the agent&apos;s private key and how the human
-            manages their agent.
+            differ in who holds the agent&apos;s private key, what key type is
+            used, and how the human manages their agent.
           </p>
 
-          {/* Five modes grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-            {/* Agent Identity */}
+          {/* Six modes grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+            {/* Linked Agent */}
             <Card>
               <div className="flex items-center gap-2 mb-4">
                 <span className="w-8 h-8 rounded-full bg-accent-2/20 flex items-center justify-center">
                   <Key size={16} className="text-accent-2" />
                 </span>
-                <h3 className="font-bold text-lg">Agent Identity</h3>
-                <Badge variant="success">recommended</Badge>
+                <h3 className="font-bold text-lg">Linked Agent</h3>
               </div>
-              <p className="text-sm font-medium mb-2">Independent Agent Key</p>
+              <p className="text-sm font-medium mb-2">
+                Agent Key + Wallet Guardian
+              </p>
               <p className="text-sm text-muted mb-4">
-                The agent generates its own keypair. During registration, the
-                agent signs a challenge proving it controls the key. The human
-                proves humanity via Self, and the agent proves key ownership via
-                ECDSA &mdash; both in a single QR scan.
+                A fresh EVM agent keypair is generated. Your connected wallet
+                becomes the guardian, giving you direct revocation control. The
+                human proves humanity via Self, and the agent key is linked to
+                your wallet on-chain.
               </p>
               <div className="space-y-2 text-sm text-muted">
                 <p className="font-bold text-foreground">
@@ -256,75 +258,31 @@ export default function ExplainerPage() {
                     Agent signs requests with its <em>own</em> key &mdash; human
                     wallet never exposed
                   </li>
+                  <li>Guardian wallet can revoke the agent at any time</li>
                 </ul>
               </div>
               <div className="mt-4 pt-4 border-t border-border">
                 <p className="text-xs text-muted">
                   <strong className="text-foreground">Best for:</strong>{" "}
-                  Multiple agents per user, key rotation, delegation, autonomous
-                  agents that operate independently.
+                  Developers who already have a wallet and want direct
+                  revocation control over their agents.
                 </p>
               </div>
             </Card>
 
-            {/* Verified Wallet */}
-            <Card>
-              <div className="flex items-center gap-2 mb-4">
-                <span className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
-                  <Wallet size={16} className="text-accent" />
-                </span>
-                <h3 className="font-bold text-lg">Verified Wallet</h3>
-              </div>
-              <p className="text-sm font-medium mb-2">
-                Wallet = Agent Identity
-              </p>
-              <p className="text-sm text-muted mb-4">
-                The human&apos;s wallet address becomes the agent key. No extra
-                keypair to manage. Ideal for single-agent setups and quick
-                integrations.
-              </p>
-              <div className="space-y-2 text-sm text-muted">
-                <p className="font-bold text-foreground">
-                  How it&apos;s secured:
-                </p>
-                <ul className="list-disc list-inside space-y-1">
-                  <li>
-                    Key is derived <em>inside</em> the contract callback,
-                    can&apos;t be spoofed
-                  </li>
-                  <li>ZK proof binds wallet address to human nullifier</li>
-                  <li>
-                    SDK signs requests with wallet key; services recover signer
-                    from ECDSA signature
-                  </li>
-                </ul>
-              </div>
-              <div className="mt-4 pt-4 border-t border-border">
-                <p className="text-xs text-muted">
-                  <strong className="text-foreground">Best for:</strong> Single
-                  agent per user, quick setup, on-chain gating where{" "}
-                  <code className="bg-surface-2 font-mono text-accent-2 px-1 rounded">
-                    msg.sender
-                  </code>{" "}
-                  is the agent.
-                </p>
-              </div>
-            </Card>
-
-            {/* No Wallet */}
+            {/* Wallet-Free */}
             <Card>
               <div className="flex items-center gap-2 mb-4">
                 <span className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
                   <Lock size={16} className="text-accent" />
                 </span>
-                <h3 className="font-bold text-lg">No Wallet</h3>
+                <h3 className="font-bold text-lg">Wallet-Free</h3>
               </div>
-              <p className="text-sm font-medium mb-2">Agent EOA Owns Its NFT</p>
+              <p className="text-sm font-medium mb-2">No Wallet Required</p>
               <p className="text-sm text-muted mb-4">
                 No crypto wallet required. A fresh agent keypair is generated in
-                the browser, and the agent&apos;s own address owns the NFT. An
-                optional guardian can be set for recovery. The user manages the
-                raw private key.
+                the browser, and the agent&apos;s own address owns the NFT.
+                Revoke anytime by scanning your passport again in the Self app.
               </p>
               <div className="space-y-2 text-sm text-muted">
                 <p className="font-bold text-foreground">
@@ -340,9 +298,8 @@ export default function ExplainerPage() {
               </div>
               <div className="mt-4 pt-4 border-t border-border">
                 <p className="text-xs text-muted">
-                  <strong className="text-foreground">Best for:</strong>{" "}
-                  Non-crypto users who just need an agent registered quickly
-                  with their passport.
+                  <strong className="text-foreground">Best for:</strong> Quick
+                  start without any wallet setup or crypto knowledge.
                 </p>
               </div>
             </Card>
@@ -387,7 +344,7 @@ export default function ExplainerPage() {
             </Card>
 
             {/* Social Login (Privy) */}
-            <Card className="md:col-span-2">
+            <Card>
               <div className="flex items-center gap-2 mb-4">
                 <PrivyIcon size={20} />
                 <h3 className="font-bold text-lg">Social Login (Privy)</h3>
@@ -398,9 +355,8 @@ export default function ExplainerPage() {
               <p className="text-sm text-muted mb-4">
                 Sign in with a social account via Privy. An embedded wallet is
                 created automatically &mdash; no browser extension or seed
-                phrase. A separate agent keypair is generated, and the on-chain
-                format is identical to Agent Identity (&ldquo;K&rdquo; action).
-                Only the wallet source differs.
+                phrase. A separate agent keypair is generated, and the Privy
+                wallet becomes the guardian.
               </p>
               <div className="space-y-2 text-sm text-muted">
                 <p className="font-bold text-foreground">
@@ -430,6 +386,77 @@ export default function ExplainerPage() {
                 </p>
               </div>
             </Card>
+
+            {/* Ed25519 */}
+            <Card>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
+                  <Terminal size={16} className="text-accent" />
+                </span>
+                <h3 className="font-bold text-lg">Ed25519</h3>
+              </div>
+              <p className="text-sm font-medium mb-2">Existing Agent Key</p>
+              <p className="text-sm text-muted mb-4">
+                For agents that already have Ed25519 keys (common in AI
+                frameworks like Eliza, OpenClaw, and SSH-style agents). Paste
+                your agent&apos;s existing public key &mdash; no new key
+                generation needed. The agent signs a challenge to prove key
+                ownership.
+              </p>
+              <div className="space-y-2 text-sm text-muted">
+                <p className="font-bold text-foreground">
+                  How it&apos;s secured:
+                </p>
+                <ul className="list-disc list-inside space-y-1">
+                  <li>Ed25519 signature proves agent key ownership</li>
+                  <li>ZK proof binds human identity to nullifier</li>
+                  <li>Deregister anytime by scanning passport again</li>
+                </ul>
+              </div>
+              <div className="mt-4 pt-4 border-t border-border">
+                <p className="text-xs text-muted">
+                  <strong className="text-foreground">Best for:</strong> AI
+                  agents using Ed25519 keys natively (Eliza, OpenClaw, SSH
+                  agents, etc.).
+                </p>
+              </div>
+            </Card>
+
+            {/* Ed25519 + Guardian */}
+            <Card>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
+                  <Terminal size={16} className="text-accent" />
+                </span>
+                <h3 className="font-bold text-lg">Ed25519 + Guardian</h3>
+              </div>
+              <p className="text-sm font-medium mb-2">
+                Ed25519 Key + Wallet Guardian
+              </p>
+              <p className="text-sm text-muted mb-4">
+                Same as Ed25519, but your connected wallet becomes the guardian.
+                This gives you direct wallet-based revocation control over the
+                agent, in addition to passport-based revocation.
+              </p>
+              <div className="space-y-2 text-sm text-muted">
+                <p className="font-bold text-foreground">
+                  How it&apos;s secured:
+                </p>
+                <ul className="list-disc list-inside space-y-1">
+                  <li>Ed25519 signature proves agent key ownership</li>
+                  <li>ZK proof binds human identity to nullifier</li>
+                  <li>Guardian wallet can revoke the agent at any time</li>
+                  <li>Passport revocation also available as fallback</li>
+                </ul>
+              </div>
+              <div className="mt-4 pt-4 border-t border-border">
+                <p className="text-xs text-muted">
+                  <strong className="text-foreground">Best for:</strong> Ed25519
+                  agents where a human wants direct wallet-based revocation
+                  control.
+                </p>
+              </div>
+            </Card>
           </div>
 
           {/* Shared security layers */}
@@ -440,7 +467,7 @@ export default function ExplainerPage() {
               </h3>
               <p className="text-muted mb-4">
                 Agents can optionally carry ZK-attested claims from their human
-                backer, such as age verification (over 18), OFAC sanctions
+                backer, such as age verification (over 18 or 21), OFAC sanctions
                 clearance, nationality, or name. During registration, the user
                 chooses which fields to disclose. The Self app generates a
                 zero-knowledge proof on the user&apos;s phone. Only the attested
@@ -468,15 +495,14 @@ export default function ExplainerPage() {
                 Without this, anyone could claim to be a registered agent.
               </p>
               <p className="text-muted mb-4">
-                The SDK solves this with ECDSA request signing. In both modes,
-                the flow is the same:
+                The SDK solves this with ECDSA request signing. Regardless of
+                registration mode, the flow is the same:
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <Card>
                   <p className="font-bold text-sm mb-2">Agent Side</p>
                   <p className="text-sm text-muted">
-                    Signs each request with the agent&apos;s private key (wallet
-                    key in simple mode, independent key in advanced mode). The
+                    Signs each request with the agent&apos;s private key. The
                     signature covers the timestamp, HTTP method, URL, and body
                     hash, preventing replay and tampering.
                   </p>
@@ -589,28 +615,30 @@ export default function ExplainerPage() {
                   100
                 </div>
                 <div className="flex-1 bg-green-500/20 rounded h-4" />
-                <span className="text-muted w-48">Passport / Biometric ID</span>
+                <span className="text-muted w-48">Biometric Passport</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-[10px]">
+                  100
+                </div>
+                <div className="flex-1 bg-green-500/20 rounded h-4" />
+                <span className="text-muted w-48">Biometric ID Card</span>
               </div>
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-[10px]">
                   80
                 </div>
                 <div className="flex-1 bg-green-500/20 rounded h-4 w-4/5" />
-                <span className="text-muted w-48">KYC Verification</span>
+                <span className="text-muted w-48">Aadhaar</span>
               </div>
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-[10px]">
-                  60
+                  50
                 </div>
-                <div className="flex-1 bg-blue-500/20 rounded h-4 w-3/5" />
-                <span className="text-muted w-48">Government ID (no chip)</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white font-bold text-[10px]">
-                  40
-                </div>
-                <div className="flex-1 bg-amber-500/20 rounded h-4 w-2/5" />
-                <span className="text-muted w-48">Liveness Check</span>
+                <div className="flex-1 bg-blue-500/20 rounded h-4 w-1/2" />
+                <span className="text-muted w-48">
+                  Third-Party Identity Check
+                </span>
               </div>
             </div>
           </Card>
@@ -626,7 +654,7 @@ export default function ExplainerPage() {
             </p>
             <pre className="bg-surface-2 border border-border rounded-lg p-4 text-xs overflow-auto mb-4">
               {`// Quick check: Only accept passport-verified agents
-const baseUrl = "https://self-agent-id.vercel.app"; // replace with your deployment URL
+const baseUrl = "https://app.ai.self.xyz"; // replace with your deployment URL
 const res = await fetch(\`\${baseUrl}/api/reputation/42220/\${agentId}\`);
 const { score, proofType } = await res.json();
 
@@ -636,9 +664,9 @@ if (score < 100) {
             </pre>
             <pre className="bg-surface-2 border border-border rounded-lg p-4 text-xs overflow-auto mb-4">
               {`// Tiered access based on verification strength
-const accessLevel = score >= 100 ? "full"
-                  : score >= 80  ? "standard"
-                  : score >= 60  ? "limited"
+const accessLevel = score >= 100 ? "full"       // biometric passport/ID
+                  : score >= 80  ? "standard"    // Aadhaar
+                  : score >= 50  ? "limited"     // third-party identity check
                   : "rejected";`}
             </pre>
             <pre className="bg-surface-2 border border-border rounded-lg p-4 text-xs overflow-auto">

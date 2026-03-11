@@ -67,7 +67,7 @@ interface CliNetwork {
   scope: string;
 }
 
-/** Pre-signed registration data for smart-wallet mode, passed to the browser handoff. */
+/** Pre-signed registration data for smartwallet mode, passed to the browser handoff. */
 interface SmartWalletTemplate {
   /** Checksummed address of the generated agent wallet. */
   agentAddress: string;
@@ -211,7 +211,7 @@ type FlagMap = Record<string, FlagValue | FlagValue[]>;
 
 /** Base URL for the browser handoff app. Override via SELF_AGENT_APP_URL env var. */
 const DEFAULT_APP_URL =
-  process.env.SELF_AGENT_APP_URL || "https://self-agent-id.vercel.app";
+  process.env.SELF_AGENT_APP_URL || "https://app.ai.self.xyz";
 
 /** Application name shown during Self verification. Override via SELF_AGENT_APP_NAME env var. */
 const DEFAULT_APP_NAME = process.env.SELF_AGENT_APP_NAME || "Self Agent ID";
@@ -239,11 +239,11 @@ function usage(): string {
     "  deregister status Show current session status",
     "",
     "Examples:",
-    "  self-agent register init --mode verified-wallet --human-address 0x... --network testnet --out .self/session.json",
+    "  self-agent register init --mode self-custody --human-address 0x... --network testnet --out .self/session.json",
     "  self-agent register open --session .self/session.json",
     "  self-agent register wait --session .self/session.json --timeout-seconds 1800",
     "  self-agent register export --session .self/session.json --unsafe --out-key .self/agent.key",
-    "  self-agent deregister init --mode verified-wallet --human-address 0x... --network testnet --out .self/session.json",
+    "  self-agent deregister init --mode self-custody --human-address 0x... --network testnet --out .self/session.json",
     "  self-agent deregister open --session .self/session.json",
     "  self-agent deregister wait --session .self/session.json --timeout-seconds 1800",
   ].join("\n");
@@ -338,16 +338,18 @@ function saveSession(path: string, session: CliSession): void {
 
 /**
  * Parses and validates a --mode flag value into a CliMode.
- * @param value - Raw flag value (e.g. "verified-wallet"). Exits if missing or invalid.
+ * @param value - Raw flag value (e.g. "self-custody"). Exits if missing or invalid.
  * @returns Validated registration mode.
  */
 function parseMode(value: string | undefined): CliMode {
   if (!value) die("Missing required --mode");
   const normalized = value.trim().toLowerCase();
-  if (normalized === "verified-wallet") return "verified-wallet";
-  if (normalized === "agent-identity") return "agent-identity";
+  if (normalized === "self-custody") return "self-custody";
+  if (normalized === "linked") return "linked";
   if (normalized === "wallet-free") return "wallet-free";
-  if (normalized === "smart-wallet") return "smart-wallet";
+  if (normalized === "ed25519") return "ed25519";
+  if (normalized === "ed25519-linked") return "ed25519-linked";
+  if (normalized === "smartwallet") return "smartwallet";
   die(`Unsupported mode: ${value}`);
 }
 
@@ -626,7 +628,7 @@ async function commandDeregisterInit(flags: FlagMap): Promise<void> {
 
 /**
  * Core init command shared by register and deregister flows. Creates a new
- * session file with generated keys (for agent-identity/wallet-free/smart-wallet
+ * session file with generated keys (for linked/wallet-free/smartwallet
  * modes), signed challenges, and callback server configuration.
  * @param flags - Parsed CLI flags.
  * @param operation - Whether to initialize a registration or deregistration session.
@@ -666,19 +668,17 @@ async function commandInit(
   let smartWalletTemplate: SmartWalletTemplate | undefined;
   let agentPrivateKey: string | undefined;
 
-  if (mode === "verified-wallet" || mode === "agent-identity") {
+  if (mode === "self-custody" || mode === "linked") {
     if (!humanAddressRaw)
-      die(
-        "--human-address is required for verified-wallet and agent-identity modes",
-      );
+      die("--human-address is required for self-custody and linked modes");
     humanIdentifier = ethers.getAddress(humanAddressRaw);
   }
 
   if (operation === "register") {
-    if (mode === "verified-wallet") {
+    if (mode === "self-custody") {
       agentAddress = humanIdentifier;
       userDefinedData = buildSimpleRegisterUserDataAscii(disclosures);
-    } else if (mode === "agent-identity") {
+    } else if (mode === "linked") {
       const wallet = ethers.Wallet.createRandom();
       agentPrivateKey = wallet.privateKey;
       agentAddress = wallet.address;
@@ -719,7 +719,7 @@ async function commandInit(
         signature,
         disclosures,
       });
-    } else if (mode === "smart-wallet") {
+    } else if (mode === "smartwallet") {
       const wallet = ethers.Wallet.createRandom();
       agentPrivateKey = wallet.privateKey;
       agentAddress = wallet.address;
@@ -744,21 +744,21 @@ async function commandInit(
       };
     }
   } else {
-    if (mode === "verified-wallet") {
+    if (mode === "self-custody") {
       agentAddress = humanIdentifier;
       userDefinedData = buildSimpleDeregisterUserDataAscii(disclosures);
-    } else if (mode === "agent-identity") {
+    } else if (mode === "linked") {
       if (!agentAddressRaw)
-        die("--agent-address is required for agent-identity deregistration");
+        die("--agent-address is required for linked deregistration");
       agentAddress = ethers.getAddress(agentAddressRaw);
       userDefinedData = buildAdvancedDeregisterUserDataAscii({
         agentAddress,
         disclosures,
       });
-    } else if (mode === "wallet-free" || mode === "smart-wallet") {
+    } else if (mode === "wallet-free" || mode === "smartwallet") {
       if (!agentAddressRaw)
         die(
-          "--agent-address is required for wallet-free and smart-wallet deregistration",
+          "--agent-address is required for wallet-free and smartwallet deregistration",
         );
       agentAddress = ethers.getAddress(agentAddressRaw);
       humanIdentifier = agentAddress;
@@ -806,8 +806,7 @@ async function commandInit(
     operation,
     mode,
     agentAddress,
-    requiresHumanAddress:
-      mode === "verified-wallet" || mode === "agent-identity",
+    requiresHumanAddress: mode === "self-custody" || mode === "linked",
     callbackUrl: callbackUrl(session),
     next: [
       `self-agent ${operation} open --session ${outPath}`,
@@ -1180,7 +1179,7 @@ function commandRegisterExport(flags: FlagMap): void {
 
   if (!key)
     die(
-      "No agent private key in this session (verified-wallet mode has no generated key).",
+      "No agent private key in this session (self-custody mode has no generated key).",
     );
   if (!flags.unsafe) die("Export blocked. Re-run with --unsafe.");
 

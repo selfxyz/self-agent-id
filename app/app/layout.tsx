@@ -10,6 +10,7 @@ import { Footer } from "@/components/Footer";
 import { NetworkBanner } from "@/components/NetworkBanner";
 import { ClientProviders } from "@/components/ClientProviders";
 import { Analytics } from "@vercel/analytics/react";
+import { getJsonLd } from "@/lib/agent-discovery";
 
 const geist = localFont({
   src: "./fonts/GeistVF.woff",
@@ -33,6 +34,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(getJsonLd()) }}
+        />
+      </head>
       <body className={`${geist.variable} ${geistMono.variable} antialiased`}>
         <ClientProviders>
           <Navbar />

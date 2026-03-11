@@ -2,7 +2,15 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
+import * as ed from "@noble/ed25519";
+import { createHash } from "node:crypto";
 import { ethers } from "ethers";
+
+// @noble/ed25519 v3 requires a SHA-512 implementation for sync methods.
+if (!ed.hashes.sha512) {
+  ed.hashes.sha512 = (message: Uint8Array) =>
+    new Uint8Array(createHash("sha512").update(message).digest());
+}
 import {
   HEADERS,
   DEFAULT_MAX_AGE_MS,
@@ -112,6 +120,12 @@ export interface VerificationResult {
   error?: string;
   /** Milliseconds until the rate limit resets (only set when rate limited) */
   retryAfterMs?: number;
+  /** When the agent's human proof expires (undefined if no expiry set) */
+  proofExpiresAt?: Date;
+  /** Number of days until the proof expires (undefined if no expiry set, negative if already expired) */
+  daysUntilExpiry?: number;
+  /** Whether the proof is expiring within 30 days */
+  isExpiringSoon?: boolean;
 }
 
 interface CacheEntry {
@@ -121,6 +135,7 @@ interface CacheEntry {
   agentCount: bigint;
   nullifier: bigint;
   providerAddress: string;
+  proofExpiresAtTimestamp: bigint;
   expiresAt: number;
 }
 
@@ -452,8 +467,12 @@ export class SelfAgentVerifier {
     method: string;
     url: string;
     body?: string;
+    /** Key type indicator — when "ed25519", uses Ed25519 verification */
+    keytype?: string;
+    /** Agent's public key (required for Ed25519, informational for secp256k1) */
+    agentKey?: string;
   }): Promise<VerificationResult> {
-    const { signature, timestamp, method, url, body } = params;
+    const { signature, timestamp, method, url, body, keytype } = params;
     const empty: VerificationResult = {
       valid: false,
       agentAddress: ethers.ZeroAddress,
@@ -478,12 +497,51 @@ export class SelfAgentVerifier {
       body,
     );
 
-    // 3. Recover signer address from signature (cryptographic — can't be faked)
     let signerAddress: string;
-    try {
-      signerAddress = ethers.verifyMessage(ethers.getBytes(message), signature);
-    } catch {
-      return { ...empty, error: "Invalid signature" };
+    let agentKey: string;
+
+    if (keytype === "ed25519") {
+      // ── Ed25519 verification path ──
+      if (!params.agentKey) {
+        return {
+          ...empty,
+          error: "Missing agent key for Ed25519 verification",
+        };
+      }
+
+      // Verify Ed25519 signature directly against the provided pubkey
+      try {
+        const msgBytes = ethers.getBytes(message); // 32-byte keccak256 hash
+        const sigBytes = ethers.getBytes(signature); // 64-byte Ed25519 signature
+        const pubkeyBytes = ethers.getBytes(params.agentKey); // 32-byte Ed25519 pubkey
+        const valid = await ed.verifyAsync(sigBytes, msgBytes, pubkeyBytes);
+        if (!valid) {
+          return { ...empty, error: "Invalid Ed25519 signature" };
+        }
+      } catch {
+        return { ...empty, error: "Invalid Ed25519 signature" };
+      }
+
+      agentKey = params.agentKey;
+      // Derive deterministic address from keccak256(pubkey) — matches Ed25519Verifier.deriveAddress on-chain
+      const pubkeyBytes = ethers.getBytes(params.agentKey);
+      const hash = ethers.keccak256(pubkeyBytes);
+      signerAddress = ethers.getAddress("0x" + hash.slice(-40));
+    } else {
+      // ── secp256k1 ECDSA verification path (unchanged) ──
+
+      // 3. Recover signer address from signature (cryptographic — can't be faked)
+      try {
+        signerAddress = ethers.verifyMessage(
+          ethers.getBytes(message),
+          signature,
+        );
+      } catch {
+        return { ...empty, error: "Invalid signature" };
+      }
+
+      // 5. Derive the on-chain agent key from the recovered address
+      agentKey = ethers.zeroPadValue(signerAddress, 32);
     }
 
     // 4. Replay cache check (after signature validity to avoid cache poisoning)
@@ -493,14 +551,11 @@ export class SelfAgentVerifier {
         return {
           ...empty,
           agentAddress: signerAddress,
-          agentKey: ethers.zeroPadValue(signerAddress, 32),
+          agentKey,
           error: replayError,
         };
       }
     }
-
-    // 5. Derive the on-chain agent key from the recovered address
-    const agentKey = ethers.zeroPadValue(signerAddress, 32);
 
     // 6. Check on-chain status (with cache)
     const {
@@ -510,7 +565,23 @@ export class SelfAgentVerifier {
       agentCount,
       nullifier,
       providerAddress,
+      proofExpiresAtTimestamp,
     } = await this.checkOnChain(agentKey);
+
+    // Compute expiry fields from on-chain timestamp
+    const proofExpiresAt =
+      proofExpiresAtTimestamp > 0n
+        ? new Date(Number(proofExpiresAtTimestamp) * 1000)
+        : undefined;
+    const now = Math.floor(Date.now() / 1000);
+    const daysUntilExpiry =
+      proofExpiresAtTimestamp > 0n
+        ? Math.floor((Number(proofExpiresAtTimestamp) - now) / 86400)
+        : undefined;
+    const isExpiringSoon =
+      daysUntilExpiry !== undefined &&
+      daysUntilExpiry >= 0 &&
+      daysUntilExpiry <= 30;
 
     if (!isVerified) {
       return {
@@ -520,6 +591,9 @@ export class SelfAgentVerifier {
         agentId,
         agentCount,
         nullifier,
+        proofExpiresAt,
+        daysUntilExpiry,
+        isExpiringSoon,
         error: "Agent not verified on-chain",
       };
     }
@@ -533,6 +607,9 @@ export class SelfAgentVerifier {
         agentId,
         agentCount,
         nullifier,
+        proofExpiresAt,
+        daysUntilExpiry,
+        isExpiringSoon,
         error: "Agent's human proof has expired",
       };
     }
@@ -550,6 +627,9 @@ export class SelfAgentVerifier {
           agentId,
           agentCount,
           nullifier,
+          proofExpiresAt,
+          daysUntilExpiry,
+          isExpiringSoon,
           error: "Unable to verify proof provider — RPC error",
         };
       }
@@ -561,6 +641,9 @@ export class SelfAgentVerifier {
           agentId,
           agentCount,
           nullifier,
+          proofExpiresAt,
+          daysUntilExpiry,
+          isExpiringSoon,
           error: "Agent was not verified by Self — proof provider mismatch",
         };
       }
@@ -578,6 +661,9 @@ export class SelfAgentVerifier {
         agentId,
         agentCount,
         nullifier,
+        proofExpiresAt,
+        daysUntilExpiry,
+        isExpiringSoon,
         error: `Human has ${agentCount} agents (max ${this.maxAgentsPerHuman})`,
       };
     }
@@ -602,6 +688,9 @@ export class SelfAgentVerifier {
           agentCount,
           nullifier,
           credentials,
+          proofExpiresAt,
+          daysUntilExpiry,
+          isExpiringSoon,
           error: `Agent's human does not meet minimum age (required: ${this.minimumAge}, got: ${credentials.olderThan})`,
         };
       }
@@ -615,6 +704,9 @@ export class SelfAgentVerifier {
           agentCount,
           nullifier,
           credentials,
+          proofExpiresAt,
+          daysUntilExpiry,
+          isExpiringSoon,
           error: "Agent's human did not pass OFAC screening",
         };
       }
@@ -629,6 +721,9 @@ export class SelfAgentVerifier {
             agentCount,
             nullifier,
             credentials,
+            proofExpiresAt,
+            daysUntilExpiry,
+            isExpiringSoon,
             error: `Nationality "${credentials.nationality}" not in allowed list`,
           };
         }
@@ -647,6 +742,9 @@ export class SelfAgentVerifier {
           agentCount,
           nullifier,
           credentials,
+          proofExpiresAt,
+          daysUntilExpiry,
+          isExpiringSoon,
           error: limited.error,
           retryAfterMs: limited.retryAfterMs,
         };
@@ -661,6 +759,9 @@ export class SelfAgentVerifier {
       agentCount,
       nullifier,
       credentials,
+      proofExpiresAt,
+      daysUntilExpiry,
+      isExpiringSoon,
     };
   }
 
@@ -674,6 +775,7 @@ export class SelfAgentVerifier {
     agentCount: bigint;
     nullifier: bigint;
     providerAddress: string;
+    proofExpiresAtTimestamp: bigint;
   }> {
     const cached = this.cache.get(agentKey);
     if (cached && cached.expiresAt > Date.now()) {
@@ -684,6 +786,7 @@ export class SelfAgentVerifier {
         agentCount: cached.agentCount,
         nullifier: cached.nullifier,
         providerAddress: cached.providerAddress,
+        proofExpiresAtTimestamp: cached.proofExpiresAtTimestamp,
       };
     }
 
@@ -692,11 +795,12 @@ export class SelfAgentVerifier {
       this.registry.getAgentId(agentKey),
     ]);
 
-    // Fetch sybil data, provider address, and proof freshness if agent exists
+    // Fetch sybil data, provider address, proof freshness, and expiry if agent exists
     let agentCount = 0n;
     let nullifier = 0n;
     let providerAddress = "";
     let isProofFresh = false;
+    let proofExpiresAtTimestamp = 0n;
     if (agentId > 0n) {
       const promises: Promise<unknown>[] = [];
 
@@ -704,6 +808,13 @@ export class SelfAgentVerifier {
       promises.push(
         this.registry.isProofFresh(agentId).then((fresh) => {
           isProofFresh = fresh;
+        }),
+      );
+
+      // Always fetch proof expiry timestamp
+      promises.push(
+        this.registry.proofExpiresAt(agentId).then((ts) => {
+          proofExpiresAtTimestamp = ts;
         }),
       );
 
@@ -734,6 +845,7 @@ export class SelfAgentVerifier {
       agentCount,
       nullifier,
       providerAddress,
+      proofExpiresAtTimestamp,
       expiresAt: Date.now() + this.cacheTtlMs,
     });
 
@@ -744,6 +856,7 @@ export class SelfAgentVerifier {
       agentCount,
       nullifier,
       providerAddress,
+      proofExpiresAtTimestamp,
     };
   }
 
@@ -879,10 +992,15 @@ export class SelfAgentVerifier {
     ) => {
       const signatureHeader = req.headers?.[HEADERS.SIGNATURE];
       const timestampHeader = req.headers?.[HEADERS.TIMESTAMP];
+      const keytypeHeader = req.headers?.[HEADERS.KEYTYPE];
+      const keyHeader = req.headers?.[HEADERS.KEY];
       const signature =
         typeof signatureHeader === "string" ? signatureHeader : undefined;
       const timestamp =
         typeof timestampHeader === "string" ? timestampHeader : undefined;
+      const keytype =
+        typeof keytypeHeader === "string" ? keytypeHeader : undefined;
+      const agentKey = typeof keyHeader === "string" ? keyHeader : undefined;
 
       if (!signature || !timestamp) {
         res.status(401).json({ error: "Missing agent authentication headers" });
@@ -913,6 +1031,8 @@ export class SelfAgentVerifier {
         method,
         url,
         body,
+        keytype,
+        agentKey,
       });
 
       if (!result.valid) {

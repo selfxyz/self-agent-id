@@ -58,6 +58,16 @@ pub async fn self_agent_auth(
         .get(headers::TIMESTAMP)
         .and_then(|v| v.to_str().ok())
         .map(String::from);
+    let keytype = request
+        .headers()
+        .get(headers::KEYTYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
+    let agent_key = request
+        .headers()
+        .get(headers::KEY)
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
 
     let (signature, timestamp) = match (sig, ts) {
         (Some(s), Some(t)) => (s, t),
@@ -95,8 +105,16 @@ pub async fn self_agent_auth(
 
     let result = {
         let mut v = verifier.lock().await;
-        v.verify(&signature, &timestamp, &method, &url, body_str.as_deref())
-            .await
+        v.verify_with_keytype(
+            &signature,
+            &timestamp,
+            &method,
+            &url,
+            body_str.as_deref(),
+            keytype.as_deref(),
+            agent_key.as_deref(),
+        )
+        .await
     };
 
     if !result.valid {

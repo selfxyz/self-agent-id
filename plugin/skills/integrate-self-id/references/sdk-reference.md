@@ -295,7 +295,7 @@ Initiate a registration flow. Returns a session with QR code URL for the human t
 const session: RegistrationSession = await agent.requestRegistration({
   minimumAge?: 0 | 18 | 21,  // Default: 0
   ofac?: boolean,              // Default: false
-  mode?: "verified-wallet" | "agent-identity" | "wallet-free",  // Default: "agent-identity"
+  mode?: "self-custody" | "linked" | "wallet-free",  // Default: "linked"
 });
 ```
 
