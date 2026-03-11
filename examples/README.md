@@ -17,18 +17,18 @@ cd standalone-ts && ED25519_SEED=<seed> SKIP_REGISTRATION=1 npx tsx e2e-demo-tes
 
 ## Framework Compatibility
 
-| Framework | Language | Key Type | Integration | Status |
-|-----------|----------|----------|-------------|--------|
-| **Standalone** | TypeScript | Ed25519 | Reference implementation | Runtime tested |
-| **Standalone** | Python | Ed25519 | Reference implementation | Runtime tested |
-| **[Minimal](minimal-ts/)** | TypeScript | ECDSA | Existing reference | Runtime tested |
-| **[Minimal](minimal-python/)** | Python | ECDSA | Existing reference | Runtime tested |
-| **[OpenClaw](openclaw/)** | Python | Ed25519 | Skill handler | Doc-quality code |
-| **[Eliza](eliza/)** | TypeScript | Ed25519 | Plugin | Doc-quality code |
-| **[LangChain](langchain/)** | Python | Ed25519 | Custom tools | Doc-quality code |
-| **[CrewAI](crewai/)** | Python | Ed25519 | Custom tools | Doc-quality code |
-| **[AutoGen](autogen/)** | Python | Ed25519 | Function tools | Doc-quality code |
-| **[LangChain Agent](langchain-agent/)** | Python | ECDSA | Full agent | Production |
+| Framework                               | Language   | Key Type | Integration              | Status           |
+| --------------------------------------- | ---------- | -------- | ------------------------ | ---------------- |
+| **Standalone**                          | TypeScript | Ed25519  | Reference implementation | Runtime tested   |
+| **Standalone**                          | Python     | Ed25519  | Reference implementation | Runtime tested   |
+| **[Minimal](minimal-ts/)**              | TypeScript | ECDSA    | Existing reference       | Runtime tested   |
+| **[Minimal](minimal-python/)**          | Python     | ECDSA    | Existing reference       | Runtime tested   |
+| **[OpenClaw](openclaw/)**               | Python     | Ed25519  | Skill handler            | Doc-quality code |
+| **[Eliza](eliza/)**                     | TypeScript | Ed25519  | Plugin                   | Doc-quality code |
+| **[LangChain](langchain/)**             | Python     | Ed25519  | Custom tools             | Doc-quality code |
+| **[CrewAI](crewai/)**                   | Python     | Ed25519  | Custom tools             | Doc-quality code |
+| **[AutoGen](autogen/)**                 | Python     | Ed25519  | Function tools           | Doc-quality code |
+| **[LangChain Agent](langchain-agent/)** | Python     | ECDSA    | Full agent               | Production       |
 
 ## Architecture
 
@@ -50,14 +50,14 @@ cd standalone-ts && ED25519_SEED=<seed> SKIP_REGISTRATION=1 npx tsx e2e-demo-tes
 
 ## Ed25519 vs ECDSA
 
-| Feature | Ed25519 | ECDSA (secp256k1) |
-|---------|---------|-------------------|
-| Key generation | `crypto.randomBytes(32)` | `ethers.Wallet.createRandom()` |
-| Ecosystem | Python, Rust, Solana, SSH | Ethereum, EVM chains |
-| On-chain verify gas | ~456K | ~3K |
-| SDK class | `Ed25519Agent` | `SelfAgent` |
-| Key format | 64 hex chars (no 0x) | 0x-prefixed 66 hex chars |
-| Registration | Ed25519 challenge-response | EIP-712 or wallet-free |
+| Feature             | Ed25519                    | ECDSA (secp256k1)              |
+| ------------------- | -------------------------- | ------------------------------ |
+| Key generation      | `crypto.randomBytes(32)`   | `ethers.Wallet.createRandom()` |
+| Ecosystem           | Python, Rust, Solana, SSH  | Ethereum, EVM chains           |
+| On-chain verify gas | ~456K                      | ~3K                            |
+| SDK class           | `Ed25519Agent`             | `SelfAgent`                    |
+| Key format          | 64 hex chars (no 0x)       | 0x-prefixed 66 hex chars       |
+| Registration        | Ed25519 challenge-response | EIP-712 or wallet-free         |
 
 Both key types produce identical HTTP headers and are verified transparently by `SelfAgentVerifier`.
 
@@ -72,12 +72,14 @@ Both key types produce identical HTTP headers and are verified transparently by 
 ## Common Patterns
 
 ### Agent-side (making requests)
+
 ```python
 agent = Ed25519Agent(private_key=seed, network="testnet")
 res = agent.fetch("https://api.example.com/data", method="POST", body='{"key": "value"}')
 ```
 
 ### Service-side (verifying requests)
+
 ```python
 verifier = SelfAgentVerifier.create().network("testnet").require_age(18).build()
 result = verifier.verify(signature=sig, timestamp=ts, method="POST", url=url, body=body)

@@ -56,7 +56,7 @@ function checkRateLimit(nullifier: string): {
 // before spending gas on the real tx.
 // ---------------------------------------------------------------------------
 
-export async function GET() {
+export function GET() {
   return demoEndpointDocs({
     endpoint: "/api/demo/chain-verify",
     method: "POST",

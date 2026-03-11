@@ -151,9 +151,7 @@ export class SelfAgent {
 
     const now = BigInt(Math.floor(Date.now() / 1000));
     const daysUntilExpiry =
-      proofExpiresAt > 0n
-        ? Number((proofExpiresAt - now) / 86400n)
-        : -1;
+      proofExpiresAt > 0n ? Number((proofExpiresAt - now) / 86400n) : -1;
     const isExpiringSoon = daysUntilExpiry >= 0 && daysUntilExpiry <= 30;
 
     return {

@@ -79,12 +79,7 @@ export type {
 } from "./agentCard";
 
 // A2A Task Protocol (JSON-RPC 2.0)
-export {
-  A2AErrorCodes,
-  A2AClient,
-  A2AError,
-  A2AServer,
-} from "./a2a";
+export { A2AErrorCodes, A2AClient, A2AError, A2AServer } from "./a2a";
 export type {
   TextPart,
   FilePart,

@@ -64,8 +64,7 @@ export function createSelfIdentityPlugin(runtime: ElizaRuntime): ElizaPlugin {
 
   return {
     name: "self-identity",
-    description:
-      "Human-verified agent identity via Self Agent ID (Ed25519)",
+    description: "Human-verified agent identity via Self Agent ID (Ed25519)",
     actions: {
       checkIdentity: {
         description: "Check if this agent is registered with Self Agent ID",
@@ -74,8 +73,7 @@ export function createSelfIdentityPlugin(runtime: ElizaRuntime): ElizaPlugin {
           if (!registered) {
             return {
               registered: false,
-              message:
-                "Not registered. Visit https://app.ai.self.xyz/register",
+              message: "Not registered. Visit https://app.ai.self.xyz/register",
               agentKey: agent.agentKey,
             };
           }
@@ -109,9 +107,7 @@ export function createSelfIdentityPlugin(runtime: ElizaRuntime): ElizaPlugin {
           const res = await agent.fetch(url, {
             method,
             body,
-            headers: body
-              ? { "Content-Type": "application/json" }
-              : undefined,
+            headers: body ? { "Content-Type": "application/json" } : undefined,
           });
           return {
             status: res.status,

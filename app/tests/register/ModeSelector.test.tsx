@@ -34,7 +34,9 @@ describe("ModeSelector", () => {
   // Q2: Ed25519 question
   it("starts with Ed25519 question", () => {
     render(<ModeSelector {...defaultProps} />);
-    expect(screen.getByText(/does your agent already have signing keys/i)).toBeDefined();
+    expect(
+      screen.getByText(/does your agent already have signing keys/i),
+    ).toBeDefined();
     expect(screen.getByTestId("ed25519-yes")).toBeDefined();
     expect(screen.getByTestId("ed25519-no")).toBeDefined();
   });

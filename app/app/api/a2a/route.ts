@@ -87,7 +87,15 @@ async function sendPushNotification(
 // ── Intent detection ────────────────────────────────────────────────────────
 
 type Intent =
-  | { type: "register"; network: string; humanAddress?: string; mode?: string; pushConfig?: TaskPushNotificationConfig; ed25519Pubkey?: string; ed25519Signature?: string }
+  | {
+      type: "register";
+      network: string;
+      humanAddress?: string;
+      mode?: string;
+      pushConfig?: TaskPushNotificationConfig;
+      ed25519Pubkey?: string;
+      ed25519Signature?: string;
+    }
   | { type: "register-status"; sessionToken: string }
   | { type: "register-poll"; taskId: string }
   | { type: "lookup"; agentId: number; chainId?: number }
@@ -136,9 +144,18 @@ function parseIntent(message: Message): Intent {
         type: "register",
         network: (data.network as string) || "mainnet",
         humanAddress: data.humanAddress as string | undefined,
-        mode: (data.mode as string) || (hasEd25519 ? (data.humanAddress ? "ed25519-linked" : "ed25519") : "wallet-free"),
+        mode:
+          (data.mode as string) ||
+          (hasEd25519
+            ? data.humanAddress
+              ? "ed25519-linked"
+              : "ed25519"
+            : "wallet-free"),
         pushConfig: data.pushNotificationUrl
-          ? { url: data.pushNotificationUrl as string, token: data.pushNotificationToken as string | undefined }
+          ? {
+              url: data.pushNotificationUrl as string,
+              token: data.pushNotificationToken as string | undefined,
+            }
           : undefined,
         ed25519Pubkey: data.ed25519Pubkey as string | undefined,
         ed25519Signature: data.ed25519Signature as string | undefined,
@@ -155,7 +172,10 @@ function parseIntent(message: Message): Intent {
           sessionToken: data.sessionToken as string,
         };
       }
-      return { type: "unknown", text: "Please provide either a taskId or sessionToken to check status." };
+      return {
+        type: "unknown",
+        text: "Please provide either a taskId or sessionToken to check status.",
+      };
     }
     if (intent === "lookup" || intent === "info") {
       return {
@@ -171,7 +191,11 @@ function parseIntent(message: Message): Intent {
         chainId: data.chainId ? Number(data.chainId) : undefined,
       };
     }
-    if (intent === "deregister" || intent === "unregister" || intent === "revoke") {
+    if (
+      intent === "deregister" ||
+      intent === "unregister" ||
+      intent === "revoke"
+    ) {
       return {
         type: "deregister",
         agentId: Number(data.agentId),
@@ -185,7 +209,13 @@ function parseIntent(message: Message): Intent {
         chainId: data.chainId ? Number(data.chainId) : undefined,
       };
     }
-    if (intent === "refresh-proof" || intent === "refresh" || intent === "renew" || intent === "re-verify" || intent === "reauthenticate") {
+    if (
+      intent === "refresh-proof" ||
+      intent === "refresh" ||
+      intent === "renew" ||
+      intent === "re-verify" ||
+      intent === "reauthenticate"
+    ) {
       return {
         type: "refresh-proof",
         agentId: Number(data.agentId),
@@ -202,12 +232,18 @@ function parseIntent(message: Message): Intent {
     /(?:deregister|unregister|revoke|remove|delete)\s+(?:agent\s*)?#?(\d+)/,
   );
   if (deregMatch) {
-    const chainId = text.includes("mainnet") ? 42220 : text.includes("testnet") ? 11142220 : undefined;
+    const chainId = text.includes("mainnet")
+      ? 42220
+      : text.includes("testnet")
+        ? 11142220
+        : undefined;
     return { type: "deregister", agentId: Number(deregMatch[1]), chainId };
   }
 
   if (
-    (text.includes("register") && !text.includes("deregister") && !text.includes("unregister")) ||
+    (text.includes("register") &&
+      !text.includes("deregister") &&
+      !text.includes("unregister")) ||
     text.includes("sign up") ||
     text.includes("create agent") ||
     text.includes("new agent")
@@ -219,15 +255,16 @@ function parseIntent(message: Message): Intent {
       type: "register",
       network,
       humanAddress: addrMatch?.[0],
-      mode: text.includes("ed25519-linked") || text.includes("ed25519 linked")
-        ? "ed25519-linked"
-        : text.includes("ed25519")
-          ? "ed25519"
-          : text.includes("linked")
-            ? "linked"
-            : addrMatch
+      mode:
+        text.includes("ed25519-linked") || text.includes("ed25519 linked")
+          ? "ed25519-linked"
+          : text.includes("ed25519")
+            ? "ed25519"
+            : text.includes("linked")
               ? "linked"
-              : "wallet-free",
+              : addrMatch
+                ? "linked"
+                : "wallet-free",
     };
   }
 
@@ -235,7 +272,10 @@ function parseIntent(message: Message): Intent {
     // Look for session token in data parts
     const token = data?.sessionToken as string | undefined;
     if (token) return { type: "register-status", sessionToken: token };
-    return { type: "unknown", text: "Please provide your session token to check registration status. Send a data part with { intent: 'register-status', sessionToken: '<token>' }." };
+    return {
+      type: "unknown",
+      text: "Please provide your session token to check registration status. Send a data part with { intent: 'register-status', sessionToken: '<token>' }.",
+    };
   }
 
   // "refresh proof for agent #5" / "renew agent 5" / "re-verify agent 5"
@@ -243,7 +283,11 @@ function parseIntent(message: Message): Intent {
     /(?:refresh|renew|re-?verif)\w*\s+(?:proof\s+(?:for\s+)?)?(?:agent\s*)?#?(\d+)/i,
   );
   if (refreshMatch) {
-    const chainId = text.includes("mainnet") ? 42220 : text.includes("testnet") ? 11142220 : undefined;
+    const chainId = text.includes("mainnet")
+      ? 42220
+      : text.includes("testnet")
+        ? 11142220
+        : undefined;
     return { type: "refresh-proof", agentId: Number(refreshMatch[1]), chainId };
   }
 
@@ -252,7 +296,11 @@ function parseIntent(message: Message): Intent {
     /(?:fresh|expir)\w*\s+(?:of\s+)?(?:agent\s*)?#?(\d+)/,
   );
   if (freshMatch) {
-    const chainId = text.includes("mainnet") ? 42220 : text.includes("testnet") ? 11142220 : undefined;
+    const chainId = text.includes("mainnet")
+      ? 42220
+      : text.includes("testnet")
+        ? 11142220
+        : undefined;
     return { type: "check-freshness", agentId: Number(freshMatch[1]), chainId };
   }
 
@@ -261,7 +309,11 @@ function parseIntent(message: Message): Intent {
     /(?:look\s*up|info|details|get|fetch|card)\s+(?:agent\s*)?#?(\d+)/,
   );
   if (lookupMatch) {
-    const chainId = text.includes("mainnet") ? 42220 : text.includes("testnet") ? 11142220 : undefined;
+    const chainId = text.includes("mainnet")
+      ? 42220
+      : text.includes("testnet")
+        ? 11142220
+        : undefined;
     return { type: "lookup", agentId: Number(lookupMatch[1]), chainId };
   }
 
@@ -270,7 +322,11 @@ function parseIntent(message: Message): Intent {
     /(?:verify|check|is|has|does)\s+(?:agent\s*)?#?(\d+)/,
   );
   if (verifyMatch) {
-    const chainId = text.includes("mainnet") ? 42220 : text.includes("testnet") ? 11142220 : undefined;
+    const chainId = text.includes("mainnet")
+      ? 42220
+      : text.includes("testnet")
+        ? 11142220
+        : undefined;
     return { type: "verify", agentId: Number(verifyMatch[1]), chainId };
   }
 
@@ -322,7 +378,8 @@ async function handleRegister(
   req?: NextRequest,
 ): Promise<Task> {
   // wallet-free and ed25519 modes don't need a human address — the server generates everything
-  const isWalletFree = intent.mode === "wallet-free" || intent.mode === "ed25519";
+  const isWalletFree =
+    intent.mode === "wallet-free" || intent.mode === "ed25519";
 
   if (!intent.humanAddress && !isWalletFree) {
     // Non-wallet-free modes need a human address
@@ -409,7 +466,7 @@ async function handleRegister(
           message: {
             role: "agent",
             parts: textParts(
-              `Registration failed: ${result.error || "Unknown error"}`,
+              `Registration failed: ${typeof result.error === "string" ? result.error : JSON.stringify(result.error) || "Unknown error"}`,
             ),
           },
           timestamp: new Date().toISOString(),
@@ -469,7 +526,7 @@ async function handleRegister(
             ...qrParts,
             ...textParts(
               "",
-              `Session expires at: ${result.expiresAt} (${Math.round((result.timeRemainingMs as number) / 1000)}s remaining)`,
+              `Session expires at: ${String(result.expiresAt)} (${Math.round((result.timeRemainingMs as number) / 1000)}s remaining)`,
               "",
               "To check status, send:",
               `  { "intent": "status", "taskId": "${taskId}" }`,
@@ -607,7 +664,7 @@ async function handleRegisterStatus(
             parts: [
               ...textParts(
                 "Registration complete! The agent is now verified on-chain.",
-                `Agent ID: ${result.agentId}`,
+                `Agent ID: ${String(result.agentId)}`,
               ),
               dataPart({
                 stage: "completed",
@@ -644,7 +701,9 @@ async function handleRegisterStatus(
           state: "failed",
           message: {
             role: "agent",
-            parts: textParts("Registration failed. The proof was rejected or the user cancelled."),
+            parts: textParts(
+              "Registration failed. The proof was rejected or the user cancelled.",
+            ),
           },
           timestamp: new Date().toISOString(),
         },
@@ -662,9 +721,10 @@ async function handleRegisterStatus(
 
     // Still in progress (qr-ready or proof-received)
     const timeRemaining = result.timeRemainingMs as number;
-    const expiryWarning = timeRemaining < 120_000
-      ? `Warning: Session expires in ${Math.round(timeRemaining / 1000)}s. If it expires, you'll need to restart registration.`
-      : "";
+    const expiryWarning =
+      timeRemaining < 120_000
+        ? `Warning: Session expires in ${Math.round(timeRemaining / 1000)}s. If it expires, you'll need to restart registration.`
+        : "";
 
     return {
       id: taskId,
@@ -734,19 +794,25 @@ async function handleLookup(
     const rpc = new ethers.JsonRpcProvider(config.rpc);
     const registry = typedRegistry(config.registry, rpc);
 
-    const [agentKey, hasProof, providerAddr, registeredAt, credentials, proofExpiry] =
-      await Promise.all([
-        registry.agentIdToAgentKey(BigInt(agentId)),
-        registry.hasHumanProof(BigInt(agentId)),
-        registry.getProofProvider(BigInt(agentId)),
-        registry.agentRegisteredAt(BigInt(agentId)),
-        registry.getAgentCredentials(BigInt(agentId)) as Promise<{
-          nationality: string;
-          olderThan: bigint;
-          ofac: [boolean, boolean, boolean];
-        }>,
-        registry.proofExpiresAt(BigInt(agentId)).catch(() => 0n),
-      ]);
+    const [
+      agentKey,
+      hasProof,
+      providerAddr,
+      registeredAt,
+      credentials,
+      proofExpiry,
+    ] = await Promise.all([
+      registry.agentIdToAgentKey(BigInt(agentId)),
+      registry.hasHumanProof(BigInt(agentId)),
+      registry.getProofProvider(BigInt(agentId)),
+      registry.agentRegisteredAt(BigInt(agentId)),
+      registry.getAgentCredentials(BigInt(agentId)) as Promise<{
+        nationality: string;
+        olderThan: bigint;
+        ofac: [boolean, boolean, boolean];
+      }>,
+      registry.proofExpiresAt(BigInt(agentId)).catch(() => 0n),
+    ]);
 
     if (agentKey === ethers.ZeroHash) {
       return {
@@ -775,11 +841,14 @@ async function handleLookup(
 
     // Compute expiry fields
     const proofExpiresAtMs = Number(proofExpiry) * 1000;
-    const daysUntilExpiry = proofExpiresAtMs > 0
-      ? Math.floor((proofExpiresAtMs - Date.now()) / (1000 * 60 * 60 * 24))
-      : null;
-    const isExpiringSoon = daysUntilExpiry !== null && daysUntilExpiry >= 0 && daysUntilExpiry <= 30;
-    const proofExpiresAtISO = proofExpiresAtMs > 0 ? new Date(proofExpiresAtMs).toISOString() : null;
+    const daysUntilExpiry =
+      proofExpiresAtMs > 0
+        ? Math.floor((proofExpiresAtMs - Date.now()) / (1000 * 60 * 60 * 24))
+        : null;
+    const isExpiringSoon =
+      daysUntilExpiry !== null && daysUntilExpiry >= 0 && daysUntilExpiry <= 30;
+    const proofExpiresAtISO =
+      proofExpiresAtMs > 0 ? new Date(proofExpiresAtMs).toISOString() : null;
 
     return {
       id: taskId,
@@ -797,8 +866,14 @@ async function handleLookup(
               `- Age verified: ${Number(credentials.olderThan) > 0 ? `${credentials.olderThan}+` : "No"}`,
               `- OFAC screened: ${credentials.ofac?.[0] ? "Yes" : "No"}`,
               `- Registered: ${new Date(Number(registeredAt) * 1000).toISOString()}`,
-              ...(proofExpiresAtISO ? [`- Proof expires: ${proofExpiresAtISO}${daysUntilExpiry !== null ? ` (${daysUntilExpiry} days)` : ""}`] : []),
-              ...(isExpiringSoon ? ["- WARNING: Proof is expiring soon! Consider refreshing."] : []),
+              ...(proofExpiresAtISO
+                ? [
+                    `- Proof expires: ${proofExpiresAtISO}${daysUntilExpiry !== null ? ` (${daysUntilExpiry} days)` : ""}`,
+                  ]
+                : []),
+              ...(isExpiringSoon
+                ? ["- WARNING: Proof is expiring soon! Consider refreshing."]
+                : []),
             ),
             dataPart({
               agentId,
@@ -825,7 +900,11 @@ async function handleLookup(
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("coalesce") || msg.includes("BAD_DATA") || msg.includes("ERC721")) {
+    if (
+      msg.includes("coalesce") ||
+      msg.includes("BAD_DATA") ||
+      msg.includes("ERC721")
+    ) {
       return {
         id: taskId,
         status: {
@@ -892,11 +971,14 @@ async function handleVerify(
 
     // Compute expiry fields
     const proofExpiresAtMs = Number(proofExpiry) * 1000;
-    const daysUntilExpiry = proofExpiresAtMs > 0
-      ? Math.floor((proofExpiresAtMs - Date.now()) / (1000 * 60 * 60 * 24))
-      : null;
-    const isExpiringSoon = daysUntilExpiry !== null && daysUntilExpiry >= 0 && daysUntilExpiry <= 30;
-    const proofExpiresAtISO = proofExpiresAtMs > 0 ? new Date(proofExpiresAtMs).toISOString() : null;
+    const daysUntilExpiry =
+      proofExpiresAtMs > 0
+        ? Math.floor((proofExpiresAtMs - Date.now()) / (1000 * 60 * 60 * 24))
+        : null;
+    const isExpiringSoon =
+      daysUntilExpiry !== null && daysUntilExpiry >= 0 && daysUntilExpiry <= 30;
+    const proofExpiresAtISO =
+      proofExpiresAtMs > 0 ? new Date(proofExpiresAtMs).toISOString() : null;
 
     return {
       id: taskId,
@@ -911,8 +993,14 @@ async function handleVerify(
                 : hasProof && !isFresh
                   ? `Agent #${agentId} has a human proof but it has expired.`
                   : `Agent #${agentId} does not have a human proof.`,
-              ...(proofExpiresAtISO && hasProof ? [`Proof expires: ${proofExpiresAtISO}${daysUntilExpiry !== null ? ` (${daysUntilExpiry} days remaining)` : ""}`] : []),
-              ...(isExpiringSoon ? ["WARNING: Proof is expiring soon! Consider refreshing."] : []),
+              ...(proofExpiresAtISO && hasProof
+                ? [
+                    `Proof expires: ${proofExpiresAtISO}${daysUntilExpiry !== null ? ` (${daysUntilExpiry} days remaining)` : ""}`,
+                  ]
+                : []),
+              ...(isExpiringSoon
+                ? ["WARNING: Proof is expiring soon! Consider refreshing."]
+                : []),
             ),
             dataPart({
               agentId,
@@ -955,7 +1043,14 @@ async function handleDeregister(
   if (!config) {
     return {
       id: taskId,
-      status: { state: "failed", message: { role: "agent", parts: textParts(`Unsupported chain: ${cid}`) }, timestamp: new Date().toISOString() },
+      status: {
+        state: "failed",
+        message: {
+          role: "agent",
+          parts: textParts(`Unsupported chain: ${cid}`),
+        },
+        timestamp: new Date().toISOString(),
+      },
     };
   }
 
@@ -971,13 +1066,22 @@ async function handleDeregister(
     if (agentKey === ethers.ZeroHash) {
       return {
         id: taskId,
-        status: { state: "failed", message: { role: "agent", parts: textParts(`Agent #${intent.agentId} not found on-chain.`) }, timestamp: new Date().toISOString() },
+        status: {
+          state: "failed",
+          message: {
+            role: "agent",
+            parts: textParts(`Agent #${intent.agentId} not found on-chain.`),
+          },
+          timestamp: new Date().toISOString(),
+        },
       };
     }
 
     const agentAddress = ethers.getAddress("0x" + agentKey.slice(-40));
 
-    const fetchHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    const fetchHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
     const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
     if (bypassSecret) fetchHeaders["x-vercel-protection-bypass"] = bypassSecret;
     const cookies = req?.headers.get("cookie");
@@ -999,7 +1103,12 @@ async function handleDeregister(
         id: taskId,
         status: {
           state: "failed",
-          message: { role: "agent", parts: textParts(`Deregistration failed: ${result.error || "Unknown error"}`) },
+          message: {
+            role: "agent",
+            parts: textParts(
+              `Deregistration failed: ${typeof result.error === "string" ? result.error : JSON.stringify(result.error) || "Unknown error"}`,
+            ),
+          },
           timestamp: new Date().toISOString(),
         },
       };
@@ -1010,11 +1119,19 @@ async function handleDeregister(
     try {
       const qrDataUrl = await generateQRBase64(deepLink);
       const base64 = qrDataUrl.split(",")[1];
-      qrParts = [{
-        type: "file" as const,
-        file: { name: "deregister-qr.png", mimeType: "image/png", bytes: base64 },
-      }];
-    } catch { /* QR gen failed — deep link still available */ }
+      qrParts = [
+        {
+          type: "file" as const,
+          file: {
+            name: "deregister-qr.png",
+            mimeType: "image/png",
+            bytes: base64,
+          },
+        },
+      ];
+    } catch {
+      /* QR gen failed — deep link still available */
+    }
 
     taskSessionStore.set(taskId, result.sessionToken as string);
 
@@ -1052,7 +1169,12 @@ async function handleDeregister(
       id: taskId,
       status: {
         state: "failed",
-        message: { role: "agent", parts: textParts(`Deregistration failed: ${err instanceof Error ? err.message : "Network error"}`) },
+        message: {
+          role: "agent",
+          parts: textParts(
+            `Deregistration failed: ${err instanceof Error ? err.message : "Network error"}`,
+          ),
+        },
         timestamp: new Date().toISOString(),
       },
     };
@@ -1068,7 +1190,14 @@ async function handleCheckFreshness(
   if (!config) {
     return {
       id: taskId,
-      status: { state: "failed", message: { role: "agent", parts: textParts(`Unsupported chain: ${cid}`) }, timestamp: new Date().toISOString() },
+      status: {
+        state: "failed",
+        message: {
+          role: "agent",
+          parts: textParts(`Unsupported chain: ${cid}`),
+        },
+        timestamp: new Date().toISOString(),
+      },
     };
   }
 
@@ -1103,7 +1232,9 @@ async function handleCheckFreshness(
           message: {
             role: "agent",
             parts: [
-              ...textParts(`Agent #${agentId} has no human proof. Registration required first.`),
+              ...textParts(
+                `Agent #${agentId} has no human proof. Registration required first.`,
+              ),
               dataPart({ agentId, hasProof: false, action: "register" }),
             ],
           },
@@ -1213,7 +1344,16 @@ async function handleCheckFreshness(
   } catch (err) {
     return {
       id: taskId,
-      status: { state: "failed", message: { role: "agent", parts: textParts(`Freshness check failed: ${err instanceof Error ? err.message : "Network error"}`) }, timestamp: new Date().toISOString() },
+      status: {
+        state: "failed",
+        message: {
+          role: "agent",
+          parts: textParts(
+            `Freshness check failed: ${err instanceof Error ? err.message : "Network error"}`,
+          ),
+        },
+        timestamp: new Date().toISOString(),
+      },
     };
   }
 }
@@ -1228,7 +1368,14 @@ async function handleRefreshProof(
   if (!config) {
     return {
       id: taskId,
-      status: { state: "failed", message: { role: "agent", parts: textParts(`Unsupported chain: ${cid}`) }, timestamp: new Date().toISOString() },
+      status: {
+        state: "failed",
+        message: {
+          role: "agent",
+          parts: textParts(`Unsupported chain: ${cid}`),
+        },
+        timestamp: new Date().toISOString(),
+      },
     };
   }
 
@@ -1236,7 +1383,9 @@ async function handleRefreshProof(
   const appUrl = getAppBaseUrl(req);
 
   try {
-    const fetchHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    const fetchHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
     const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
     if (bypassSecret) fetchHeaders["x-vercel-protection-bypass"] = bypassSecret;
     const cookies = req?.headers.get("cookie");
@@ -1255,7 +1404,12 @@ async function handleRefreshProof(
         id: taskId,
         status: {
           state: "failed",
-          message: { role: "agent", parts: textParts(`Proof refresh failed: ${result.error || "Unknown error"}`) },
+          message: {
+            role: "agent",
+            parts: textParts(
+              `Proof refresh failed: ${typeof result.error === "string" ? result.error : JSON.stringify(result.error) || "Unknown error"}`,
+            ),
+          },
           timestamp: new Date().toISOString(),
         },
       };
@@ -1266,11 +1420,19 @@ async function handleRefreshProof(
     try {
       const qrDataUrl = await generateQRBase64(deepLink);
       const base64 = qrDataUrl.split(",")[1];
-      qrParts = [{
-        type: "file" as const,
-        file: { name: "refresh-proof-qr.png", mimeType: "image/png", bytes: base64 },
-      }];
-    } catch { /* QR gen failed — deep link still available */ }
+      qrParts = [
+        {
+          type: "file" as const,
+          file: {
+            name: "refresh-proof-qr.png",
+            mimeType: "image/png",
+            bytes: base64,
+          },
+        },
+      ];
+    } catch {
+      /* QR gen failed — deep link still available */
+    }
 
     taskSessionStore.set(taskId, result.sessionToken as string);
 
@@ -1294,7 +1456,7 @@ async function handleRefreshProof(
               "3. Scan your passport (NFC chip) when prompted",
               "4. The proof will be refreshed on-chain automatically",
               "",
-              `Session expires at: ${result.expiresAt} (${Math.round((result.timeRemainingMs as number) / 1000)}s remaining)`,
+              `Session expires at: ${String(result.expiresAt)} (${Math.round((result.timeRemainingMs as number) / 1000)}s remaining)`,
               "",
               "To check status, send:",
               `  { "intent": "status", "taskId": "${taskId}" }`,
@@ -1321,7 +1483,12 @@ async function handleRefreshProof(
       id: taskId,
       status: {
         state: "failed",
-        message: { role: "agent", parts: textParts(`Proof refresh failed: ${err instanceof Error ? err.message : "Network error"}`) },
+        message: {
+          role: "agent",
+          parts: textParts(
+            `Proof refresh failed: ${err instanceof Error ? err.message : "Network error"}`,
+          ),
+        },
         timestamp: new Date().toISOString(),
       },
     };
@@ -1397,7 +1564,7 @@ function handleHelp(taskId: string): Task {
             '   Say: "Refresh proof for agent #5" or send { intent: "refresh-proof", agentId: 5 }',
             "   The human scans their passport again; the on-chain proof expiry is updated.",
             "",
-            "All queries default to mainnet (Celo). Add chainId: 11142220 or network: \"testnet\" for Celo Sepolia (mock documents via the Self app, no real passport needed).",
+            'All queries default to mainnet (Celo). Add chainId: 11142220 or network: "testnet" for Celo Sepolia (mock documents via the Self app, no real passport needed).',
           ),
         ],
       },
@@ -1461,7 +1628,12 @@ const registryTaskHandler: TaskHandler = {
         task = await handleRegister(intent, taskId, currentRequest);
         break;
       case "register-status":
-        task = await handleRegisterStatus(intent.sessionToken, taskId, undefined, currentRequest);
+        task = await handleRegisterStatus(
+          intent.sessionToken,
+          taskId,
+          undefined,
+          currentRequest,
+        );
         break;
       case "register-poll": {
         const storedToken = taskSessionStore.get(intent.taskId);
@@ -1481,7 +1653,12 @@ const registryTaskHandler: TaskHandler = {
             },
           };
         } else {
-          task = await handleRegisterStatus(storedToken, taskId, intent.taskId, currentRequest);
+          task = await handleRegisterStatus(
+            storedToken,
+            taskId,
+            intent.taskId,
+            currentRequest,
+          );
         }
         break;
       }
@@ -1495,10 +1672,19 @@ const registryTaskHandler: TaskHandler = {
         task = await handleDeregister(intent, taskId, currentRequest);
         break;
       case "check-freshness":
-        task = await handleCheckFreshness(intent.agentId, intent.chainId, taskId);
+        task = await handleCheckFreshness(
+          intent.agentId,
+          intent.chainId,
+          taskId,
+        );
         break;
       case "refresh-proof":
-        task = await handleRefreshProof(intent.agentId, intent.chainId, taskId, currentRequest);
+        task = await handleRefreshProof(
+          intent.agentId,
+          intent.chainId,
+          taskId,
+          currentRequest,
+        );
         break;
       case "help":
         task = handleHelp(taskId);
@@ -1535,16 +1721,16 @@ const registryTaskHandler: TaskHandler = {
 
     // Attach session and history
     task.sessionId = (metadata?.sessionId as string) || undefined;
-    task.history = [message, ...(task.status.message ? [task.status.message] : [])];
+    task.history = [
+      message,
+      ...(task.status.message ? [task.status.message] : []),
+    ];
 
     taskStore.set(taskId, task);
     return task;
   },
 
-  async onGetTask(
-    taskId: string,
-    historyLength?: number,
-  ): Promise<Task> {
+  onGetTask(taskId: string, historyLength?: number): Promise<Task> {
     const task = taskStore.get(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
@@ -1556,7 +1742,7 @@ const registryTaskHandler: TaskHandler = {
     return task;
   },
 
-  async onCancelTask(taskId: string): Promise<Task> {
+  onCancelTask(taskId: string): Promise<Task> {
     const task = taskStore.get(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);

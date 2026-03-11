@@ -16,11 +16,11 @@ ED25519_SEED=<your-seed> OPENAI_API_KEY=<key> python agent.py
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `check_identity` | Check agent registration status |
-| `authenticated_request` | Make signed HTTP requests |
-| `verify_request` | Verify another agent's request |
+| Tool                    | Description                     |
+| ----------------------- | ------------------------------- |
+| `check_identity`        | Check agent registration status |
+| `authenticated_request` | Make signed HTTP requests       |
+| `verify_request`        | Verify another agent's request  |
 
 ## How It Works
 

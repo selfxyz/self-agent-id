@@ -503,7 +503,10 @@ export class SelfAgentVerifier {
     if (keytype === "ed25519") {
       // ── Ed25519 verification path ──
       if (!params.agentKey) {
-        return { ...empty, error: "Missing agent key for Ed25519 verification" };
+        return {
+          ...empty,
+          error: "Missing agent key for Ed25519 verification",
+        };
       }
 
       // Verify Ed25519 signature directly against the provided pubkey
@@ -529,7 +532,10 @@ export class SelfAgentVerifier {
 
       // 3. Recover signer address from signature (cryptographic — can't be faked)
       try {
-        signerAddress = ethers.verifyMessage(ethers.getBytes(message), signature);
+        signerAddress = ethers.verifyMessage(
+          ethers.getBytes(message),
+          signature,
+        );
       } catch {
         return { ...empty, error: "Invalid signature" };
       }
@@ -563,14 +569,19 @@ export class SelfAgentVerifier {
     } = await this.checkOnChain(agentKey);
 
     // Compute expiry fields from on-chain timestamp
-    const proofExpiresAt = proofExpiresAtTimestamp > 0n
-      ? new Date(Number(proofExpiresAtTimestamp) * 1000)
-      : undefined;
+    const proofExpiresAt =
+      proofExpiresAtTimestamp > 0n
+        ? new Date(Number(proofExpiresAtTimestamp) * 1000)
+        : undefined;
     const now = Math.floor(Date.now() / 1000);
-    const daysUntilExpiry = proofExpiresAtTimestamp > 0n
-      ? Math.floor((Number(proofExpiresAtTimestamp) - now) / 86400)
-      : undefined;
-    const isExpiringSoon = daysUntilExpiry !== undefined && daysUntilExpiry >= 0 && daysUntilExpiry <= 30;
+    const daysUntilExpiry =
+      proofExpiresAtTimestamp > 0n
+        ? Math.floor((Number(proofExpiresAtTimestamp) - now) / 86400)
+        : undefined;
+    const isExpiringSoon =
+      daysUntilExpiry !== undefined &&
+      daysUntilExpiry >= 0 &&
+      daysUntilExpiry <= 30;
 
     if (!isVerified) {
       return {
@@ -989,8 +1000,7 @@ export class SelfAgentVerifier {
         typeof timestampHeader === "string" ? timestampHeader : undefined;
       const keytype =
         typeof keytypeHeader === "string" ? keytypeHeader : undefined;
-      const agentKey =
-        typeof keyHeader === "string" ? keyHeader : undefined;
+      const agentKey = typeof keyHeader === "string" ? keyHeader : undefined;
 
       if (!signature || !timestamp) {
         res.status(401).json({ error: "Missing agent authentication headers" });

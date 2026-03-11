@@ -20,8 +20,7 @@
 import { Ed25519Agent, SelfAgentVerifier } from "@selfxyz/agent-sdk";
 import { randomBytes } from "crypto";
 
-const BASE_URL =
-  process.env.DEMO_BASE_URL || "https://app.ai.self.xyz";
+const BASE_URL = process.env.DEMO_BASE_URL || "https://app.ai.self.xyz";
 const NETWORK = process.env.NETWORK || "celo-sepolia";
 const SKIP_REGISTRATION = process.env.SKIP_REGISTRATION === "1";
 
@@ -106,9 +105,7 @@ async function waitForRegistration() {
 
   console.log("--- Registration Required ---");
   console.log("Register this agent at:");
-  console.log(
-    `  ${BASE_URL}/register?network=${NETWORK}`,
-  );
+  console.log(`  ${BASE_URL}/register?network=${NETWORK}`);
   console.log(`  Seed: ${seed}`);
   console.log("\nPolling for registration status...");
 
@@ -184,10 +181,7 @@ async function testService() {
     console.log("  PASS");
     results["service"] = "pass";
   } catch (err) {
-    console.log(
-      "  FAIL:",
-      err instanceof Error ? err.message : err,
-    );
+    console.log("  FAIL:", err instanceof Error ? err.message : err);
     results["service"] = "fail";
   }
 }
@@ -228,10 +222,7 @@ async function testPeer() {
     console.log("  PASS");
     results["peer"] = "pass";
   } catch (err) {
-    console.log(
-      "  FAIL:",
-      err instanceof Error ? err.message : err,
-    );
+    console.log("  FAIL:", err instanceof Error ? err.message : err);
     results["peer"] = "fail";
   }
 }
@@ -276,10 +267,7 @@ async function testGate() {
       results["gate"] = "fail";
     }
   } catch (err) {
-    console.log(
-      "  FAIL:",
-      err instanceof Error ? err.message : err,
-    );
+    console.log("  FAIL:", err instanceof Error ? err.message : err);
     results["gate"] = "fail";
   }
 }
@@ -319,10 +307,7 @@ async function testChat() {
       results["chat"] = "pass";
     }
   } catch (err) {
-    console.log(
-      "  FAIL:",
-      err instanceof Error ? err.message : err,
-    );
+    console.log("  FAIL:", err instanceof Error ? err.message : err);
     results["chat"] = "fail";
   }
 }
@@ -349,8 +334,6 @@ for (const [test, result] of Object.entries(results)) {
 const passCount = Object.values(results).filter((r) => r === "pass").length;
 const failCount = Object.values(results).filter((r) => r === "fail").length;
 const skipCount = Object.values(results).filter((r) => r === "skip").length;
-console.log(
-  `\n${passCount} passed, ${failCount} failed, ${skipCount} skipped`,
-);
+console.log(`\n${passCount} passed, ${failCount} failed, ${skipCount} skipped`);
 
 process.exit(allPass ? 0 : 1);

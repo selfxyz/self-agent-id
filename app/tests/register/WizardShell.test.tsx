@@ -14,7 +14,9 @@ vi.mock("@/app/agents/register/steps/ModeSelector", () => ({
   ModeSelector: ({ onSelect, onBack }: any) => (
     <div>
       <button onClick={() => onSelect("linked")}>Mock ModeSelector</button>
-      <button onClick={onBack} data-testid="wizard-back">Mock Back</button>
+      <button onClick={onBack} data-testid="wizard-back">
+        Mock Back
+      </button>
     </div>
   ),
 }));

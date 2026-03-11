@@ -5,7 +5,7 @@
 /**
  * Registration and deregistration flow management via the Self Agent ID REST API.
  *
- * These functions call the hosted API at self-agent-id.vercel.app by default
+ * These functions call the hosted API at app.ai.self.xyz by default
  * (or SELF_AGENT_API_BASE / a custom base URL) and return session objects
  * with polling capabilities.
  */
@@ -14,7 +14,7 @@ import type { NetworkName } from "./constants";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const DEFAULT_API_BASE = "https://self-agent-id.vercel.app";
+const DEFAULT_API_BASE = "https://app.ai.self.xyz";
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -27,7 +27,13 @@ const CHAIN_IDS: Record<NetworkName, number> = {
 
 export interface RegistrationRequest {
   /** Registration mode */
-  mode: "self-custody" | "linked" | "wallet-free" | "ed25519" | "ed25519-linked" | "smartwallet";
+  mode:
+    | "self-custody"
+    | "linked"
+    | "wallet-free"
+    | "ed25519"
+    | "ed25519-linked"
+    | "smartwallet";
   /** Network: "mainnet" (default) or "testnet" */
   network?: NetworkName;
   /** Credential disclosures to request */
@@ -42,7 +48,7 @@ export interface RegistrationRequest {
   agentName?: string;
   /** Agent description */
   agentDescription?: string;
-  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://self-agent-id.vercel.app) */
+  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://app.ai.self.xyz) */
   apiBase?: string;
 }
 
@@ -90,7 +96,7 @@ export interface ProofRefreshRequest {
     ofac?: boolean;
     nationality?: boolean;
   };
-  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://self-agent-id.vercel.app) */
+  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://app.ai.self.xyz) */
   apiBase?: string;
 }
 
@@ -126,7 +132,7 @@ export interface DeregistrationRequest {
     ofac?: boolean;
     nationality?: boolean;
   };
-  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://self-agent-id.vercel.app) */
+  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://app.ai.self.xyz) */
   apiBase?: string;
 }
 
@@ -546,7 +552,9 @@ function buildRefreshSession(
 
         if (status.stage === "completed") {
           // The status response includes the new proof expiry timestamp
-          const expiresAtRaw = (status as StatusResponse & { proofExpiresAt?: string }).proofExpiresAt;
+          const expiresAtRaw = (
+            status as StatusResponse & { proofExpiresAt?: string }
+          ).proofExpiresAt;
           const proofExpiresAt = expiresAtRaw
             ? new Date(expiresAtRaw)
             : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // fallback: 1 year from now

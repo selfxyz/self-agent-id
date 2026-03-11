@@ -51,7 +51,11 @@ import { useNetwork } from "@/lib/NetworkContext";
 import type { NetworkConfig } from "@/lib/network";
 import { TESTS } from "@/lib/demo-constants";
 
-import { typedDemoVerifier, typedDemoVerifierEd25519, typedRegistry } from "@/lib/contract-types";
+import {
+  typedDemoVerifier,
+  typedDemoVerifierEd25519,
+  typedRegistry,
+} from "@/lib/contract-types";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -1021,7 +1025,8 @@ async function runPeerTest(
     if (demoTs) log(id, `x-self-agent-timestamp: ${demoTs}`);
 
     if (demoSig && demoTs) {
-      const { SelfAgentVerifier: VerifierClass } = await import("@selfxyz/agent-sdk");
+      const { SelfAgentVerifier: VerifierClass } =
+        await import("@selfxyz/agent-sdk");
       const responseVerifier = new VerifierClass({
         registryAddress: net.registryAddress,
         rpcUrl: net.rpcUrl,
@@ -1213,7 +1218,10 @@ async function runGateTest(
   const totalStart = performance.now();
 
   try {
-    log(id, `Starting Agent-to-Chain test (${isEd25519 ? "Ed25519" : "ECDSA"})...`);
+    log(
+      id,
+      `Starting Agent-to-Chain test (${isEd25519 ? "Ed25519" : "ECDSA"})...`,
+    );
     log(id, `Agent: ${agentLabel}`);
 
     // Step 0: Read nonce + signing
@@ -1234,9 +1242,7 @@ async function runGateTest(
       agentKey = ed25519Agent.agentKey;
 
       if (!net.agentDemoVerifierEd25519Address) {
-        throw new Error(
-          `Ed25519 demo verifier not deployed on ${net.label}`,
-        );
+        throw new Error(`Ed25519 demo verifier not deployed on ${net.label}`);
       }
 
       const provider = new ethers.JsonRpcProvider(net.rpcUrl);
@@ -1624,7 +1630,8 @@ export default function DemoPage() {
       let agent: SelfAgent | Ed25519Agent;
       if (isEd25519) {
         bootLog("Detected Ed25519 key (64-char hex without 0x prefix)");
-        const { Ed25519Agent: Ed25519AgentClass } = await import("@selfxyz/agent-sdk");
+        const { Ed25519Agent: Ed25519AgentClass } =
+          await import("@selfxyz/agent-sdk");
         agent = new Ed25519AgentClass({
           privateKey: key,
           registryAddress: network.registryAddress,
@@ -2219,12 +2226,28 @@ export default function DemoPage() {
       );
       await runServiceTest(agent, agentLabel, dispatch, log, network);
       await runPeerTest(agent, agentLabel, dispatch, log, network);
-      await runGateTest(agent, pk, agentLabel, dispatch, log, network, keyTypeRef.current);
+      await runGateTest(
+        agent,
+        pk,
+        agentLabel,
+        dispatch,
+        log,
+        network,
+        keyTypeRef.current,
+      );
     } else {
       await Promise.all([
         runServiceTest(agent, agentLabel, dispatch, log, network),
         runPeerTest(agent, agentLabel, dispatch, log, network),
-        runGateTest(agent, pk, agentLabel, dispatch, log, network, keyTypeRef.current),
+        runGateTest(
+          agent,
+          pk,
+          agentLabel,
+          dispatch,
+          log,
+          network,
+          keyTypeRef.current,
+        ),
       ]);
     }
   }, [state.agent, loadedViaPasskey, walletAddress, log, network]);
@@ -2559,8 +2582,8 @@ export default function DemoPage() {
           ) : (
             <>
               <p className="text-xs text-muted mb-4">
-                Connect your browser wallet to load your agent. Your wallet
-                is used to look up agents registered under your address.
+                Connect your browser wallet to load your agent. Your wallet is
+                used to look up agents registered under your address.
               </p>
               {walletError && (
                 <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4">

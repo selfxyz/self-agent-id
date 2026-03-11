@@ -53,7 +53,7 @@ function checkRateLimit(nullifier: string): {
 // The agent signs a plain keccak256(agentKey, nonce, deadline) message.
 // ---------------------------------------------------------------------------
 
-export async function GET() {
+export function GET() {
   return demoEndpointDocs({
     endpoint: "/api/demo/chain-verify-ed25519",
     method: "POST",
@@ -69,7 +69,8 @@ export async function GET() {
       agentKey: "bytes32 — the agent's public key in the registry",
       nonce: "string — meta-tx nonce",
       deadline: "number — unix timestamp expiry",
-      extKpub: "array of 5 uint256 strings — Weierstrass coordinates of Ed25519 pubkey",
+      extKpub:
+        "array of 5 uint256 strings — Weierstrass coordinates of Ed25519 pubkey",
       sigR: "string — Ed25519 signature R component (uint256)",
       sigS: "string — Ed25519 signature S component (uint256)",
       "networkId?": "'celo-sepolia' (default) or 'celo-mainnet'",
@@ -175,13 +176,7 @@ export async function POST(req: NextRequest) {
           ? (rawNetworkId as NetworkId)
           : "celo-sepolia";
 
-      if (
-        !agentKey ||
-        !nonce ||
-        !Number.isFinite(deadline) ||
-        !sigR ||
-        !sigS
-      ) {
+      if (!agentKey || !nonce || !Number.isFinite(deadline) || !sigR || !sigS) {
         throw new Error("Missing fields");
       }
     } catch {
@@ -196,10 +191,7 @@ export async function POST(req: NextRequest) {
 
     // 3. Resolve network config
     const network = getNetwork(networkId);
-    if (
-      !network.registryAddress ||
-      !network.agentDemoVerifierEd25519Address
-    ) {
+    if (!network.registryAddress || !network.agentDemoVerifierEd25519Address) {
       return NextResponse.json(
         {
           error: `Network ${networkId} not configured for Ed25519 demo verification`,

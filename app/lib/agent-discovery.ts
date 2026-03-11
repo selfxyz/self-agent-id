@@ -24,7 +24,13 @@ export interface AgentDiscoveryJSON {
   privacy: string;
   registrationModes: Record<
     Mode,
-    { label: string; description: string; keyType: string; walletNeeded: boolean; bestFor: string }
+    {
+      label: string;
+      description: string;
+      keyType: string;
+      walletNeeded: boolean;
+      bestFor: string;
+    }
   >;
   modeDecisionTree: string;
   apiEndpoints: { path: string; description: string; method: string }[];
@@ -35,7 +41,13 @@ export interface AgentDiscoveryJSON {
   };
   networks: Record<
     NetworkId,
-    { label: string; chainId: number; registryAddress: string; rpcUrl: string; isTestnet: boolean }
+    {
+      label: string;
+      chainId: number;
+      registryAddress: string;
+      rpcUrl: string;
+      isTestnet: boolean;
+    }
   >;
   humanRequirement: string;
   sdkPackages: { npm: string; pypi: string; crates: string };
@@ -48,7 +60,10 @@ export function getAgentDiscoveryJSON(): AgentDiscoveryJSON {
   const base = appUrl();
 
   const registrationModes = {} as AgentDiscoveryJSON["registrationModes"];
-  for (const [mode, info] of Object.entries(MODE_INFO) as [Mode, (typeof MODE_INFO)[Mode]][]) {
+  for (const [mode, info] of Object.entries(MODE_INFO) as [
+    Mode,
+    (typeof MODE_INFO)[Mode],
+  ][]) {
     registrationModes[mode] = {
       label: info.label,
       description: info.shortDesc,
@@ -59,7 +74,10 @@ export function getAgentDiscoveryJSON(): AgentDiscoveryJSON {
   }
 
   const networks = {} as AgentDiscoveryJSON["networks"];
-  for (const [id, cfg] of Object.entries(NETWORKS) as [NetworkId, (typeof NETWORKS)[NetworkId]][]) {
+  for (const [id, cfg] of Object.entries(NETWORKS) as [
+    NetworkId,
+    (typeof NETWORKS)[NetworkId],
+  ][]) {
     networks[id] = {
       label: cfg.label,
       chainId: cfg.chainId,
@@ -82,23 +100,91 @@ export function getAgentDiscoveryJSON(): AgentDiscoveryJSON {
     modeDecisionTree:
       "Ed25519 keys? → yes → Guardian wallet? → yes: ed25519-linked, no: ed25519. No Ed25519? → Have wallet? → yes: linked, no → Want passkeys? → yes: smartwallet, Prefer social login? → yes: privy, Quick start: walletfree",
     apiEndpoints: [
-      { path: "/api/a2a", description: "A2A v0.3.0 JSON-RPC endpoint", method: "POST" },
-      { path: "/api/agent/register", description: "REST registration endpoint", method: "POST" },
-      { path: "/api/agent/register/ed25519-challenge", description: "Ed25519 challenge-response flow", method: "POST" },
-      { path: "/api/agent/register/status", description: "Poll registration status", method: "GET" },
-      { path: "/api/agent/deregister", description: "Deregister an agent (burn NFT)", method: "POST" },
-      { path: "/api/agent/deregister/status", description: "Poll deregistration status", method: "GET" },
-      { path: "/api/agent/refresh", description: "Refresh proof-of-human (re-verify)", method: "POST" },
-      { path: "/api/agent/refresh/status", description: "Poll refresh status", method: "GET" },
-      { path: "/api/agent/identify", description: "Identify agent from signed headers", method: "POST" },
-      { path: "/api/agent/identify/status", description: "Poll identification status", method: "GET" },
-      { path: "/api/agent/agents-by-nullifier/:chainId/:nullifier", description: "List all agents for a human nullifier", method: "GET" },
-      { path: "/api/demo/verify", description: "Demo: agent-to-service verification", method: "POST" },
-      { path: "/api/demo/agent-to-agent", description: "Demo: mutual agent verification + sameHuman", method: "POST" },
-      { path: "/api/demo/chain-verify", description: "Demo: on-chain ECDSA meta-tx verification", method: "POST" },
-      { path: "/api/demo/chain-verify-ed25519", description: "Demo: on-chain Ed25519 meta-tx verification", method: "POST" },
-      { path: "/api/demo/chat", description: "Demo: AI agent chat (LangChain proxy)", method: "POST" },
-      { path: "/api/demo/census", description: "Demo: anonymous credential census", method: "POST+GET" },
+      {
+        path: "/api/a2a",
+        description: "A2A v0.3.0 JSON-RPC endpoint",
+        method: "POST",
+      },
+      {
+        path: "/api/agent/register",
+        description: "REST registration endpoint",
+        method: "POST",
+      },
+      {
+        path: "/api/agent/register/ed25519-challenge",
+        description: "Ed25519 challenge-response flow",
+        method: "POST",
+      },
+      {
+        path: "/api/agent/register/status",
+        description: "Poll registration status",
+        method: "GET",
+      },
+      {
+        path: "/api/agent/deregister",
+        description: "Deregister an agent (burn NFT)",
+        method: "POST",
+      },
+      {
+        path: "/api/agent/deregister/status",
+        description: "Poll deregistration status",
+        method: "GET",
+      },
+      {
+        path: "/api/agent/refresh",
+        description: "Refresh proof-of-human (re-verify)",
+        method: "POST",
+      },
+      {
+        path: "/api/agent/refresh/status",
+        description: "Poll refresh status",
+        method: "GET",
+      },
+      {
+        path: "/api/agent/identify",
+        description: "Identify agent from signed headers",
+        method: "POST",
+      },
+      {
+        path: "/api/agent/identify/status",
+        description: "Poll identification status",
+        method: "GET",
+      },
+      {
+        path: "/api/agent/agents-by-nullifier/:chainId/:nullifier",
+        description: "List all agents for a human nullifier",
+        method: "GET",
+      },
+      {
+        path: "/api/demo/verify",
+        description: "Demo: agent-to-service verification",
+        method: "POST",
+      },
+      {
+        path: "/api/demo/agent-to-agent",
+        description: "Demo: mutual agent verification + sameHuman",
+        method: "POST",
+      },
+      {
+        path: "/api/demo/chain-verify",
+        description: "Demo: on-chain ECDSA meta-tx verification",
+        method: "POST",
+      },
+      {
+        path: "/api/demo/chain-verify-ed25519",
+        description: "Demo: on-chain Ed25519 meta-tx verification",
+        method: "POST",
+      },
+      {
+        path: "/api/demo/chat",
+        description: "Demo: AI agent chat (LangChain proxy)",
+        method: "POST",
+      },
+      {
+        path: "/api/demo/census",
+        description: "Demo: anonymous credential census",
+        method: "POST+GET",
+      },
     ],
     erc8004: {
       description:
@@ -135,7 +221,9 @@ export function getAgentDiscoveryText(): string {
   const mainnet = NETWORKS["celo-mainnet"];
   const sepolia = NETWORKS["celo-sepolia"];
 
-  const modeLines = (Object.entries(MODE_INFO) as [Mode, (typeof MODE_INFO)[Mode]][])
+  const modeLines = (
+    Object.entries(MODE_INFO) as [Mode, (typeof MODE_INFO)[Mode]][]
+  )
     .map(
       ([mode, info]) =>
         `  - ${mode}: ${info.label} — ${info.shortDesc} (key: ${info.keyType}, wallet needed: ${info.walletNeeded ? "yes" : "no"}, best for: ${info.bestFor})`,
@@ -417,7 +505,11 @@ export interface AgentCard {
     stateTransitionHistory: boolean;
     extendedAgentCard: boolean;
   };
-  supportedInterfaces: { url: string; protocolBinding: string; protocolVersion: string }[];
+  supportedInterfaces: {
+    url: string;
+    protocolBinding: string;
+    protocolVersion: string;
+  }[];
   defaultInputModes: string[];
   defaultOutputModes: string[];
   skills: {
@@ -482,7 +574,9 @@ export function getAgentCardJSON(): AgentCard {
         name: "Registration Status",
         description: "Check the progress of an in-flight agent registration.",
         tags: ["identity", "registration", "status"],
-        examples: ['{ "intent": "register-status", "sessionToken": "<token>" }'],
+        examples: [
+          '{ "intent": "register-status", "sessionToken": "<token>" }',
+        ],
         inputModes: ["application/json"],
         outputModes: ["text/plain", "application/json"],
       },

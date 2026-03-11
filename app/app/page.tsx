@@ -109,7 +109,8 @@ export default function Home() {
                     you can ensure{" "}
                     <strong className="text-foreground">
                       1 agent = 1 human
-                    </strong>.
+                    </strong>
+                    .
                   </p>
                 </div>
               </div>
@@ -301,7 +302,8 @@ export default function Home() {
         <div className="max-w-5xl mx-auto">
           <h2 className="text-3xl font-bold text-center mb-4">How It Works</h2>
           <p className="text-center text-muted mb-12 max-w-2xl mx-auto">
-            Two ways to register your agent &mdash; use the guided wizard or integrate directly with the SDK.
+            Two ways to register your agent &mdash; use the guided wizard or
+            integrate directly with the SDK.
           </p>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -312,7 +314,9 @@ export default function Home() {
                   <ScanLine size={20} className="text-accent" />
                 </div>
                 <div>
-                  <Badge variant="info" className="mb-1">Guided</Badge>
+                  <Badge variant="info" className="mb-1">
+                    Guided
+                  </Badge>
                   <h3 className="font-bold text-lg">Web Registration Wizard</h3>
                 </div>
               </div>
@@ -339,8 +343,12 @@ export default function Home() {
                       {item.step}
                     </span>
                     <div>
-                      <p className="font-semibold text-sm text-foreground">{item.title}</p>
-                      <p className="text-sm text-muted leading-relaxed">{item.desc}</p>
+                      <p className="font-semibold text-sm text-foreground">
+                        {item.title}
+                      </p>
+                      <p className="text-sm text-muted leading-relaxed">
+                        {item.desc}
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -361,8 +369,12 @@ export default function Home() {
                   <Code2 size={20} className="text-accent-2" />
                 </div>
                 <div>
-                  <Badge variant="muted" className="mb-1">Programmatic</Badge>
-                  <h3 className="font-bold text-lg">SDK &amp; CLI Registration</h3>
+                  <Badge variant="muted" className="mb-1">
+                    Programmatic
+                  </Badge>
+                  <h3 className="font-bold text-lg">
+                    SDK &amp; CLI Registration
+                  </h3>
                 </div>
               </div>
               <div className="flex flex-col gap-4 flex-1">
@@ -388,8 +400,12 @@ export default function Home() {
                       {item.step}
                     </span>
                     <div>
-                      <p className="font-semibold text-sm text-foreground">{item.title}</p>
-                      <p className="text-sm text-muted leading-relaxed">{item.desc}</p>
+                      <p className="font-semibold text-sm text-foreground">
+                        {item.title}
+                      </p>
+                      <p className="text-sm text-muted leading-relaxed">
+                        {item.desc}
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -411,8 +427,13 @@ export default function Home() {
                 <Zap size={20} className="text-accent-success" />
               </div>
               <div className="text-left">
-                <p className="font-bold text-sm">Either way, services verify instantly</p>
-                <p className="text-sm text-muted">Any service can check your agent&apos;s identity with a single API call. No extra setup needed.</p>
+                <p className="font-bold text-sm">
+                  Either way, services verify instantly
+                </p>
+                <p className="text-sm text-muted">
+                  Any service can check your agent&apos;s identity with a single
+                  API call. No extra setup needed.
+                </p>
               </div>
             </Card>
           </div>
@@ -702,7 +723,6 @@ const res = await agent.fetch(url);`,
           </div>
         </div>
       </section>
-
     </main>
   );
 }

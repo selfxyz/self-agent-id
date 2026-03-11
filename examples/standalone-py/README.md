@@ -21,7 +21,7 @@ ED25519_SEED=<your-seed> python agent.py
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `ED25519_SEED` | 64-char hex Ed25519 seed | Random (generated) |
-| `SERVICE_URL` | Target service URL | `http://localhost:3000/api/demo/verify` |
+| Variable       | Description              | Default                                 |
+| -------------- | ------------------------ | --------------------------------------- |
+| `ED25519_SEED` | 64-char hex Ed25519 seed | Random (generated)                      |
+| `SERVICE_URL`  | Target service URL       | `http://localhost:3000/api/demo/verify` |

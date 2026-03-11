@@ -8,10 +8,7 @@ import { ethers } from "ethers";
 import { HEADERS, NETWORKS, DEFAULT_NETWORK } from "./constants";
 import type { NetworkName } from "./constants";
 import { computeSigningMessage } from "./signing";
-import {
-  typedRegistry,
-  type TypedRegistryContract,
-} from "./contract-types";
+import { typedRegistry, type TypedRegistryContract } from "./contract-types";
 
 // @noble/ed25519 v3 requires a SHA-512 implementation for sync methods (getPublicKey, sign, verify).
 // Use Node's built-in crypto module.

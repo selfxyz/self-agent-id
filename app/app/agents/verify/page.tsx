@@ -78,7 +78,14 @@ interface AgentInfo {
   registeredAt: bigint;
   guardian: string;
   metadata: string;
-  mode: "self-custody" | "linked" | "walletfree" | "ed25519" | "ed25519-linked" | "smartwallet" | "privy";
+  mode:
+    | "self-custody"
+    | "linked"
+    | "walletfree"
+    | "ed25519"
+    | "ed25519-linked"
+    | "smartwallet"
+    | "privy";
   isSmartWallet: boolean;
   credentials?: AgentCredentials;
   verificationStrength?: number;
@@ -244,15 +251,18 @@ function VerifyContent() {
           }
 
           // Detect mode based on key type and ownership
-          const isEd25519Key = keyHash.slice(2, 26) !== "000000000000000000000000";
+          const isEd25519Key =
+            keyHash.slice(2, 26) !== "000000000000000000000000";
           const agentAddress = "0x" + keyHash.slice(26);
           let mode: AgentInfo["mode"] = "linked";
           if (isEd25519Key) {
             // Ed25519 key — first 12 bytes are non-zero (not a zero-padded EVM address)
-            mode = guardian !== ethers.ZeroAddress ? "ed25519-linked" : "ed25519";
+            mode =
+              guardian !== ethers.ZeroAddress ? "ed25519-linked" : "ed25519";
           } else if (owner !== ethers.ZeroAddress) {
             if (agentAddress.toLowerCase() === owner.toLowerCase()) {
-              mode = guardian !== ethers.ZeroAddress ? "walletfree" : "self-custody";
+              mode =
+                guardian !== ethers.ZeroAddress ? "walletfree" : "self-custody";
             } else if (isSmartWallet) {
               mode = "smartwallet";
             }
@@ -368,7 +378,10 @@ function VerifyContent() {
     if (agentInfo.mode === "self-custody" || agentInfo.mode === "ed25519") {
       // No guardian — deregister via passport scan
       userDefinedData = "D0";
-      userId = agentInfo.mode === "ed25519" ? resolvedKey.slice(2) : (walletAddress || agentAddress);
+      userId =
+        agentInfo.mode === "ed25519"
+          ? resolvedKey.slice(2)
+          : walletAddress || agentAddress;
     } else if (agentInfo.mode === "walletfree") {
       // Wallet-free: deregister via passport scan
       userDefinedData = "D0";
@@ -486,22 +499,27 @@ function VerifyContent() {
                       className={`text-xs px-2 py-0.5 rounded-full ${
                         agentInfo.mode === "self-custody"
                           ? "bg-surface-2 text-muted"
-                          : agentInfo.mode === "ed25519" || agentInfo.mode === "ed25519-linked"
+                          : agentInfo.mode === "ed25519" ||
+                              agentInfo.mode === "ed25519-linked"
                             ? "bg-purple-500/10 text-purple-400"
-                            : agentInfo.mode === "linked" || agentInfo.mode === "smartwallet" || agentInfo.mode === "privy"
+                            : agentInfo.mode === "linked" ||
+                                agentInfo.mode === "smartwallet" ||
+                                agentInfo.mode === "privy"
                               ? "bg-accent/10 text-accent"
                               : "bg-accent-2/10 text-accent-2"
                       }`}
                     >
-                      {({
-                        "self-custody": "Direct Ownership",
-                        linked: "Linked Agent",
-                        walletfree: "Wallet-Free",
-                        smartwallet: "Smart Wallet",
-                        privy: "Social Login (Privy)",
-                        ed25519: "Ed25519",
-                        "ed25519-linked": "Ed25519 + Guardian",
-                      })[agentInfo.mode]}
+                      {
+                        {
+                          "self-custody": "Direct Ownership",
+                          linked: "Linked Agent",
+                          walletfree: "Wallet-Free",
+                          smartwallet: "Smart Wallet",
+                          privy: "Social Login (Privy)",
+                          ed25519: "Ed25519",
+                          "ed25519-linked": "Ed25519 + Guardian",
+                        }[agentInfo.mode]
+                      }
                     </span>
                     {agentInfo.isSmartWallet && (
                       <Badge variant="success">
@@ -761,7 +779,8 @@ function VerifyContent() {
 
           {agentInfo.isVerified && (
             <div className="w-full mt-2">
-              {agentInfo.mode === "walletfree" || agentInfo.mode === "ed25519" ? (
+              {agentInfo.mode === "walletfree" ||
+              agentInfo.mode === "ed25519" ? (
                 // Wallet-free / Ed25519 (no guardian): deregister via passport scan
                 !showDeregister ? (
                   <Button onClick={handleDeregister} variant="danger" size="sm">

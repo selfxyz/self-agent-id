@@ -29,7 +29,8 @@ export async function GET(
     const rpc = new ethers.JsonRpcProvider(config.rpc);
     const registry = typedRegistry(config.registry, rpc);
 
-    const agentIds: bigint[] = await registry.getAgentsForNullifier(nullifierBigInt);
+    const agentIds: bigint[] =
+      await registry.getAgentsForNullifier(nullifierBigInt);
 
     if (agentIds.length === 0) {
       return NextResponse.json(

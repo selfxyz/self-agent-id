@@ -16,8 +16,7 @@ import { randomBytes } from "crypto";
 // ── 1. Generate or load keypair ──────────────────────────────────────────────
 
 // In production, persist this seed securely (env var, vault, HSM).
-const seed =
-  process.env.ED25519_SEED || randomBytes(32).toString("hex");
+const seed = process.env.ED25519_SEED || randomBytes(32).toString("hex");
 
 console.log("Ed25519 seed:", seed);
 

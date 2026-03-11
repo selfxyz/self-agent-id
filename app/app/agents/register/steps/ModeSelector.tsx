@@ -6,8 +6,16 @@
 
 import React, { useState, useMemo } from "react";
 import {
-  Key, Smartphone, Fingerprint, Terminal, Wallet,
-  ChevronDown, ChevronUp, Shield, Zap, Info,
+  Key,
+  Smartphone,
+  Fingerprint,
+  Terminal,
+  Wallet,
+  ChevronDown,
+  ChevronUp,
+  Shield,
+  Zap,
+  Info,
 } from "lucide-react";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
@@ -50,11 +58,18 @@ const ICON_MAP: Record<ModeIcon, React.ComponentType<any>> = {
 };
 
 const ALL_MODES: Mode[] = [
-  "linked", "walletfree", "smartwallet", "privy", "ed25519", "ed25519-linked",
+  "linked",
+  "walletfree",
+  "smartwallet",
+  "privy",
+  "ed25519",
+  "ed25519-linked",
 ];
 
 function availableModes(): Mode[] {
-  return isPrivyConfigured() ? ALL_MODES : ALL_MODES.filter((m) => m !== "privy");
+  return isPrivyConfigured()
+    ? ALL_MODES
+    : ALL_MODES.filter((m) => m !== "privy");
 }
 
 export function ModeSelector({ role, onSelect, onBack }: ModeSelectorProps) {
@@ -73,8 +88,10 @@ export function ModeSelector({ role, onSelect, onBack }: ModeSelectorProps) {
             Does your agent already have signing keys?
           </h2>
           <p className="text-sm text-muted text-center max-w-md mx-auto">
-            Agents built with OpenClaw, IronClaw, ZeroClaw, OpenFang etc., or ElizaOS typically have Ed25519 keys.
-            Most other frameworks (CrewAI, AutoGen, LangChain, etc.) do not — pick &ldquo;No&rdquo; and we&apos;ll generate keys.
+            Agents built with OpenClaw, IronClaw, ZeroClaw, OpenFang etc., or
+            ElizaOS typically have Ed25519 keys. Most other frameworks (CrewAI,
+            AutoGen, LangChain, etc.) do not — pick &ldquo;No&rdquo; and
+            we&apos;ll generate keys.
           </p>
 
           <button
@@ -95,10 +112,13 @@ export function ModeSelector({ role, onSelect, onBack }: ModeSelectorProps) {
             >
               <div className="flex items-center gap-2 mb-2">
                 <Terminal size={18} className="text-accent" />
-                <span className="font-bold text-sm">Yes, my agent has Ed25519 keys</span>
+                <span className="font-bold text-sm">
+                  Yes, my agent has Ed25519 keys
+                </span>
               </div>
               <p className="text-xs text-muted">
-                I&apos;ll paste my agent&apos;s existing public key. Common with OpenClaw, ElizaOS, and similar frameworks.
+                I&apos;ll paste my agent&apos;s existing public key. Common with
+                OpenClaw, ElizaOS, and similar frameworks.
               </p>
             </button>
 
@@ -113,7 +133,8 @@ export function ModeSelector({ role, onSelect, onBack }: ModeSelectorProps) {
                 <span className="font-bold text-sm">No / Not sure</span>
               </div>
               <p className="text-xs text-muted">
-                Works with any agent. We&apos;ll generate keys and you choose how to secure it.
+                Works with any agent. We&apos;ll generate keys and you choose
+                how to secure it.
               </p>
             </button>
           </div>
@@ -136,8 +157,9 @@ export function ModeSelector({ role, onSelect, onBack }: ModeSelectorProps) {
             How do you want to secure this?
           </h2>
           <p className="text-sm text-muted text-center max-w-md mx-auto">
-            We&apos;ll generate a fresh keypair for your agent.
-            Choose how <strong className="text-foreground">you</strong> (the human) want to control it.
+            We&apos;ll generate a fresh keypair for your agent. Choose how{" "}
+            <strong className="text-foreground">you</strong> (the human) want to
+            control it.
           </p>
 
           <div className="space-y-3">
@@ -154,12 +176,15 @@ export function ModeSelector({ role, onSelect, onBack }: ModeSelectorProps) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-sm">Quick start — no wallet needed</span>
+                    <span className="font-bold text-sm">
+                      Quick start — no wallet needed
+                    </span>
                     <Badge variant="success">easiest</Badge>
                   </div>
                   <p className="text-xs text-muted mt-1">
-                    No wallet or crypto knowledge needed. Just your passport and the Self app.
-                    Revoke anytime by scanning your passport again.
+                    No wallet or crypto knowledge needed. Just your passport and
+                    the Self app. Revoke anytime by scanning your passport
+                    again.
                   </p>
                 </div>
               </div>
@@ -177,10 +202,13 @@ export function ModeSelector({ role, onSelect, onBack }: ModeSelectorProps) {
                   <Fingerprint size={20} className="text-accent" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <span className="font-bold text-sm">Face ID / fingerprint</span>
+                  <span className="font-bold text-sm">
+                    Face ID / fingerprint
+                  </span>
                   <p className="text-xs text-muted mt-1">
-                    Create a passkey-secured smart wallet. No browser extension, no seed phrase.
-                    Your passkey becomes the <span className="font-semibold text-accent">guardian</span>.
+                    Create a passkey-secured smart wallet. No browser extension,
+                    no seed phrase. Your passkey becomes the{" "}
+                    <span className="font-semibold text-accent">guardian</span>.
                   </p>
                 </div>
               </div>
@@ -199,10 +227,16 @@ export function ModeSelector({ role, onSelect, onBack }: ModeSelectorProps) {
                     <PrivyIcon size={20} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <span className="font-bold text-sm">Social login (email / Google)</span>
+                    <span className="font-bold text-sm">
+                      Social login (email / Google)
+                    </span>
                     <p className="text-xs text-muted mt-1">
-                      Sign in with your existing account. Privy creates a wallet that becomes the{" "}
-                      <span className="font-semibold text-accent">guardian</span>.
+                      Sign in with your existing account. Privy creates a wallet
+                      that becomes the{" "}
+                      <span className="font-semibold text-accent">
+                        guardian
+                      </span>
+                      .
                     </p>
                   </div>
                 </div>
@@ -217,9 +251,12 @@ export function ModeSelector({ role, onSelect, onBack }: ModeSelectorProps) {
                     <PrivyIcon size={20} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <span className="font-bold text-sm">Social login (email / Google)</span>
+                    <span className="font-bold text-sm">
+                      Social login (email / Google)
+                    </span>
                     <p className="text-xs text-muted mt-1">
-                      Available on the hosted site. Requires Privy configuration.
+                      Available on the hosted site. Requires Privy
+                      configuration.
                     </p>
                   </div>
                 </div>
@@ -238,10 +275,14 @@ export function ModeSelector({ role, onSelect, onBack }: ModeSelectorProps) {
                   <Wallet size={20} className="text-accent" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <span className="font-bold text-sm">Connect crypto wallet</span>
+                  <span className="font-bold text-sm">
+                    Connect crypto wallet
+                  </span>
                   <p className="text-xs text-muted mt-1">
-                    Use MetaMask or another browser wallet. Your wallet becomes the{" "}
-                    <span className="font-semibold text-accent">guardian</span> — you can revoke the agent anytime.
+                    Use MetaMask or another browser wallet. Your wallet becomes
+                    the{" "}
+                    <span className="font-semibold text-accent">guardian</span>{" "}
+                    — you can revoke the agent anytime.
                   </p>
                 </div>
               </div>
@@ -300,9 +341,13 @@ export function ModeSelector({ role, onSelect, onBack }: ModeSelectorProps) {
                     >
                       <td className="py-2 pr-4 font-medium text-foreground">
                         <div className="flex items-center gap-1.5">
-                          {React.createElement(ICON_MAP[info.icon], { size: 14 })}
+                          {React.createElement(ICON_MAP[info.icon], {
+                            size: 14,
+                          })}
                           {info.label}
-                          {info.badge && <Badge variant="success">{info.badge}</Badge>}
+                          {info.badge && (
+                            <Badge variant="success">{info.badge}</Badge>
+                          )}
                         </div>
                       </td>
                       <td className="py-2 pr-4 text-muted">{info.keyType}</td>
@@ -349,9 +394,11 @@ function GuardianQuestion({
         </button>
         {showInfo && (
           <p className="text-xs text-muted mt-2 max-w-md mx-auto bg-surface-2 rounded-lg p-3">
-            A guardian is your personal wallet that can revoke the agent&apos;s identity at any time.
-            This is set at registration and <strong className="text-foreground">cannot be changed later</strong>.
-            Without one, you can still revoke by scanning your passport again in the Self app.
+            A guardian is your personal wallet that can revoke the agent&apos;s
+            identity at any time. This is set at registration and{" "}
+            <strong className="text-foreground">cannot be changed later</strong>
+            . Without one, you can still revoke by scanning your passport again
+            in the Self app.
           </p>
         )}
       </div>
@@ -368,7 +415,8 @@ function GuardianQuestion({
             <span className="font-bold text-sm">Yes, link my wallet</span>
           </div>
           <p className="text-xs text-muted">
-            Connect your browser wallet as guardian. Direct revocation via wallet.
+            Connect your browser wallet as guardian. Direct revocation via
+            wallet.
           </p>
         </button>
 
@@ -383,7 +431,8 @@ function GuardianQuestion({
             <span className="font-bold text-sm">No guardian needed</span>
           </div>
           <p className="text-xs text-muted">
-            The agent owns its own identity. Revoke by scanning your passport again.
+            The agent owns its own identity. Revoke by scanning your passport
+            again.
           </p>
         </button>
       </div>

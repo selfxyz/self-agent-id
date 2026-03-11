@@ -17,15 +17,17 @@ function resolveNetwork(req: NextRequest): NetworkId {
   return "celo-sepolia";
 }
 
-export async function GET() {
+export function GET() {
   return demoEndpointDocs({
     endpoint: "/api/demo/chat",
     method: "POST",
     description:
       "AI Agent Chat demo. Proxies your query to a LangChain-powered AI agent that verifies your on-chain identity before engaging in conversation. Supports both signed (verified) and unsigned (anonymous) requests.",
     requiredHeaders: {
-      "x-self-agent-signature": "HMAC signature (optional — unsigned requests treated as anonymous)",
-      "x-self-agent-timestamp": "ISO 8601 timestamp (required if signature is present)",
+      "x-self-agent-signature":
+        "HMAC signature (optional — unsigned requests treated as anonymous)",
+      "x-self-agent-timestamp":
+        "ISO 8601 timestamp (required if signature is present)",
     },
     optionalHeaders: {
       "x-self-agent-keytype": "Key type: 'ed25519' or omit for ECDSA",

@@ -22,6 +22,7 @@ skills:
 ```
 
 The skill automatically:
+
 - Loads your device's existing Ed25519 keypair
 - Signs outbound requests for agent-to-agent auth
 - Verifies inbound requests from other Self-registered agents

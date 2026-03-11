@@ -78,7 +78,8 @@ export const MODE_INFO: Record<Mode, ModeInfo> = {
   },
   ed25519: {
     label: "Ed25519",
-    shortDesc: "Paste your agent's existing Ed25519 public key. No wallet needed.",
+    shortDesc:
+      "Paste your agent's existing Ed25519 public key. No wallet needed.",
     icon: "Terminal",
     keyType: "Ed25519",
     walletNeeded: false,
@@ -86,7 +87,8 @@ export const MODE_INFO: Record<Mode, ModeInfo> = {
   },
   "ed25519-linked": {
     label: "Ed25519 + Guardian",
-    shortDesc: "Ed25519 agent key with your wallet as guardian for direct revocation control.",
+    shortDesc:
+      "Ed25519 agent key with your wallet as guardian for direct revocation control.",
     icon: "Terminal",
     keyType: "Ed25519 + EVM",
     walletNeeded: true,

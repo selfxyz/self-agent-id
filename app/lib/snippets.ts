@@ -802,7 +802,7 @@ const REGISTRY = "0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379";
 const RPC = "https://forno.celo-sepolia.celo-testnet.org";
 const DEMO_SERVICE = "https://agent-id-demo-service-4aawyjohja-uc.a.run.app";
 const DEMO_AGENT = "https://agent-id-demo-agent-4aawyjohja-uc.a.run.app";
-const DEMO_APP = "https://self-agent-id.vercel.app"; // replace with your deployment URL
+const DEMO_APP = "https://app.ai.self.xyz"; // replace with your deployment URL
 const VERIFIER = "0xc31BAe8f2d7FCd19f737876892f05d9bDB294241";
 
 const agent = new SelfAgent({
@@ -903,7 +903,7 @@ from self_agent_sdk import SelfAgent, SelfAgentVerifier
 
 DEMO_SERVICE = "https://agent-id-demo-service-4aawyjohja-uc.a.run.app"
 DEMO_AGENT = "https://agent-id-demo-agent-4aawyjohja-uc.a.run.app"
-DEMO_APP = "https://self-agent-id.vercel.app"  # replace with your deployment URL
+DEMO_APP = "https://app.ai.self.xyz"  # replace with your deployment URL
 
 agent = SelfAgent(
     private_key=os.environ["AGENT_PRIVATE_KEY"],

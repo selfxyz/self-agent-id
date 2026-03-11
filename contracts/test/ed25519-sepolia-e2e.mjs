@@ -21,8 +21,15 @@ const RPC_URL = "https://forno.celo-sepolia.celo-testnet.org";
 const REGISTRY_ADDRESS = "0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379";
 const CHAIN_ID = 11142220n;
 
-// Use the RFC 8032 vector 2 secret for deterministic testing
-const SECRET_HEX = "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb";
+// Use the RFC 8032 vector 2 secret for deterministic testing.
+// Load from environment to avoid hardcoded secret detection.
+const SECRET_HEX =
+  process.env.ED25519_TEST_SECRET ||
+  (() => {
+    throw new Error(
+      "Set ED25519_TEST_SECRET env var (e.g. RFC 8032 vector 2: 4ccd089b…)"
+    );
+  })();
 
 // A dummy human address (doesn't matter for this verification test)
 const HUMAN_ADDRESS = "0x551775463D338c0c406b3266c63AF6EDA8b3e47a";

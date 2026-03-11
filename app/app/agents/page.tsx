@@ -69,10 +69,10 @@ interface AgentEntry {
   hasA2ACard: boolean;
   verificationStrength?: number;
   credentials?: AgentCredentials;
-  proofExpiresAt?: number;    // unix timestamp (seconds)
+  proofExpiresAt?: number; // unix timestamp (seconds)
   isProofFresh?: boolean;
   daysUntilExpiry?: number;
-  isExpiringSoon?: boolean;    // true when <= 30 days remain
+  isExpiringSoon?: boolean; // true when <= 30 days remain
 }
 
 function cleanStr(s: string): string {
@@ -302,19 +302,31 @@ export default function MyAgentsPage() {
   // Task 18: Nullifier-based sibling lookup
   const [siblingAgents, setSiblingAgents] = useState<AgentEntry[]>([]);
   const [loadingSiblings, setLoadingSiblings] = useState(false);
-  const [siblingSourceAgentId, setSiblingSourceAgentId] = useState<string | null>(null);
+  const [siblingSourceAgentId, setSiblingSourceAgentId] = useState<
+    string | null
+  >(null);
   // Task 19: Proof refresh
-  const [refreshingAgentId, setRefreshingAgentId] = useState<string | null>(null);
+  const [refreshingAgentId, setRefreshingAgentId] = useState<string | null>(
+    null,
+  );
   const [refreshQrData, setRefreshQrData] = useState<unknown>(null);
   const [refreshDeepLink, setRefreshDeepLink] = useState<string | null>(null);
-  const [refreshSessionToken, setRefreshSessionToken] = useState<string | null>(null);
+  const [refreshSessionToken, setRefreshSessionToken] = useState<string | null>(
+    null,
+  );
   const [refreshPolling, setRefreshPolling] = useState(false);
-  const refreshPollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const refreshPollRef = React.useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
   // Passport scan (identify) flow
   const [identifyQrData, setIdentifyQrData] = useState<unknown>(null);
-  const [identifySessionToken, setIdentifySessionToken] = useState<string | null>(null);
+  const [identifySessionToken, setIdentifySessionToken] = useState<
+    string | null
+  >(null);
   const [identifyPolling, setIdentifyPolling] = useState(false);
-  const identifyPollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const identifyPollRef = React.useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
 
   const {
     login: privyLogin,
@@ -599,9 +611,7 @@ export default function MyAgentsPage() {
         await loadAgentsByOwner(ownerAddr);
       }
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to mint A2A card",
-      );
+      setError(err instanceof Error ? err.message : "Failed to mint A2A card");
     } finally {
       setMintingCardFor(null);
     }
@@ -700,49 +710,51 @@ export default function MyAgentsPage() {
       setRefreshPolling(true);
 
       // Start polling for completion
-      const pollInterval = setInterval(async () => {
-        try {
-          const statusResp = await fetch(
-            `/api/agent/refresh/status?sessionToken=${encodeURIComponent(data.sessionToken)}`,
-          );
-          if (!statusResp.ok) return;
+      const pollInterval = setInterval(() => {
+        void (async () => {
+          try {
+            const statusResp = await fetch(
+              `/api/agent/refresh/status?sessionToken=${encodeURIComponent(data.sessionToken)}`,
+            );
+            if (!statusResp.ok) return;
 
-          const statusData = (await statusResp.json()) as {
-            stage: string;
-            sessionToken?: string;
-          };
+            const statusData = (await statusResp.json()) as {
+              stage: string;
+              sessionToken?: string;
+            };
 
-          // Update session token if rotated
-          if (statusData.sessionToken) {
-            data.sessionToken = statusData.sessionToken;
-          }
-
-          if (statusData.stage === "completed") {
-            clearInterval(pollInterval);
-            refreshPollRef.current = null;
-            setRefreshPolling(false);
-            setRefreshQrData(null);
-            setRefreshDeepLink(null);
-            setRefreshSessionToken(null);
-            setRefreshingAgentId(null);
-
-            // Refresh agent data
-            const ownerAddr = walletAddress ?? privyConnectedAddress;
-            if (ownerAddr) {
-              await loadAgentsByOwner(ownerAddr);
-            } else if (passkeyAddress) {
-              await loadAgentsByGuardian(passkeyAddress);
+            // Update session token if rotated
+            if (statusData.sessionToken) {
+              data.sessionToken = statusData.sessionToken;
             }
-          } else if (statusData.stage === "failed") {
-            clearInterval(pollInterval);
-            refreshPollRef.current = null;
-            setRefreshPolling(false);
-            setError("Proof refresh failed. Please try again.");
-            setRefreshingAgentId(null);
+
+            if (statusData.stage === "completed") {
+              clearInterval(pollInterval);
+              refreshPollRef.current = null;
+              setRefreshPolling(false);
+              setRefreshQrData(null);
+              setRefreshDeepLink(null);
+              setRefreshSessionToken(null);
+              setRefreshingAgentId(null);
+
+              // Refresh agent data
+              const ownerAddr = walletAddress ?? privyConnectedAddress;
+              if (ownerAddr) {
+                await loadAgentsByOwner(ownerAddr);
+              } else if (passkeyAddress) {
+                await loadAgentsByGuardian(passkeyAddress);
+              }
+            } else if (statusData.stage === "failed") {
+              clearInterval(pollInterval);
+              refreshPollRef.current = null;
+              setRefreshPolling(false);
+              setError("Proof refresh failed. Please try again.");
+              setRefreshingAgentId(null);
+            }
+          } catch {
+            // Silently retry on network errors
           }
-        } catch {
-          // Silently retry on network errors
-        }
+        })();
       }, 3000);
 
       refreshPollRef.current = pollInterval;
@@ -802,37 +814,39 @@ export default function MyAgentsPage() {
 
       // Poll for NullifierIdentified event
       let currentToken = data.sessionToken;
-      const pollInterval = setInterval(async () => {
-        try {
-          const statusResp = await fetch(
-            `/api/agent/identify/status?sessionToken=${encodeURIComponent(currentToken)}`,
-          );
-          if (!statusResp.ok) return;
+      const pollInterval = setInterval(() => {
+        void (async () => {
+          try {
+            const statusResp = await fetch(
+              `/api/agent/identify/status?sessionToken=${encodeURIComponent(currentToken)}`,
+            );
+            if (!statusResp.ok) return;
 
-          const statusData = (await statusResp.json()) as {
-            stage: string;
-            sessionToken?: string;
-            nullifier?: string;
-            agentCount?: number;
-          };
+            const statusData = (await statusResp.json()) as {
+              stage: string;
+              sessionToken?: string;
+              nullifier?: string;
+              agentCount?: number;
+            };
 
-          if (statusData.sessionToken) {
-            currentToken = statusData.sessionToken;
+            if (statusData.sessionToken) {
+              currentToken = statusData.sessionToken;
+            }
+
+            if (statusData.stage === "completed" && statusData.nullifier) {
+              clearInterval(pollInterval);
+              identifyPollRef.current = null;
+              setIdentifyPolling(false);
+              setIdentifyQrData(null);
+              setIdentifySessionToken(null);
+
+              // Load all agents for this nullifier
+              await loadAgentsByNullifier(BigInt(statusData.nullifier));
+            }
+          } catch {
+            // Silently retry on network errors
           }
-
-          if (statusData.stage === "completed" && statusData.nullifier) {
-            clearInterval(pollInterval);
-            identifyPollRef.current = null;
-            setIdentifyPolling(false);
-            setIdentifyQrData(null);
-            setIdentifySessionToken(null);
-
-            // Load all agents for this nullifier
-            await loadAgentsByNullifier(BigInt(statusData.nullifier));
-          }
-        } catch {
-          // Silently retry on network errors
-        }
+        })();
       }, 3000);
 
       identifyPollRef.current = pollInterval;
@@ -891,7 +905,9 @@ export default function MyAgentsPage() {
       setAgents(results);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to load agents by nullifier",
+        err instanceof Error
+          ? err.message
+          : "Failed to load agents by nullifier",
       );
     } finally {
       setLoading(false);
@@ -996,7 +1012,10 @@ export default function MyAgentsPage() {
           siblingAgents={siblingAgents}
           loading={loadingSiblings}
           sourceAgentId={siblingSourceAgentId}
-          onClose={() => { setSiblingAgents([]); setSiblingSourceAgentId(null); }}
+          onClose={() => {
+            setSiblingAgents([]);
+            setSiblingSourceAgentId(null);
+          }}
           network={network}
         />
       )}
@@ -1124,8 +1143,8 @@ export default function MyAgentsPage() {
               <Shield size={32} className="text-accent-success mx-auto mb-3" />
               <h3 className="text-lg font-semibold mb-2">Scan Your Passport</h3>
               <p className="text-sm text-muted mb-4">
-                Scan the QR code with the Self app to identify yourself via passport.
-                This will find all agents registered to your identity.
+                Scan the QR code with the Self app to identify yourself via
+                passport. This will find all agents registered to your identity.
               </p>
               <div className="flex justify-center mb-4">
                 <SelfQRcodeWrapper
@@ -1136,7 +1155,9 @@ export default function MyAgentsPage() {
                     // Status polling handles completion
                   }}
                   onError={(data: { error_code?: string; reason?: string }) => {
-                    setError(data.reason || data.error_code || "Passport scan failed");
+                    setError(
+                      data.reason || data.error_code || "Passport scan failed",
+                    );
                     handleCloseIdentify();
                   }}
                 />
@@ -1200,7 +1221,10 @@ export default function MyAgentsPage() {
                     onClick={() => void handleStartIdentify()}
                     disabled={loading}
                   >
-                    <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+                    <RefreshCw
+                      size={14}
+                      className={loading ? "animate-spin" : ""}
+                    />
                     Rescan
                   </Button>
                 </div>
@@ -1212,7 +1236,16 @@ export default function MyAgentsPage() {
                   </div>
                 )}
 
-                {renderAgentCards(agents, null, null, network, (agent: AgentEntry) => void handleMintCard(agent), mintingCardFor, "passport", cardExtras)}
+                {renderAgentCards(
+                  agents,
+                  null,
+                  null,
+                  network,
+                  (agent: AgentEntry) => void handleMintCard(agent),
+                  mintingCardFor,
+                  "passport",
+                  cardExtras,
+                )}
                 {sharedPanels}
               </div>
             )}
@@ -1297,7 +1330,16 @@ export default function MyAgentsPage() {
               </Card>
             )}
 
-            {renderAgentCards(agents, null, null, network, (agent: AgentEntry) => void handleMintCard(agent), mintingCardFor, lookupMode, cardExtras)}
+            {renderAgentCards(
+              agents,
+              null,
+              null,
+              network,
+              (agent: AgentEntry) => void handleMintCard(agent),
+              mintingCardFor,
+              lookupMode,
+              cardExtras,
+            )}
             {sharedPanels}
           </div>
         )
@@ -1453,7 +1495,16 @@ export default function MyAgentsPage() {
               </Card>
             )}
 
-            {renderAgentCards(agents, null, null, network, (agent: AgentEntry) => void handleMintCard(agent), mintingCardFor, lookupMode, cardExtras)}
+            {renderAgentCards(
+              agents,
+              null,
+              null,
+              network,
+              (agent: AgentEntry) => void handleMintCard(agent),
+              mintingCardFor,
+              lookupMode,
+              cardExtras,
+            )}
             {sharedPanels}
           </div>
         )
@@ -1506,7 +1557,16 @@ export default function MyAgentsPage() {
             </Card>
           )}
 
-          {renderAgentCards(agents, null, null, network, undefined, undefined, undefined, cardExtras)}
+          {renderAgentCards(
+            agents,
+            null,
+            null,
+            network,
+            undefined,
+            undefined,
+            undefined,
+            cardExtras,
+          )}
           {sharedPanels}
         </div>
       )}
@@ -1611,7 +1671,8 @@ function renderAgentCards(
               {agent.isExpiringSoon && agent.isProofFresh && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-500 border border-amber-500/20">
                   <AlertTriangle size={10} />
-                  Expiring in {agent.daysUntilExpiry} day{agent.daysUntilExpiry !== 1 ? "s" : ""}
+                  Expiring in {agent.daysUntilExpiry} day
+                  {agent.daysUntilExpiry !== 1 ? "s" : ""}
                 </span>
               )}
               {!agent.isProofFresh && (
@@ -1727,11 +1788,18 @@ function renderAgentCards(
         {/* Task 18: Show siblings button */}
         {extras && agent.isVerified && (
           <button
-            onClick={(e) => { e.preventDefault(); extras.onShowSiblings(agent.agentId); }}
-            disabled={extras.loadingSiblings && extras.siblingSourceAgentId === agent.agentId.toString()}
+            onClick={(e) => {
+              e.preventDefault();
+              extras.onShowSiblings(agent.agentId);
+            }}
+            disabled={
+              extras.loadingSiblings &&
+              extras.siblingSourceAgentId === agent.agentId.toString()
+            }
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-500/10 text-purple-500 border border-purple-500/20 hover:bg-purple-500/20 transition-colors disabled:opacity-50"
           >
-            {extras.loadingSiblings && extras.siblingSourceAgentId === agent.agentId.toString() ? (
+            {extras.loadingSiblings &&
+            extras.siblingSourceAgentId === agent.agentId.toString() ? (
               <>
                 <Loader2 size={12} className="animate-spin" />
                 Looking up...
@@ -1746,25 +1814,31 @@ function renderAgentCards(
         )}
 
         {/* Task 19: Re-verify button for expiring/expired proofs */}
-        {extras && (agent.isExpiringSoon || !agent.isProofFresh) && agent.proofExpiresAt != null && agent.proofExpiresAt > 0 && (
-          <button
-            onClick={(e) => { e.preventDefault(); extras.onRefreshProof(Number(agent.agentId)); }}
-            disabled={extras.refreshingAgentId === agent.agentId.toString()}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600/10 text-blue-500 border border-blue-500/20 hover:bg-blue-600/20 transition-colors disabled:opacity-50"
-          >
-            {extras.refreshingAgentId === agent.agentId.toString() ? (
-              <>
-                <Loader2 size={12} className="animate-spin" />
-                Initiating...
-              </>
-            ) : (
-              <>
-                <RefreshCw size={12} />
-                Re-verify
-              </>
-            )}
-          </button>
-        )}
+        {extras &&
+          (agent.isExpiringSoon || !agent.isProofFresh) &&
+          agent.proofExpiresAt != null &&
+          agent.proofExpiresAt > 0 && (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                extras.onRefreshProof(Number(agent.agentId));
+              }}
+              disabled={extras.refreshingAgentId === agent.agentId.toString()}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600/10 text-blue-500 border border-blue-500/20 hover:bg-blue-600/20 transition-colors disabled:opacity-50"
+            >
+              {extras.refreshingAgentId === agent.agentId.toString() ? (
+                <>
+                  <Loader2 size={12} className="animate-spin" />
+                  Initiating...
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={12} />
+                  Re-verify
+                </>
+              )}
+            </button>
+          )}
       </div>
     </div>
   ));
@@ -1810,14 +1884,17 @@ function SiblingAgentsPanel({
 
       {!loading && siblingAgents.length === 0 && (
         <p className="text-sm text-muted text-center py-4">
-          No other agents found for this identity. This is the only registered agent.
+          No other agents found for this identity. This is the only registered
+          agent.
         </p>
       )}
 
       {!loading && siblingAgents.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs text-muted mb-2">
-            Found {siblingAgents.length} other agent{siblingAgents.length !== 1 ? "s" : ""} registered by the same human:
+            Found {siblingAgents.length} other agent
+            {siblingAgents.length !== 1 ? "s" : ""} registered by the same
+            human:
           </p>
           {siblingAgents.map((agent) => (
             <Link
@@ -1827,12 +1904,15 @@ function SiblingAgentsPanel({
             >
               <div className="flex items-center justify-between p-3 rounded-lg bg-surface-2 border border-border hover:border-purple-500/30 transition-colors">
                 <div className="flex items-center gap-2">
-                  <StatusDot status={agent.isVerified ? "verified" : "revoked"} />
+                  <StatusDot
+                    status={agent.isVerified ? "verified" : "revoked"}
+                  />
                   <span className="text-sm font-medium">
                     Agent #{agent.agentId.toString()}
                   </span>
                   <span className="text-xs text-muted font-mono">
-                    {agent.agentAddress.slice(0, 6)}...{agent.agentAddress.slice(-4)}
+                    {agent.agentAddress.slice(0, 6)}...
+                    {agent.agentAddress.slice(-4)}
                   </span>
                 </div>
                 <Badge variant={agent.isVerified ? "success" : "error"}>
@@ -1879,7 +1959,8 @@ function RefreshQrModal({
       </div>
 
       <p className="text-xs text-muted mb-3">
-        Scan the QR code with the Self app to refresh your human proof. Follow the prompts to scan your passport.
+        Scan the QR code with the Self app to refresh your human proof. Follow
+        the prompts to scan your passport.
       </p>
 
       <div className="flex flex-col items-center gap-3">

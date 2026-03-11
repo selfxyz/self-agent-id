@@ -138,7 +138,6 @@ export type SecuritySchemes = Record<string, SecurityScheme>;
  */
 export type SecurityRequirement = Record<string, string[]>;
 
-
 // ─── Signatures & Extensions ─────────────────────────────────────────────────
 
 /** RFC 7515 JWS signature attached to the agent card. */
@@ -499,13 +498,13 @@ export function generateRegistrationJSON(
 
   // Auto-generate supportedInterfaces from url if not explicitly provided
   const supportedInterfaces: AgentInterface[] | undefined = a2a
-    ? a2a.supportedInterfaces ?? [
+    ? (a2a.supportedInterfaces ?? [
         {
           url: a2a.url,
           protocolBinding: "JSONRPC" as const,
           protocolVersion: "0.3.0",
         },
-      ]
+      ])
     : undefined;
 
   // Ensure services array contains an A2A entry when a2a is provided

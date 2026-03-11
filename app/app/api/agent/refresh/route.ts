@@ -11,7 +11,10 @@
 
 import type { NextRequest } from "next/server";
 import { ethers } from "ethers";
-import { getRegistrationConfigIndex, type RegistrationDisclosures } from "@selfxyz/agent-sdk";
+import {
+  getRegistrationConfigIndex,
+  type RegistrationDisclosures,
+} from "@selfxyz/agent-sdk";
 import { SelfAppBuilder, getUniversalLink } from "@selfxyz/qrcode";
 import { createSessionToken, encryptSession } from "@/lib/session-token";
 import {
@@ -103,7 +106,11 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Validate agentId ────────────────────────────────────────────────────
-  if (body.agentId == null || !Number.isInteger(body.agentId) || body.agentId <= 0) {
+  if (
+    body.agentId == null ||
+    !Number.isInteger(body.agentId) ||
+    body.agentId <= 0
+  ) {
     return errorResponse(
       "agentId is required and must be a positive integer",
       400,

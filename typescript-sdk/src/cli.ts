@@ -211,7 +211,7 @@ type FlagMap = Record<string, FlagValue | FlagValue[]>;
 
 /** Base URL for the browser handoff app. Override via SELF_AGENT_APP_URL env var. */
 const DEFAULT_APP_URL =
-  process.env.SELF_AGENT_APP_URL || "https://self-agent-id.vercel.app";
+  process.env.SELF_AGENT_APP_URL || "https://app.ai.self.xyz";
 
 /** Application name shown during Self verification. Override via SELF_AGENT_APP_NAME env var. */
 const DEFAULT_APP_NAME = process.env.SELF_AGENT_APP_NAME || "Self Agent ID";
@@ -670,9 +670,7 @@ async function commandInit(
 
   if (mode === "self-custody" || mode === "linked") {
     if (!humanAddressRaw)
-      die(
-        "--human-address is required for self-custody and linked modes",
-      );
+      die("--human-address is required for self-custody and linked modes");
     humanIdentifier = ethers.getAddress(humanAddressRaw);
   }
 
@@ -808,8 +806,7 @@ async function commandInit(
     operation,
     mode,
     agentAddress,
-    requiresHumanAddress:
-      mode === "self-custody" || mode === "linked",
+    requiresHumanAddress: mode === "self-custody" || mode === "linked",
     callbackUrl: callbackUrl(session),
     next: [
       `self-agent ${operation} open --session ${outPath}`,

@@ -40,7 +40,10 @@ function resolveChainId(req: NextRequest): string {
 }
 
 function errorResponse(message: string, status: number): NextResponse {
-  return NextResponse.json({ error: message }, { status, headers: CORS_HEADERS });
+  return NextResponse.json(
+    { error: message },
+    { status, headers: CORS_HEADERS },
+  );
 }
 
 // ── Route handler ───────────────────────────────────────────────────────────
@@ -108,8 +111,7 @@ export async function GET(req: NextRequest) {
       // Metadata is not valid JSON — we'll build the card from contract state
     }
 
-    const appUrl =
-      process.env.NEXT_PUBLIC_APP_URL || "https://selfagentid.xyz";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://selfagentid.xyz";
     const a2aEndpoint = `${appUrl}/api/a2a`;
 
     // Try to enrich with on-chain proof data via buildAgentCard
@@ -117,8 +119,7 @@ export async function GET(req: NextRequest) {
     try {
       const provider = typedProvider(networkEntry.providerAddress, rpcProvider);
       card = await buildAgentCard(Number(agentId), registry, provider, {
-        name:
-          (onChainCard.name as string) || `Agent #${agentId}`,
+        name: (onChainCard.name as string) || `Agent #${agentId}`,
         description:
           (onChainCard.description as string) ||
           "Human-verified AI agent on Self Protocol",
@@ -138,8 +139,7 @@ export async function GET(req: NextRequest) {
             description: "This agent has not declared specific skills.",
           },
         ],
-        version:
-          (onChainCard.version as string) || "1.0.0",
+        version: (onChainCard.version as string) || "1.0.0",
         agentProvider: {
           name: "Self",
           url: "https://self.xyz",
@@ -167,17 +167,13 @@ export async function GET(req: NextRequest) {
       // return a minimal card from on-chain metadata only
       card = {
         type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
-        name:
-          (onChainCard.name as string) || `Agent #${agentId}`,
+        name: (onChainCard.name as string) || `Agent #${agentId}`,
         description:
           (onChainCard.description as string) ||
           "AI agent registered on Self Protocol",
         image: (onChainCard.image as string) || `${appUrl}/icon.png`,
-        services: [
-          { name: "A2A", endpoint: a2aEndpoint, version: "0.3.0" },
-        ],
-        version:
-          (onChainCard.version as string) || "1.0.0",
+        services: [{ name: "A2A", endpoint: a2aEndpoint, version: "0.3.0" }],
+        version: (onChainCard.version as string) || "1.0.0",
         url: a2aEndpoint,
         provider: {
           name: "Self",
@@ -225,8 +221,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(card, { headers: CORS_HEADERS });
   } catch (err) {
     // Distinguish "agent doesn't exist" from RPC errors
-    const message =
-      err instanceof Error ? err.message : "Unknown error";
+    const message = err instanceof Error ? err.message : "Unknown error";
     if (
       message.includes("nonexistent token") ||
       message.includes("invalid token") ||

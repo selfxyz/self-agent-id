@@ -10,11 +10,11 @@ pip install selfxyz-agent-sdk[langchain] langchain-openai
 
 ## Tools
 
-| Tool | Purpose |
-|------|---------|
+| Tool                           | Purpose                                        |
+| ------------------------------ | ---------------------------------------------- |
 | `SelfAuthenticatedRequestTool` | Make signed HTTP requests using agent identity |
-| `SelfVerifyAgentTool` | Verify incoming request signatures |
-| `SelfAgentInfoTool` | Look up agent status on-chain |
+| `SelfVerifyAgentTool`          | Verify incoming request signatures             |
+| `SelfAgentInfoTool`            | Look up agent status on-chain                  |
 
 ## Quick Start
 

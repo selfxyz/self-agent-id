@@ -21,11 +21,11 @@ ED25519_SEED=<your-seed> npx tsx e2e-demo-test.ts
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `ED25519_SEED` | 64-char hex Ed25519 seed | Random (generated) |
-| `SERVICE_URL` | Target service URL | `http://localhost:3000/api/demo/verify` |
-| `DEMO_BASE_URL` | Demo API base URL (for E2E test) | `https://app.ai.self.xyz` |
+| Variable        | Description                      | Default                                 |
+| --------------- | -------------------------------- | --------------------------------------- |
+| `ED25519_SEED`  | 64-char hex Ed25519 seed         | Random (generated)                      |
+| `SERVICE_URL`   | Target service URL               | `http://localhost:3000/api/demo/verify` |
+| `DEMO_BASE_URL` | Demo API base URL (for E2E test) | `https://app.ai.self.xyz`               |
 
 ## Ed25519 vs ECDSA
 

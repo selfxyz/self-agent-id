@@ -79,11 +79,11 @@ See `deploy.sh` for the full `gcloud run deploy` command with security settings.
 
 ## Files
 
-| File           | Purpose                                     |
-| -------------- | ------------------------------------------- |
-| `main.py`      | FastAPI app with on-chain verification gate |
-| `agent.py`     | LangChain agent executor with tools         |
+| File           | Purpose                                                           |
+| -------------- | ----------------------------------------------------------------- |
+| `main.py`      | FastAPI app with on-chain verification gate                       |
+| `agent.py`     | LangChain agent executor with tools                               |
 | `tools.py`     | Agent tools (on-chain lookup via SDK, SSRF-protected peer verify) |
-| `Dockerfile`   | Container image                             |
-| `deploy.sh`    | Cloud Run deployment script                 |
-| `run-local.sh` | Local development script                    |
+| `Dockerfile`   | Container image                                                   |
+| `deploy.sh`    | Cloud Run deployment script                                       |
+| `run-local.sh` | Local development script                                          |

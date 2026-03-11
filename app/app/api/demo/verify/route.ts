@@ -21,7 +21,7 @@ function resolveNetwork(req: NextRequest): NetworkId {
   return "celo-sepolia";
 }
 
-export async function GET() {
+export function GET() {
   return demoEndpointDocs({
     endpoint: "/api/demo/verify",
     method: "POST",

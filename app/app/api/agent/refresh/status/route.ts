@@ -53,7 +53,9 @@ export async function GET(req: NextRequest) {
       proofExpiresAt: session.proofExpiresAt,
       humanInstructions:
         session.stage === "completed"
-          ? ["Proof refresh complete. Your agent's human proof has been renewed."]
+          ? [
+              "Proof refresh complete. Your agent's human proof has been renewed.",
+            ]
           : ["Proof refresh failed. Check the error details and try again."],
     });
   }
@@ -79,9 +81,10 @@ export async function GET(req: NextRequest) {
     const originalExpiry = session.originalProofExpiry
       ? BigInt(session.originalProofExpiry as string)
       : 0n;
-    const refreshed = originalExpiry > 0n
-      ? expiryTimestamp > originalExpiry
-      : await registry.isProofFresh(BigInt(agentId));
+    const refreshed =
+      originalExpiry > 0n
+        ? expiryTimestamp > originalExpiry
+        : await registry.isProofFresh(BigInt(agentId));
 
     if (refreshed) {
       const proofExpiresAt = new Date(

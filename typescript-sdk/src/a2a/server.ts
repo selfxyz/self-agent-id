@@ -5,7 +5,6 @@
 import type {
   Message,
   Task,
-  JSONRPCRequest,
   JSONRPCResponse,
   SendMessageParams,
   GetTaskParams,
@@ -21,7 +20,10 @@ import { A2AErrorCodes } from "./types";
  */
 export interface TaskHandler {
   /** Handle an incoming message. Return the resulting Task. */
-  onMessage(message: Message, metadata?: Record<string, unknown>): Promise<Task>;
+  onMessage(
+    message: Message,
+    metadata?: Record<string, unknown>,
+  ): Promise<Task>;
   /** Get a task by ID. */
   onGetTask(taskId: string, historyLength?: number): Promise<Task>;
   /** Cancel a task by ID. */
@@ -54,15 +56,13 @@ export class A2AServer {
    * Process a raw JSON-RPC request object and return a JSON-RPC response.
    * This is the main entry point — call this from your HTTP handler.
    */
-  async handleRequest(
-    request: unknown,
-  ): Promise<JSONRPCResponse> {
+  async handleRequest(request: unknown): Promise<JSONRPCResponse> {
     // Validate basic JSON-RPC structure
     if (!isObject(request)) {
       return errorResponse(0, A2AErrorCodes.PARSE_ERROR, "Parse error");
     }
 
-    const req = request as Record<string, unknown>;
+    const req = request;
 
     if (req.jsonrpc !== "2.0") {
       return errorResponse(

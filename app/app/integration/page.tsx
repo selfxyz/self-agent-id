@@ -380,7 +380,7 @@ self-agent register export --session .self/session.json`,
     "env": {
       "SELF_AGENT_PRIVATE_KEY": "0x...",
       "SELF_NETWORK": "${network.isTestnet ? "testnet" : "mainnet"}",
-      "SELF_AGENT_API_BASE": "https://self-agent-id.vercel.app"
+      "SELF_AGENT_API_BASE": "https://app.ai.self.xyz"
     }
   }
 }`,

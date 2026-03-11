@@ -19,7 +19,11 @@ interface WizardShellProps {
   onWizardComplete?: (config: { role: UserRole; mode: Mode }) => void;
 }
 
-export function WizardShell({ initialStep = "who", initialRole = null, onWizardComplete }: WizardShellProps) {
+export function WizardShell({
+  initialStep = "who",
+  initialRole = null,
+  onWizardComplete,
+}: WizardShellProps) {
   const [step, setStep] = useState<"who" | "mode">(initialStep);
   const [role, setRole] = useState<UserRole>(initialRole);
 
@@ -42,9 +46,12 @@ export function WizardShell({ initialStep = "who", initialRole = null, onWizardC
     setStep("mode");
   }, []);
 
-  const handleModeSelect = useCallback((selectedMode: Mode) => {
-    onWizardComplete?.({ role, mode: selectedMode });
-  }, [onWizardComplete, role]);
+  const handleModeSelect = useCallback(
+    (selectedMode: Mode) => {
+      onWizardComplete?.({ role, mode: selectedMode });
+    },
+    [onWizardComplete, role],
+  );
 
   // Bot info panel
   if (role === "bot") {
@@ -63,8 +70,8 @@ export function WizardShell({ initialStep = "who", initialRole = null, onWizardC
           Register programmatically
         </h2>
         <p className="text-sm text-muted text-center max-w-md mx-auto">
-          Bots and agents can register via our API, CLI, or A2A protocol.
-          A human will still need to verify their identity with the Self app.
+          Bots and agents can register via our API, CLI, or A2A protocol. A
+          human will still need to verify their identity with the Self app.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -74,7 +81,10 @@ export function WizardShell({ initialStep = "who", initialRole = null, onWizardC
             <p className="text-xs text-muted mb-3">
               Register from the command line with guided prompts.
             </p>
-            <Link href="/cli/register" className="text-xs text-accent hover:text-accent-2 underline">
+            <Link
+              href="/cli/register"
+              className="text-xs text-accent hover:text-accent-2 underline"
+            >
               CLI Registration &rarr;
             </Link>
           </Card>
@@ -85,7 +95,10 @@ export function WizardShell({ initialStep = "who", initialRole = null, onWizardC
             <p className="text-xs text-muted mb-3">
               POST to /api/agent/register with your mode and keys.
             </p>
-            <Link href="/api-docs" className="text-xs text-accent hover:text-accent-2 underline">
+            <Link
+              href="/api-docs"
+              className="text-xs text-accent hover:text-accent-2 underline"
+            >
               API Docs &rarr;
             </Link>
           </Card>
@@ -96,7 +109,10 @@ export function WizardShell({ initialStep = "who", initialRole = null, onWizardC
             <p className="text-xs text-muted mb-3">
               JSON-RPC over the Agent-to-Agent endpoint.
             </p>
-            <Link href="/integration" className="text-xs text-accent hover:text-accent-2 underline">
+            <Link
+              href="/integration"
+              className="text-xs text-accent hover:text-accent-2 underline"
+            >
               Integration Guide &rarr;
             </Link>
           </Card>

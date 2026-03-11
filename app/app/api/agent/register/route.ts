@@ -75,7 +75,7 @@ interface RegisterRequestBody {
   agentName?: string;
   agentDescription?: string;
   callbackUrl?: string;
-  ed25519Pubkey?: string;    // 64 hex chars (no 0x)
+  ed25519Pubkey?: string; // 64 hex chars (no 0x)
   ed25519Signature?: string; // 128 hex chars (no 0x)
 }
 
@@ -134,7 +134,10 @@ export async function POST(req: NextRequest) {
 
   // ── Validate humanAddress (required for linked, ed25519-linked, privy, smartwallet) ──
   const needsHumanAddress =
-    mode === "linked" || mode === "ed25519-linked" || mode === "privy" || mode === "smartwallet";
+    mode === "linked" ||
+    mode === "ed25519-linked" ||
+    mode === "privy" ||
+    mode === "smartwallet";
   if (
     needsHumanAddress &&
     (!body.humanAddress || !isValidAddress(body.humanAddress))
@@ -364,7 +367,10 @@ export async function POST(req: NextRequest) {
     );
 
     // Store ed25519 pubkey in session for status polling
-    if ((mode === "ed25519" || mode === "ed25519-linked") && body.ed25519Pubkey) {
+    if (
+      (mode === "ed25519" || mode === "ed25519-linked") &&
+      body.ed25519Pubkey
+    ) {
       sessionData.ed25519Pubkey = body.ed25519Pubkey;
     }
 

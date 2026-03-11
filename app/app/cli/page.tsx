@@ -25,15 +25,13 @@ export default function CliQuickstartPage() {
         </Card>
 
         <Card>
-          <h2 className="text-lg font-bold mb-2">
-            Human registration flow
-          </h2>
+          <h2 className="text-lg font-bold mb-2">Human registration flow</h2>
           <ol className="list-decimal list-inside text-sm text-muted space-y-2">
             <li>
               Create session:{" "}
               <code className="bg-surface-2 px-1 rounded text-accent-2">
-                self-agent register init --mode linked --human-address
-                0x... --network testnet --out .self/session.json
+                self-agent register init --mode linked --human-address 0x...
+                --network testnet --out .self/session.json
               </code>
             </li>
             <li>
@@ -56,16 +54,13 @@ export default function CliQuickstartPage() {
         </Card>
 
         <Card>
-          <h2 className="text-lg font-bold mb-2">
-            Human deregistration flow
-          </h2>
+          <h2 className="text-lg font-bold mb-2">Human deregistration flow</h2>
           <ol className="list-decimal list-inside text-sm text-muted space-y-2">
             <li>
               Create session:{" "}
               <code className="bg-surface-2 px-1 rounded text-accent-2">
-                self-agent deregister init --mode linked
-                --human-address 0x... --network testnet --out
-                .self/session-deregister.json
+                self-agent deregister init --mode linked --human-address 0x...
+                --network testnet --out .self/session-deregister.json
               </code>
             </li>
             <li>

@@ -14,8 +14,7 @@ import { ed25519 } from "@noble/curves/ed25519.js";
 // Field constants from SCL_wei25519.sol
 // ============================================================
 
-const p =
-  0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedn;
+const p = 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedn;
 const a =
   19298681539552699237261830834781317975544997444273427339909597334573241639236n;
 const delta =
@@ -60,10 +59,7 @@ function modPow(base: bigint, exp: bigint, m: bigint): bigint {
 // ============================================================
 
 /** Point doubling on short Weierstrass curve y^2 = x^3 + ax + b */
-function weierstrassDouble(
-  x: bigint,
-  y: bigint,
-): [bigint, bigint] {
+function weierstrassDouble(x: bigint, y: bigint): [bigint, bigint] {
   // lambda = (3*x^2 + a) / (2*y)
   const num = modAdd(modMul(3n, modMul(x, x, p), p), a, p);
   const den = modInverse(modMul(2n, y, p), p);
@@ -95,10 +91,7 @@ function ecPow128(wx: bigint, wy: bigint): [bigint, bigint] {
  *   Wx = ((1 + ey) / (1 - ey)) + delta
  *   Wy = (c * (1 + ey)) / ((1 - ey) * ex)
  */
-function edwards2Weierstrass(
-  ex: bigint,
-  ey: bigint,
-): [bigint, bigint] {
+function edwards2Weierstrass(ex: bigint, ey: bigint): [bigint, bigint] {
   const oneMinusEy = mod(1n - ey, p);
   const onePlusEy = mod(1n + ey, p);
   const invOneMinusEy = modInverse(oneMinusEy, p);
@@ -190,7 +183,12 @@ export function computeExtKpub(pubkeyHex: string): bigint[] {
   // 1. Decompress Ed25519 point using @noble/curves
   const rawPoint = ed25519.Point.fromHex(pubkeyHex);
   // noble/curves v2: runtime point has X, Y, Z, T as bigint properties
-  const point = rawPoint as unknown as { X: bigint; Y: bigint; Z: bigint; T: bigint };
+  const point = rawPoint as unknown as {
+    X: bigint;
+    Y: bigint;
+    Z: bigint;
+    T: bigint;
+  };
 
   // Normalize from extended (X:Y:Z:T) to affine (x, y)
   const zInv = modInverse(point.Z, p);
@@ -258,9 +256,6 @@ export function base64ToHex(b64: string): string {
  */
 export function deriveEd25519Address(pubkeyHex: string): string {
   return ethers.getAddress(
-    "0x" +
-      ethers
-        .keccak256("0x" + pubkeyHex.padStart(64, "0"))
-        .slice(2 + 24), // last 20 bytes
+    "0x" + ethers.keccak256("0x" + pubkeyHex.padStart(64, "0")).slice(2 + 24), // last 20 bytes
   );
 }

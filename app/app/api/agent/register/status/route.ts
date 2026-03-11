@@ -69,7 +69,11 @@ export async function GET(req: NextRequest) {
     // For wallet-based agents, zero-pad the address to 32 bytes.
     const isEd25519 = session.mode === "ed25519" && session.ed25519Pubkey;
     const { isVerified, agentId } = isEd25519
-      ? await checkAgentOnChain("0x" + (session.ed25519Pubkey as string), networkConfig, true)
+      ? await checkAgentOnChain(
+          "0x" + (session.ed25519Pubkey as string),
+          networkConfig,
+          true,
+        )
       : await checkAgentOnChain(agentAddress, networkConfig);
 
     if (isVerified) {

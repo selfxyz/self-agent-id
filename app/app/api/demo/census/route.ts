@@ -178,7 +178,8 @@ export async function GET(req: NextRequest) {
       },
       bodySchema: {
         "?network": "Query param: 'celo-sepolia' (default) or 'celo-mainnet'",
-        "(POST body)": "Empty object {} — credentials are read from the agent's on-chain record",
+        "(POST body)":
+          "Empty object {} — credentials are read from the agent's on-chain record",
       },
       exampleBody: {},
       notes: [

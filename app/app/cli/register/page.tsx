@@ -27,10 +27,7 @@ let SelfAppBuilderClass:
   | typeof import("@selfxyz/qrcode").SelfAppBuilder
   | null = null;
 
-type HandoffMode =
-  | "linked"
-  | "wallet-free"
-  | "smartwallet";
+type HandoffMode = "linked" | "wallet-free" | "smartwallet";
 type HandoffOperation = "register" | "deregister";
 
 interface CliDisclosures {

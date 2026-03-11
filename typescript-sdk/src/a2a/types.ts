@@ -132,13 +132,11 @@ export interface CancelTaskParams {
 
 // ─── A2A Requests ───────────────────────────────────────────────────────────
 
-export interface SendMessageRequest
-  extends JSONRPCRequest<SendMessageParams> {
+export interface SendMessageRequest extends JSONRPCRequest<SendMessageParams> {
   method: "message/send";
 }
 
-export interface SendStreamingMessageRequest
-  extends JSONRPCRequest<SendMessageParams> {
+export interface SendStreamingMessageRequest extends JSONRPCRequest<SendMessageParams> {
   method: "message/stream";
 }
 

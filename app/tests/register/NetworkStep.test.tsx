@@ -4,11 +4,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mockSetNetworkId = vi.fn();
 vi.mock("@/lib/NetworkContext", () => ({
-  useNetwork: () => ({ networkId: "celo-mainnet", setNetworkId: mockSetNetworkId }),
+  useNetwork: () => ({
+    networkId: "celo-mainnet",
+    setNetworkId: mockSetNetworkId,
+  }),
 }));
 
 vi.mock("@/components/Button", () => ({
-  Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
+  Button: ({
+    children,
+    ...props
+  }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
     React.createElement("button", props, children),
 }));
 
@@ -34,9 +40,7 @@ describe("NetworkStep", () => {
     render(<NetworkStep onContinue={vi.fn()} onBack={vi.fn()} />);
 
     expect(screen.getByText("Celo Sepolia (Testnet)")).toBeDefined();
-    expect(
-      screen.getByText(/mock documents/),
-    ).toBeDefined();
+    expect(screen.getByText(/mock documents/)).toBeDefined();
   });
 
   it("calls onContinue when Continue clicked", () => {

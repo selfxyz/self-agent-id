@@ -25,20 +25,22 @@ Or reuse your existing Solana key (the plugin falls back to `SOLANA_PRIVATE_KEY`
 
 ## Actions
 
-| Action | Description |
-|--------|-------------|
-| `checkIdentity` | Check registration status |
-| `signRequest` | Sign an HTTP request |
-| `authenticatedFetch` | Make a signed HTTP request |
-| `demoVerify` | Test against the live agent-to-agent demo endpoint |
-| `verifyAgent` | Verify another agent's request |
+| Action               | Description                                        |
+| -------------------- | -------------------------------------------------- |
+| `checkIdentity`      | Check registration status                          |
+| `signRequest`        | Sign an HTTP request                               |
+| `authenticatedFetch` | Make a signed HTTP request                         |
+| `demoVerify`         | Test against the live agent-to-agent demo endpoint |
+| `verifyAgent`        | Verify another agent's request                     |
 
 ## Demo
 
 Test your agent against the live demo:
 
 ```typescript
-const result = await plugin.actions.demoVerify.handler({ network: "celo-sepolia" });
+const result = await plugin.actions.demoVerify.handler({
+  network: "celo-sepolia",
+});
 // result.body.verified === true if your agent is registered and verified
 // result.body.sameHuman tells you if you share the same human backer as the demo agent
 ```

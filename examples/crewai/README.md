@@ -16,10 +16,10 @@ ED25519_SEED=<your-seed> python agent.py
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `SelfAuthenticatedTool` | Make signed HTTP requests |
-| `SelfIdentityTool` | Check agent registration status |
+| Tool                    | Description                     |
+| ----------------------- | ------------------------------- |
+| `SelfAuthenticatedTool` | Make signed HTTP requests       |
+| `SelfIdentityTool`      | Check agent registration status |
 
 ## How It Works
 

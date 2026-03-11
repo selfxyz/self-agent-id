@@ -269,14 +269,14 @@ npx self-agent register export --session .self/session.json --unsafe --print-pri
 
 **Registration modes:**
 
-| Mode              | Description                               | `userDefinedData`                 |
-| ----------------- | ----------------------------------------- | --------------------------------- |
-| `self-custody`    | Human address = agent address             | `R{cfg}`                          |
-| `linked`          | Agent has own keypair, signed challenge   | `K{cfg}{addr}{r}{s}{v}`           |
-| `wallet-free`     | Agent as guardian, no human wallet needed | `W{cfg}{addr}{guardian}{r}{s}{v}` |
-| `ed25519`         | Ed25519 wallet-free agent                 | `W{cfg}{addr}{guardian}{r}{s}{v}` |
-| `ed25519-linked`  | Ed25519 agent linked to human wallet      | `K{cfg}{addr}{r}{s}{v}`           |
-| `smartwallet`     | ZeroDev Kernel + passkeys                 | Smart wallet template             |
+| Mode             | Description                               | `userDefinedData`                 |
+| ---------------- | ----------------------------------------- | --------------------------------- |
+| `self-custody`   | Human address = agent address             | `R{cfg}`                          |
+| `linked`         | Agent has own keypair, signed challenge   | `K{cfg}{addr}{r}{s}{v}`           |
+| `wallet-free`    | Agent as guardian, no human wallet needed | `W{cfg}{addr}{guardian}{r}{s}{v}` |
+| `ed25519`        | Ed25519 wallet-free agent                 | `W{cfg}{addr}{guardian}{r}{s}{v}` |
+| `ed25519-linked` | Ed25519 agent linked to human wallet      | `K{cfg}{addr}{r}{s}{v}`           |
+| `smartwallet`    | ZeroDev Kernel + passkeys                 | Smart wallet template             |
 
 ## Configuration
 

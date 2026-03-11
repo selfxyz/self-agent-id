@@ -16,8 +16,7 @@ export function loadMcpConfig(overrideNetwork?: NetworkName): McpConfig {
   const network: NetworkName =
     overrideNetwork ?? (envNetwork === "testnet" ? "testnet" : "mainnet");
   const networkConfig = NETWORKS[network];
-  const apiUrl =
-    process.env.SELF_AGENT_API_BASE || "https://self-agent-id.vercel.app";
+  const apiUrl = process.env.SELF_AGENT_API_BASE || "https://app.ai.self.xyz";
 
   return {
     privateKey: process.env.SELF_AGENT_PRIVATE_KEY || undefined,

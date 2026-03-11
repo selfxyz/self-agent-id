@@ -236,7 +236,9 @@ export default function ExplainerPage() {
                 </span>
                 <h3 className="font-bold text-lg">Linked Agent</h3>
               </div>
-              <p className="text-sm font-medium mb-2">Agent Key + Wallet Guardian</p>
+              <p className="text-sm font-medium mb-2">
+                Agent Key + Wallet Guardian
+              </p>
               <p className="text-sm text-muted mb-4">
                 A fresh EVM agent keypair is generated. Your connected wallet
                 becomes the guardian, giving you direct revocation control. The
@@ -296,8 +298,8 @@ export default function ExplainerPage() {
               </div>
               <div className="mt-4 pt-4 border-t border-border">
                 <p className="text-xs text-muted">
-                  <strong className="text-foreground">Best for:</strong>{" "}
-                  Quick start without any wallet setup or crypto knowledge.
+                  <strong className="text-foreground">Best for:</strong> Quick
+                  start without any wallet setup or crypto knowledge.
                 </p>
               </div>
             </Card>
@@ -413,8 +415,8 @@ export default function ExplainerPage() {
               </div>
               <div className="mt-4 pt-4 border-t border-border">
                 <p className="text-xs text-muted">
-                  <strong className="text-foreground">Best for:</strong>{" "}
-                  AI agents using Ed25519 keys natively (Eliza, OpenClaw, SSH
+                  <strong className="text-foreground">Best for:</strong> AI
+                  agents using Ed25519 keys natively (Eliza, OpenClaw, SSH
                   agents, etc.).
                 </p>
               </div>
@@ -449,9 +451,9 @@ export default function ExplainerPage() {
               </div>
               <div className="mt-4 pt-4 border-t border-border">
                 <p className="text-xs text-muted">
-                  <strong className="text-foreground">Best for:</strong>{" "}
-                  Ed25519 agents where a human wants direct wallet-based
-                  revocation control.
+                  <strong className="text-foreground">Best for:</strong> Ed25519
+                  agents where a human wants direct wallet-based revocation
+                  control.
                 </p>
               </div>
             </Card>
@@ -634,7 +636,9 @@ export default function ExplainerPage() {
                   50
                 </div>
                 <div className="flex-1 bg-blue-500/20 rounded h-4 w-1/2" />
-                <span className="text-muted w-48">Third-Party Identity Check</span>
+                <span className="text-muted w-48">
+                  Third-Party Identity Check
+                </span>
               </div>
             </div>
           </Card>
@@ -650,7 +654,7 @@ export default function ExplainerPage() {
             </p>
             <pre className="bg-surface-2 border border-border rounded-lg p-4 text-xs overflow-auto mb-4">
               {`// Quick check: Only accept passport-verified agents
-const baseUrl = "https://self-agent-id.vercel.app"; // replace with your deployment URL
+const baseUrl = "https://app.ai.self.xyz"; // replace with your deployment URL
 const res = await fetch(\`\${baseUrl}/api/reputation/42220/\${agentId}\`);
 const { score, proofType } = await res.json();
 

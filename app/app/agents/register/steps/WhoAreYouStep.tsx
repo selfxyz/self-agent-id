@@ -30,8 +30,8 @@ export default function WhoAreYouStep({ onSelect }: WhoAreYouStepProps) {
             <span className="font-bold text-sm">I&apos;m a human</span>
           </div>
           <p className="text-muted text-xs">
-            I want to register an agent using the guided wizard.
-            I&apos;ll verify my identity with my passport via the Self app.
+            I want to register an agent using the guided wizard. I&apos;ll
+            verify my identity with my passport via the Self app.
           </p>
         </button>
 

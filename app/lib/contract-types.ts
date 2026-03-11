@@ -104,7 +104,14 @@ export interface TypedDemoVerifierContract extends ethers.BaseContract {
 /** Typed view of the AgentDemoVerifierEd25519 contract. */
 export interface TypedDemoVerifierEd25519Contract extends ethers.BaseContract {
   metaVerifyAgent: ethers.BaseContractMethod<
-    [string, bigint, bigint, [bigint, bigint, bigint, bigint, bigint], bigint, bigint],
+    [
+      string,
+      bigint,
+      bigint,
+      [bigint, bigint, bigint, bigint, bigint],
+      bigint,
+      bigint,
+    ],
     bigint,
     ethers.ContractTransactionResponse
   >;
