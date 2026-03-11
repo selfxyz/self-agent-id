@@ -555,9 +555,10 @@ async function handleRegister(
               "1. Look at the QR code on this screen",
               "2. Open your phone camera and point it at the QR code",
               "3. Tap the notification that appears to open the Self app",
-              "4. Follow the prompts in the Self app",
-              "5. Scan your passport (NFC chip) when prompted",
-              "6. The agent will be verified on-chain automatically",
+              "4. Follow the prompts in the Self app to confirm verification",
+              "5. The agent will be verified on-chain automatically",
+              "",
+              "(The human's passport was already scanned when they first set up the Self app — they don't need to scan it again.)",
               "",
               '**After showing the QR, ask the human: "Can you see the QR code on your screen?"**',
               "- If YES: great — they should scan it with their phone camera now.",
@@ -1317,7 +1318,7 @@ async function handleCheckFreshness(
                 `1. Deregister: { intent: "deregister", agentId: ${agentId} }`,
                 `2. Re-register: { intent: "register" }`,
                 "",
-                "The human will need to scan their passport again.",
+                "The human will need to scan a new QR code with the Self app to re-verify.",
               ),
               dataPart({
                 agentId,
@@ -1504,9 +1505,8 @@ async function handleRefreshProof(
               "",
               "Steps for the human:",
               "1. Scan the QR code below with your phone camera (or tap the link above if on mobile)",
-              "2. The Self app will open — follow the prompts",
-              "3. Scan your passport (NFC chip) when prompted",
-              "4. The proof will be refreshed on-chain automatically",
+              "2. The Self app will open — follow the prompts to confirm",
+              "3. The proof will be refreshed on-chain automatically",
               "",
               `Session expires at: ${String(result.expiresAt)} (${Math.round((result.timeRemainingMs as number) / 1000)}s remaining)`,
               "",
@@ -1564,9 +1564,9 @@ function handleHelp(taskId: string): Task {
             '   Say: "Register a new agent" or send { intent: "register" }',
             "",
             "   IMPORTANT — Networks:",
-            "   • mainnet (default): Celo Mainnet. Requires a REAL passport via the Self app.",
-            "   • testnet: Celo Sepolia. For testing only — uses MOCK documents generated in the Self app.",
-            '     Use network: "testnet" for development. The Self app is still required, but you can generate mock documents instead of using a real passport.',
+            "   • mainnet (default): Celo Mainnet. The human must have already scanned a REAL passport in the Self app during initial setup.",
+            "   • testnet: Celo Sepolia. For testing only — the Self app can generate MOCK documents instead of requiring a real passport.",
+            '     Use network: "testnet" for development.',
             "",
             "   Registration modes:",
             "",
@@ -1614,7 +1614,7 @@ function handleHelp(taskId: string): Task {
             "",
             "7. Refresh proof — Initiate a proof refresh for an existing agent (re-verify without deregistering)",
             '   Say: "Refresh proof for agent #5" or send { intent: "refresh-proof", agentId: 5 }',
-            "   The human scans their passport again; the on-chain proof expiry is updated.",
+            "   The human scans a new QR code with the Self app; the on-chain proof expiry is updated.",
             "",
             'All queries default to mainnet (Celo). Add chainId: 11142220 or network: "testnet" for Celo Sepolia (mock documents via the Self app, no real passport needed).',
           ),
@@ -1687,44 +1687,23 @@ const registryTaskHandler: TaskHandler = {
                 ...textParts(
                   "I can register an AI agent with proof-of-human verification on the Self protocol.",
                   "",
-                  "Before we begin, a couple of quick questions:",
+                  "Since you're an agent, you'll use **Ed25519 mode** — this is the standard for agent-to-agent registration. Two quick questions:",
                   "",
-                  "1. **Guardian wallet**: Do you (or your operator) have a crypto wallet (Ethereum address) you'd like to link as this agent's guardian? A guardian wallet can manage the agent on-chain later. If not, we'll use wallet-free mode (simplest — no wallet needed).",
+                  "1. **Guardian wallet**: Do you (or your operator) have an Ethereum address to link as this agent's guardian? A guardian wallet lets a human manage the agent on-chain later. If not, we'll skip it (ed25519 mode without a linked wallet).",
                   "",
-                  "2. **Ed25519 key**: Does this agent already have an Ed25519 keypair for signing? Most agents don't — we can skip this and use wallet-free mode, which is the easiest path.",
+                  "2. **Network**: Mainnet (Celo) or testnet (Celo Sepolia)?",
                   "",
-                  "3. **Network**: Mainnet (Celo) or testnet (Celo Sepolia)?",
+                  "You'll need your Ed25519 public key and a signed challenge to prove key ownership.",
                   "",
                   "You can reply conversationally, or send a structured request:",
                 ),
                 dataPart({
-                  hint: "Pick the mode that fits your setup",
+                  hint: "Pick the mode that fits your setup — agents use Ed25519",
                   modes: [
-                    {
-                      mode: "wallet-free",
-                      description:
-                        "Simplest. No wallet needed. Human just scans a QR code.",
-                      example: {
-                        intent: "register",
-                        mode: "wallet-free",
-                        network: "mainnet",
-                      },
-                    },
-                    {
-                      mode: "linked",
-                      description:
-                        "Links agent to a guardian wallet. Provides on-chain management.",
-                      example: {
-                        intent: "register",
-                        mode: "linked",
-                        humanAddress: "0xYourWallet...",
-                        network: "mainnet",
-                      },
-                    },
                     {
                       mode: "ed25519",
                       description:
-                        "Agent has its own Ed25519 key verified on-chain.",
+                        "Standard agent registration. Ed25519 key verified on-chain, no guardian wallet needed.",
                       example: {
                         intent: "register",
                         mode: "ed25519",
@@ -1735,7 +1714,7 @@ const registryTaskHandler: TaskHandler = {
                     {
                       mode: "ed25519-linked",
                       description:
-                        "Ed25519 key + guardian wallet — maximum security.",
+                        "Ed25519 key + guardian wallet — links agent to a human wallet for on-chain management.",
                       example: {
                         intent: "register",
                         mode: "ed25519-linked",
