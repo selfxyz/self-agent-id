@@ -337,6 +337,27 @@ export default function MyAgentsPage() {
 
   useEffect(() => {
     setPasskeyAvailable(isPasskeySupported());
+
+    // Auto-reconnect wallet if already authorized (no prompt).
+    // Uses eth_accounts (silent) instead of eth_requestAccounts (prompts).
+    if (typeof window !== "undefined" && window.ethereum) {
+      void (async () => {
+        try {
+          const eth = window.ethereum as unknown as {
+            request: (args: { method: string }) => Promise<string[]>;
+          };
+          const accounts = await eth.request({ method: "eth_accounts" });
+          if (accounts[0]) {
+            const addr = accounts[0].toLowerCase();
+            setWalletAddress(addr);
+            void loadAgentsByOwner(addr);
+          }
+        } catch {
+          // Wallet not available or not authorized — no-op
+        }
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Derive embedded wallet address (stable string or undefined).
@@ -784,6 +805,7 @@ export default function MyAgentsPage() {
     setIdentifySessionToken(null);
     setIdentifyPolling(false);
     if (identifyPollRef.current) clearInterval(identifyPollRef.current);
+
     setAgents([]);
     setError("");
     setLoading(true);
@@ -877,7 +899,39 @@ export default function MyAgentsPage() {
       const provider = new ethers.JsonRpcProvider(network.rpcUrl);
       const registry = typedRegistry(network.registryAddress, provider);
 
-      const agentIds = await registry.getAgentsForNullifier(nullifier);
+      let agentIds = await registry.getAgentsForNullifier(nullifier);
+
+      // Fallback: agents registered before the identify contract upgrade won't
+      // be in the agentsByNullifier mapping. Scan registration events instead.
+      if (agentIds.length === 0) {
+        try {
+          const eventRegistry = new ethers.Contract(
+            network.registryAddress,
+            [
+              "event AgentRegisteredWithHumanProof(uint256 indexed agentId, address indexed proofProvider, uint256 nullifier, uint8 verificationStrength)",
+            ],
+            provider,
+          );
+          const events = await eventRegistry.queryFilter(
+            eventRegistry.filters.AgentRegisteredWithHumanProof(),
+            network.registryDeployBlock,
+            "latest",
+          );
+          const matchingIds = events
+            .filter((e) => {
+              const args = (e as ethers.EventLog).args;
+              return String(args[2]) === nullifier.toString();
+            })
+            .map((e) => (e as ethers.EventLog).args[0] as bigint);
+          // Deduplicate (same agent could have re-registered)
+          agentIds = [...new Set(matchingIds.map((id) => id.toString()))].map(
+            (id) => BigInt(id),
+          );
+        } catch (err) {
+          console.warn("[loadAgentsByNullifier] Event fallback failed:", err);
+        }
+      }
+
       if (agentIds.length === 0) {
         setError("No agents found for this identity.");
         setLoading(false);
@@ -1048,6 +1102,10 @@ export default function MyAgentsPage() {
             if (lookupMode !== "wallet") setAgents([]);
             setLookupMode("wallet");
             setError("");
+            // Re-fetch wallet agents when switching back to this tab
+            if (lookupMode !== "wallet" && walletAddress) {
+              void loadAgentsByOwner(walletAddress);
+            }
           }}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             lookupMode === "wallet"
@@ -1152,7 +1210,8 @@ export default function MyAgentsPage() {
                   selfApp={identifyQrData as any}
                   size={200}
                   onSuccess={() => {
-                    // Status polling handles completion
+                    // Websocket confirmed proof — polling will pick up the
+                    // on-chain event shortly. Nothing extra needed here.
                   }}
                   onError={(data: { error_code?: string; reason?: string }) => {
                     setError(
