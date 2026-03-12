@@ -1045,6 +1045,7 @@ export default function MyAgentsPage() {
       <div className="flex justify-center gap-2 mb-6 flex-wrap">
         <button
           onClick={() => {
+            if (lookupMode !== "wallet") setAgents([]);
             setLookupMode("wallet");
             setError("");
           }}
@@ -1059,6 +1060,7 @@ export default function MyAgentsPage() {
         </button>
         <button
           onClick={() => {
+            if (lookupMode !== "key") setAgents([]);
             setLookupMode("key");
             setError("");
           }}
@@ -1074,6 +1076,7 @@ export default function MyAgentsPage() {
         {passkeyAvailable && (
           <button
             onClick={() => {
+              if (lookupMode !== "passkey") setAgents([]);
               setLookupMode("passkey");
               setError("");
               setPasskeyAddress(null);
@@ -1091,6 +1094,7 @@ export default function MyAgentsPage() {
         {isPrivyConfigured() && (
           <button
             onClick={() => {
+              if (lookupMode !== "privy") setAgents([]);
               setLookupMode("privy");
               setError("");
               // If already authenticated, reload agents immediately
@@ -1115,6 +1119,7 @@ export default function MyAgentsPage() {
         )}
         <button
           onClick={() => {
+            if (lookupMode !== "passport") setAgents([]);
             setLookupMode("passport");
             setError("");
             handleCloseIdentify();
