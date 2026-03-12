@@ -197,6 +197,7 @@ export default function RegisterPage() {
       if (!ed25519PubkeyHex) return;
       const agentKey = "0x" + ed25519PubkeyHex.padStart(64, "0");
       let cancelled = false;
+      let intervalRef: ReturnType<typeof setInterval> | undefined;
       void (async () => {
         try {
           const provider = new ethers.JsonRpcProvider(network.rpcUrl);
@@ -231,11 +232,8 @@ export default function RegisterPage() {
             }
           })();
         }, 5000);
-        // Store interval for cleanup
         if (!cancelled) intervalRef = interval;
       })();
-
-      let intervalRef: ReturnType<typeof setInterval> | undefined;
       return () => {
         cancelled = true;
         if (intervalRef) clearInterval(intervalRef);
@@ -246,6 +244,7 @@ export default function RegisterPage() {
     if (!addressToCheck) return;
 
     let cancelled = false;
+    let intervalRef: ReturnType<typeof setInterval> | undefined;
     void (async () => {
       try {
         const alreadyRegistered = await checkIfRegistered(addressToCheck);
@@ -278,8 +277,6 @@ export default function RegisterPage() {
       }, 5000);
       if (!cancelled) intervalRef = interval;
     })();
-
-    let intervalRef: ReturnType<typeof setInterval> | undefined;
     return () => {
       cancelled = true;
       if (intervalRef) clearInterval(intervalRef);
