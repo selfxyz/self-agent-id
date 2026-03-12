@@ -1046,7 +1046,6 @@ export default function MyAgentsPage() {
         <button
           onClick={() => {
             setLookupMode("wallet");
-            setAgents([]);
             setError("");
           }}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -1061,7 +1060,6 @@ export default function MyAgentsPage() {
         <button
           onClick={() => {
             setLookupMode("key");
-            setAgents([]);
             setError("");
           }}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -1077,7 +1075,6 @@ export default function MyAgentsPage() {
           <button
             onClick={() => {
               setLookupMode("passkey");
-              setAgents([]);
               setError("");
               setPasskeyAddress(null);
             }}
@@ -1095,7 +1092,6 @@ export default function MyAgentsPage() {
           <button
             onClick={() => {
               setLookupMode("privy");
-              setAgents([]);
               setError("");
               // If already authenticated, reload agents immediately
               if (privyConnectedAddress) {
@@ -1120,7 +1116,6 @@ export default function MyAgentsPage() {
         <button
           onClick={() => {
             setLookupMode("passport");
-            setAgents([]);
             setError("");
             handleCloseIdentify();
           }}

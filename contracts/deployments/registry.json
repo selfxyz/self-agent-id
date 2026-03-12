@@ -36,7 +36,7 @@
       "contracts": {
         "SelfAgentRegistry": {
           "proxy": "0xaC3DF9ABf80d0F5c020C06B04Cced27763355944",
-          "implementation": "0x84cA20B8A1559F136dA03913dbe6A7F68B6B240B"
+          "implementation": "0xBe81Bd959cD3B07CaFd242f9b7Ce5936fBEc4c66"
         },
         "SelfHumanProofProvider": "0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d",
         "SelfReputationRegistry": {
