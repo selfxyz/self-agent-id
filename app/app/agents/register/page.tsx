@@ -158,6 +158,10 @@ export default function RegisterPage() {
   // Guard against double-triggering handleSuccess (websocket + on-chain poll race)
   const successTriggeredRef = useRef(false);
 
+  // Track whether the agent was already registered before the current scan started.
+  // Prevents false-positive success when re-scanning a previously registered agent.
+  const wasAlreadyRegisteredRef = useRef(false);
+
   // Agent Card flow state
   const [cardStep, setCardStep] = useState<
     "pending" | "writing" | "done" | "skipped"
@@ -182,54 +186,104 @@ export default function RegisterPage() {
 
   // On-chain polling fallback: if websocket misses "proof_verified",
   // poll the contract to detect successful registration while on the scan step.
+  // IMPORTANT: First checks whether the agent is already registered before polling,
+  // so that a pre-existing registration doesn't trigger false-positive success.
   useEffect(() => {
     if (step !== "scan") return;
+    wasAlreadyRegisteredRef.current = false;
+
     // For Ed25519 mode, poll using the pubkey as agentKey
     if (mode === "ed25519") {
       if (!ed25519PubkeyHex) return;
       const agentKey = "0x" + ed25519PubkeyHex.padStart(64, "0");
-      const interval = setInterval(() => {
-        void (async () => {
-          try {
-            const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-            const registry = typedRegistry(network.registryAddress, provider);
-            const isVerified = await registry.isVerifiedAgent(agentKey);
-            if (isVerified) {
-              console.log(
-                "[on-chain poll] Ed25519 agent registered, triggering success",
-              );
-              clearInterval(interval);
-              handleSuccess();
-            }
-          } catch (err) {
-            console.warn("[on-chain poll] Ed25519 check failed:", err);
+      let cancelled = false;
+      void (async () => {
+        try {
+          const provider = new ethers.JsonRpcProvider(network.rpcUrl);
+          const registry = typedRegistry(network.registryAddress, provider);
+          const alreadyVerified = await registry.isVerifiedAgent(agentKey);
+          if (alreadyVerified) {
+            console.log(
+              "[on-chain poll] Ed25519 agent already registered before scan, skipping poll",
+            );
+            wasAlreadyRegisteredRef.current = true;
           }
-        })();
-      }, 5000);
-      return () => clearInterval(interval);
+        } catch {
+          // Ignore — will fall through to polling
+        }
+        if (cancelled) return;
+
+        const interval = setInterval(() => {
+          void (async () => {
+            try {
+              const provider = new ethers.JsonRpcProvider(network.rpcUrl);
+              const registry = typedRegistry(network.registryAddress, provider);
+              const isVerified = await registry.isVerifiedAgent(agentKey);
+              if (isVerified && !wasAlreadyRegisteredRef.current) {
+                console.log(
+                  "[on-chain poll] Ed25519 agent registered, triggering success",
+                );
+                clearInterval(interval);
+                handleSuccess();
+              }
+            } catch (err) {
+              console.warn("[on-chain poll] Ed25519 check failed:", err);
+            }
+          })();
+        }, 5000);
+        // Store interval for cleanup
+        if (!cancelled) intervalRef = interval;
+      })();
+
+      let intervalRef: ReturnType<typeof setInterval> | undefined;
+      return () => {
+        cancelled = true;
+        if (intervalRef) clearInterval(intervalRef);
+      };
     }
 
     const addressToCheck = agentWallet?.address;
     if (!addressToCheck) return;
 
-    const interval = setInterval(() => {
-      void (async () => {
-        try {
-          const registered = await checkIfRegistered(addressToCheck);
-          if (registered) {
-            console.log(
-              "[on-chain poll] Agent registered on-chain, triggering success",
-            );
-            clearInterval(interval);
-            handleSuccess();
-          }
-        } catch (err) {
-          console.warn("[on-chain poll] Check failed:", err);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const alreadyRegistered = await checkIfRegistered(addressToCheck);
+        if (alreadyRegistered) {
+          console.log(
+            "[on-chain poll] Agent already registered before scan, skipping poll",
+          );
+          wasAlreadyRegisteredRef.current = true;
         }
-      })();
-    }, 5000); // poll every 5 seconds
+      } catch {
+        // Ignore — will fall through to polling
+      }
+      if (cancelled) return;
 
-    return () => clearInterval(interval);
+      const interval = setInterval(() => {
+        void (async () => {
+          try {
+            const registered = await checkIfRegistered(addressToCheck);
+            if (registered && !wasAlreadyRegisteredRef.current) {
+              console.log(
+                "[on-chain poll] Agent registered on-chain, triggering success",
+              );
+              clearInterval(interval);
+              handleSuccess();
+            }
+          } catch (err) {
+            console.warn("[on-chain poll] Check failed:", err);
+          }
+        })();
+      }, 5000);
+      if (!cancelled) intervalRef = interval;
+    })();
+
+    let intervalRef: ReturnType<typeof setInterval> | undefined;
+    return () => {
+      cancelled = true;
+      if (intervalRef) clearInterval(intervalRef);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, mode, walletAddress, agentWallet?.address]);
 
