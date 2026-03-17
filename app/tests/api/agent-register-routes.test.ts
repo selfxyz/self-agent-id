@@ -392,6 +392,25 @@ describe("agent register init route", () => {
     );
   });
 
+  it("includes qrImageBase64 (valid PNG) in the response", async () => {
+    const { POST } = await loadRegisterRoute();
+    const res = await POST(
+      makeNextRequest("https://example.com/api/agent/register", {
+        method: "POST",
+        body: JSON.stringify({
+          mode: "wallet-free",
+          network: "testnet",
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await jsonBody<{ qrImageBase64?: string }>(res);
+    expect(typeof body.qrImageBase64).toBe("string");
+    // PNG files start with the 8-byte magic header; verify base64 encoding
+    expect(body.qrImageBase64).toMatch(/^iVBORw0KGgo/);
+  });
+
   it("returns a server error when session secret is missing", async () => {
     mockHelpers.getSessionSecret.mockImplementation(() => {
       throw new Error("SESSION_SECRET environment variable is not set");
@@ -866,6 +885,98 @@ describe("agent register export route", () => {
 
   it("returns preflight response for OPTIONS", async () => {
     const { OPTIONS } = await loadRegisterExportRoute();
+    const res = await OPTIONS();
+    expect(res.status).toBe(204);
+  });
+});
+
+async function loadQrImageRoute() {
+  vi.resetModules();
+  installCommonMocks();
+  return import("@/app/api/qr/[sessionToken]/route");
+}
+
+describe("QR image route (GET /api/qr/[sessionToken])", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setDefaultMocks();
+  });
+
+  it("returns 401 for an invalid session token", async () => {
+    mockHelpers.decryptAndValidateSession.mockImplementation(() => {
+      throw new Error("Invalid token");
+    });
+    const { GET } = await loadQrImageRoute();
+    const res = await GET(
+      makeNextRequest("https://example.com/api/qr/bad-token", {
+        method: "GET",
+      }),
+      { params: Promise.resolve({ sessionToken: "bad-token" }) },
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 410 for an expired session token", async () => {
+    mockHelpers.decryptAndValidateSession.mockImplementation(() => {
+      throw new Error("Session expired");
+    });
+    const { GET } = await loadQrImageRoute();
+    const res = await GET(
+      makeNextRequest("https://example.com/api/qr/expired-token", {
+        method: "GET",
+      }),
+      { params: Promise.resolve({ sessionToken: "expired-token" }) },
+    );
+    expect(res.status).toBe(410);
+  });
+
+  it("returns 400 when session has no qrData", async () => {
+    mockHelpers.decryptAndValidateSession.mockReturnValue({
+      session: { type: "register", stage: "pending" },
+      secret: "session-secret",
+    });
+    const { GET } = await loadQrImageRoute();
+    const res = await GET(
+      makeNextRequest("https://example.com/api/qr/valid-token", {
+        method: "GET",
+      }),
+      { params: Promise.resolve({ sessionToken: "valid-token" }) },
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("returns a PNG image for a valid session with qrData", async () => {
+    mockHelpers.decryptAndValidateSession.mockReturnValue({
+      session: {
+        type: "register",
+        stage: "qr-ready",
+        qrData: { foo: "bar" },
+      },
+      secret: "session-secret",
+    });
+    // getUniversalLink is already mocked to return "self://deep-link"
+    const { GET } = await loadQrImageRoute();
+    const res = await GET(
+      makeNextRequest("https://example.com/api/qr/valid-token", {
+        method: "GET",
+      }),
+      { params: Promise.resolve({ sessionToken: "valid-token" }) },
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("image/png");
+    // Response body should be a non-empty PNG buffer
+    const buf = await res.arrayBuffer();
+    expect(buf.byteLength).toBeGreaterThan(100);
+    // Verify PNG magic bytes: 0x89 0x50 0x4E 0x47
+    const bytes = new Uint8Array(buf);
+    expect(bytes[0]).toBe(0x89);
+    expect(bytes[1]).toBe(0x50); // 'P'
+    expect(bytes[2]).toBe(0x4e); // 'N'
+    expect(bytes[3]).toBe(0x47); // 'G'
+  });
+
+  it("returns CORS preflight response for OPTIONS", async () => {
+    const { OPTIONS } = await loadQrImageRoute();
     const res = await OPTIONS();
     expect(res.status).toBe(204);
   });

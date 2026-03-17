@@ -29,6 +29,7 @@ import {
   corsResponse,
 } from "@/lib/agent-api-helpers";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { renderQrBase64 } from "@/lib/renderQr";
 import {
   computeEd25519ChallengeHash,
   computeExtKpub,
@@ -351,6 +352,14 @@ export async function POST(req: NextRequest) {
     }).build();
 
     const deepLink = getUniversalLink(selfApp);
+    const qrImageBase64 = await renderQrBase64(deepLink);
+
+    // Construct scanUrl after finalToken is available (set below), so we
+    // build it just before the response. Derive base URL from request origin
+    // or NEXT_PUBLIC_APP_URL env var.
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL ??
+      `${req.headers.get("x-forwarded-proto") ?? "https"}://${req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "localhost:3000"}`;
 
     // ── Create encrypted session token ───────────────────────────────────
     const { data: sessionData } = createSessionToken(
@@ -383,11 +392,15 @@ export async function POST(req: NextRequest) {
       new Date(expiresAt).getTime() - Date.now(),
     );
 
+    const scanUrl = `${appUrl}/scan/${finalToken}`;
+
     return jsonResponse({
       sessionToken: finalToken,
       stage: "qr-ready",
       qrData: selfApp,
       deepLink,
+      qrImageBase64,
+      scanUrl,
       agentAddress,
       network,
       mode,

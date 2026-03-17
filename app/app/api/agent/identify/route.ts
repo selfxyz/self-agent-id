@@ -12,6 +12,7 @@
 import type { NextRequest } from "next/server";
 import { ethers } from "ethers";
 import { SelfAppBuilder, getUniversalLink } from "@selfxyz/qrcode";
+import { renderQrBase64 } from "@/lib/renderQr";
 import { createSessionToken, encryptSession } from "@/lib/session-token";
 import {
   getSessionSecret,
@@ -96,6 +97,11 @@ export async function POST(req: NextRequest) {
     }).build();
 
     const deepLink = getUniversalLink(selfApp);
+    const qrImageBase64 = await renderQrBase64(deepLink);
+
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL ??
+      `${req.headers.get("x-forwarded-proto") ?? "https"}://${req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "localhost:3000"}`;
 
     const { data: sessionData } = createSessionToken(
       { type: "identify", network },
@@ -108,6 +114,7 @@ export async function POST(req: NextRequest) {
       qrData: selfApp,
     };
     const finalToken = encryptSession(updatedData, secret);
+    const scanUrl = `${appUrl}/scan/${finalToken}`;
 
     const expiresAt = updatedData.expiresAt!;
     const timeRemainingMs = Math.max(
@@ -120,6 +127,8 @@ export async function POST(req: NextRequest) {
       stage: "qr-ready",
       qrData: selfApp,
       deepLink,
+      qrImageBase64,
+      scanUrl,
       network,
       expiresAt,
       timeRemainingMs,
