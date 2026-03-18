@@ -28,6 +28,7 @@ import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { StatusDot } from "@/components/StatusDot";
+import { VisaBadge } from "@/components/VisaBadge";
 import {
   signInWithPasskey,
   sendUserOperation,
@@ -1663,7 +1664,7 @@ function renderAgentCards(
   return agents.map((agent) => (
     <div key={agent.agentId.toString()} className="space-y-2">
       <Link
-        href={`/agents/verify?key=${encodeURIComponent(agent.agentKey)}`}
+        href={`/agents/${agent.agentId.toString()}`}
         className="block"
       >
         <Card glow>
@@ -1695,6 +1696,7 @@ function renderAgentCards(
                 </Badge>
               )}
               {agent.hasA2ACard && <Badge variant="info">A2A</Badge>}
+              {network && <VisaBadge agentId={Number(agent.agentId)} chainId={network.chainId} />}
             </div>
             <div className="flex items-center gap-2">
               {agent.verificationStrength !== undefined && (
