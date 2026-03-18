@@ -74,6 +74,7 @@ interface AgentEntry {
   isProofFresh?: boolean;
   daysUntilExpiry?: number;
   isExpiringSoon?: boolean; // true when <= 30 days remain
+  visaTier?: number;
 }
 
 function cleanStr(s: string): string {
@@ -311,6 +312,28 @@ export default function MyAgentsPage() {
     null,
   );
   const [refreshQrData, setRefreshQrData] = useState<unknown>(null);
+
+  // Batch-fetch visa tiers when agents change
+  useEffect(() => {
+    if (!network || agents.length === 0) return;
+    let cancelled = false;
+    const ids = agents.map((a) => a.agentId.toString()).join(",");
+    fetch(`/api/visa/${network.chainId}/batch?agents=${ids}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.agents) return;
+        const tierMap = new Map<number, number>();
+        for (const a of data.agents) tierMap.set(a.agentId, a.tier);
+        setAgents((prev) =>
+          prev.map((agent) => ({
+            ...agent,
+            visaTier: tierMap.get(Number(agent.agentId)) ?? agent.visaTier,
+          })),
+        );
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [agents.length, network?.chainId]);
   const [refreshDeepLink, setRefreshDeepLink] = useState<string | null>(null);
   const [_refreshSessionToken, setRefreshSessionToken] = useState<
     string | null
@@ -1696,7 +1719,7 @@ function renderAgentCards(
                 </Badge>
               )}
               {agent.hasA2ACard && <Badge variant="info">A2A</Badge>}
-              {network && <VisaBadge agentId={Number(agent.agentId)} chainId={network.chainId} />}
+              {agent.visaTier != null && <VisaBadge tier={agent.visaTier} />}
             </div>
             <div className="flex items-center gap-2">
               {agent.verificationStrength !== undefined && (

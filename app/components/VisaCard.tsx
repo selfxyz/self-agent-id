@@ -4,9 +4,10 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card } from "./Card";
 import { Badge } from "./Badge";
+import { Button } from "./Button";
 
 interface VisaCardProps {
   agentId: number;
@@ -22,6 +23,7 @@ interface TierThresholds {
 
 interface VisaData {
   tier: number;
+  tierName: string;
   metrics: {
     transactionCount: number;
     volumeUsd: number;
@@ -30,6 +32,9 @@ interface VisaData {
   eligibility: Record<number, boolean>;
   thresholds: Record<number, TierThresholds>;
 }
+
+/** Scoring service base URL — configurable via env, defaults to localhost for dev */
+const SCORING_URL = process.env.NEXT_PUBLIC_SCORING_SERVICE_URL || "";
 
 const TIER_LABELS: Record<number, string> = {
   0: "None",
@@ -67,40 +72,45 @@ export function VisaCard({ agentId, chainId }: VisaCardProps) {
   const [data, setData] = useState<VisaData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const res = await fetch(`/api/visa/${chainId}/${agentId}`);
-
-        if (!res.ok) {
-          if (res.status === 404) {
-            setError("Visa not available on this network");
-          } else {
-            setError("Failed to load visa data");
-          }
-          return;
-        }
-
-        const json = (await res.json()) as VisaData;
-        if (!cancelled) setData(json);
-      } catch {
-        if (!cancelled) setError("Failed to load visa data");
-      } finally {
-        if (!cancelled) setLoading(false);
+  const loadVisa = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/visa/${chainId}/${agentId}`);
+      if (!res.ok) {
+        setError(res.status === 404 ? "Visa not available on this network" : "Failed to load visa data");
+        return;
       }
+      setData((await res.json()) as VisaData);
+    } catch {
+      setError("Failed to load visa data");
+    } finally {
+      setLoading(false);
     }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
   }, [agentId, chainId]);
+
+  useEffect(() => { void loadVisa(); }, [loadVisa]);
+
+  async function handleCheckEligibility() {
+    if (!SCORING_URL) {
+      // No scoring service configured — just refresh on-chain data
+      await loadVisa();
+      return;
+    }
+    setChecking(true);
+    try {
+      const res = await fetch(`${SCORING_URL}/push/${agentId}`, { method: "POST" });
+      if (!res.ok) throw new Error("Push failed");
+      // Refresh visa data after push
+      await loadVisa();
+    } catch {
+      setError("Eligibility check failed — scoring service may be offline");
+    } finally {
+      setChecking(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -210,6 +220,31 @@ export function VisaCard({ agentId, chainId }: VisaCardProps) {
             </span>
           ))}
         </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 pt-1">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleCheckEligibility}
+            disabled={checking}
+          >
+            {checking ? "Checking..." : "Check Eligibility"}
+          </Button>
+          {nextTier !== null && eligibility[nextTier] && (
+            <Button size="sm" disabled>
+              Claim {TIER_LABELS[nextTier]} Visa
+            </Button>
+          )}
+        </div>
+
+        {/* Last updated */}
+        {metrics.lastUpdated > 0 && (
+          <p className="text-[10px] text-muted">
+            Metrics last updated{" "}
+            {new Date(metrics.lastUpdated * 1000).toLocaleDateString()}
+          </p>
+        )}
       </div>
     </Card>
   );

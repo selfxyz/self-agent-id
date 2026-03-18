@@ -4,7 +4,6 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
 import { Badge } from "./Badge";
 
 const TIER_NAMES: Record<number, string> = {
@@ -21,25 +20,12 @@ const TIER_VARIANTS: Record<number, "info" | "warn" | "success" | "muted"> = {
 };
 
 interface VisaBadgeProps {
-  agentId: number;
-  chainId: number;
+  tier: number;
 }
 
-export function VisaBadge({ agentId, chainId }: VisaBadgeProps) {
-  const [tier, setTier] = useState<number | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/visa/${chainId}/${agentId}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!cancelled && data) setTier(data.tier);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [agentId, chainId]);
-
-  if (tier === null || tier === 0) return null;
+/** Renders a visa tier badge. Pass tier=0 or omit to render nothing. */
+export function VisaBadge({ tier }: VisaBadgeProps) {
+  if (!tier) return null;
 
   return (
     <Badge variant={TIER_VARIANTS[tier] ?? "muted"}>
