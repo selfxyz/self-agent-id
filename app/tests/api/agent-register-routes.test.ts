@@ -27,6 +27,14 @@ const mockHelpers = {
   readSessionTokenFromRequest: vi.fn(),
 };
 
+const mockBuildEd25519UserData = vi.fn();
+const mockComputeEd25519ChallengeHash = vi.fn();
+const mockComputeExtKpub = vi.fn();
+const mockIsValidEd25519PubkeyHex = vi.fn();
+const mockDeriveEd25519Address = vi.fn();
+const mockEd25519Verify = vi.fn();
+const mockTypedRegistry = vi.fn();
+
 const mockCreateRandom = vi.fn();
 const mockGetAddress = vi.fn();
 const mockJsonRpcProvider = vi.fn();
@@ -82,9 +90,27 @@ function installCommonMocks() {
         createRandom: mockCreateRandom,
       },
       getAddress: mockGetAddress,
+      getBytes: (hex: string) =>
+        Uint8Array.from(Buffer.from(hex.replace(/^0x/, ""), "hex")),
       JsonRpcProvider: mockJsonRpcProvider,
       Contract: mockContract,
     },
+  }));
+
+  vi.doMock("@/lib/ed25519", () => ({
+    buildEd25519UserData: mockBuildEd25519UserData,
+    computeEd25519ChallengeHash: mockComputeEd25519ChallengeHash,
+    computeExtKpub: mockComputeExtKpub,
+    isValidEd25519PubkeyHex: mockIsValidEd25519PubkeyHex,
+    deriveEd25519Address: mockDeriveEd25519Address,
+  }));
+
+  vi.doMock("@noble/curves/ed25519.js", () => ({
+    ed25519: { verify: mockEd25519Verify },
+  }));
+
+  vi.doMock("@/lib/contract-types", () => ({
+    typedRegistry: mockTypedRegistry,
   }));
 }
 
@@ -154,6 +180,18 @@ function setDefaultMocks() {
       error:
         "Missing session token. Provide Authorization: Bearer <sessionToken>.",
     };
+  });
+
+  mockBuildEd25519UserData.mockReturnValue("ed25519-user-data");
+  mockComputeEd25519ChallengeHash.mockReturnValue("0xchallengehash");
+  mockComputeExtKpub.mockReturnValue([1n, 2n, 3n, 4n, 5n]);
+  mockIsValidEd25519PubkeyHex.mockReturnValue(true);
+  mockDeriveEd25519Address.mockReturnValue(
+    "0x00000000000000000000000000000000000000BB",
+  );
+  mockEd25519Verify.mockReturnValue(true);
+  mockTypedRegistry.mockReturnValue({
+    ed25519Nonce: vi.fn().mockResolvedValue(0n),
   });
 
   mockCreateRandom.mockReturnValue({
@@ -433,6 +471,33 @@ describe("agent register init route", () => {
     const { OPTIONS } = await loadRegisterRoute();
     const res = await OPTIONS();
     expect(res.status).toBe(204);
+  });
+
+  it("passes humanAddress as guardian to buildEd25519UserData for ed25519-linked", async () => {
+    const humanAddr = "0x00000000000000000000000000000000000000FA";
+    const pubkey = "a".repeat(64);
+    const signature = "b".repeat(128);
+
+    const { POST } = await loadRegisterRoute();
+    const res = await POST(
+      makeNextRequest("https://example.com/api/agent/register", {
+        method: "POST",
+        body: JSON.stringify({
+          mode: "ed25519-linked",
+          network: "testnet",
+          humanAddress: humanAddr,
+          ed25519Pubkey: pubkey,
+          ed25519Signature: signature,
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockBuildEd25519UserData).toHaveBeenCalledWith(
+      expect.objectContaining({
+        guardian: "00000000000000000000000000000000000000fa",
+      }),
+    );
   });
 });
 

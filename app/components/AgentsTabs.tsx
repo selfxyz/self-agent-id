@@ -13,7 +13,7 @@ export function AgentsTabs() {
   const pathname = usePathname();
 
   return (
-    <div className="flex gap-1 border-b border-border mb-8">
+    <div className="flex justify-center gap-1 border-b border-border mb-8">
       {tabs.map((tab) => {
         const active = pathname === tab.href;
         return (

@@ -291,6 +291,7 @@ export async function POST(req: NextRequest) {
         ed25519Pubkey: pubkey,
         signature: signature,
         extKpub,
+        guardian: humanAddress.replace(/^0x/, "").toLowerCase(),
       });
 
       agentAddress = deriveEd25519Address(pubkey);
