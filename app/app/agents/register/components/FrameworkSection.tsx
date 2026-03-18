@@ -109,7 +109,11 @@ export function FrameworkSection({
   const [copiedHash, setCopiedHash] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<
     Record<string, boolean>
-  >({ "Popular Frameworks": true, "OpenClaw Ecosystem": true, "Web3 / Crypto": true });
+  >({
+    "Popular Frameworks": true,
+    "OpenClaw Ecosystem": true,
+    "Web3 / Crypto": true,
+  });
 
   const copyText = (text: string, setter: (v: boolean) => void) => {
     void navigator.clipboard.writeText(text);

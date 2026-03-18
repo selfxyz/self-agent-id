@@ -68,7 +68,9 @@ export function GuardianSection({
       <div className="flex gap-3">
         <button
           type="button"
-          onClick={() => onWantsGuardianChange(wantsGuardian === true ? false : true)}
+          onClick={() =>
+            onWantsGuardianChange(wantsGuardian === true ? false : true)
+          }
           className={`px-5 py-2 rounded-full text-sm font-medium transition-all ${
             wantsGuardian === true
               ? "bg-accent text-white"

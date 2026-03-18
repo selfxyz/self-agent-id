@@ -7,10 +7,7 @@ export type GuardianMethod = "passkey" | "social" | "wallet" | null;
 export type AgentFramework = string | null;
 
 // Frameworks known to natively use Ed25519 keys
-export const ED25519_FRAMEWORKS = new Set([
-  "eliza",
-  "coinbase-agentkit",
-]);
+export const ED25519_FRAMEWORKS = new Set(["eliza", "coinbase-agentkit"]);
 
 export type RegistrationMode =
   | "ed25519"

@@ -30,6 +30,7 @@ export default function RegisterPage() {
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const guardianInFlightRef = useRef<GuardianMethod>(null);
+  const sessionCreatingRef = useRef(false);
 
   // ── 1. Guardian auth ───────────────────────────────────────────────────
   const handleGuardianMethodChange = useCallback(
@@ -88,7 +89,8 @@ export default function RegisterPage() {
         guardianInFlightRef.current = null;
       }
     },
-    [network, privy, reg],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [network, privy],
   );
 
   // Privy wallet effect: when authenticated and wallets arrive, set guardian address
@@ -107,12 +109,12 @@ export default function RegisterPage() {
         reg.setGuardianAddress(addr);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     reg.guardianMethod,
     privy.authenticated,
     privy.wallets,
     reg.guardianAddress,
-    reg,
   ]);
 
   // ── 2. Ed25519 challenge ───────────────────────────────────────────────
@@ -168,23 +170,51 @@ export default function RegisterPage() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     reg.hasEd25519,
     reg.ed25519Pubkey,
     reg.challengeHash,
     reg.guardianAddress,
     networkId,
-    reg,
   ]);
+
+  // ── 2b. Reset session when form inputs change ─────────────────────────
+  // Build a stable fingerprint of values that affect the QR content so we
+  // can detect when the user tweaks settings after a QR is already showing.
+  const settingsKey = JSON.stringify({
+    mode: reg.mode,
+    d: reg.disclosures,
+    g: reg.guardianAddress,
+    n: networkId,
+  });
+
+  useEffect(() => {
+    // Only reset if a session already exists (i.e. QR was already generated)
+    if (!reg.sessionToken) return;
+    reg.setSessionToken(null);
+    reg.setQrState("hidden");
+    setQrData(null);
+    setDeepLink(null);
+    sessionCreatingRef.current = false;
+    setLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsKey]);
 
   // ── 3. Session creation ────────────────────────────────────────────────
   useEffect(() => {
-    if (!reg.isReadyToRegister || reg.sessionToken || loading) return;
+    if (
+      !reg.isReadyToRegister ||
+      reg.sessionToken ||
+      sessionCreatingRef.current
+    )
+      return;
 
     const mode = reg.mode;
     if (!mode) return;
 
     let cancelled = false;
+    sessionCreatingRef.current = true;
     setLoading(true);
     setError(null);
 
@@ -234,7 +264,6 @@ export default function RegisterPage() {
 
         if (!res.ok) {
           setError(data.error ?? "Registration failed");
-          setLoading(false);
           return;
         }
 
@@ -270,7 +299,10 @@ export default function RegisterPage() {
           setError(`Session creation failed: ${msg}`);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          sessionCreatingRef.current = false;
+          setLoading(false);
+        }
       }
     };
 
@@ -278,14 +310,8 @@ export default function RegisterPage() {
     return () => {
       cancelled = true;
     };
-  }, [
-    reg.isReadyToRegister,
-    reg.sessionToken,
-    reg.mode,
-    loading,
-    networkId,
-    reg,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reg.isReadyToRegister, reg.sessionToken, reg.mode, networkId]);
 
   // ── 4. Status polling ──────────────────────────────────────────────────
   useEffect(() => {
@@ -338,7 +364,8 @@ export default function RegisterPage() {
         pollingRef.current = null;
       }
     };
-  }, [reg.qrState, reg.sessionToken, reg]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reg.qrState, reg.sessionToken]);
 
   // ── Render ─────────────────────────────────────────────────────────────
   return (

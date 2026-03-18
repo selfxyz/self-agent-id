@@ -53,7 +53,7 @@ export function QRPanel({
             <SelfQRcodeWrapper
               // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
               selfApp={qrData}
-              size={220}
+              size={350}
               onSuccess={onSuccess}
               onError={onError}
             />
@@ -71,7 +71,7 @@ export function QRPanel({
             <SelfQRcodeWrapper
               // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
               selfApp={qrData}
-              size={220}
+              size={350}
               onSuccess={onSuccess}
               onError={onError}
             />
