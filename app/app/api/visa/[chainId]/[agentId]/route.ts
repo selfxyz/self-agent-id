@@ -70,28 +70,30 @@ export async function GET(
         tierName: TIER_NAMES[tierNum] ?? `Tier ${tierNum}`,
         metrics: {
           transactionCount: Number(metrics.transactionCount),
-          volumeUsd: Number(metrics.volumeUsd),
+          volumeUsd: Number(metrics.volumeUsd) / 1e6,
           lastUpdated: Number(metrics.lastUpdated),
         },
         eligibility: {
-          tourist: eligTourist,
-          work: eligWork,
-          citizenship: eligCitizenship,
+          1: eligTourist,
+          2: eligWork,
+          3: eligCitizenship,
         },
         thresholds: {
-          tourist: {
+          1: {
             minTransactions: Number(threshTourist.minTransactions),
-            minVolumeUsd: Number(threshTourist.minVolumeUsd),
+            minVolumeUsd: Number(threshTourist.minVolumeUsd) / 1e6,
             requiresBoth: threshTourist.requiresBoth,
+            requiresManualReview: false,
           },
-          work: {
+          2: {
             minTransactions: Number(threshWork.minTransactions),
-            minVolumeUsd: Number(threshWork.minVolumeUsd),
+            minVolumeUsd: Number(threshWork.minVolumeUsd) / 1e6,
             requiresBoth: threshWork.requiresBoth,
+            requiresManualReview: false,
           },
-          citizenship: {
+          3: {
             minTransactions: Number(threshCitizenship.minTransactions),
-            minVolumeUsd: Number(threshCitizenship.minVolumeUsd),
+            minVolumeUsd: Number(threshCitizenship.minVolumeUsd) / 1e6,
             requiresBoth: threshCitizenship.requiresBoth,
             requiresManualReview: threshCitizenship.requiresManualReview,
           },
