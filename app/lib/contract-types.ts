@@ -9,6 +9,7 @@ import {
   AGENT_DEMO_VERIFIER_ABI,
   AGENT_DEMO_VERIFIER_ED25519_ABI,
   AGENT_GATE_ABI,
+  VISA_ABI,
 } from "./constants";
 
 // ─── Return types ────────────────────────────────────────────────────────────
@@ -134,6 +135,25 @@ export interface TypedGateContract extends ethers.BaseContract {
   registry(): Promise<string>;
 }
 
+/** Typed view of the CeloAgentVisa contract. */
+export interface TypedVisaContract extends ethers.BaseContract {
+  getTier(agentId: bigint): Promise<bigint>;
+  getMetrics(agentId: bigint): Promise<{
+    transactionCount: bigint;
+    volumeUsd: bigint;
+    lastUpdated: bigint;
+  }>;
+  checkTierEligibility(agentId: bigint, tier: number): Promise<boolean>;
+  getTokenId(agentId: bigint): Promise<bigint>;
+  getAgentId(tokenId: bigint): Promise<bigint>;
+  getTierThresholds(tier: number): Promise<{
+    minTransactions: bigint;
+    minVolumeUsd: bigint;
+    requiresBoth: boolean;
+    requiresManualReview: boolean;
+  }>;
+}
+
 // ─── Constructor helpers ─────────────────────────────────────────────────────
 
 /** Create a typed registry contract instance. */
@@ -194,4 +214,16 @@ export function typedGate(
     AGENT_GATE_ABI,
     runner,
   ) as unknown as TypedGateContract;
+}
+
+/** Create a typed visa contract instance. */
+export function typedVisa(
+  address: string,
+  runner: ethers.ContractRunner,
+): TypedVisaContract {
+  return new ethers.Contract(
+    address,
+    VISA_ABI,
+    runner,
+  ) as unknown as TypedVisaContract;
 }
