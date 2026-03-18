@@ -4,7 +4,7 @@
 
 "use client";
 
-import React, { useState, useEffect, use } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Loader2, ArrowLeft, Copy, Check } from "lucide-react";
 import { useNetwork } from "@/lib/NetworkContext";
@@ -71,9 +71,9 @@ function CopyableAddress({ address }: { address: string }) {
 export default function AgentDetailPage({
   params,
 }: {
-  params: Promise<{ agentId: string }>;
+  params: { agentId: string };
 }) {
-  const { agentId } = use(params);
+  const { agentId } = params;
   const { network } = useNetwork();
   const chainId = network.chainId;
 
