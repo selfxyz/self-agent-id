@@ -130,6 +130,7 @@ export default function CliRegisterHandoffPage() {
   const [passkeySupported, setPasskeySupported] = useState<boolean>(true);
   const [guardianAddress, setGuardianAddress] = useState<string | null>(null);
   const [callbackPosted, setCallbackPosted] = useState<boolean>(false);
+  const [sdkReady, setSdkReady] = useState<boolean>(false);
 
   useEffect(() => {
     setPasskeySupported(isPasskeySupported());
@@ -139,6 +140,7 @@ export default function CliRegisterHandoffPage() {
     import("@selfxyz/qrcode")
       .then((mod) => {
         SelfAppBuilderClass = mod.SelfAppBuilder;
+        setSdkReady(true);
       })
       .catch((err) => {
         setError(`Failed to load Self SDK: ${String(err)}`);
@@ -223,7 +225,7 @@ export default function CliRegisterHandoffPage() {
         `Failed to build Self app payload: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-  }, [canBuildSimpleFlow, payload]);
+  }, [canBuildSimpleFlow, payload, sdkReady]);
 
   const postCallback = async (
     status: "success" | "error",
