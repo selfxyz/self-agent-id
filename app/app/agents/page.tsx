@@ -332,7 +332,9 @@ export default function MyAgentsPage() {
         );
       })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [agents.length, network?.chainId]);
   const [refreshDeepLink, setRefreshDeepLink] = useState<string | null>(null);
   const [_refreshSessionToken, setRefreshSessionToken] = useState<
@@ -359,30 +361,49 @@ export default function MyAgentsPage() {
     wallets: privyWallets,
   } = usePrivyState();
 
+  // Auto-reconnect wallet on mount + re-fetch agents when tab becomes visible
   useEffect(() => {
     setPasskeyAvailable(isPasskeySupported());
 
-    // Auto-reconnect wallet if already authorized (no prompt).
-    // Uses eth_accounts (silent) instead of eth_requestAccounts (prompts).
-    if (typeof window !== "undefined" && window.ethereum) {
-      void (async () => {
-        try {
-          const eth = window.ethereum as unknown as {
-            request: (args: { method: string }) => Promise<string[]>;
-          };
-          const accounts = await eth.request({ method: "eth_accounts" });
-          if (accounts[0]) {
-            const addr = accounts[0].toLowerCase();
-            setWalletAddress(addr);
-            void loadAgentsByOwner(addr);
-          }
-        } catch {
-          // Wallet not available or not authorized — no-op
+    const silentReconnect = async () => {
+      if (typeof window === "undefined" || !window.ethereum) return;
+      try {
+        const eth = window.ethereum as unknown as {
+          request: (args: { method: string }) => Promise<string[]>;
+        };
+        const accounts = await eth.request({ method: "eth_accounts" });
+        if (accounts[0]) {
+          const addr = accounts[0].toLowerCase();
+          setWalletAddress(addr);
+          void loadAgentsByOwner(addr);
         }
-      })();
-    }
+      } catch {
+        // Wallet not available or not authorized — no-op
+      }
+    };
+
+    void silentReconnect();
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Re-fetch agents when user returns to this tab (works across all lookup modes)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      if (lookupMode === "wallet" && walletAddress) {
+        void loadAgentsByOwner(walletAddress);
+      } else if (lookupMode === "passkey" && passkeyAddress) {
+        void loadAgentsByGuardian(passkeyAddress);
+      } else if (lookupMode === "privy" && privyConnectedAddress) {
+        void loadAgentsByOwner(privyConnectedAddress);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lookupMode, walletAddress, passkeyAddress, privyConnectedAddress]);
 
   // Derive embedded wallet address (stable string or undefined).
   const privyEmbeddedAddress = privyAuthenticated
@@ -1686,10 +1707,7 @@ function renderAgentCards(
 ) {
   return agents.map((agent) => (
     <div key={agent.agentId.toString()} className="space-y-2">
-      <Link
-        href={`/agents/${agent.agentId.toString()}`}
-        className="block"
-      >
+      <Link href={`/agents/${agent.agentId.toString()}`} className="block">
         <Card glow>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2 flex-wrap">
