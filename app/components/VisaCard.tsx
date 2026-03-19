@@ -8,6 +8,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Card } from "./Card";
 import { Badge } from "./Badge";
 import { Button } from "./Button";
+import { CheckCircle2, ArrowUp, Loader2 } from "lucide-react";
 
 interface VisaCardProps {
   agentId: number;
@@ -33,7 +34,11 @@ interface VisaData {
   thresholds: Record<number, TierThresholds>;
 }
 
-/** Scoring service base URL — configurable via env, defaults to localhost for dev */
+interface ClaimResult {
+  newTier: number;
+  txHash: string;
+}
+
 const SCORING_URL = process.env.NEXT_PUBLIC_SCORING_SERVICE_URL || "";
 
 const TIER_LABELS: Record<number, string> = {
@@ -48,6 +53,21 @@ const TIER_BADGE_VARIANT: Record<number, string> = {
   1: "info",
   2: "warn",
   3: "success",
+};
+
+const TIER_BENEFITS: Record<number, string[]> = {
+  1: [
+    "Co-marketing support from Celo Core Co.",
+    "Mentorship from ecosystem founders and partners",
+  ],
+  2: [
+    "Featured placement on UpDown's perpetual DEX",
+    "DeFi incentives across Uniswap, Aave, Mento, and Velodrome",
+  ],
+  3: [
+    "Liquidity support for agent token launches",
+    "Access to 13M+ MiniPay users",
+  ],
 };
 
 function ProgressBar({ value, label }: { value: number; label: string }) {
@@ -73,6 +93,8 @@ export function VisaCard({ agentId, chainId }: VisaCardProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  const [claiming, setClaiming] = useState(false);
+  const [claimResult, setClaimResult] = useState<ClaimResult | null>(null);
 
   const loadVisa = useCallback(async () => {
     setLoading(true);
@@ -80,7 +102,11 @@ export function VisaCard({ agentId, chainId }: VisaCardProps) {
     try {
       const res = await fetch(`/api/visa/${chainId}/${agentId}`);
       if (!res.ok) {
-        setError(res.status === 404 ? "Visa not available on this network" : "Failed to load visa data");
+        setError(
+          res.status === 404
+            ? "Visa not available on this network"
+            : "Failed to load visa data",
+        );
         return;
       }
       setData((await res.json()) as VisaData);
@@ -91,19 +117,22 @@ export function VisaCard({ agentId, chainId }: VisaCardProps) {
     }
   }, [agentId, chainId]);
 
-  useEffect(() => { void loadVisa(); }, [loadVisa]);
+  useEffect(() => {
+    void loadVisa();
+  }, [loadVisa]);
 
   async function handleCheckEligibility() {
     if (!SCORING_URL) {
-      // No scoring service configured — just refresh on-chain data
       await loadVisa();
       return;
     }
     setChecking(true);
+    setError(null);
     try {
-      const res = await fetch(`${SCORING_URL}/push/${agentId}`, { method: "POST" });
+      const res = await fetch(`${SCORING_URL}/push/${agentId}`, {
+        method: "POST",
+      });
       if (!res.ok) throw new Error("Push failed");
-      // Refresh visa data after push
       await loadVisa();
     } catch {
       setError("Eligibility check failed — scoring service may be offline");
@@ -112,11 +141,46 @@ export function VisaCard({ agentId, chainId }: VisaCardProps) {
     }
   }
 
+  async function handleClaim(targetTier: number) {
+    setClaiming(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/visa/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chainId: String(chainId),
+          agentId: String(agentId),
+          targetTier,
+        }),
+      });
+      const result = (await res.json()) as {
+        success?: boolean;
+        newTier?: number;
+        txHash?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        setError(result.error ?? "Claim failed");
+        return;
+      }
+      setClaimResult({
+        newTier: result.newTier ?? targetTier,
+        txHash: result.txHash ?? "",
+      });
+      await loadVisa();
+    } catch {
+      setError("Claim failed — please try again");
+    } finally {
+      setClaiming(false);
+    }
+  }
+
   if (loading) {
     return (
       <Card>
         <div className="flex items-center gap-2 text-sm text-muted">
-          <span className="inline-block w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+          <Loader2 className="h-3 w-3 animate-spin" />
           Loading visa status...
         </div>
       </Card>
@@ -126,7 +190,10 @@ export function VisaCard({ agentId, chainId }: VisaCardProps) {
   if (error) {
     return (
       <Card>
-        <p className="text-sm text-muted">{error}</p>
+        <p className="text-sm text-accent-error">{error}</p>
+        <Button variant="secondary" size="sm" onClick={() => void loadVisa()}>
+          Retry
+        </Button>
       </Card>
     );
   }
@@ -136,13 +203,57 @@ export function VisaCard({ agentId, chainId }: VisaCardProps) {
   const { tier, metrics, eligibility, thresholds } = data;
   const nextTier = tier < 3 ? tier + 1 : null;
   const nextThresholds = nextTier !== null ? thresholds[nextTier] : null;
+  const canUpgrade = nextTier !== null && eligibility[nextTier];
+
+  // Success screen after claiming
+  if (claimResult) {
+    return (
+      <Card>
+        <div className="space-y-4 text-center py-4">
+          <CheckCircle2 className="h-10 w-10 text-accent-success mx-auto" />
+          <div>
+            <h3 className="text-lg font-semibold">
+              {TIER_LABELS[claimResult.newTier]} Visa Claimed
+            </h3>
+            <p className="text-xs text-muted mt-1">
+              Your Celo Agent Visa has been upgraded
+            </p>
+          </div>
+          {TIER_BENEFITS[claimResult.newTier] && (
+            <div className="text-left space-y-1.5 bg-surface-1 rounded-lg p-3">
+              <p className="text-xs font-medium text-foreground">
+                Tier Benefits
+              </p>
+              {TIER_BENEFITS[claimResult.newTier].map((b) => (
+                <p key={b} className="text-xs text-muted">
+                  {b}
+                </p>
+              ))}
+            </div>
+          )}
+          {claimResult.txHash && (
+            <p className="text-[10px] text-muted font-mono break-all">
+              tx: {claimResult.txHash}
+            </p>
+          )}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setClaimResult(null)}
+          >
+            Back to Visa Status
+          </Button>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card>
       <div className="space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">Visa Status</h3>
+          <h3 className="text-sm font-semibold">Celo Agent Visa</h3>
           <Badge
             variant={
               TIER_BADGE_VARIANT[tier] as "muted" | "info" | "warn" | "success"
@@ -155,9 +266,20 @@ export function VisaCard({ agentId, chainId }: VisaCardProps) {
         {/* No Visa state */}
         {tier === 0 && (
           <p className="text-xs text-muted">
-            No visa issued. Meet minimum transaction and volume thresholds to
-            qualify for Tourist tier.
+            No visa issued yet. Meet the minimum transaction threshold to
+            qualify for a Tourist visa.
           </p>
+        )}
+
+        {/* Upgrade Available banner */}
+        {canUpgrade && (
+          <div className="flex items-center gap-2 rounded-lg bg-accent/10 px-3 py-2">
+            <ArrowUp className="h-4 w-4 text-accent" />
+            <p className="text-xs font-medium text-accent">
+              Upgrade available — you qualify for{" "}
+              {nextTier !== null ? TIER_LABELS[nextTier] : ""} Visa
+            </p>
+          </div>
         )}
 
         {/* Current Metrics */}
@@ -200,11 +322,25 @@ export function VisaCard({ agentId, chainId }: VisaCardProps) {
               }
             />
           </div>
-        ) : (
+        ) : tier === 3 ? (
           <p className="text-xs text-accent-success">Maximum tier reached</p>
+        ) : null}
+
+        {/* Tier benefits */}
+        {tier > 0 && TIER_BENEFITS[tier] && (
+          <div className="space-y-1.5 bg-surface-1 rounded-lg p-3">
+            <p className="text-xs font-medium text-foreground">
+              {TIER_LABELS[tier]} Benefits
+            </p>
+            {TIER_BENEFITS[tier].map((b) => (
+              <p key={b} className="text-xs text-muted">
+                {b}
+              </p>
+            ))}
+          </div>
         )}
 
-        {/* Eligibility */}
+        {/* Eligibility indicators */}
         <div className="flex items-center gap-2 flex-wrap">
           {[1, 2, 3].map((t) => (
             <span
@@ -226,14 +362,25 @@ export function VisaCard({ agentId, chainId }: VisaCardProps) {
           <Button
             variant="secondary"
             size="sm"
-            onClick={handleCheckEligibility}
+            onClick={() => void handleCheckEligibility()}
             disabled={checking}
           >
             {checking ? "Checking..." : "Check Eligibility"}
           </Button>
-          {nextTier !== null && eligibility[nextTier] && (
-            <Button size="sm" disabled>
-              Claim {TIER_LABELS[nextTier]} Visa
+          {canUpgrade && nextTier !== null && (
+            <Button
+              size="sm"
+              onClick={() => void handleClaim(nextTier)}
+              disabled={claiming}
+            >
+              {claiming ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  Claiming...
+                </>
+              ) : (
+                `Claim ${TIER_LABELS[nextTier]} Visa`
+              )}
             </Button>
           )}
         </div>
@@ -241,7 +388,7 @@ export function VisaCard({ agentId, chainId }: VisaCardProps) {
         {/* Last updated */}
         {metrics.lastUpdated > 0 && (
           <p className="text-[10px] text-muted">
-            Metrics last updated{" "}
+            Metrics updated{" "}
             {new Date(metrics.lastUpdated * 1000).toLocaleDateString()}
           </p>
         )}

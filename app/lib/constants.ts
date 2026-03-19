@@ -124,6 +124,8 @@ export const VISA_ABI = [
   "function getTokenId(uint256 agentId) external view returns (uint256)",
   "function getAgentId(uint256 tokenId) external view returns (uint256)",
   "function getTierThresholds(uint8 tier) external view returns (uint256 minTransactions, uint256 minVolumeUsd, bool requiresBoth, bool requiresManualReview)",
+  "function claimTierUpgrade(uint256 agentId, uint8 targetTier) external",
+  "function mintVisa(uint256 agentId, uint8 tier) external",
 ] as const;
 
 // Account Abstraction
