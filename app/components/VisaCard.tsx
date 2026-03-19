@@ -8,11 +8,12 @@ import { useEffect, useState, useCallback } from "react";
 import { Card } from "./Card";
 import { Badge } from "./Badge";
 import { Button } from "./Button";
-import { CheckCircle2, ArrowUp, Loader2 } from "lucide-react";
+import { CheckCircle2, ArrowUp, Loader2, ExternalLink } from "lucide-react";
 
 interface VisaCardProps {
   agentId: number;
   chainId: number;
+  blockExplorer?: string;
 }
 
 interface TierThresholds {
@@ -38,8 +39,6 @@ interface ClaimResult {
   newTier: number;
   txHash: string;
 }
-
-const SCORING_URL = process.env.NEXT_PUBLIC_SCORING_SERVICE_URL || "";
 
 const TIER_LABELS: Record<number, string> = {
   0: "None",
@@ -88,7 +87,10 @@ function ProgressBar({ value, label }: { value: number; label: string }) {
   );
 }
 
-export function VisaCard({ agentId, chainId }: VisaCardProps) {
+export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
+  const explorerTxUrl = (hash: string) =>
+    blockExplorer ? `${blockExplorer}/tx/${hash}` : null;
+
   const [data, setData] = useState<VisaData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -121,21 +123,11 @@ export function VisaCard({ agentId, chainId }: VisaCardProps) {
     void loadVisa();
   }, [loadVisa]);
 
-  async function handleCheckEligibility() {
-    if (!SCORING_URL) {
-      await loadVisa();
-      return;
-    }
+  async function handleRefresh() {
     setChecking(true);
     setError(null);
     try {
-      const res = await fetch(`${SCORING_URL}/push/${agentId}`, {
-        method: "POST",
-      });
-      if (!res.ok) throw new Error("Push failed");
       await loadVisa();
-    } catch {
-      setError("Eligibility check failed — scoring service may be offline");
     } finally {
       setChecking(false);
     }
@@ -231,11 +223,25 @@ export function VisaCard({ agentId, chainId }: VisaCardProps) {
               ))}
             </div>
           )}
-          {claimResult.txHash && (
-            <p className="text-[10px] text-muted font-mono break-all">
-              tx: {claimResult.txHash}
-            </p>
-          )}
+          {claimResult.txHash &&
+            (() => {
+              const url = explorerTxUrl(claimResult.txHash);
+              return url ? (
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+                >
+                  View transaction
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              ) : (
+                <p className="text-[10px] text-muted font-mono break-all">
+                  tx: {claimResult.txHash}
+                </p>
+              );
+            })()}
           <Button
             variant="secondary"
             size="sm"
@@ -362,10 +368,10 @@ export function VisaCard({ agentId, chainId }: VisaCardProps) {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => void handleCheckEligibility()}
+            onClick={() => void handleRefresh()}
             disabled={checking}
           >
-            {checking ? "Checking..." : "Check Eligibility"}
+            {checking ? "Refreshing..." : "Refresh Status"}
           </Button>
           {canUpgrade && nextTier !== null && (
             <Button

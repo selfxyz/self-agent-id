@@ -162,10 +162,9 @@ export default function AgentDetailPage({
     );
   }
 
-  const nationality = agent.credentials?.nationality?.replace(
-    /[\x00-\x1f]/g,
-    "",
-  ).trim();
+  const nationality = agent.credentials?.nationality
+    ?.replace(/[\x00-\x1f]/g, "")
+    .trim();
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -229,7 +228,11 @@ export default function AgentDetailPage({
       {/* Celo Agent Visa */}
       <div className="space-y-2">
         <h3 className="text-sm font-semibold">Celo Agent Visa</h3>
-        <VisaCard agentId={agent.agentId} chainId={chainId} />
+        <VisaCard
+          agentId={agent.agentId}
+          chainId={chainId}
+          blockExplorer={network.blockExplorer}
+        />
       </div>
     </div>
   );
