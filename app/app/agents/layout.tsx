@@ -6,7 +6,7 @@ export default function AgentsLayout({
   children: React.ReactNode;
 }) {
   return (
-    <main className="min-h-screen max-w-2xl mx-auto px-6 pt-24 pb-12">
+    <main className="min-h-screen mx-auto px-6 pt-24 pb-12">
       <AgentsTabs />
       {children}
     </main>

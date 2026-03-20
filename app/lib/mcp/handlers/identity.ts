@@ -3,6 +3,7 @@
 import { SelfAgent } from "@selfxyz/agent-sdk";
 import type { McpConfig } from "../config";
 import { toolError, toolSuccess, formatCredentialsSummary } from "../utils";
+import { renderQrBase64 } from "@/lib/renderQr";
 
 type JsonObject = Record<string, unknown>;
 
@@ -146,17 +147,54 @@ export async function handleRegisterAgent(
     const data = await readJsonObject(response);
     const instructions = asStringArray(data.humanInstructions)?.join("\n");
 
-    return toolSuccess({
-      session_token: asString(data.sessionToken),
-      agent_address: asString(data.agentAddress),
-      qr_data: data.qrData,
-      deep_link: asString(data.deepLink),
-      expires_at: asString(data.expiresAt),
-      instructions: instructions || "Scan the QR code with the Self app.",
-      next_step:
-        "Have the human scan the QR/deep link, then call self_check_registration " +
-        "with this session_token. The private key will be returned only after verification completes.",
-    });
+    const sessionToken = asString(data.sessionToken);
+    const agentAddress = asString(data.agentAddress);
+    const deepLink = asString(data.deepLink);
+    const expiresAt = asString(data.expiresAt);
+    // scanUrl is the single URL the agent should share with the human.
+    // It opens a hosted page that shows the QR and deep link button,
+    // works on every device and platform, and polls for completion.
+    const scanUrl =
+      asString(data.scanUrl as unknown) ??
+      `${config.apiUrl}/scan/${sessionToken}`;
+
+    // Prefer the pre-rendered base64 from the API; fall back to rendering from deepLink.
+    let qrBase64 = asString(data.qrImageBase64 as unknown);
+    if (!qrBase64 && deepLink) {
+      qrBase64 = await renderQrBase64(deepLink).catch(() => undefined);
+    }
+
+    const textContent = {
+      type: "text" as const,
+      text: JSON.stringify(
+        {
+          scan_url: scanUrl,
+          session_token: sessionToken,
+          agent_address: agentAddress,
+          deep_link: deepLink,
+          expires_at: expiresAt,
+          instructions:
+            `Share this URL with the human to complete registration: ${scanUrl}\n` +
+            (instructions ?? "Scan the QR code with the Self app."),
+          next_step:
+            "Share scan_url with the human — they open it on any device to scan the QR or tap the deep link. " +
+            "Then call self_check_registration with this session_token to poll for completion.",
+        },
+        null,
+        2,
+      ),
+    };
+
+    if (qrBase64) {
+      return {
+        content: [
+          { type: "image" as const, data: qrBase64, mimeType: "image/png" },
+          textContent,
+        ],
+      };
+    }
+
+    return { content: [textContent] };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     return toolError(`Failed to initiate registration: ${message}`);
@@ -262,18 +300,43 @@ export async function handleDeregisterAgent(
     const session = (await agent.requestDeregistration({
       apiBase: config.apiUrl,
     })) as DeregistrationRequestSession;
-    const qrUrl = `${config.apiUrl}/qr/${session.sessionToken}`;
+    const scanUrl = `${config.apiUrl}/scan/${session.sessionToken}`;
 
-    return toolSuccess({
-      session_id: session.sessionToken,
-      qr_url: qrUrl,
-      deep_link: session.deepLink,
-      expires_at: session.expiresAt,
-      instructions: session.humanInstructions.join("\n"),
-      warning:
-        "WARNING: Deregistration is IRREVERSIBLE. The agent's on-chain identity will be permanently revoked. " +
-        "The human owner must scan the QR code with the Self app to confirm.",
-    });
+    let qrBase64: string | undefined;
+    if (session.deepLink) {
+      qrBase64 = await renderQrBase64(session.deepLink).catch(() => undefined);
+    }
+
+    const textContent = {
+      type: "text" as const,
+      text: JSON.stringify(
+        {
+          scan_url: scanUrl,
+          session_id: session.sessionToken,
+          deep_link: session.deepLink,
+          expires_at: session.expiresAt,
+          instructions:
+            `Share this URL with the human to confirm deregistration: ${scanUrl}\n` +
+            session.humanInstructions.join("\n"),
+          warning:
+            "WARNING: Deregistration is IRREVERSIBLE. The agent's on-chain identity will be permanently revoked. " +
+            "The human owner must scan the QR code with the Self app to confirm.",
+        },
+        null,
+        2,
+      ),
+    };
+
+    if (qrBase64) {
+      return {
+        content: [
+          { type: "image" as const, data: qrBase64, mimeType: "image/png" },
+          textContent,
+        ],
+      };
+    }
+
+    return { content: [textContent] };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     return toolError(`Failed to initiate deregistration: ${message}`);

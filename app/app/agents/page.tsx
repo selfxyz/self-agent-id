@@ -28,6 +28,7 @@ import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { StatusDot } from "@/components/StatusDot";
+import { VisaBadge } from "@/components/VisaBadge";
 import {
   signInWithPasskey,
   sendUserOperation,
@@ -73,6 +74,7 @@ interface AgentEntry {
   isProofFresh?: boolean;
   daysUntilExpiry?: number;
   isExpiringSoon?: boolean; // true when <= 30 days remain
+  visaTier?: number;
 }
 
 function cleanStr(s: string): string {
@@ -310,6 +312,30 @@ export default function MyAgentsPage() {
     null,
   );
   const [refreshQrData, setRefreshQrData] = useState<unknown>(null);
+
+  // Batch-fetch visa tiers when agents change
+  useEffect(() => {
+    if (!network || agents.length === 0) return;
+    let cancelled = false;
+    const ids = agents.map((a) => a.agentId.toString()).join(",");
+    fetch(`/api/visa/${network.chainId}/batch?agents=${ids}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.agents) return;
+        const tierMap = new Map<number, number>();
+        for (const a of data.agents) tierMap.set(a.agentId, a.tier);
+        setAgents((prev) =>
+          prev.map((agent) => ({
+            ...agent,
+            visaTier: tierMap.get(Number(agent.agentId)) ?? agent.visaTier,
+          })),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [agents.length, network?.chainId]);
   const [refreshDeepLink, setRefreshDeepLink] = useState<string | null>(null);
   const [_refreshSessionToken, setRefreshSessionToken] = useState<
     string | null
@@ -335,9 +361,49 @@ export default function MyAgentsPage() {
     wallets: privyWallets,
   } = usePrivyState();
 
+  // Auto-reconnect wallet on mount + re-fetch agents when tab becomes visible
   useEffect(() => {
     setPasskeyAvailable(isPasskeySupported());
+
+    const silentReconnect = async () => {
+      if (typeof window === "undefined" || !window.ethereum) return;
+      try {
+        const eth = window.ethereum as unknown as {
+          request: (args: { method: string }) => Promise<string[]>;
+        };
+        const accounts = await eth.request({ method: "eth_accounts" });
+        if (accounts[0]) {
+          const addr = accounts[0].toLowerCase();
+          setWalletAddress(addr);
+          void loadAgentsByOwner(addr);
+        }
+      } catch {
+        // Wallet not available or not authorized — no-op
+      }
+    };
+
+    void silentReconnect();
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Re-fetch agents when user returns to this tab (works across all lookup modes)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      if (lookupMode === "wallet" && walletAddress) {
+        void loadAgentsByOwner(walletAddress);
+      } else if (lookupMode === "passkey" && passkeyAddress) {
+        void loadAgentsByGuardian(passkeyAddress);
+      } else if (lookupMode === "privy" && privyConnectedAddress) {
+        void loadAgentsByOwner(privyConnectedAddress);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lookupMode, walletAddress, passkeyAddress, privyConnectedAddress]);
 
   // Derive embedded wallet address (stable string or undefined).
   const privyEmbeddedAddress = privyAuthenticated
@@ -784,6 +850,7 @@ export default function MyAgentsPage() {
     setIdentifySessionToken(null);
     setIdentifyPolling(false);
     if (identifyPollRef.current) clearInterval(identifyPollRef.current);
+
     setAgents([]);
     setError("");
     setLoading(true);
@@ -877,7 +944,39 @@ export default function MyAgentsPage() {
       const provider = new ethers.JsonRpcProvider(network.rpcUrl);
       const registry = typedRegistry(network.registryAddress, provider);
 
-      const agentIds = await registry.getAgentsForNullifier(nullifier);
+      let agentIds = await registry.getAgentsForNullifier(nullifier);
+
+      // Fallback: agents registered before the identify contract upgrade won't
+      // be in the agentsByNullifier mapping. Scan registration events instead.
+      if (agentIds.length === 0) {
+        try {
+          const eventRegistry = new ethers.Contract(
+            network.registryAddress,
+            [
+              "event AgentRegisteredWithHumanProof(uint256 indexed agentId, address indexed proofProvider, uint256 nullifier, uint8 verificationStrength)",
+            ],
+            provider,
+          );
+          const events = await eventRegistry.queryFilter(
+            eventRegistry.filters.AgentRegisteredWithHumanProof(),
+            network.registryDeployBlock,
+            "latest",
+          );
+          const matchingIds = events
+            .filter((e) => {
+              const args = (e as ethers.EventLog).args;
+              return String(args[2]) === nullifier.toString();
+            })
+            .map((e) => (e as ethers.EventLog).args[0] as bigint);
+          // Deduplicate (same agent could have re-registered)
+          agentIds = [...new Set(matchingIds.map((id) => id.toString()))].map(
+            (id) => BigInt(id),
+          );
+        } catch (err) {
+          console.warn("[loadAgentsByNullifier] Event fallback failed:", err);
+        }
+      }
+
       if (agentIds.length === 0) {
         setError("No agents found for this identity.");
         setLoading(false);
@@ -1045,9 +1144,13 @@ export default function MyAgentsPage() {
       <div className="flex justify-center gap-2 mb-6 flex-wrap">
         <button
           onClick={() => {
+            if (lookupMode !== "wallet") setAgents([]);
             setLookupMode("wallet");
-            setAgents([]);
             setError("");
+            // Re-fetch wallet agents when switching back to this tab
+            if (lookupMode !== "wallet" && walletAddress) {
+              void loadAgentsByOwner(walletAddress);
+            }
           }}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             lookupMode === "wallet"
@@ -1060,8 +1163,8 @@ export default function MyAgentsPage() {
         </button>
         <button
           onClick={() => {
+            if (lookupMode !== "key") setAgents([]);
             setLookupMode("key");
-            setAgents([]);
             setError("");
           }}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -1076,8 +1179,8 @@ export default function MyAgentsPage() {
         {passkeyAvailable && (
           <button
             onClick={() => {
+              if (lookupMode !== "passkey") setAgents([]);
               setLookupMode("passkey");
-              setAgents([]);
               setError("");
               setPasskeyAddress(null);
             }}
@@ -1094,8 +1197,8 @@ export default function MyAgentsPage() {
         {isPrivyConfigured() && (
           <button
             onClick={() => {
+              if (lookupMode !== "privy") setAgents([]);
               setLookupMode("privy");
-              setAgents([]);
               setError("");
               // If already authenticated, reload agents immediately
               if (privyConnectedAddress) {
@@ -1119,8 +1222,8 @@ export default function MyAgentsPage() {
         )}
         <button
           onClick={() => {
+            if (lookupMode !== "passport") setAgents([]);
             setLookupMode("passport");
-            setAgents([]);
             setError("");
             handleCloseIdentify();
           }}
@@ -1152,7 +1255,8 @@ export default function MyAgentsPage() {
                   selfApp={identifyQrData as any}
                   size={200}
                   onSuccess={() => {
-                    // Status polling handles completion
+                    // Websocket confirmed proof — polling will pick up the
+                    // on-chain event shortly. Nothing extra needed here.
                   }}
                   onError={(data: { error_code?: string; reason?: string }) => {
                     setError(
@@ -1603,10 +1707,7 @@ function renderAgentCards(
 ) {
   return agents.map((agent) => (
     <div key={agent.agentId.toString()} className="space-y-2">
-      <Link
-        href={`/agents/verify?key=${encodeURIComponent(agent.agentKey)}`}
-        className="block"
-      >
+      <Link href={`/agents/${agent.agentId.toString()}`} className="block">
         <Card glow>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2 flex-wrap">
@@ -1636,6 +1737,7 @@ function renderAgentCards(
                 </Badge>
               )}
               {agent.hasA2ACard && <Badge variant="info">A2A</Badge>}
+              {agent.visaTier != null && <VisaBadge tier={agent.visaTier} />}
             </div>
             <div className="flex items-center gap-2">
               {agent.verificationStrength !== undefined && (

@@ -9,7 +9,7 @@
 // functions exported here. This is the single source of truth.
 
 import { NETWORKS, type NetworkId } from "@/lib/network";
-import { MODE_INFO, type Mode } from "@/app/agents/register/types";
+import { MODE_INFO, type Mode } from "@/lib/registration-modes";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 

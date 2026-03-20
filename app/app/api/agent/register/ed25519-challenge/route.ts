@@ -12,6 +12,7 @@ import type { NextRequest } from "next/server";
 import { ethers } from "ethers";
 import {
   computeEd25519ChallengeHash,
+  deriveEd25519Address,
   isValidEd25519PubkeyHex,
 } from "@/lib/ed25519";
 import {
@@ -49,7 +50,8 @@ export async function POST(req: NextRequest) {
     return errorResponse("Invalid JSON body", 400);
   }
 
-  const { pubkey, network, humanAddress } = body;
+  const { pubkey, network } = body;
+  let { humanAddress } = body;
 
   if (!pubkey || !isValidEd25519PubkeyHex(pubkey)) {
     return errorResponse(
@@ -63,11 +65,10 @@ export async function POST(req: NextRequest) {
       400,
     );
   }
-  if (!humanAddress || !isValidAddress(humanAddress)) {
-    return errorResponse(
-      "humanAddress is required and must be a valid Ethereum address",
-      400,
-    );
+  if (!humanAddress) {
+    humanAddress = deriveEd25519Address(pubkey);
+  } else if (!isValidAddress(humanAddress)) {
+    return errorResponse("humanAddress must be a valid Ethereum address", 400);
   }
 
   try {

@@ -116,5 +116,17 @@ export const AGENT_GATE_ABI = [
   "event AccessGranted(bytes32 indexed agentKey, uint256 agentId, uint256 olderThan)",
 ] as const;
 
+// CeloAgentVisa — on-chain visa / reputation tiers
+export const VISA_ABI = [
+  "function getTier(uint256 agentId) external view returns (uint8)",
+  "function getMetrics(uint256 agentId) external view returns (uint256 transactionCount, uint256 volumeUsd, uint64 lastUpdated)",
+  "function checkTierEligibility(uint256 agentId, uint8 tier) external view returns (bool)",
+  "function getTokenId(uint256 agentId) external view returns (uint256)",
+  "function getAgentId(uint256 tokenId) external view returns (uint256)",
+  "function getTierThresholds(uint8 tier) external view returns (uint256 minTransactions, uint256 minVolumeUsd, bool requiresBoth, bool requiresManualReview)",
+  "function claimTierUpgrade(uint256 agentId, uint8 targetTier) external",
+  "function mintVisa(uint256 agentId, uint8 tier) external",
+] as const;
+
 // Account Abstraction
 export const ENTRYPOINT_ADDRESS = "0x0000000071727De22E5E9d8BAf0edAc6f37da032";

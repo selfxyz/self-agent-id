@@ -27,6 +27,14 @@ const mockHelpers = {
   readSessionTokenFromRequest: vi.fn(),
 };
 
+const mockBuildEd25519UserData = vi.fn();
+const mockComputeEd25519ChallengeHash = vi.fn();
+const mockComputeExtKpub = vi.fn();
+const mockIsValidEd25519PubkeyHex = vi.fn();
+const mockDeriveEd25519Address = vi.fn();
+const mockEd25519Verify = vi.fn();
+const mockTypedRegistry = vi.fn();
+
 const mockCreateRandom = vi.fn();
 const mockGetAddress = vi.fn();
 const mockJsonRpcProvider = vi.fn();
@@ -82,9 +90,27 @@ function installCommonMocks() {
         createRandom: mockCreateRandom,
       },
       getAddress: mockGetAddress,
+      getBytes: (hex: string) =>
+        Uint8Array.from(Buffer.from(hex.replace(/^0x/, ""), "hex")),
       JsonRpcProvider: mockJsonRpcProvider,
       Contract: mockContract,
     },
+  }));
+
+  vi.doMock("@/lib/ed25519", () => ({
+    buildEd25519UserData: mockBuildEd25519UserData,
+    computeEd25519ChallengeHash: mockComputeEd25519ChallengeHash,
+    computeExtKpub: mockComputeExtKpub,
+    isValidEd25519PubkeyHex: mockIsValidEd25519PubkeyHex,
+    deriveEd25519Address: mockDeriveEd25519Address,
+  }));
+
+  vi.doMock("@noble/curves/ed25519.js", () => ({
+    ed25519: { verify: mockEd25519Verify },
+  }));
+
+  vi.doMock("@/lib/contract-types", () => ({
+    typedRegistry: mockTypedRegistry,
   }));
 }
 
@@ -154,6 +180,18 @@ function setDefaultMocks() {
       error:
         "Missing session token. Provide Authorization: Bearer <sessionToken>.",
     };
+  });
+
+  mockBuildEd25519UserData.mockReturnValue("ed25519-user-data");
+  mockComputeEd25519ChallengeHash.mockReturnValue("0xchallengehash");
+  mockComputeExtKpub.mockReturnValue([1n, 2n, 3n, 4n, 5n]);
+  mockIsValidEd25519PubkeyHex.mockReturnValue(true);
+  mockDeriveEd25519Address.mockReturnValue(
+    "0x00000000000000000000000000000000000000BB",
+  );
+  mockEd25519Verify.mockReturnValue(true);
+  mockTypedRegistry.mockReturnValue({
+    ed25519Nonce: vi.fn().mockResolvedValue(0n),
   });
 
   mockCreateRandom.mockReturnValue({
@@ -392,6 +430,25 @@ describe("agent register init route", () => {
     );
   });
 
+  it("includes qrImageBase64 (valid PNG) in the response", async () => {
+    const { POST } = await loadRegisterRoute();
+    const res = await POST(
+      makeNextRequest("https://example.com/api/agent/register", {
+        method: "POST",
+        body: JSON.stringify({
+          mode: "wallet-free",
+          network: "testnet",
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await jsonBody<{ qrImageBase64?: string }>(res);
+    expect(typeof body.qrImageBase64).toBe("string");
+    // PNG files start with the 8-byte magic header; verify base64 encoding
+    expect(body.qrImageBase64).toMatch(/^iVBORw0KGgo/);
+  });
+
   it("returns a server error when session secret is missing", async () => {
     mockHelpers.getSessionSecret.mockImplementation(() => {
       throw new Error("SESSION_SECRET environment variable is not set");
@@ -414,6 +471,33 @@ describe("agent register init route", () => {
     const { OPTIONS } = await loadRegisterRoute();
     const res = await OPTIONS();
     expect(res.status).toBe(204);
+  });
+
+  it("passes humanAddress as guardian to buildEd25519UserData for ed25519-linked", async () => {
+    const humanAddr = "0x00000000000000000000000000000000000000FA";
+    const pubkey = "a".repeat(64);
+    const signature = "b".repeat(128);
+
+    const { POST } = await loadRegisterRoute();
+    const res = await POST(
+      makeNextRequest("https://example.com/api/agent/register", {
+        method: "POST",
+        body: JSON.stringify({
+          mode: "ed25519-linked",
+          network: "testnet",
+          humanAddress: humanAddr,
+          ed25519Pubkey: pubkey,
+          ed25519Signature: signature,
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockBuildEd25519UserData).toHaveBeenCalledWith(
+      expect.objectContaining({
+        guardian: "00000000000000000000000000000000000000fa",
+      }),
+    );
   });
 });
 
@@ -866,6 +950,98 @@ describe("agent register export route", () => {
 
   it("returns preflight response for OPTIONS", async () => {
     const { OPTIONS } = await loadRegisterExportRoute();
+    const res = await OPTIONS();
+    expect(res.status).toBe(204);
+  });
+});
+
+async function loadQrImageRoute() {
+  vi.resetModules();
+  installCommonMocks();
+  return import("@/app/api/qr/[sessionToken]/route");
+}
+
+describe("QR image route (GET /api/qr/[sessionToken])", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setDefaultMocks();
+  });
+
+  it("returns 401 for an invalid session token", async () => {
+    mockHelpers.decryptAndValidateSession.mockImplementation(() => {
+      throw new Error("Invalid token");
+    });
+    const { GET } = await loadQrImageRoute();
+    const res = await GET(
+      makeNextRequest("https://example.com/api/qr/bad-token", {
+        method: "GET",
+      }),
+      { params: Promise.resolve({ sessionToken: "bad-token" }) },
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 410 for an expired session token", async () => {
+    mockHelpers.decryptAndValidateSession.mockImplementation(() => {
+      throw new Error("Session expired");
+    });
+    const { GET } = await loadQrImageRoute();
+    const res = await GET(
+      makeNextRequest("https://example.com/api/qr/expired-token", {
+        method: "GET",
+      }),
+      { params: Promise.resolve({ sessionToken: "expired-token" }) },
+    );
+    expect(res.status).toBe(410);
+  });
+
+  it("returns 400 when session has no qrData", async () => {
+    mockHelpers.decryptAndValidateSession.mockReturnValue({
+      session: { type: "register", stage: "pending" },
+      secret: "session-secret",
+    });
+    const { GET } = await loadQrImageRoute();
+    const res = await GET(
+      makeNextRequest("https://example.com/api/qr/valid-token", {
+        method: "GET",
+      }),
+      { params: Promise.resolve({ sessionToken: "valid-token" }) },
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("returns a PNG image for a valid session with qrData", async () => {
+    mockHelpers.decryptAndValidateSession.mockReturnValue({
+      session: {
+        type: "register",
+        stage: "qr-ready",
+        qrData: { foo: "bar" },
+      },
+      secret: "session-secret",
+    });
+    // getUniversalLink is already mocked to return "self://deep-link"
+    const { GET } = await loadQrImageRoute();
+    const res = await GET(
+      makeNextRequest("https://example.com/api/qr/valid-token", {
+        method: "GET",
+      }),
+      { params: Promise.resolve({ sessionToken: "valid-token" }) },
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("image/png");
+    // Response body should be a non-empty PNG buffer
+    const buf = await res.arrayBuffer();
+    expect(buf.byteLength).toBeGreaterThan(100);
+    // Verify PNG magic bytes: 0x89 0x50 0x4E 0x47
+    const bytes = new Uint8Array(buf);
+    expect(bytes[0]).toBe(0x89);
+    expect(bytes[1]).toBe(0x50); // 'P'
+    expect(bytes[2]).toBe(0x4e); // 'N'
+    expect(bytes[3]).toBe(0x47); // 'G'
+  });
+
+  it("returns CORS preflight response for OPTIONS", async () => {
+    const { OPTIONS } = await loadQrImageRoute();
     const res = await OPTIONS();
     expect(res.status).toBe(204);
   });

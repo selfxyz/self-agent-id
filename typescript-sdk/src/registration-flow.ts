@@ -41,7 +41,15 @@ export interface RegistrationRequest {
     minimumAge?: number;
     ofac?: boolean;
     nationality?: boolean;
+    name?: boolean;
+    date_of_birth?: boolean;
+    gender?: boolean;
+    issuing_state?: boolean;
   };
+  /** Ed25519 public key, 64-char hex, no 0x prefix (required for ed25519 and ed25519-linked modes) */
+  ed25519Pubkey?: string;
+  /** Ed25519 signature of challenge hash, 128-char hex (required for ed25519 and ed25519-linked modes) */
+  ed25519Signature?: string;
   /** Human's wallet address (required for self-custody and linked) */
   humanAddress?: string;
   /** Agent display name */
@@ -95,6 +103,10 @@ export interface ProofRefreshRequest {
     minimumAge?: number;
     ofac?: boolean;
     nationality?: boolean;
+    name?: boolean;
+    date_of_birth?: boolean;
+    gender?: boolean;
+    issuing_state?: boolean;
   };
   /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://app.ai.self.xyz) */
   apiBase?: string;
@@ -131,6 +143,10 @@ export interface DeregistrationRequest {
     minimumAge?: number;
     ofac?: boolean;
     nationality?: boolean;
+    name?: boolean;
+    date_of_birth?: boolean;
+    gender?: boolean;
+    issuing_state?: boolean;
   };
   /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://app.ai.self.xyz) */
   apiBase?: string;
@@ -328,6 +344,8 @@ export async function requestRegistration(
     humanAddress: opts.humanAddress,
     agentName: opts.agentName,
     agentDescription: opts.agentDescription,
+    ed25519Pubkey: opts.ed25519Pubkey,
+    ed25519Signature: opts.ed25519Signature,
   };
 
   const data = await apiFetch<RegisterInitResponse>(
