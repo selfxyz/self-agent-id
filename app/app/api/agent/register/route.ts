@@ -37,6 +37,7 @@ import {
   isValidEd25519PubkeyHex,
   deriveEd25519Address,
 } from "@/lib/ed25519";
+import { setEd25519Relay } from "@/lib/ed25519-relay";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — noble/curves v2 export map
 import { ed25519 } from "@noble/curves/ed25519.js";
@@ -394,6 +395,20 @@ export async function POST(req: NextRequest) {
     );
 
     const scanUrl = `${appUrl}/scan/${finalToken}`;
+
+    // Relay QR data for ed25519 modes so the frontend can pick it up via polling
+    if (
+      (mode === "ed25519" || mode === "ed25519-linked") &&
+      body.ed25519Pubkey
+    ) {
+      setEd25519Relay(body.ed25519Pubkey, {
+        qrData: selfApp,
+        deepLink,
+        sessionToken: finalToken,
+        agentAddress,
+        scanUrl,
+      });
+    }
 
     return jsonResponse({
       sessionToken: finalToken,

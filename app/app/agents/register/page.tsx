@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { Copy, Check, CheckCircle, Terminal } from "lucide-react";
 
 import { useNetwork } from "@/lib/NetworkContext";
 import { usePrivyState } from "@/lib/privy";
@@ -27,15 +28,29 @@ export default function RegisterPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [qrData, setQrData] = useState<any>(null);
   const [deepLink, setDeepLink] = useState<string | null>(null);
+  const [copiedHash, setCopiedHash] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [registrationComplete, setRegistrationComplete] = useState(false);
+  const [showNoKeyOptions, setShowNoKeyOptions] = useState(false);
+  const [noEd25519, setNoEd25519] = useState(false);
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const relayPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const registryPollingRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
   const guardianInFlightRef = useRef<GuardianMethod>(null);
   const sessionCreatingRef = useRef(false);
+
+  const copyText = (text: string, setter: (v: boolean) => void) => {
+    void navigator.clipboard.writeText(text);
+    setter(true);
+    setTimeout(() => setter(false), 2000);
+  };
 
   // ── 1. Guardian auth ───────────────────────────────────────────────────
   const handleGuardianMethodChange = useCallback(
     async (method: "passkey" | "social" | "wallet") => {
-      // Prevent duplicate triggers
       if (guardianInFlightRef.current === method) return;
       guardianInFlightRef.current = method;
 
@@ -73,7 +88,6 @@ export default function RegisterPage() {
             return;
           }
           privy.login();
-          // Address will be set via the Privy effect below
         } else if (method === "wallet") {
           const address = await connectWallet(network);
           if (address) {
@@ -93,7 +107,7 @@ export default function RegisterPage() {
     [network, privy],
   );
 
-  // Privy wallet effect: when authenticated and wallets arrive, set guardian address
+  // Privy wallet effect
   useEffect(() => {
     if (
       reg.guardianMethod === "social" &&
@@ -180,8 +194,6 @@ export default function RegisterPage() {
   ]);
 
   // ── 2b. Reset session when form inputs change ─────────────────────────
-  // Build a stable fingerprint of values that affect the QR content so we
-  // can detect when the user tweaks settings after a QR is already showing.
   const settingsKey = JSON.stringify({
     mode: reg.mode,
     d: reg.disclosures,
@@ -190,7 +202,6 @@ export default function RegisterPage() {
   });
 
   useEffect(() => {
-    // Only reset if a session already exists (i.e. QR was already generated)
     if (!reg.sessionToken) return;
     reg.setSessionToken(null);
     reg.setQrState("hidden");
@@ -201,12 +212,14 @@ export default function RegisterPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsKey]);
 
-  // ── 3. Session creation ────────────────────────────────────────────────
+  // ── 3. Session creation (non-ed25519 modes only) ─────────────────────
   useEffect(() => {
     if (
       !reg.isReadyToRegister ||
+      !reg.hasInteracted ||
       reg.sessionToken ||
-      sessionCreatingRef.current
+      sessionCreatingRef.current ||
+      reg.hasEd25519
     )
       return;
 
@@ -240,11 +253,6 @@ export default function RegisterPage() {
           payload.humanAddress = reg.guardianAddress;
         }
 
-        if (reg.hasEd25519) {
-          payload.ed25519Pubkey = reg.ed25519Pubkey;
-          payload.ed25519Signature = reg.ed25519Signature;
-        }
-
         const res = await fetch("/api/agent/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -267,21 +275,14 @@ export default function RegisterPage() {
           return;
         }
 
-        if (data.sessionToken) {
-          reg.setSessionToken(data.sessionToken);
-        }
-        if (data.agentAddress) {
-          reg.setAgentAddress(data.agentAddress);
-        }
+        if (data.sessionToken) reg.setSessionToken(data.sessionToken);
+        if (data.agentAddress) reg.setAgentAddress(data.agentAddress);
         if (data.qrData) {
           setQrData(data.qrData);
           reg.setQrState("live");
         }
-        if (data.deepLink) {
-          setDeepLink(data.deepLink);
-        }
+        if (data.deepLink) setDeepLink(data.deepLink);
 
-        // Save the agent private key if the server returned one
         if (data.agentPrivateKey && data.agentAddress) {
           try {
             saveAgentPrivateKey({
@@ -290,7 +291,7 @@ export default function RegisterPage() {
               guardianAddress: reg.guardianAddress ?? undefined,
             });
           } catch {
-            // Non-fatal — key export is available via the export endpoint
+            // Non-fatal
           }
         }
       } catch (err) {
@@ -311,9 +312,9 @@ export default function RegisterPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reg.isReadyToRegister, reg.sessionToken, reg.mode, networkId]);
+  }, [reg.isReadyToRegister, reg.hasInteracted, reg.sessionToken, reg.mode, reg.hasEd25519, networkId]);
 
-  // ── 4. Status polling ──────────────────────────────────────────────────
+  // ── 4a. Status polling (non-ed25519 — session token based) ───────────
   useEffect(() => {
     if (
       (reg.qrState !== "live" && reg.qrState !== "scanning") ||
@@ -337,25 +338,19 @@ export default function RegisterPage() {
         if (data.stage === "completed") {
           if (pollingRef.current) clearInterval(pollingRef.current);
           reg.setQrState("success");
-          if (data.agentId != null) {
-            reg.setAgentId(String(data.agentId));
-          }
-          // Update session token if the server rotated it
-          if (data.sessionToken) {
-            reg.setSessionToken(data.sessionToken);
-          }
+          if (data.agentId != null) reg.setAgentId(String(data.agentId));
+          if (data.sessionToken) reg.setSessionToken(data.sessionToken);
         } else if (data.stage === "failed") {
           if (pollingRef.current) clearInterval(pollingRef.current);
           setError(data.error ?? "Registration failed on-chain");
           reg.setQrState("hidden");
         }
       } catch {
-        // Transient network error — keep polling
+        // Transient — keep polling
       }
     };
 
     pollingRef.current = setInterval(() => void poll(), 4000);
-    // Also fire immediately
     void poll();
 
     return () => {
@@ -366,6 +361,123 @@ export default function RegisterPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reg.qrState, reg.sessionToken]);
+
+  // ── 4b. Ed25519 relay polling ─────────────────────────────────────────
+  // After the user enters a pubkey + challenge is shown, poll the relay
+  // endpoint to pick up QR data once the agent calls the register API.
+  useEffect(() => {
+    if (
+      !reg.hasEd25519 ||
+      reg.ed25519Pubkey.length !== 64 ||
+      !reg.challengeHash ||
+      reg.sessionToken || // Already have QR data
+      registrationComplete
+    ) {
+      return;
+    }
+
+    const poll = async () => {
+      try {
+        const res = await fetch(
+          `/api/agent/register/ed25519-poll?pubkey=${encodeURIComponent(reg.ed25519Pubkey)}`,
+        );
+        const data = (await res.json()) as {
+          ready?: boolean;
+          qrData?: unknown;
+          deepLink?: string;
+          sessionToken?: string;
+          agentAddress?: string;
+        };
+
+        if (data.ready && data.sessionToken) {
+          if (relayPollingRef.current)
+            clearInterval(relayPollingRef.current);
+          reg.setSessionToken(data.sessionToken);
+          if (data.agentAddress) reg.setAgentAddress(data.agentAddress);
+          if (data.qrData) {
+            setQrData(data.qrData);
+            reg.setQrState("live");
+          }
+          if (data.deepLink) setDeepLink(data.deepLink);
+        }
+      } catch {
+        // Transient — keep polling
+      }
+    };
+
+    relayPollingRef.current = setInterval(() => void poll(), 3000);
+    void poll();
+
+    return () => {
+      if (relayPollingRef.current) {
+        clearInterval(relayPollingRef.current);
+        relayPollingRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    reg.hasEd25519,
+    reg.ed25519Pubkey,
+    reg.challengeHash,
+    reg.sessionToken,
+    registrationComplete,
+  ]);
+
+  // ── 4c. Registry polling (ed25519 — check on-chain via API) ───────────
+  useEffect(() => {
+    if (
+      !reg.hasEd25519 ||
+      reg.ed25519Pubkey.length !== 64 ||
+      registrationComplete
+    ) {
+      return;
+    }
+
+    const apiNetwork = networkId === "celo-mainnet" ? "mainnet" : "testnet";
+
+    const poll = async () => {
+      try {
+        const res = await fetch(
+          `/api/agent/register/ed25519-check?pubkey=${encodeURIComponent(reg.ed25519Pubkey)}&network=${apiNetwork}`,
+        );
+        const data = (await res.json()) as {
+          registered?: boolean;
+          agentId?: string;
+          agentAddress?: string;
+        };
+
+        if (data.registered) {
+          if (registryPollingRef.current)
+            clearInterval(registryPollingRef.current);
+          if (data.agentAddress) reg.setAgentAddress(data.agentAddress);
+          if (data.agentId) reg.setAgentId(data.agentId);
+          reg.setQrState("success");
+          setRegistrationComplete(true);
+        }
+      } catch {
+        // Transient — keep polling
+      }
+    };
+
+    registryPollingRef.current = setInterval(() => void poll(), 5000);
+    void poll();
+
+    return () => {
+      if (registryPollingRef.current) {
+        clearInterval(registryPollingRef.current);
+        registryPollingRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reg.hasEd25519, reg.ed25519Pubkey, registrationComplete, networkId]);
+
+  // ── Derived state ──────────────────────────────────────────────────────
+  const isEd25519Flow = reg.hasEd25519 && !showNoKeyOptions;
+  const showQrPanel =
+    reg.qrState === "live" ||
+    reg.qrState === "scanning" ||
+    reg.qrState === "success" ||
+    reg.qrState === "placeholder";
 
   // ── Render ─────────────────────────────────────────────────────────────
   return (
@@ -387,16 +499,221 @@ export default function RegisterPage() {
             Do it manually
           </h2>
 
-          <FrameworkSection
-            framework={reg.framework}
-            ed25519Pubkey={reg.ed25519Pubkey}
-            ed25519Signature={reg.ed25519Signature}
-            challengeHash={reg.challengeHash}
-            hasEd25519={reg.hasEd25519}
-            onFrameworkChange={reg.setFramework}
-            onPubkeyChange={reg.setEd25519Pubkey}
-            onSignatureChange={reg.setEd25519Signature}
-          />
+          {/* ── Public key input ── */}
+          {!showNoKeyOptions && (
+            <section className="space-y-4">
+              <h3 className="text-lg font-semibold text-foreground">
+                Your agent&apos;s public key
+              </h3>
+              <p className="text-sm text-muted">
+                Paste your agent&apos;s Ed25519 public key. Your agent will
+                handle the signing and passport scan via the API.
+              </p>
+
+              <div className="space-y-3 rounded-xl border border-border bg-surface-1 p-4">
+                <div>
+                  <label className="block text-sm text-muted mb-1">
+                    Ed25519 public key (64 hex chars)
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={64}
+                    placeholder="e.g. a1b2c3d4..."
+                    value={reg.ed25519Pubkey}
+                    onChange={(e) => reg.setEd25519Pubkey(e.target.value)}
+                    className="w-full px-3 py-2 text-sm font-mono rounded-lg"
+                  />
+                </div>
+
+                {reg.challengeHash && (
+                  <div>
+                    <label className="block text-sm text-muted mb-1">
+                      Challenge hash (give this to your agent)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        readOnly
+                        value={reg.challengeHash}
+                        className="w-full px-3 py-2 pr-10 text-sm font-mono rounded-lg bg-surface-2 cursor-default"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          copyText(reg.challengeHash!, setCopiedHash)
+                        }
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-foreground transition-colors"
+                        title="Copy hash"
+                      >
+                        {copiedHash ? (
+                          <Check className="h-4 w-4 text-accent-success" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {reg.challengeHash && !showQrPanel && !registrationComplete && (
+                <p className="text-sm text-muted animate-pulse">
+                  Waiting for your agent to sign and register...
+                </p>
+              )}
+
+              {registrationComplete && (
+                <div className="flex items-center gap-2 text-sm text-accent-success font-medium">
+                  <CheckCircle className="h-4 w-4" />
+                  Agent registered on-chain
+                  {reg.agentId && <span>(ID: {reg.agentId})</span>}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* ── "Don't have your public key?" ── */}
+          <section className="space-y-3">
+            <button
+              type="button"
+              onClick={() => {
+                const opening = !showNoKeyOptions;
+                setShowNoKeyOptions(opening);
+                if (opening) {
+                  // Switching to no-key mode — clear state, no framework selected
+                  reg.setFramework(null);
+                  reg.setEd25519Pubkey("");
+                  reg.setChallengeHash(null);
+                } else {
+                  // Switching back to "I have my key" — reset no-ed25519
+                  // and clear any QR / session from the non-ed25519 flow
+                  setNoEd25519(false);
+                  reg.setFramework("openclaw");
+                  reg.setSessionToken(null);
+                  reg.setQrState("hidden");
+                  setQrData(null);
+                  setDeepLink(null);
+                }
+              }}
+              className="text-sm font-medium text-accent hover:underline"
+            >
+              {showNoKeyOptions
+                ? "I have my agent\u2019s public key"
+                : "Don\u2019t have your public key?"}
+            </button>
+
+            {showNoKeyOptions && (
+              <div className="space-y-4 rounded-xl border border-border bg-surface-1 p-4">
+                {/* Ask your agent prompt */}
+                <div>
+                  <p className="text-sm text-muted">
+                    Most agent frameworks (OpenClaw, Eliza, Coinbase AgentKit,
+                    etc.) generate an Ed25519 key for your agent. If you are not
+                    sure what your agent&apos;s public key is, you can{" "}
+                    <strong className="text-foreground">
+                      ask your agent this question
+                    </strong>
+                    :
+                  </p>
+
+                  <div className="relative mt-3 rounded-lg border border-border overflow-hidden">
+                    <div
+                      className="flex items-center justify-between px-4 py-2 border-b border-border"
+                      style={{ backgroundColor: "#1e1e2e" }}
+                    >
+                      <span className="text-xs text-gray-400 font-mono flex items-center gap-1.5">
+                        <Terminal className="h-3 w-3" />
+                        Prompt
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          copyText(
+                            "Check if you have an Ed25519 keypair available. If you do, give me the public key (64 hex chars, no 0x prefix). If not, tell me what key types you support.",
+                            setCopiedPrompt,
+                          )
+                        }
+                        className="text-xs text-gray-400 hover:text-gray-200 transition-colors flex items-center gap-1"
+                      >
+                        {copiedPrompt ? (
+                          <>
+                            <Check className="h-3 w-3" />
+                            Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3 w-3" />
+                            Copy
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <pre
+                      className="p-4 overflow-x-auto text-sm font-mono leading-relaxed text-gray-200 whitespace-pre-wrap"
+                      style={{ backgroundColor: "#1e1e2e", margin: 0 }}
+                    >
+                      Check if you have an Ed25519 keypair available. If you do,
+                      give me the public key (64 hex chars, no 0x prefix). If
+                      not, tell me what key types you support.
+                    </pre>
+                  </div>
+                </div>
+
+                {/* No Ed25519 option */}
+                <div className="border-t border-border pt-4 space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (noEd25519) {
+                        // Untoggle — clear selection
+                        setNoEd25519(false);
+                        reg.setFramework(null);
+                        reg.setEd25519Pubkey("");
+                        reg.setSessionToken(null);
+                        reg.setQrState("hidden");
+                        setQrData(null);
+                        setDeepLink(null);
+                      } else {
+                        // Toggle on — deselect any framework
+                        setNoEd25519(true);
+                        reg.setFramework("manual");
+                        reg.setEd25519Pubkey("");
+                        reg.setSessionToken(null);
+                        reg.setQrState("hidden");
+                        setQrData(null);
+                        setDeepLink(null);
+                      }
+                    }}
+                    className={`w-full text-left rounded-lg border px-4 py-3 transition-all text-sm ${
+                      noEd25519
+                        ? "border-accent bg-accent/10 text-accent font-medium"
+                        : "border-border hover:border-border-strong bg-surface-2 text-foreground"
+                    }`}
+                  >
+                    My agent doesn&apos;t use Ed25519
+                  </button>
+
+                  <p className="text-sm text-muted">
+                    Not sure? Select your framework below:
+                  </p>
+                  <FrameworkSection
+                    framework={noEd25519 ? null : reg.framework}
+                    ed25519Pubkey={reg.ed25519Pubkey}
+                    ed25519Signature={reg.ed25519Signature}
+                    challengeHash={reg.challengeHash}
+                    hasEd25519={reg.hasEd25519}
+                    onFrameworkChange={(fw) => {
+                      // Selecting a framework deselects "no ed25519"
+                      setNoEd25519(false);
+                      reg.setFramework(fw);
+                    }}
+                    onPubkeyChange={reg.setEd25519Pubkey}
+                    onSignatureChange={reg.setEd25519Signature}
+                  />
+                </div>
+              </div>
+            )}
+          </section>
 
           <GuardianSection
             wantsGuardian={reg.wantsGuardian}
@@ -407,16 +724,16 @@ export default function RegisterPage() {
             }
           />
 
+          <DisclosuresSection
+            disclosures={reg.disclosures}
+            onUpdate={reg.updateDisclosure}
+          />
+
           {reg.guardianAddress && (
             <p className="text-xs text-muted font-mono break-all">
               Guardian: {reg.guardianAddress}
             </p>
           )}
-
-          <DisclosuresSection
-            disclosures={reg.disclosures}
-            onUpdate={reg.updateDisclosure}
-          />
 
           {loading && (
             <p className="text-sm text-muted animate-pulse">
@@ -425,9 +742,24 @@ export default function RegisterPage() {
           )}
         </div>
 
-        {/* Right column: AskMyAgent or QRPanel */}
+        {/* Right column */}
         <div className="order-first lg:order-last pl-0 lg:pl-10 mb-10 lg:mb-0">
-          {reg.hasInteracted ? (
+          {registrationComplete ? (
+            <div className="text-center space-y-4 py-12">
+              <CheckCircle className="h-16 w-16 text-accent-success mx-auto" />
+              <h2 className="text-xl font-bold text-foreground">
+                Registration complete
+              </h2>
+              {reg.agentId && (
+                <p className="text-sm text-muted">Agent ID: {reg.agentId}</p>
+              )}
+              {reg.agentAddress && (
+                <p className="text-xs text-muted font-mono break-all">
+                  {reg.agentAddress}
+                </p>
+              )}
+            </div>
+          ) : showQrPanel ? (
             <QRPanel
               qrState={reg.qrState}
               qrData={qrData}
@@ -435,7 +767,6 @@ export default function RegisterPage() {
               agentAddress={reg.agentAddress}
               deepLink={deepLink}
               onSuccess={() => {
-                // QR component callback — polling handles actual state update
                 if (reg.qrState === "live") {
                   reg.setQrState("scanning");
                 }

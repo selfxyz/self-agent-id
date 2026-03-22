@@ -44,10 +44,10 @@ const DEFAULT_DISCLOSURES: Disclosures = {
 };
 
 export function useRegistrationState() {
-  const [wantsGuardian, setWantsGuardian] = useState<boolean | null>(null);
+  const [wantsGuardian, setWantsGuardian] = useState<boolean | null>(false);
   const [guardianMethod, setGuardianMethod] = useState<GuardianMethod>(null);
   const [guardianAddress, setGuardianAddress] = useState<string | null>(null);
-  const [framework, setFramework] = useState<AgentFramework>(null);
+  const [framework, setFramework] = useState<AgentFramework>("openclaw");
   const [ed25519Pubkey, setEd25519Pubkey] = useState("");
   const [ed25519Signature, setEd25519Signature] = useState("");
   const [challengeHash, setChallengeHash] = useState<string | null>(null);
@@ -60,7 +60,8 @@ export function useRegistrationState() {
 
   const hasEd25519 = useMemo(() => {
     if (framework && ED25519_FRAMEWORKS.has(framework)) return true;
-    if (framework === "manual" && ed25519Pubkey.length === 64) return true;
+    // Any valid 64-char pubkey triggers ed25519 mode (e.g. OpenClaw default flow)
+    if (ed25519Pubkey.length === 64) return true;
     return false;
   }, [framework, ed25519Pubkey]);
 
@@ -86,28 +87,25 @@ export function useRegistrationState() {
     return "wallet-free";
   }, [wantsGuardian, hasEd25519, guardianMethod, framework]);
 
+  // Only count as "interacted" once non-default choices are made
+  // (defaults are ed25519 + no guardian, so right side shows AskMyAgent initially)
   const hasInteracted = useMemo(
-    () => wantsGuardian !== null || framework !== null,
-    [wantsGuardian, framework],
+    () =>
+      ed25519Pubkey.length > 0 ||
+      wantsGuardian === true ||
+      (framework !== null && framework !== "openclaw"),
+    [ed25519Pubkey, wantsGuardian, framework],
   );
 
   const isReadyToRegister = useMemo(() => {
     if (mode === null) return false;
     if (wantsGuardian && !guardianAddress) return false;
-    if (
-      hasEd25519 &&
-      (ed25519Pubkey.length !== 64 || ed25519Signature.length !== 128)
-    )
-      return false;
+    // For ed25519 modes, the agent handles signing via the API directly —
+    // the frontend only needs the pubkey (signature not collected in the form)
+    if (hasEd25519 && ed25519Pubkey.length !== 64) return false;
+    // For non-ed25519 modes, no additional key input needed
     return true;
-  }, [
-    mode,
-    wantsGuardian,
-    guardianAddress,
-    hasEd25519,
-    ed25519Pubkey,
-    ed25519Signature,
-  ]);
+  }, [mode, wantsGuardian, guardianAddress, hasEd25519, ed25519Pubkey]);
 
   const updateDisclosure = useCallback(
     <K extends keyof Disclosures>(key: K, value: Disclosures[K]) => {
