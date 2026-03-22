@@ -33,6 +33,8 @@ interface VisaData {
   };
   eligibility: Record<number, boolean>;
   thresholds: Record<number, TierThresholds>;
+  reviewRequestedTier: number;
+  manualReviewApproved: boolean;
 }
 
 interface ClaimResult {
@@ -96,6 +98,7 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [claiming, setClaiming] = useState(false);
+  const [requesting, setRequesting] = useState(false);
   const [claimResult, setClaimResult] = useState<ClaimResult | null>(null);
 
   const loadVisa = useCallback(async () => {
@@ -165,6 +168,32 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
       setError("Claim failed — please try again");
     } finally {
       setClaiming(false);
+    }
+  }
+
+  async function handleRequestReview(targetTier: number) {
+    setRequesting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/visa/request-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chainId: String(chainId),
+          agentId: String(agentId),
+          targetTier,
+        }),
+      });
+      if (!res.ok) {
+        const result = (await res.json()) as { error?: string };
+        setError(result.error ?? "Review request failed");
+        return;
+      }
+      await loadVisa();
+    } catch {
+      setError("Review request failed — please try again");
+    } finally {
+      setRequesting(false);
     }
   }
 
@@ -373,22 +402,50 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
           >
             {checking ? "Refreshing..." : "Refresh Status"}
           </Button>
-          {canUpgrade && nextTier !== null && (
-            <Button
-              size="sm"
-              onClick={() => void handleClaim(nextTier)}
-              disabled={claiming}
-            >
-              {claiming ? (
-                <>
-                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                  Claiming...
-                </>
-              ) : (
-                `Claim ${TIER_LABELS[nextTier]} Visa`
-              )}
-            </Button>
-          )}
+
+          {nextTier !== null &&
+            nextTier >= 2 &&
+            nextThresholds?.requiresManualReview &&
+            !data.manualReviewApproved &&
+            (data.reviewRequestedTier > 0 ? (
+              <Badge variant="info">Review Pending</Badge>
+            ) : (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => void handleRequestReview(nextTier)}
+                disabled={requesting}
+              >
+                {requesting ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                    Requesting...
+                  </>
+                ) : (
+                  `Request Review for ${TIER_LABELS[nextTier]}`
+                )}
+              </Button>
+            ))}
+
+          {canUpgrade &&
+            nextTier !== null &&
+            (!nextThresholds?.requiresManualReview ||
+              data.manualReviewApproved) && (
+              <Button
+                size="sm"
+                onClick={() => void handleClaim(nextTier)}
+                disabled={claiming}
+              >
+                {claiming ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                    Claiming...
+                  </>
+                ) : (
+                  `Claim ${TIER_LABELS[nextTier]} Visa`
+                )}
+              </Button>
+            )}
         </div>
 
         {/* Last updated */}
