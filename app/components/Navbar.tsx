@@ -22,10 +22,7 @@ const developerLinks = [
   { href: "/integration", label: "Integration Guide" },
 ];
 
-const learnLinks = [
-  { href: "/explainer", label: "How It Works" },
-  { href: "/erc8004", label: "ERC-8004" },
-];
+const learnLinks = [{ href: "/explainer", label: "How It Works" }];
 
 export function Navbar() {
   const pathname = usePathname();

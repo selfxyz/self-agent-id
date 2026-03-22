@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Check, ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 import type { AgentFramework } from "../hooks/useRegistrationState";
 
@@ -104,9 +104,6 @@ export function FrameworkSection({
   onPubkeyChange,
   onSignatureChange,
 }: FrameworkSectionProps) {
-  const [showPrompt, setShowPrompt] = useState(false);
-  const [copiedPrompt, setCopiedPrompt] = useState(false);
-  const [copiedHash, setCopiedHash] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<
     Record<string, boolean>
   >({
@@ -114,12 +111,6 @@ export function FrameworkSection({
     "OpenClaw Ecosystem": true,
     "Web3 / Crypto": true,
   });
-
-  const copyText = (text: string, setter: (v: boolean) => void) => {
-    void navigator.clipboard.writeText(text);
-    setter(true);
-    setTimeout(() => setter(false), 2000);
-  };
 
   const toggleCategory = (label: string) => {
     setExpandedCategories((prev) => ({ ...prev, [label]: !prev[label] }));
@@ -174,129 +165,6 @@ export function FrameworkSection({
         })}
       </div>
 
-      <details className="text-sm text-muted">
-        <summary className="cursor-pointer hover:text-foreground transition-colors">
-          Not listed here or I already understand
-        </summary>
-        <div className="mt-3 space-y-3 pl-4">
-          <div>
-            <label className="block text-sm text-muted mb-1">
-              Ed25519 public key (64 hex chars)
-            </label>
-            <input
-              type="text"
-              maxLength={64}
-              placeholder="e.g. a1b2c3d4..."
-              value={ed25519Pubkey}
-              onChange={(e) => {
-                onPubkeyChange(e.target.value);
-                if (framework !== "manual") onFrameworkChange("manual");
-              }}
-              className="w-full px-3 py-2 text-sm rounded-lg"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              onFrameworkChange("manual");
-              onPubkeyChange("");
-            }}
-            className="text-xs text-accent hover:underline"
-          >
-            or proceed without Ed25519
-          </button>
-        </div>
-      </details>
-
-      <div className="space-y-3">
-        <button
-          type="button"
-          onClick={() => setShowPrompt((p) => !p)}
-          className="text-sm font-medium text-accent hover:underline"
-        >
-          {showPrompt ? "Hide prompt" : "Ask your agent this question"}
-        </button>
-
-        {showPrompt && (
-          <div className="relative rounded-lg border border-border bg-surface-2 p-4">
-            <p className="text-sm text-foreground pr-8 leading-relaxed">
-              {AGENT_PROMPT}
-            </p>
-            <button
-              type="button"
-              onClick={() => copyText(AGENT_PROMPT, setCopiedPrompt)}
-              className="absolute top-3 right-3 text-muted hover:text-foreground transition-colors"
-              title="Copy prompt"
-            >
-              {copiedPrompt ? (
-                <Check className="h-4 w-4 text-accent-success" />
-              ) : (
-                <Copy className="h-4 w-4" />
-              )}
-            </button>
-          </div>
-        )}
-      </div>
-
-      {hasEd25519 && framework !== null && (
-        <div className="space-y-3 rounded-xl border border-border bg-surface-1 p-4">
-          <div>
-            <label className="block text-sm text-muted mb-1">
-              Ed25519 public key
-            </label>
-            <input
-              type="text"
-              maxLength={64}
-              placeholder="64 hex characters"
-              value={ed25519Pubkey}
-              onChange={(e) => onPubkeyChange(e.target.value)}
-              className="w-full px-3 py-2 text-sm font-mono rounded-lg"
-            />
-          </div>
-
-          {challengeHash && (
-            <div>
-              <label className="block text-sm text-muted mb-1">
-                Challenge hash
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  readOnly
-                  value={challengeHash}
-                  className="w-full px-3 py-2 pr-10 text-sm font-mono rounded-lg bg-surface-2 cursor-default"
-                />
-                <button
-                  type="button"
-                  onClick={() => copyText(challengeHash, setCopiedHash)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-foreground transition-colors"
-                  title="Copy hash"
-                >
-                  {copiedHash ? (
-                    <Check className="h-4 w-4 text-accent-success" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-sm text-muted mb-1">
-              Ed25519 signature (128 hex chars)
-            </label>
-            <input
-              type="text"
-              maxLength={128}
-              placeholder="128 hex characters"
-              value={ed25519Signature}
-              onChange={(e) => onSignatureChange(e.target.value)}
-              className="w-full px-3 py-2 text-sm font-mono rounded-lg"
-            />
-          </div>
-        </div>
-      )}
     </section>
   );
 }
