@@ -49,6 +49,8 @@ export async function GET(
       threshTourist,
       threshWork,
       threshCitizenship,
+      reviewTier,
+      manualApproved,
     ] = await Promise.all([
       visa.getTier(id),
       visa.getMetrics(id),
@@ -58,6 +60,8 @@ export async function GET(
       visa.getTierThresholds(1),
       visa.getTierThresholds(2),
       visa.getTierThresholds(3),
+      visa.reviewRequestedTier(id),
+      visa.manualReviewApproved(id),
     ]);
 
     const tierNum = Number(tier);
@@ -78,18 +82,20 @@ export async function GET(
           2: eligWork,
           3: eligCitizenship,
         },
+        reviewRequestedTier: Number(reviewTier),
+        manualReviewApproved: manualApproved,
         thresholds: {
           1: {
             minTransactions: Number(threshTourist.minTransactions),
             minVolumeUsd: Number(threshTourist.minVolumeUsd) / 1e6,
             requiresBoth: threshTourist.requiresBoth,
-            requiresManualReview: false,
+            requiresManualReview: threshTourist.requiresManualReview,
           },
           2: {
             minTransactions: Number(threshWork.minTransactions),
             minVolumeUsd: Number(threshWork.minVolumeUsd) / 1e6,
             requiresBoth: threshWork.requiresBoth,
-            requiresManualReview: false,
+            requiresManualReview: threshWork.requiresManualReview,
           },
           3: {
             minTransactions: Number(threshCitizenship.minTransactions),
