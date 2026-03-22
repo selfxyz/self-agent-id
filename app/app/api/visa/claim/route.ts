@@ -71,6 +71,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Check if tier requires manual review
+    if (targetTier >= 2) {
+      const [manualApproved, reviewTier] = await Promise.all([
+        visa.manualReviewApproved(BigInt(agentId)),
+        visa.reviewRequestedTier(BigInt(agentId)),
+      ]);
+
+      if (!manualApproved) {
+        return NextResponse.json(
+          {
+            error: "Manual review required for this tier",
+            code: "REVIEW_REQUIRED",
+            reviewRequested: Number(reviewTier) > 0,
+          },
+          { status: 422, headers: CORS_HEADERS },
+        );
+      }
+    }
+
     // Check eligibility
     const eligible = await visa.checkTierEligibility(
       BigInt(agentId),
@@ -120,6 +139,12 @@ export async function POST(req: NextRequest) {
     }
     if (message.includes("TierNotHigher")) {
       return errorResponse("Target tier must be higher than current tier", 409);
+    }
+    if (message.includes("NotEligibleForTier")) {
+      return errorResponse(
+        "Agent does not meet metric requirements for this tier",
+        422,
+      );
     }
     return errorResponse(`Claim failed: ${message}`, 500);
   }
