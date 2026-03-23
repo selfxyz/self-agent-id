@@ -55,14 +55,14 @@ export default function CeloAgentVisaPage() {
         provider,
       );
 
-      // Find registry-based agents via registry Transfer events.
-      // Query from visaDeployBlock (not registryDeployBlock) to keep the block
-      // range small — we only care about agents that could have visas.
+      // Find registry-based agents via Transfer events TO the connected wallet.
+      // Use Transfer(null, address) — matching the pattern in the My Agents page.
+      // Filtering both from AND to simultaneously fails on some RPCs.
       const scanFrom = network.visaDeployBlock > 0
         ? network.visaDeployBlock
         : network.registryDeployBlock;
       try {
-        const filter = registry.filters.Transfer(ethers.ZeroAddress, address);
+        const filter = registry.filters.Transfer(null, address);
         const events = await registry.queryFilter(filter, scanFrom);
         for (const event of events) {
           const tokenId = (event as ethers.EventLog).args?.[2] as
@@ -77,34 +77,6 @@ export default function CeloAgentVisaPage() {
         }
       } catch {
         // Registry event query may fail for large block ranges
-      }
-
-      // Fallback: if no registry agents found via events, check balanceOf
-      // and scan from a recent block window
-      if (!allAgents.some((a) => !a.isWalletBased)) {
-        try {
-          const balance = Number(await registry.balanceOf(address));
-          if (balance > 0) {
-            // Scan last 50k blocks as fallback
-            const latest = await provider.getBlockNumber();
-            const fallbackFrom = Math.max(scanFrom, latest - 50_000);
-            const filter = registry.filters.Transfer(ethers.ZeroAddress, address);
-            const events = await registry.queryFilter(filter, fallbackFrom, latest);
-            for (const event of events) {
-              const tokenId = (event as ethers.EventLog).args?.[2] as
-                | bigint
-                | undefined;
-              if (tokenId && BigInt(tokenId) > 0n) {
-                allAgents.push({
-                  agentId: BigInt(tokenId).toString(),
-                  chainId,
-                });
-              }
-            }
-          }
-        } catch {
-          // Skip fallback errors
-        }
       }
 
       // Also check for wallet-based Tourist visa (no registry needed)
