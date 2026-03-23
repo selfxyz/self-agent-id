@@ -24,7 +24,6 @@ export default function CeloAgentVisaPage() {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [claimingTourist, setClaimingTourist] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
-  const [, setWalletVisaTier] = useState<number | null>(null);
   const [agentWalletInput, setAgentWalletInput] = useState("");
 
   const loadAgents = useCallback(async (address: string) => {
@@ -75,7 +74,6 @@ export default function CeloAgentVisaPage() {
           const visa = new ethers.Contract(config.visa, VISA_ABI, provider);
           const tier = Number(await visa.getTier(BigInt(walletAgentId)));
           if (tier > 0) {
-            setWalletVisaTier(tier);
             const exists = allAgents.some(
               (a) =>
                 a.agentId === walletAgentId && a.chainId === Number(chainId),
@@ -87,11 +85,9 @@ export default function CeloAgentVisaPage() {
                 isWalletBased: true,
               });
             }
-          } else {
-            setWalletVisaTier(0);
           }
         } catch {
-          setWalletVisaTier(0);
+          // Skip — no wallet visa on this chain
         }
       }
 

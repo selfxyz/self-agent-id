@@ -93,7 +93,7 @@ export default function VisaAdminPage() {
         const [currentTier, metrics, wallet, proofFresh] = (await Promise.all([
           visa.getTier(BigInt(agentId)),
           visa.getMetrics(BigInt(agentId)),
-          registry.getAgentWallet(BigInt(agentId)).catch(() => "0x"),
+          visa.getVisaWallet(BigInt(agentId)).catch(() => "0x"),
           registry.isProofFresh(BigInt(agentId)).catch(() => false),
         ])) as [
           bigint,
