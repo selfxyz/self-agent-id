@@ -216,11 +216,15 @@ export default function CeloAgentVisaPage() {
           Celo. Start as a Tourist, scale to a Work Visa. Level up to Citizen
           with every transaction.
         </p>
-        {/* TODO: Replace with actual Celo Agent Visa website URL */}
-        <span className="inline-flex items-center gap-1 text-sm text-muted mt-3 cursor-default">
+        <a
+          href="https://celo.org/agent-visa"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-sm text-muted mt-3 hover:text-foreground transition-colors"
+        >
           Learn more
           <ExternalLink className="h-3 w-3" />
-        </span>
+        </a>
       </div>
 
       {/* Connected wallet */}

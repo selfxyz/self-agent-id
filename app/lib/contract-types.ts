@@ -166,6 +166,22 @@ export interface TypedVisaContract extends ethers.BaseContract {
     void,
     ethers.ContractTransactionResponse
   >;
+  claimTierUpgrade: ethers.BaseContractMethod<
+    [bigint, number],
+    void,
+    ethers.ContractTransactionResponse
+  >;
+  mintVisa: ethers.BaseContractMethod<
+    [bigint, number, string],
+    void,
+    ethers.ContractTransactionResponse
+  >;
+  getVisaWallet(agentId: bigint): Promise<string>;
+  setVisaWallet: ethers.BaseContractMethod<
+    [bigint, string],
+    void,
+    ethers.ContractTransactionResponse
+  >;
 }
 
 // ─── Constructor helpers ─────────────────────────────────────────────────────

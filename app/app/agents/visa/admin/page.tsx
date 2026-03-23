@@ -66,9 +66,10 @@ export default function VisaAdminPage() {
         provider,
       );
 
-      // Query ReviewRequested events
+      // Query ReviewRequested events from visa deploy block
       const filter = visa.filters.ReviewRequested();
-      const events = await visa.queryFilter(filter);
+      const fromBlock = config.visaDeployBlock || 0;
+      const events = await visa.queryFilter(filter, fromBlock);
 
       const pending: ReviewItem[] = [];
       const seen = new Set<number>();

@@ -8,6 +8,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Card } from "./Card";
 import { Badge } from "./Badge";
 import { Button } from "./Button";
+import Image from "next/image";
 import { CheckCircle2, ArrowUp, Loader2, ExternalLink } from "lucide-react";
 
 interface VisaCardProps {
@@ -54,6 +55,12 @@ const TIER_BADGE_VARIANT: Record<number, string> = {
   1: "info",
   2: "warn",
   3: "success",
+};
+
+const TIER_IMAGES: Record<number, string> = {
+  1: "/visa-tourist.png",
+  2: "/visa-work.png",
+  3: "/visa-citizenship.png",
 };
 
 const TIER_BENEFITS: Record<number, string[]> = {
@@ -244,6 +251,15 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
     return (
       <Card>
         <div className="space-y-4 text-center py-4">
+          {TIER_IMAGES[claimResult.newTier] && (
+            <Image
+              src={TIER_IMAGES[claimResult.newTier]}
+              alt={`${TIER_LABELS[claimResult.newTier]} Visa`}
+              width={120}
+              height={120}
+              className="rounded-lg mx-auto"
+            />
+          )}
           <CheckCircle2 className="h-10 w-10 text-accent-success mx-auto" />
           <div>
             <h3 className="text-lg font-semibold">
@@ -310,6 +326,19 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
             {TIER_LABELS[tier]}
           </Badge>
         </div>
+
+        {/* Tier NFT image */}
+        {tier > 0 && TIER_IMAGES[tier] && (
+          <div className="flex justify-center">
+            <Image
+              src={TIER_IMAGES[tier]}
+              alt={`${TIER_LABELS[tier]} Visa`}
+              width={160}
+              height={160}
+              className="rounded-lg"
+            />
+          </div>
+        )}
 
         {/* No Visa state */}
         {tier === 0 && (

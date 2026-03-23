@@ -14,6 +14,7 @@ export interface ChainConfig {
   visa: string;
   blockExplorer: string;
   registryDeployBlock: number;
+  visaDeployBlock: number;
 }
 
 /** Map of chainId (as string) to RPC + registry address */
@@ -26,6 +27,7 @@ export const CHAIN_CONFIG: Record<string, ChainConfig> = Object.fromEntries(
       visa: net.visaAddress,
       blockExplorer: net.blockExplorer,
       registryDeployBlock: net.registryDeployBlock,
+      visaDeployBlock: net.visaDeployBlock,
     },
   ]),
 );
