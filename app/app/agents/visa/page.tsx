@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { ethers } from "ethers";
 import { VisaCard } from "@/components/VisaCard";
 import { VisaUpgradeFlow } from "@/components/VisaUpgradeFlow";
-import { REGISTRY_ABI, VISA_ABI } from "@/lib/constants";
+import { VISA_ABI } from "@/lib/constants";
 import { useNetwork } from "@/lib/NetworkContext";
 import { ExternalLink, Loader2, CheckCircle2 } from "lucide-react";
 
@@ -45,79 +45,15 @@ export default function CeloAgentVisaPage() {
         return;
       }
 
-      const chainId = network.chainId;
-      const allAgents: AgentBasic[] = [];
-
-      // Find registry-based agents via raw eth_getLogs fetch.
-      // ethers.js queryFilter silently fails in some browser environments.
-      const scanFrom = network.visaDeployBlock > 0
-        ? network.visaDeployBlock
-        : network.registryDeployBlock;
-      try {
-        const transferTopic = ethers.id("Transfer(address,address,uint256)");
-        const addressTopic =
-          "0x000000000000000000000000" + address.slice(2).toLowerCase();
-        const resp = await fetch(network.rpcUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            method: "eth_getLogs",
-            params: [
-              {
-                address: network.registryAddress,
-                fromBlock: "0x" + scanFrom.toString(16),
-                toBlock: "latest",
-                topics: [transferTopic, null, addressTopic],
-              },
-            ],
-            id: 1,
-          }),
-        });
-        const json = (await resp.json()) as {
-          result?: Array<{ topics: string[] }>;
-          error?: { message: string };
-        };
-        if (json.result) {
-          for (const log of json.result) {
-            if (log.topics[3]) {
-              const tokenId = BigInt(log.topics[3]);
-              if (tokenId > 0n) {
-                allAgents.push({
-                  agentId: tokenId.toString(),
-                  chainId,
-                });
-              }
-            }
-          }
-        } else {
-          console.warn("[visa] eth_getLogs error:", json.error?.message);
-        }
-      } catch (err) {
-        console.warn("[visa] registry query failed:", err);
-      }
-
-      // Also check for wallet-based Tourist visa (no registry needed)
-      const walletAgentId = walletToAgentId(address);
-      try {
-        const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-        const visa = new ethers.Contract(network.visaAddress, VISA_ABI, provider);
-        const tier = Number(await visa.getTier(BigInt(walletAgentId)));
-        if (tier > 0) {
-          const exists = allAgents.some(
-            (a) => a.agentId === walletAgentId && a.chainId === chainId,
-          );
-          if (!exists) {
-            allAgents.push({
-              agentId: walletAgentId,
-              chainId,
-              isWalletBased: true,
-            });
-          }
-        }
-      } catch {
-        // Skip — no wallet visa on this chain
-      }
+      // Fetch agents from server-side API to avoid browser RPC block-range limits
+      const res = await fetch(
+        `/api/visa/agents?wallet=${encodeURIComponent(address)}&chainId=${network.chainId}`,
+      );
+      const data = (await res.json()) as {
+        agents?: AgentBasic[];
+        error?: string;
+      };
+      const allAgents: AgentBasic[] = data.agents ?? [];
 
       // If both wallet-based and registry-based agents exist, hide the wallet-based one.
       // The old wallet-based visa can't be burned (soulbound), so it stays on-chain at tier 1.
@@ -126,7 +62,7 @@ export default function CeloAgentVisaPage() {
         ? allAgents.filter((a) => !a.isWalletBased)
         : allAgents;
 
-      console.log("[visa] allAgents:", allAgents.map((a) => ({ id: a.agentId, wallet: !!a.isWalletBased })));
+      console.log("[visa] agents from API:", allAgents.map((a) => ({ id: a.agentId, wallet: !!a.isWalletBased })));
       console.log("[visa] hasRegistry:", hasRegistryAgent, "showing:", filteredAgents.length);
       setAgents(filteredAgents);
 
