@@ -22,6 +22,7 @@ interface ClaimRequest {
   chainId: string;
   agentId: string;
   targetTier: number;
+  agentWallet?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
     return errorResponse("Invalid JSON body", 400);
   }
 
-  const { chainId, agentId, targetTier } = body;
+  const { chainId, agentId, targetTier, agentWallet } = body;
 
   if (!chainId || !agentId) {
     return errorResponse("chainId and agentId are required", 400);
@@ -117,9 +118,16 @@ export async function POST(req: NextRequest) {
     // If agent has no visa yet (tier 0), mint instead of claim upgrade
     let tx: ethers.ContractTransactionResponse;
     if (currentTier === 0) {
+      // Wallet is required for minting — use provided wallet or derive from agentId
+      const wallet =
+        agentWallet ||
+        ethers.getAddress(
+          "0x" + BigInt(agentId).toString(16).padStart(40, "0"),
+        );
       tx = (await visa.mintVisa(
         BigInt(agentId),
         targetTier,
+        wallet,
       )) as ethers.ContractTransactionResponse;
     } else {
       tx = (await visa.claimTierUpgrade(

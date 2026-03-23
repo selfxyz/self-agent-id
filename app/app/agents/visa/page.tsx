@@ -25,6 +25,7 @@ export default function CeloAgentVisaPage() {
   const [claimingTourist, setClaimingTourist] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
   const [, setWalletVisaTier] = useState<number | null>(null);
+  const [agentWalletInput, setAgentWalletInput] = useState("");
 
   const loadAgents = useCallback(async (address: string) => {
     setLoading(true);
@@ -152,6 +153,11 @@ export default function CeloAgentVisaPage() {
 
   async function handleClaimTourist() {
     if (!walletAddress) return;
+    const trimmedWallet = agentWalletInput.trim();
+    if (!trimmedWallet || !/^0x[0-9a-fA-F]{40}$/.test(trimmedWallet)) {
+      setClaimError("Please enter a valid EVM wallet address for your agent");
+      return;
+    }
     setClaimingTourist(true);
     setClaimError(null);
     try {
@@ -165,7 +171,12 @@ export default function CeloAgentVisaPage() {
       const res = await fetch("/api/visa/claim", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chainId, agentId, targetTier: 1 }),
+        body: JSON.stringify({
+          chainId,
+          agentId,
+          targetTier: 1,
+          agentWallet: trimmedWallet,
+        }),
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {
@@ -247,12 +258,32 @@ export default function CeloAgentVisaPage() {
             Get started by claiming your Tourist Visa. No registration or
             verification needed for Tier 1.
           </p>
+          <div className="max-w-md mx-auto space-y-2">
+            <label
+              htmlFor="agent-wallet"
+              className="block text-xs text-muted text-left"
+            >
+              Agent Wallet Address
+            </label>
+            <input
+              id="agent-wallet"
+              type="text"
+              placeholder="0x... (the EVM wallet your agent transacts from)"
+              value={agentWalletInput}
+              onChange={(e) => setAgentWalletInput(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface-1 font-mono placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+            <p className="text-[10px] text-muted text-left">
+              This is the wallet your agent uses to transact on Celo. Its
+              activity will be tracked for tier progression.
+            </p>
+          </div>
           {claimError && (
             <p className="text-sm text-accent-error">{claimError}</p>
           )}
           <button
             onClick={() => void handleClaimTourist()}
-            disabled={claimingTourist}
+            disabled={claimingTourist || !agentWalletInput.trim()}
             className="px-4 py-2 bg-foreground text-background rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
           >
             {claimingTourist ? (
