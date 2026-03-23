@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { ethers } from "ethers";
 import { VisaCard } from "@/components/VisaCard";
-import { REGISTRY_ABI } from "@/lib/constants";
+import { REGISTRY_ABI, VISA_ABI } from "@/lib/constants";
 import { CHAIN_CONFIG } from "@/lib/chain-config";
 import { ExternalLink, Loader2 } from "lucide-react";
 import Link from "next/link";
@@ -13,10 +13,18 @@ interface AgentBasic {
   chainId: number;
 }
 
+/** Derive a deterministic agentId from a wallet address (for Tourist visa without registry) */
+function walletToAgentId(address: string): string {
+  return BigInt(address).toString();
+}
+
 export default function CeloAgentVisaPage() {
   const [agents, setAgents] = useState<AgentBasic[]>([]);
   const [loading, setLoading] = useState(true);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [claimingTourist, setClaimingTourist] = useState(false);
+  const [claimError, setClaimError] = useState<string | null>(null);
+  const [, setWalletVisaTier] = useState<number | null>(null);
 
   const loadAgents = useCallback(async (address: string) => {
     setLoading(true);
@@ -50,6 +58,35 @@ export default function CeloAgentVisaPage() {
           }
         } catch {
           // Skip chains that error
+        }
+      }
+
+      // Also check for wallet-based Tourist visa (no registry needed)
+      const walletAgentId = walletToAgentId(address);
+      for (const [chainId, config] of chainsWithVisa) {
+        try {
+          const provider = new ethers.JsonRpcProvider(config.rpc);
+          const visa = new ethers.Contract(config.visa, VISA_ABI, provider);
+          const tier = Number(await visa.getTier(BigInt(walletAgentId)));
+          if (tier > 0) {
+            setWalletVisaTier(tier);
+            // Add as an agent if not already found via registry
+            const exists = allAgents.some(
+              (a) =>
+                a.agentId === Number(BigInt(walletAgentId)) &&
+                a.chainId === Number(chainId),
+            );
+            if (!exists) {
+              allAgents.push({
+                agentId: Number(BigInt(walletAgentId)),
+                chainId: Number(chainId),
+              });
+            }
+          } else {
+            setWalletVisaTier(0);
+          }
+        } catch {
+          setWalletVisaTier(0);
         }
       }
 
@@ -108,6 +145,37 @@ export default function CeloAgentVisaPage() {
       eth.removeListener?.("accountsChanged", handleAccountsChanged);
     };
   }, [loadAgents]);
+
+  async function handleClaimTourist() {
+    if (!walletAddress) return;
+    setClaimingTourist(true);
+    setClaimError(null);
+    try {
+      const chainsWithVisa = Object.entries(CHAIN_CONFIG).filter(
+        ([, config]) => config.visa,
+      );
+      if (chainsWithVisa.length === 0) return;
+      const [chainId] = chainsWithVisa[0];
+      const agentId = walletToAgentId(walletAddress);
+
+      const res = await fetch("/api/visa/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chainId, agentId, targetTier: 1 }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setClaimError(data.error ?? "Claim failed");
+        return;
+      }
+      // Reload to show the new visa
+      await loadAgents(walletAddress);
+    } catch {
+      setClaimError("Claim failed — please try again");
+    } finally {
+      setClaimingTourist(false);
+    }
+  }
 
   async function handleConnect() {
     if (!window.ethereum) return;
@@ -170,21 +238,38 @@ export default function CeloAgentVisaPage() {
           Loading your agents...
         </div>
       ) : agents.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-muted mb-4">
-            No agents found on this wallet. Register your agent on the Self
-            Agent Registry to get started.
+        <div className="text-center py-12 space-y-4">
+          <p className="text-muted">
+            Get started by claiming your Tourist Visa. No registration or
+            verification needed for Tier 1.
           </p>
-          <p className="text-xs text-muted mb-4">
-            Tourist Visa (Tier 1) only requires a registry entry — no Self app
-            verification needed. Higher tiers require Self verification.
-          </p>
-          <Link
-            href="/agents/register"
-            className="text-sm text-accent hover:underline"
+          {claimError && (
+            <p className="text-sm text-accent-error">{claimError}</p>
+          )}
+          <button
+            onClick={() => void handleClaimTourist()}
+            disabled={claimingTourist}
+            className="px-4 py-2 bg-foreground text-background rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
           >
-            Register an agent
-          </Link>
+            {claimingTourist ? (
+              <span className="inline-flex items-center gap-2">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Claiming...
+              </span>
+            ) : (
+              "Claim Tourist Visa"
+            )}
+          </button>
+          <p className="text-xs text-muted">
+            Higher tiers (Work, Citizenship) require{" "}
+            <Link
+              href="/agents/register"
+              className="text-accent hover:underline"
+            >
+              Self Agent Registry
+            </Link>{" "}
+            registration and Self app verification.
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
