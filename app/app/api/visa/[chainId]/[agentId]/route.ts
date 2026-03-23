@@ -13,6 +13,9 @@ import {
 } from "@/lib/api-helpers";
 
 import { typedVisa } from "@/lib/contract-types";
+import { VISA_ABI } from "@/lib/constants";
+
+const RELAYER_PK = process.env.RELAYER_PRIVATE_KEY;
 
 const TIER_NAMES: Record<number, string> = {
   0: "None",
@@ -65,6 +68,76 @@ export async function GET(
     ]);
 
     const tierNum = Number(tier);
+
+    // Refresh on-chain metrics from the agent wallet's real tx count
+    if (RELAYER_PK && tierNum > 0) {
+      try {
+        const walletAddr = await visa.getVisaWallet(id);
+        const wallet =
+          walletAddr && walletAddr !== ethers.ZeroAddress
+            ? walletAddr
+            : ethers.getAddress(
+                "0x" + id.toString(16).padStart(40, "0"),
+              );
+        const txCount = await rpc.getTransactionCount(wallet);
+        if (txCount > Number(metrics.transactionCount)) {
+          const relayer = new ethers.Wallet(RELAYER_PK, rpc);
+          const writable = new ethers.Contract(config.visa, VISA_ABI, relayer);
+          const tx = await writable.updateMetrics(id, BigInt(txCount), BigInt(0));
+          await tx.wait();
+          // Re-read metrics and eligibility after update
+          const [freshMetrics, freshEligWork, freshEligCitizenship] =
+            await Promise.all([
+              visa.getMetrics(id),
+              visa.checkTierEligibility(id, 2),
+              visa.checkTierEligibility(id, 3),
+            ]);
+          return NextResponse.json(
+            {
+              agentId: Number(id),
+              chainId: Number(chainId),
+              tier: tierNum,
+              tierName: TIER_NAMES[tierNum] ?? `Tier ${tierNum}`,
+              metrics: {
+                transactionCount: Number(freshMetrics.transactionCount),
+                volumeUsd: Number(freshMetrics.volumeUsd) / 1e6,
+                lastUpdated: Number(freshMetrics.lastUpdated),
+              },
+              eligibility: {
+                1: eligTourist,
+                2: freshEligWork,
+                3: freshEligCitizenship,
+              },
+              reviewRequestedTier: Number(reviewTier),
+              manualReviewApproved: manualApproved,
+              thresholds: {
+                1: {
+                  minTransactions: Number(threshTourist.minTransactions),
+                  minVolumeUsd: Number(threshTourist.minVolumeUsd) / 1e6,
+                  requiresBoth: threshTourist.requiresBoth,
+                  requiresManualReview: threshTourist.requiresManualReview,
+                },
+                2: {
+                  minTransactions: Number(threshWork.minTransactions),
+                  minVolumeUsd: Number(threshWork.minVolumeUsd) / 1e6,
+                  requiresBoth: threshWork.requiresBoth,
+                  requiresManualReview: threshWork.requiresManualReview,
+                },
+                3: {
+                  minTransactions: Number(threshCitizenship.minTransactions),
+                  minVolumeUsd: Number(threshCitizenship.minVolumeUsd) / 1e6,
+                  requiresBoth: threshCitizenship.requiresBoth,
+                  requiresManualReview: threshCitizenship.requiresManualReview,
+                },
+              },
+            },
+            { headers: CORS_HEADERS },
+          );
+        }
+      } catch {
+        // Non-fatal — fall through to return stale metrics
+      }
+    }
 
     return NextResponse.json(
       {
