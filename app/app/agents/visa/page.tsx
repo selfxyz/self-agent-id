@@ -174,9 +174,31 @@ export default function CeloAgentVisaPage() {
           agentWallet: trimmedWallet,
         }),
       });
-      const data = (await res.json()) as { error?: string };
+      const data = (await res.json()) as {
+        error?: string;
+        code?: string;
+        metrics?: { transactionCount: number; volumeUsd: number };
+        required?: { minTransactions: number; minVolumeUsd: number };
+      };
       if (!res.ok) {
-        setClaimError(data.error ?? "Claim failed");
+        if (data.code === "NOT_ELIGIBLE" && data.metrics && data.required) {
+          const r = data.required;
+          const m = data.metrics;
+          const parts: string[] = [];
+          if (r.minTransactions > 0)
+            parts.push(
+              `${m.transactionCount}/${r.minTransactions} transactions`,
+            );
+          if (r.minVolumeUsd > 0)
+            parts.push(`$${m.volumeUsd}/$${r.minVolumeUsd} volume`);
+          setClaimError(
+            parts.length > 0
+              ? `Not eligible yet: ${parts.join(", ")}.`
+              : "Not eligible for this tier yet.",
+          );
+        } else {
+          setClaimError(data.error ?? "Claim failed");
+        }
         return;
       }
       // Reload to show the new visa

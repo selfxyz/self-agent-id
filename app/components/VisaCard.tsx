@@ -161,9 +161,38 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
         newTier?: number;
         txHash?: string;
         error?: string;
+        code?: string;
+        metrics?: { transactionCount: number; volumeUsd: number };
+        required?: {
+          minTransactions: number;
+          minVolumeUsd: number;
+          requiresBoth: boolean;
+        };
       };
       if (!res.ok) {
-        setError(result.error ?? "Claim failed");
+        if (
+          result.code === "NOT_ELIGIBLE" &&
+          result.metrics &&
+          result.required
+        ) {
+          const { metrics: m, required: r } = result;
+          const parts: string[] = [];
+          if (r.minTransactions > 0)
+            parts.push(
+              `${m.transactionCount}/${r.minTransactions} transactions`,
+            );
+          if (r.minVolumeUsd > 0)
+            parts.push(`$${m.volumeUsd}/$${r.minVolumeUsd} volume`);
+          if (parts.length > 1 && r.requiresBoth)
+            parts.push("(both required)");
+          setError(
+            parts.length > 0
+              ? `Not eligible: ${parts.join(", ")}`
+              : "Not eligible for this tier yet",
+          );
+        } else {
+          setError(result.error ?? "Claim failed");
+        }
         return;
       }
       setClaimResult({

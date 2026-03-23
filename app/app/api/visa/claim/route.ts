@@ -103,15 +103,57 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Check eligibility
+    // Seed on-chain metrics from the agent wallet's real activity.
+    // This resolves the chicken-and-egg problem where the scoring daemon
+    // hasn't discovered this agent yet (no visa = no discovery = no metrics).
+    const walletForMetrics =
+      agentWallet ||
+      ethers.getAddress(
+        "0x" + BigInt(agentId).toString(16).padStart(40, "0"),
+      );
+    const txCount = await provider.getTransactionCount(walletForMetrics);
+    if (txCount > 0) {
+      const metricsTx = (await visa.updateMetrics(
+        BigInt(agentId),
+        BigInt(txCount),
+        BigInt(0),
+      )) as ethers.ContractTransactionResponse;
+      await metricsTx.wait();
+    }
+
+    // Check eligibility — if not eligible, return detailed diagnostics
     const eligible = (await visa.checkTierEligibility(
       BigInt(agentId),
       targetTier,
     )) as boolean;
     if (!eligible) {
-      return errorResponse(
-        `Agent does not meet requirements for tier ${targetTier}`,
-        422,
+      const [metrics, tierThresholds] = (await Promise.all([
+        visa.getMetrics(BigInt(agentId)),
+        visa.getTierThresholds(targetTier),
+      ])) as [
+        { transactionCount: bigint; volumeUsd: bigint; lastUpdated: bigint },
+        {
+          minTransactions: bigint;
+          minVolumeUsd: bigint;
+          requiresBoth: boolean;
+          requiresManualReview: boolean;
+        },
+      ];
+      return NextResponse.json(
+        {
+          error: `Agent does not meet requirements for tier ${targetTier}`,
+          code: "NOT_ELIGIBLE",
+          metrics: {
+            transactionCount: Number(metrics.transactionCount),
+            volumeUsd: Number(metrics.volumeUsd),
+          },
+          required: {
+            minTransactions: Number(tierThresholds.minTransactions),
+            minVolumeUsd: Number(tierThresholds.minVolumeUsd),
+            requiresBoth: tierThresholds.requiresBoth,
+          },
+        },
+        { status: 422, headers: CORS_HEADERS },
       );
     }
 

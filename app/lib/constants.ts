@@ -135,6 +135,7 @@ export const VISA_ABI = [
   "function hasRole(bytes32 role, address account) external view returns (bool)",
   "function UPGRADER_ROLE() external view returns (bytes32)",
   "function setManualReviewStatus(uint256 agentId, bool approved) external",
+  "function updateMetrics(uint256 agentId, uint256 transactionCount, uint256 volumeUsd) external",
   "event ReviewRequested(uint256 indexed agentId, uint8 targetTier)",
 ] as const;
 
