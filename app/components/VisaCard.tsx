@@ -533,7 +533,10 @@ export function VisaCard({ agentId, chainId, blockExplorer, isWalletBased, onSta
             (isWalletBased && nextTier >= 2 ? (
               <Button
                 size="sm"
-                onClick={() => window.location.href = "/agents/register"}
+                onClick={() => {
+                  const net = chainId === 42220 ? "celo-mainnet" : "celo-sepolia";
+                  window.location.href = `/agents/register?network=${net}`;
+                }}
               >
                 Verify with Self to Upgrade
               </Button>
