@@ -1,0 +1,14 @@
+{
+  "rewrites": [
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "agentvisa.self.xyz" }],
+      "destination": "/agents/visa"
+    },
+    {
+      "source": "/admin",
+      "has": [{ "type": "host", "value": "agentvisa.self.xyz" }],
+      "destination": "/agents/visa/admin"
+    }
+  ]
+}
