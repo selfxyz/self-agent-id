@@ -11,7 +11,7 @@ import { Button } from "./Button";
 import { CheckCircle2, ArrowUp, Loader2, ExternalLink } from "lucide-react";
 
 interface VisaCardProps {
-  agentId: number;
+  agentId: string | number;
   chainId: number;
   blockExplorer?: string;
 }

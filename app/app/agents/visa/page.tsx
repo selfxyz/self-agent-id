@@ -9,8 +9,9 @@ import { ExternalLink, Loader2 } from "lucide-react";
 import Link from "next/link";
 
 interface AgentBasic {
-  agentId: number;
+  agentId: string;
   chainId: number;
+  isWalletBased?: boolean;
 }
 
 /** Derive a deterministic agentId from a wallet address (for Tourist visa without registry) */
@@ -51,9 +52,14 @@ export default function CeloAgentVisaPage() {
             config.registryDeployBlock,
           );
           for (const event of events) {
-            const tokenId = Number((event as ethers.EventLog).args?.[2]);
-            if (tokenId > 0) {
-              allAgents.push({ agentId: tokenId, chainId: Number(chainId) });
+            const tokenId = (event as ethers.EventLog).args?.[2] as
+              | bigint
+              | undefined;
+            if (tokenId && BigInt(tokenId) > 0n) {
+              allAgents.push({
+                agentId: BigInt(tokenId).toString(),
+                chainId: Number(chainId),
+              });
             }
           }
         } catch {
@@ -70,16 +76,15 @@ export default function CeloAgentVisaPage() {
           const tier = Number(await visa.getTier(BigInt(walletAgentId)));
           if (tier > 0) {
             setWalletVisaTier(tier);
-            // Add as an agent if not already found via registry
             const exists = allAgents.some(
               (a) =>
-                a.agentId === Number(BigInt(walletAgentId)) &&
-                a.chainId === Number(chainId),
+                a.agentId === walletAgentId && a.chainId === Number(chainId),
             );
             if (!exists) {
               allAgents.push({
-                agentId: Number(BigInt(walletAgentId)),
+                agentId: walletAgentId,
                 chainId: Number(chainId),
+                isWalletBased: true,
               });
             }
           } else {
@@ -277,7 +282,9 @@ export default function CeloAgentVisaPage() {
           {agents.map((agent) => (
             <div key={`${agent.chainId}-${agent.agentId}`}>
               <p className="text-xs text-muted mb-1.5">
-                Agent #{agent.agentId}
+                {agent.isWalletBased
+                  ? `Wallet Visa`
+                  : `Agent #${agent.agentId}`}
               </p>
               <VisaCard
                 agentId={agent.agentId}
