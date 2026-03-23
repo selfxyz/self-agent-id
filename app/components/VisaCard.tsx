@@ -389,19 +389,21 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
         )}
 
         {/* Current Metrics */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className={`grid gap-3 ${metrics.volumeUsd > 0 ? "grid-cols-2" : "grid-cols-1"}`}>
           <div>
             <p className="text-xs text-muted">Transactions</p>
             <p className="text-sm font-medium tabular-nums">
               {metrics.transactionCount.toLocaleString()}
             </p>
           </div>
-          <div>
-            <p className="text-xs text-muted">Volume (USD)</p>
-            <p className="text-sm font-medium tabular-nums">
-              ${metrics.volumeUsd.toLocaleString()}
-            </p>
-          </div>
+          {metrics.volumeUsd > 0 && (
+            <div>
+              <p className="text-xs text-muted">Volume (USD)</p>
+              <p className="text-sm font-medium tabular-nums">
+                ${metrics.volumeUsd.toLocaleString()}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Progress to next tier */}
@@ -419,14 +421,12 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
                   : 1
               }
             />
-            <ProgressBar
-              label="Volume"
-              value={
-                nextThresholds.minVolumeUsd > 0
-                  ? metrics.volumeUsd / nextThresholds.minVolumeUsd
-                  : 1
-              }
-            />
+            {nextThresholds.minVolumeUsd > 0 && (
+              <ProgressBar
+                label="Volume"
+                value={metrics.volumeUsd / nextThresholds.minVolumeUsd}
+              />
+            )}
           </div>
         ) : tier === 3 ? (
           <p className="text-xs text-accent-success">Maximum tier reached</p>

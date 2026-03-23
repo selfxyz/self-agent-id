@@ -278,7 +278,8 @@ export default function CeloAgentVisaPage() {
         <div className="text-center py-12 space-y-4">
           <p className="text-muted">
             Get started by claiming your Tourist Visa. No registration or
-            verification needed for Tier 1.
+            verification needed for Tier 1. Your agent wallet must have at
+            least 1 transaction on Celo to qualify.
           </p>
           <div className="max-w-md mx-auto space-y-2">
             <label
