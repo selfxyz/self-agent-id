@@ -15,6 +15,8 @@ interface VisaCardProps {
   agentId: string | number;
   chainId: number;
   blockExplorer?: string;
+  isWalletBased?: boolean;
+  onStartUpgrade?: () => void;
 }
 
 interface TierThresholds {
@@ -96,7 +98,7 @@ function ProgressBar({ value, label }: { value: number; label: string }) {
   );
 }
 
-export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
+export function VisaCard({ agentId, chainId, blockExplorer, isWalletBased, onStartUpgrade }: VisaCardProps) {
   const explorerTxUrl = (hash: string) =>
     blockExplorer ? `${blockExplorer}/tx/${hash}` : null;
 
@@ -451,10 +453,22 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
         {needsSelfVerification && tier < 2 && (
           <div className="rounded-lg bg-surface-1 px-3 py-2">
             <p className="text-xs text-muted">
-              Upgrading to {nextTier !== null ? TIER_LABELS[nextTier] : ""}{" "}
-              requires verification through the{" "}
-              <span className="font-medium text-foreground">Self app</span>.
-              Download Self and verify your identity to unlock higher tiers.
+              {isWalletBased ? (
+                <>
+                  Upgrading to {nextTier !== null ? TIER_LABELS[nextTier] : ""}{" "}
+                  requires identity verification. Complete a one-time passport scan
+                  with the{" "}
+                  <span className="font-medium text-foreground">Self app</span>{" "}
+                  to unlock higher tiers.
+                </>
+              ) : (
+                <>
+                  Upgrading to {nextTier !== null ? TIER_LABELS[nextTier] : ""}{" "}
+                  requires verification through the{" "}
+                  <span className="font-medium text-foreground">Self app</span>.
+                  Download Self and verify your identity to unlock higher tiers.
+                </>
+              )}
             </p>
           </div>
         )}
@@ -515,7 +529,15 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
           {canUpgrade &&
             nextTier !== null &&
             (!nextThresholds?.requiresManualReview ||
-              data.manualReviewApproved) && (
+              data.manualReviewApproved) &&
+            (isWalletBased && nextTier >= 2 ? (
+              <Button
+                size="sm"
+                onClick={onStartUpgrade}
+              >
+                Verify with Self to Upgrade
+              </Button>
+            ) : (
               <Button
                 size="sm"
                 onClick={() => void handleClaim(nextTier)}
@@ -530,7 +552,7 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
                   `Claim ${TIER_LABELS[nextTier]} Visa`
                 )}
               </Button>
-            )}
+            ))}
         </div>
 
         {/* Last updated */}
