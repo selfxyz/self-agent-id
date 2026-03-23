@@ -226,6 +226,19 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
   const nextThresholds = nextTier !== null ? thresholds[nextTier] : null;
   const canUpgrade = nextTier !== null && eligibility[nextTier];
 
+  // Check if metrics alone are met (ignoring manual review) for showing review button
+  const meetsMetrics =
+    nextTier !== null && nextThresholds
+      ? nextThresholds.requiresBoth
+        ? metrics.transactionCount >= nextThresholds.minTransactions &&
+          metrics.volumeUsd >= nextThresholds.minVolumeUsd
+        : metrics.transactionCount >= nextThresholds.minTransactions ||
+          metrics.volumeUsd >= nextThresholds.minVolumeUsd
+      : false;
+
+  // Whether Self verification is needed for the next tier
+  const needsSelfVerification = nextTier !== null && nextTier >= 2;
+
   // Success screen after claiming
   if (claimResult) {
     return (
@@ -375,6 +388,18 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
           </div>
         )}
 
+        {/* Self verification notice for Tier 2+ */}
+        {needsSelfVerification && tier < 2 && (
+          <div className="rounded-lg bg-surface-1 px-3 py-2">
+            <p className="text-xs text-muted">
+              Upgrading to {nextTier !== null ? TIER_LABELS[nextTier] : ""}{" "}
+              requires verification through the{" "}
+              <span className="font-medium text-foreground">Self app</span>.
+              Download Self and verify your identity to unlock higher tiers.
+            </p>
+          </div>
+        )}
+
         {/* Eligibility indicators */}
         <div className="flex items-center gap-2 flex-wrap">
           {[1, 2, 3].map((t) => (
@@ -407,6 +432,7 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
             nextTier >= 2 &&
             nextThresholds?.requiresManualReview &&
             !data.manualReviewApproved &&
+            meetsMetrics &&
             (data.reviewRequestedTier > 0 ? (
               <Badge variant="info">Review Pending</Badge>
             ) : (
