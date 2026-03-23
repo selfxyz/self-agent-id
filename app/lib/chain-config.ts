@@ -12,12 +12,20 @@ export interface ChainConfig {
   rpc: string;
   registry: string;
   visa: string;
+  blockExplorer: string;
+  registryDeployBlock: number;
 }
 
 /** Map of chainId (as string) to RPC + registry address */
 export const CHAIN_CONFIG: Record<string, ChainConfig> = Object.fromEntries(
   Object.values(NETWORKS).map((net: NetworkConfig) => [
     String(net.chainId),
-    { rpc: net.rpcUrl, registry: net.registryAddress, visa: net.visaAddress },
+    {
+      rpc: net.rpcUrl,
+      registry: net.registryAddress,
+      visa: net.visaAddress,
+      blockExplorer: net.blockExplorer,
+      registryDeployBlock: net.registryDeployBlock,
+    },
   ]),
 );

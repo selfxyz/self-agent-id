@@ -9,8 +9,7 @@ import { VISA_ABI, REGISTRY_ABI } from "@/lib/constants";
 import { CHAIN_CONFIG } from "@/lib/chain-config";
 import { Loader2, ExternalLink, ShieldCheck, ShieldX } from "lucide-react";
 
-const CELOSCAN_BASE = "https://celoscan.io/address/";
-const DEFAULT_CHAIN_ID = "42220";
+const DEFAULT_CHAIN_ID = "11142220"; // Celo Sepolia — switch to "42220" for mainnet
 
 const TIER_LABELS: Record<number, string> = {
   0: "None",
@@ -249,17 +248,19 @@ export default function VisaAdminPage() {
                     </div>
                   </div>
 
-                  {item.walletAddress && item.walletAddress !== "0x" && (
-                    <a
-                      href={`${CELOSCAN_BASE}${item.walletAddress}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
-                    >
-                      View on Celoscan
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
+                  {item.walletAddress &&
+                    item.walletAddress !== "0x" &&
+                    config?.blockExplorer && (
+                      <a
+                        href={`${config.blockExplorer}/address/${item.walletAddress}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+                      >
+                        View on Explorer
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
 
                   <div className="flex items-center gap-2 pt-1">
                     <Button

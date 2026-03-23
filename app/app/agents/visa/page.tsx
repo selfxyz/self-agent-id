@@ -38,7 +38,10 @@ export default function CeloAgentVisaPage() {
 
           // Query mint events (Transfer from zero address) for this owner
           const filter = registry.filters.Transfer(ethers.ZeroAddress, address);
-          const events = await registry.queryFilter(filter);
+          const events = await registry.queryFilter(
+            filter,
+            config.registryDeployBlock,
+          );
           for (const event of events) {
             const tokenId = Number((event as ethers.EventLog).args?.[2]);
             if (tokenId > 0) {
@@ -108,7 +111,7 @@ export default function CeloAgentVisaPage() {
         <p className="text-muted max-w-lg mx-auto">
           The Agent Visa is a tiered program for AI agents that transact on
           Celo. Start as a Tourist, scale to a Work Visa. Level up to Citizen
-          with every transaction
+          with every transaction.
         </p>
         <a
           href="#"
@@ -120,6 +123,13 @@ export default function CeloAgentVisaPage() {
           <ExternalLink className="h-3 w-3" />
         </a>
       </div>
+
+      {/* Connected wallet */}
+      {walletAddress && (
+        <p className="text-xs text-muted text-center mb-6 font-mono">
+          Connected: {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+        </p>
+      )}
 
       {/* Agent Visa List */}
       {!walletAddress ? (
@@ -159,7 +169,13 @@ export default function CeloAgentVisaPage() {
               <p className="text-xs text-muted mb-1.5">
                 Agent #{agent.agentId}
               </p>
-              <VisaCard agentId={agent.agentId} chainId={agent.chainId} />
+              <VisaCard
+                agentId={agent.agentId}
+                chainId={agent.chainId}
+                blockExplorer={
+                  CHAIN_CONFIG[String(agent.chainId)]?.blockExplorer
+                }
+              />
             </div>
           ))}
         </div>
