@@ -12,6 +12,7 @@ import { ethers } from "ethers";
 import { CHAIN_CONFIG } from "@/lib/chain-config";
 import { VISA_ABI } from "@/lib/constants";
 import { CORS_HEADERS, corsResponse, errorResponse } from "@/lib/api-helpers";
+import { checkRateLimit, recordRelayerTx } from "@/lib/rate-limit";
 
 export const maxDuration = 60;
 
@@ -29,6 +30,14 @@ export async function POST(req: NextRequest) {
       "Visa claim relayer not configured (RELAYER_PRIVATE_KEY)",
       503,
     );
+  }
+
+  // Rate limit to prevent relayer drain
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const rateLimitError = checkRateLimit(ip);
+  if (rateLimitError) {
+    return errorResponse(rateLimitError, 429);
   }
 
   let body: ClaimRequest;
@@ -120,6 +129,7 @@ export async function POST(req: NextRequest) {
     }
 
     const receipt = await tx.wait();
+    recordRelayerTx(ip);
 
     return NextResponse.json(
       {

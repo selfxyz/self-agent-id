@@ -7,6 +7,7 @@ import { ethers } from "ethers";
 import { CHAIN_CONFIG } from "@/lib/chain-config";
 import { VISA_ABI } from "@/lib/constants";
 import { CORS_HEADERS, corsResponse, errorResponse } from "@/lib/api-helpers";
+import { checkRateLimit, recordRelayerTx } from "@/lib/rate-limit";
 
 export const maxDuration = 60;
 
@@ -21,6 +22,13 @@ interface ReviewRequest {
 export async function POST(req: NextRequest) {
   if (!RELAYER_PK) {
     return errorResponse("Relayer not configured", 503);
+  }
+
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const rateLimitError = checkRateLimit(ip);
+  if (rateLimitError) {
+    return errorResponse(rateLimitError, 429);
   }
 
   let body: ReviewRequest;
@@ -59,6 +67,7 @@ export async function POST(req: NextRequest) {
       targetTier,
     )) as ethers.ContractTransactionResponse;
     const receipt = await tx.wait();
+    recordRelayerTx(ip);
 
     return NextResponse.json(
       {
