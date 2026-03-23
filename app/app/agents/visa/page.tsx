@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { ethers } from "ethers";
 import { VisaCard } from "@/components/VisaCard";
+import { VisaUpgradeFlow } from "@/components/VisaUpgradeFlow";
 import { REGISTRY_ABI, VISA_ABI } from "@/lib/constants";
 import { useNetwork } from "@/lib/NetworkContext";
 import { ExternalLink, Loader2, CheckCircle2 } from "lucide-react";
@@ -34,6 +35,7 @@ export default function CeloAgentVisaPage() {
   const [claimError, setClaimError] = useState<string | null>(null);
   const [agentWalletInput, setAgentWalletInput] = useState("");
   const [migration, setMigration] = useState<MigrationState | null>(null);
+  const [upgradingAgent, setUpgradingAgent] = useState<AgentBasic | null>(null);
 
   const loadAgents = useCallback(async (address: string) => {
     setLoading(true);
@@ -469,12 +471,27 @@ export default function CeloAgentVisaPage() {
                   ? `Wallet Visa`
                   : `Agent #${agent.agentId}`}
               </p>
-              <VisaCard
-                agentId={agent.agentId}
-                chainId={agent.chainId}
-                blockExplorer={network.blockExplorer}
-                isWalletBased={agent.isWalletBased}
-              />
+              {upgradingAgent?.agentId === agent.agentId ? (
+                <VisaUpgradeFlow
+                  oldAgentId={agent.agentId}
+                  chainId={agent.chainId}
+                  walletAddress={walletAddress!}
+                  blockExplorer={network.blockExplorer}
+                  onComplete={() => {
+                    setUpgradingAgent(null);
+                    void loadAgents(walletAddress!);
+                  }}
+                  onCancel={() => setUpgradingAgent(null)}
+                />
+              ) : (
+                <VisaCard
+                  agentId={agent.agentId}
+                  chainId={agent.chainId}
+                  blockExplorer={network.blockExplorer}
+                  isWalletBased={agent.isWalletBased}
+                  onStartUpgrade={() => setUpgradingAgent(agent)}
+                />
+              )}
             </div>
           ))}
         </div>
