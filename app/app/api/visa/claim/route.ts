@@ -71,8 +71,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check if tier requires manual review
-    if (targetTier >= 2) {
+    // Check if tier requires manual review (read from on-chain thresholds)
+    const thresholds = await visa.getTierThresholds(targetTier);
+    if (thresholds.requiresManualReview) {
       const [manualApproved, reviewTier] = await Promise.all([
         visa.manualReviewApproved(BigInt(agentId)),
         visa.reviewRequestedTier(BigInt(agentId)),
