@@ -184,6 +184,15 @@ export default function CliRegisterHandoffPage() {
         return;
       }
 
+      // Sync the global network toggle to match the payload's chain
+      const params2 = new URLSearchParams(window.location.search);
+      if (params2.get("network") !== net.id) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("network", net.id);
+        window.location.replace(url.toString());
+        return;
+      }
+
       setPayload(parsed);
       setNetwork(net);
     } catch (err) {

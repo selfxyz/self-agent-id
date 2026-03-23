@@ -184,7 +184,6 @@ export default function ScanClient({
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2 mb-1">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="https://i.postimg.cc/mrmVf9hm/self.png"
               alt="Self"

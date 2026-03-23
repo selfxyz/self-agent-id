@@ -320,21 +320,26 @@ export default function MyAgentsPage() {
     const ids = agents.map((a) => a.agentId.toString()).join(",");
     fetch(`/api/visa/${network.chainId}/batch?agents=${ids}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (cancelled || !data?.agents) return;
-        const tierMap = new Map<number, number>();
-        for (const a of data.agents) tierMap.set(a.agentId, a.tier);
-        setAgents((prev) =>
-          prev.map((agent) => ({
-            ...agent,
-            visaTier: tierMap.get(Number(agent.agentId)) ?? agent.visaTier,
-          })),
-        );
-      })
+      .then(
+        (
+          data: { agents?: Array<{ agentId: number; tier: number }> } | null,
+        ) => {
+          if (cancelled || !data?.agents) return;
+          const tierMap = new Map<number, number>();
+          for (const a of data.agents) tierMap.set(a.agentId, a.tier);
+          setAgents((prev) =>
+            prev.map((agent) => ({
+              ...agent,
+              visaTier: tierMap.get(Number(agent.agentId)) ?? agent.visaTier,
+            })),
+          );
+        },
+      )
       .catch(() => {});
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agents.length, network?.chainId]);
   const [refreshDeepLink, setRefreshDeepLink] = useState<string | null>(null);
   const [_refreshSessionToken, setRefreshSessionToken] = useState<

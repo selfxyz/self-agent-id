@@ -155,11 +155,10 @@ export async function handleRegisterAgent(
     // It opens a hosted page that shows the QR and deep link button,
     // works on every device and platform, and polls for completion.
     const scanUrl =
-      asString(data.scanUrl as unknown) ??
-      `${config.apiUrl}/scan/${sessionToken}`;
+      asString(data.scanUrl) ?? `${config.apiUrl}/scan/${sessionToken}`;
 
     // Prefer the pre-rendered base64 from the API; fall back to rendering from deepLink.
-    let qrBase64 = asString(data.qrImageBase64 as unknown);
+    let qrBase64 = asString(data.qrImageBase64);
     if (!qrBase64 && deepLink) {
       qrBase64 = await renderQrBase64(deepLink).catch(() => undefined);
     }

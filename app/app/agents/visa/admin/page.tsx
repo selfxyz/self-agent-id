@@ -44,8 +44,8 @@ export default function VisaAdminPage() {
       try {
         const provider = new ethers.JsonRpcProvider(config.rpc);
         const visa = new ethers.Contract(config.visa, VISA_ABI, provider);
-        const upgraderRole = await visa.UPGRADER_ROLE();
-        const hasRole = await visa.hasRole(upgraderRole, address);
+        const upgraderRole = (await visa.UPGRADER_ROLE()) as string;
+        const hasRole = (await visa.hasRole(upgraderRole, address)) as boolean;
         setAuthorized(hasRole);
       } catch {
         setAuthorized(false);
@@ -82,20 +82,25 @@ export default function VisaAdminPage() {
         seen.add(agentId);
 
         // Check if still pending
-        const [reviewTier, approved] = await Promise.all([
+        const [reviewTier, approved] = (await Promise.all([
           visa.reviewRequestedTier(BigInt(agentId)),
           visa.manualReviewApproved(BigInt(agentId)),
-        ]);
+        ])) as [bigint, boolean];
 
         if (Number(reviewTier) === 0 || approved) continue;
 
         // Fetch agent data
-        const [currentTier, metrics, wallet, proofFresh] = await Promise.all([
+        const [currentTier, metrics, wallet, proofFresh] = (await Promise.all([
           visa.getTier(BigInt(agentId)),
           visa.getMetrics(BigInt(agentId)),
           registry.getAgentWallet(BigInt(agentId)).catch(() => "0x"),
           registry.isProofFresh(BigInt(agentId)).catch(() => false),
-        ]);
+        ])) as [
+          bigint,
+          { transactionCount: bigint; volumeUsd: bigint },
+          string,
+          boolean,
+        ];
 
         pending.push({
           agentId,
@@ -159,7 +164,10 @@ export default function VisaAdminPage() {
       const signer = await provider.getSigner();
       const visa = new ethers.Contract(config.visa, VISA_ABI, signer);
 
-      const tx = await visa.setManualReviewStatus(BigInt(agentId), approve);
+      const tx = (await visa.setManualReviewStatus(
+        BigInt(agentId),
+        approve,
+      )) as ethers.ContractTransactionResponse;
       await tx.wait();
 
       setItems((prev) => prev.filter((item) => item.agentId !== agentId));

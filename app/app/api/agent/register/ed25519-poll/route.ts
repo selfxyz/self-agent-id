@@ -6,9 +6,13 @@
 import type { NextRequest } from "next/server";
 import { getEd25519Relay } from "@/lib/ed25519-relay";
 import { isValidEd25519PubkeyHex } from "@/lib/ed25519";
-import { jsonResponse, errorResponse, corsResponse } from "@/lib/agent-api-helpers";
+import {
+  jsonResponse,
+  errorResponse,
+  corsResponse,
+} from "@/lib/agent-api-helpers";
 
-export async function GET(req: NextRequest) {
+export function GET(req: NextRequest) {
   const pubkey = req.nextUrl.searchParams.get("pubkey");
 
   if (!pubkey || !isValidEd25519PubkeyHex(pubkey)) {

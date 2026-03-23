@@ -72,12 +72,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Check if tier requires manual review (read from on-chain thresholds)
-    const thresholds = await visa.getTierThresholds(targetTier);
+    const thresholds = (await visa.getTierThresholds(targetTier)) as {
+      requiresManualReview: boolean;
+    };
     if (thresholds.requiresManualReview) {
-      const [manualApproved, reviewTier] = await Promise.all([
+      const [manualApproved, reviewTier] = (await Promise.all([
         visa.manualReviewApproved(BigInt(agentId)),
         visa.reviewRequestedTier(BigInt(agentId)),
-      ]);
+      ])) as [boolean, bigint];
 
       if (!manualApproved) {
         return NextResponse.json(
@@ -92,10 +94,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Check eligibility
-    const eligible = await visa.checkTierEligibility(
+    const eligible = (await visa.checkTierEligibility(
       BigInt(agentId),
       targetTier,
-    );
+    )) as boolean;
     if (!eligible) {
       return errorResponse(
         `Agent does not meet requirements for tier ${targetTier}`,
@@ -104,11 +106,17 @@ export async function POST(req: NextRequest) {
     }
 
     // If agent has no visa yet (tier 0), mint instead of claim upgrade
-    let tx;
+    let tx: ethers.ContractTransactionResponse;
     if (currentTier === 0) {
-      tx = await visa.mintVisa(BigInt(agentId), targetTier);
+      tx = (await visa.mintVisa(
+        BigInt(agentId),
+        targetTier,
+      )) as ethers.ContractTransactionResponse;
     } else {
-      tx = await visa.claimTierUpgrade(BigInt(agentId), targetTier);
+      tx = (await visa.claimTierUpgrade(
+        BigInt(agentId),
+        targetTier,
+      )) as ethers.ContractTransactionResponse;
     }
 
     const receipt = await tx.wait();
@@ -119,8 +127,8 @@ export async function POST(req: NextRequest) {
         agentId,
         previousTier: currentTier,
         newTier: targetTier,
-        txHash: receipt.hash,
-        blockNumber: receipt.blockNumber,
+        txHash: receipt?.hash,
+        blockNumber: receipt?.blockNumber,
       },
       { headers: CORS_HEADERS },
     );

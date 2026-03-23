@@ -23,17 +23,27 @@ export async function GET(
   const { chainId } = await params;
   const config = CHAIN_CONFIG[chainId];
   if (!config) return errorResponse(`Unsupported chain: ${chainId}`, 400);
-  if (!config.visa) return errorResponse("Visa contract not deployed on this network", 404);
+  if (!config.visa)
+    return errorResponse("Visa contract not deployed on this network", 404);
 
   const agentsParam = req.nextUrl.searchParams.get("agents");
-  if (!agentsParam) return errorResponse("Missing ?agents= query parameter", 400);
+  if (!agentsParam)
+    return errorResponse("Missing ?agents= query parameter", 400);
 
-  const agentIds = agentsParam.split(",").map((s) => {
-    try { return BigInt(s.trim()); } catch { return null; }
-  }).filter((id): id is bigint => id !== null && id > 0n);
+  const agentIds = agentsParam
+    .split(",")
+    .map((s) => {
+      try {
+        return BigInt(s.trim());
+      } catch {
+        return null;
+      }
+    })
+    .filter((id): id is bigint => id !== null && id > 0n);
 
   if (agentIds.length === 0) return errorResponse("No valid agent IDs", 400);
-  if (agentIds.length > 100) return errorResponse("Max 100 agents per batch", 400);
+  if (agentIds.length > 100)
+    return errorResponse("Max 100 agents per batch", 400);
 
   try {
     const rpc = new ethers.JsonRpcProvider(config.rpc);

@@ -50,7 +50,10 @@ export async function POST(req: NextRequest) {
     const relayer = new ethers.Wallet(RELAYER_PK, provider);
     const visa = new ethers.Contract(config.visa, VISA_ABI, relayer);
 
-    const tx = await visa.requestReview(BigInt(agentId), targetTier);
+    const tx = (await visa.requestReview(
+      BigInt(agentId),
+      targetTier,
+    )) as ethers.ContractTransactionResponse;
     const receipt = await tx.wait();
 
     return NextResponse.json(
@@ -58,7 +61,7 @@ export async function POST(req: NextRequest) {
         success: true,
         agentId,
         targetTier,
-        txHash: receipt.hash,
+        txHash: receipt?.hash,
       },
       { headers: CORS_HEADERS },
     );
