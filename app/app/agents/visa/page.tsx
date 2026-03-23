@@ -99,7 +99,15 @@ export default function CeloAgentVisaPage() {
         // Skip — no wallet visa on this chain
       }
 
-      setAgents(allAgents);
+      // If both wallet-based and registry-based agents exist, hide the wallet-based one.
+      // The old wallet-based visa can't be burned (soulbound), so it stays on-chain at tier 1.
+      // The registry-based visa is canonical after migration.
+      const hasRegistryAgent = allAgents.some((a) => !a.isWalletBased);
+      const filteredAgents = hasRegistryAgent
+        ? allAgents.filter((a) => !a.isWalletBased)
+        : allAgents;
+
+      setAgents(filteredAgents);
 
       // Auto-detect migration opportunity: wallet-based visa + registry agent without visa
       const walletAgent = allAgents.find((a) => a.isWalletBased);
