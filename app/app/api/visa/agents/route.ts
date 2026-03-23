@@ -36,11 +36,12 @@ export async function GET(req: NextRequest) {
   const registry = new ethers.Contract(config.registry, REGISTRY_ABI, provider);
 
   // Find registry-based agents via Transfer events
+  const scanFrom = config.visaDeployBlock > 0
+    ? config.visaDeployBlock
+    : config.registryDeployBlock;
+  let registryError = "";
   try {
     const filter = registry.filters.Transfer(null, wallet);
-    const scanFrom = config.visaDeployBlock > 0
-      ? config.visaDeployBlock
-      : config.registryDeployBlock;
     const events = await registry.queryFilter(filter, scanFrom);
     for (const event of events) {
       const tokenId = (event as ethers.EventLog).args?.[2] as bigint | undefined;
@@ -51,8 +52,8 @@ export async function GET(req: NextRequest) {
         });
       }
     }
-  } catch {
-    // Skip registry errors
+  } catch (err) {
+    registryError = err instanceof Error ? err.message : String(err);
   }
 
   // Check for wallet-based Tourist visa
@@ -74,7 +75,17 @@ export async function GET(req: NextRequest) {
     // No wallet visa
   }
 
-  return Response.json({ agents }, { headers: CORS_HEADERS });
+  return Response.json({
+    agents,
+    debug: {
+      chainId,
+      wallet,
+      rpc: config.rpc.slice(0, 50),
+      registry: config.registry,
+      scanFrom,
+      registryError: registryError || null,
+    },
+  }, { headers: CORS_HEADERS });
 }
 
 export function OPTIONS() {

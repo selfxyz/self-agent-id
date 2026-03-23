@@ -52,7 +52,9 @@ export default function CeloAgentVisaPage() {
       const data = (await res.json()) as {
         agents?: AgentBasic[];
         error?: string;
+        debug?: Record<string, unknown>;
       };
+      console.log("[visa] API response debug:", data.debug);
       const allAgents: AgentBasic[] = data.agents ?? [];
 
       // If both wallet-based and registry-based agents exist, hide the wallet-based one.
