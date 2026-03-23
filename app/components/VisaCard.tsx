@@ -108,8 +108,8 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
   const [requesting, setRequesting] = useState(false);
   const [claimResult, setClaimResult] = useState<ClaimResult | null>(null);
 
-  const loadVisa = useCallback(async () => {
-    setLoading(true);
+  const loadVisa = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setLoading(true);
     setError(null);
     try {
       const res = await fetch(`/api/visa/${chainId}/${agentId}`);
@@ -137,7 +137,7 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
     setChecking(true);
     setError(null);
     try {
-      await loadVisa();
+      await loadVisa(false);
     } finally {
       setChecking(false);
     }
@@ -421,7 +421,8 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
                   : 1
               }
             />
-            {nextThresholds.minVolumeUsd > 0 && (
+            {nextThresholds.minVolumeUsd > 0 &&
+              (metrics.volumeUsd > 0 || nextThresholds.requiresBoth) && (
               <ProgressBar
                 label="Volume"
                 value={metrics.volumeUsd / nextThresholds.minVolumeUsd}
