@@ -62,15 +62,36 @@ export default function CeloAgentVisaPage() {
   }, []);
 
   useEffect(() => {
-    async function connect() {
-      if (typeof window === "undefined" || !window.ethereum) {
-        setLoading(false);
-        return;
+    if (typeof window === "undefined" || !window.ethereum) {
+      setLoading(false);
+      return;
+    }
+
+    const eth = window.ethereum as unknown as {
+      request: (args: { method: string }) => Promise<string[]>;
+      on?: (event: string, handler: (accounts: string[]) => void) => void;
+      removeListener?: (
+        event: string,
+        handler: (accounts: string[]) => void,
+      ) => void;
+    };
+
+    // Handle account changes (wallet switch or disconnect)
+    const handleAccountsChanged = (accounts: string[]) => {
+      if (accounts.length > 0) {
+        setWalletAddress(accounts[0]);
+        void loadAgents(accounts[0]);
+      } else {
+        setWalletAddress(null);
+        setAgents([]);
       }
+    };
+
+    eth.on?.("accountsChanged", handleAccountsChanged);
+
+    // Initial check
+    void (async () => {
       try {
-        const eth = window.ethereum as unknown as {
-          request: (args: { method: string }) => Promise<string[]>;
-        };
         const accounts = await eth.request({ method: "eth_accounts" });
         if (accounts.length > 0) {
           setWalletAddress(accounts[0]);
@@ -81,8 +102,11 @@ export default function CeloAgentVisaPage() {
       } catch {
         setLoading(false);
       }
-    }
-    void connect();
+    })();
+
+    return () => {
+      eth.removeListener?.("accountsChanged", handleAccountsChanged);
+    };
   }, [loadAgents]);
 
   async function handleConnect() {
@@ -148,7 +172,12 @@ export default function CeloAgentVisaPage() {
       ) : agents.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-muted mb-4">
-            No agents found. Register an agent to get started.
+            No agents found on this wallet. Register your agent on the Self
+            Agent Registry to get started.
+          </p>
+          <p className="text-xs text-muted mb-4">
+            Tourist Visa (Tier 1) only requires a registry entry — no Self app
+            verification needed. Higher tiers require Self verification.
           </p>
           <Link
             href="/agents/register"

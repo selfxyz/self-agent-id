@@ -122,16 +122,36 @@ export default function VisaAdminPage() {
   }, [config]);
 
   useEffect(() => {
-    async function connect() {
-      if (typeof window === "undefined" || !window.ethereum) {
-        setLoading(false);
+    if (typeof window === "undefined" || !window.ethereum) {
+      setLoading(false);
+      setAuthorized(false);
+      return;
+    }
+
+    const eth = window.ethereum as unknown as {
+      request: (args: { method: string }) => Promise<string[]>;
+      on?: (event: string, handler: (accounts: string[]) => void) => void;
+      removeListener?: (
+        event: string,
+        handler: (accounts: string[]) => void,
+      ) => void;
+    };
+
+    const handleAccountsChanged = (accounts: string[]) => {
+      if (accounts.length > 0) {
+        setWalletAddress(accounts[0]);
+        void checkAuth(accounts[0]);
+        void loadPendingReviews();
+      } else {
+        setWalletAddress(null);
         setAuthorized(false);
-        return;
       }
+    };
+
+    eth.on?.("accountsChanged", handleAccountsChanged);
+
+    void (async () => {
       try {
-        const eth = window.ethereum as unknown as {
-          request: (args: { method: string }) => Promise<string[]>;
-        };
         const accounts = await eth.request({ method: "eth_accounts" });
         if (accounts.length > 0) {
           setWalletAddress(accounts[0]);
@@ -145,8 +165,11 @@ export default function VisaAdminPage() {
         setLoading(false);
         setAuthorized(false);
       }
-    }
-    void connect();
+    })();
+
+    return () => {
+      eth.removeListener?.("accountsChanged", handleAccountsChanged);
+    };
   }, [checkAuth, loadPendingReviews]);
 
   async function handleDecision(agentId: number, approve: boolean) {
