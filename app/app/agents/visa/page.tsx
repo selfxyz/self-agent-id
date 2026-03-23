@@ -109,6 +109,9 @@ export default function CeloAgentVisaPage() {
         ? allAgents.filter((a) => !a.isWalletBased)
         : allAgents;
 
+      // Debug: log agent discovery results to console
+      console.log("[visa] allAgents:", allAgents.map(a => ({ id: a.agentId, chain: a.chainId, wallet: !!a.isWalletBased })));
+      console.log("[visa] hasRegistryAgent:", hasRegistryAgent, "filtered:", filteredAgents.length);
       setAgents(filteredAgents);
 
       // Auto-detect migration opportunity: wallet-based visa + registry agent without visa
