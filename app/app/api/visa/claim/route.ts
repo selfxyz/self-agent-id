@@ -106,11 +106,21 @@ export async function POST(req: NextRequest) {
     // Seed on-chain metrics from the agent wallet's real activity.
     // This resolves the chicken-and-egg problem where the scoring daemon
     // hasn't discovered this agent yet (no visa = no discovery = no metrics).
-    const walletForMetrics =
-      agentWallet ||
-      ethers.getAddress(
+    // Priority: 1) visa contract stored wallet, 2) request body, 3) derive from agentId
+    let walletForMetrics = agentWallet || "";
+    if (currentTier > 0) {
+      try {
+        const stored = (await visa.getVisaWallet(BigInt(agentId))) as string;
+        if (stored && stored !== ethers.ZeroAddress) walletForMetrics = stored;
+      } catch {
+        // fall through
+      }
+    }
+    if (!walletForMetrics) {
+      walletForMetrics = ethers.getAddress(
         "0x" + BigInt(agentId).toString(16).padStart(40, "0"),
       );
+    }
     const txCount = await provider.getTransactionCount(walletForMetrics);
     if (txCount > 0) {
       const metricsTx = (await visa.updateMetrics(
@@ -145,11 +155,11 @@ export async function POST(req: NextRequest) {
           code: "NOT_ELIGIBLE",
           metrics: {
             transactionCount: Number(metrics.transactionCount),
-            volumeUsd: Number(metrics.volumeUsd),
+            volumeUsd: Number(metrics.volumeUsd) / 1e6,
           },
           required: {
             minTransactions: Number(tierThresholds.minTransactions),
-            minVolumeUsd: Number(tierThresholds.minVolumeUsd),
+            minVolumeUsd: Number(tierThresholds.minVolumeUsd) / 1e6,
             requiresBoth: tierThresholds.requiresBoth,
           },
         },
@@ -194,6 +204,12 @@ export async function POST(req: NextRequest) {
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    if (message.includes("AgentNotRegistered")) {
+      return errorResponse(
+        "Work and Citizenship visas require Self app verification. Register your agent with a human proof in the Self app first.",
+        422,
+      );
+    }
     if (message.includes("ProofNotFresh")) {
       return errorResponse(
         "Agent proof has expired — refresh your Self verification first",
