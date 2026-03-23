@@ -533,7 +533,7 @@ export function VisaCard({ agentId, chainId, blockExplorer, isWalletBased, onSta
             (isWalletBased && nextTier >= 2 ? (
               <Button
                 size="sm"
-                onClick={onStartUpgrade}
+                onClick={() => window.location.href = "/agents/register"}
               >
                 Verify with Self to Upgrade
               </Button>
