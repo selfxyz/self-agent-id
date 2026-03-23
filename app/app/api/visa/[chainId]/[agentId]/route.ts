@@ -69,7 +69,9 @@ export async function GET(
 
     const tierNum = Number(tier);
 
-    // Refresh on-chain metrics from the agent wallet's real tx count
+    // Refresh metrics: read live tx count from RPC and use it directly.
+    // Also fire-and-forget an on-chain updateMetrics so eligibility checks stay current.
+    let liveTxCount = Number(metrics.transactionCount);
     if (RELAYER_PK && tierNum > 0) {
       try {
         const walletAddr = await visa.getVisaWallet(id);
@@ -80,64 +82,22 @@ export async function GET(
                 "0x" + id.toString(16).padStart(40, "0"),
               );
         const txCount = await rpc.getTransactionCount(wallet);
-        if (txCount > Number(metrics.transactionCount)) {
+        if (txCount > liveTxCount) {
+          liveTxCount = txCount;
+          // Fire-and-forget: push update on-chain so eligibility checks work on next call
           const relayer = new ethers.Wallet(RELAYER_PK, rpc);
           const writable = new ethers.Contract(config.visa, VISA_ABI, relayer);
-          const tx = await writable.updateMetrics(id, BigInt(txCount), BigInt(0));
-          await tx.wait();
-          // Re-read metrics and eligibility after update
-          const [freshMetrics, freshEligWork, freshEligCitizenship] =
-            await Promise.all([
-              visa.getMetrics(id),
-              visa.checkTierEligibility(id, 2),
-              visa.checkTierEligibility(id, 3),
-            ]);
-          return NextResponse.json(
-            {
-              agentId: Number(id),
-              chainId: Number(chainId),
-              tier: tierNum,
-              tierName: TIER_NAMES[tierNum] ?? `Tier ${tierNum}`,
-              metrics: {
-                transactionCount: Number(freshMetrics.transactionCount),
-                volumeUsd: Number(freshMetrics.volumeUsd) / 1e6,
-                lastUpdated: Number(freshMetrics.lastUpdated),
-              },
-              eligibility: {
-                1: eligTourist,
-                2: freshEligWork,
-                3: freshEligCitizenship,
-              },
-              reviewRequestedTier: Number(reviewTier),
-              manualReviewApproved: manualApproved,
-              thresholds: {
-                1: {
-                  minTransactions: Number(threshTourist.minTransactions),
-                  minVolumeUsd: Number(threshTourist.minVolumeUsd) / 1e6,
-                  requiresBoth: threshTourist.requiresBoth,
-                  requiresManualReview: threshTourist.requiresManualReview,
-                },
-                2: {
-                  minTransactions: Number(threshWork.minTransactions),
-                  minVolumeUsd: Number(threshWork.minVolumeUsd) / 1e6,
-                  requiresBoth: threshWork.requiresBoth,
-                  requiresManualReview: threshWork.requiresManualReview,
-                },
-                3: {
-                  minTransactions: Number(threshCitizenship.minTransactions),
-                  minVolumeUsd: Number(threshCitizenship.minVolumeUsd) / 1e6,
-                  requiresBoth: threshCitizenship.requiresBoth,
-                  requiresManualReview: threshCitizenship.requiresManualReview,
-                },
-              },
-            },
-            { headers: CORS_HEADERS },
-          );
+          writable.updateMetrics(id, BigInt(txCount), BigInt(0)).catch(() => {});
         }
       } catch {
-        // Non-fatal — fall through to return stale metrics
+        // Non-fatal — use on-chain metrics as fallback
       }
     }
+
+    // Recompute eligibility using the live tx count
+    const liveEligWork = liveTxCount >= Number(threshWork.minTransactions);
+    const liveEligCitizenship =
+      liveTxCount >= Number(threshCitizenship.minTransactions);
 
     return NextResponse.json(
       {
@@ -146,14 +106,14 @@ export async function GET(
         tier: tierNum,
         tierName: TIER_NAMES[tierNum] ?? `Tier ${tierNum}`,
         metrics: {
-          transactionCount: Number(metrics.transactionCount),
+          transactionCount: liveTxCount,
           volumeUsd: Number(metrics.volumeUsd) / 1e6,
           lastUpdated: Number(metrics.lastUpdated),
         },
         eligibility: {
           1: eligTourist,
-          2: eligWork,
-          3: eligCitizenship,
+          2: liveEligWork,
+          3: liveEligCitizenship,
         },
         reviewRequestedTier: Number(reviewTier),
         manualReviewApproved: manualApproved,
