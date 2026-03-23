@@ -52,9 +52,7 @@ export default function CeloAgentVisaPage() {
       const data = (await res.json()) as {
         agents?: AgentBasic[];
         error?: string;
-        debug?: Record<string, unknown>;
       };
-      console.log("[visa] API response debug:", data.debug);
       const allAgents: AgentBasic[] = data.agents ?? [];
 
       // If both wallet-based and registry-based agents exist, hide the wallet-based one.
@@ -64,8 +62,6 @@ export default function CeloAgentVisaPage() {
         ? allAgents.filter((a) => !a.isWalletBased)
         : allAgents;
 
-      console.log("[visa] agents from API:", allAgents.map((a) => ({ id: a.agentId, wallet: !!a.isWalletBased })));
-      console.log("[visa] hasRegistry:", hasRegistryAgent, "showing:", filteredAgents.length);
       setAgents(filteredAgents);
 
       // Auto-detect migration opportunity: wallet-based visa + registry agent without visa

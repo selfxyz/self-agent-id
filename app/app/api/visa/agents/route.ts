@@ -39,7 +39,6 @@ export async function GET(req: NextRequest) {
   const scanFrom = config.visaDeployBlock > 0
     ? config.visaDeployBlock
     : config.registryDeployBlock;
-  let registryError = "";
   try {
     const filter = registry.filters.Transfer(null, wallet);
     const events = await registry.queryFilter(filter, scanFrom);
@@ -52,8 +51,8 @@ export async function GET(req: NextRequest) {
         });
       }
     }
-  } catch (err) {
-    registryError = err instanceof Error ? err.message : String(err);
+  } catch {
+    // Skip registry errors
   }
 
   // Check for wallet-based Tourist visa
@@ -75,17 +74,7 @@ export async function GET(req: NextRequest) {
     // No wallet visa
   }
 
-  return Response.json({
-    agents,
-    debug: {
-      chainId,
-      wallet,
-      rpc: config.rpc.slice(0, 50),
-      registry: config.registry,
-      scanFrom,
-      registryError: registryError || null,
-    },
-  }, { headers: CORS_HEADERS });
+  return Response.json({ agents }, { headers: CORS_HEADERS });
 }
 
 export function OPTIONS() {
