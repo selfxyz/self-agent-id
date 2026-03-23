@@ -78,7 +78,7 @@ const CELO_SEPOLIA: NetworkConfig = {
   demoAgentUrl: "",
   demoAgentAddress: "0x56738c05507379C38Bbfa8f75064fd344716245F",
   nativeCurrency: { name: "CELO", symbol: "CELO", decimals: 18 },
-  visaAddress: "0x5a03D4b589426B7bDEcD793499A1d287b5899E2f",
+  visaAddress: "0xf049FD6260Fce964B82728A86CF1BbEB8AB3E875",
   registryDeployBlock: 18_577_934,
 };
 
