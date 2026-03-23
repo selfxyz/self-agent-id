@@ -81,9 +81,8 @@ export function VisaUpgradeFlow({
           network,
           humanAddress: walletAddress,
           disclosures: {
-            minimumAge: 18,
-            nationality: true,
-            ofac: true,
+            minimumAge: 0,
+            ofac: false,
           },
         }),
       });
