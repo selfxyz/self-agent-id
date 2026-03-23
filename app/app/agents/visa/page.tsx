@@ -65,9 +65,10 @@ export default function CeloAgentVisaPage() {
         return;
       }
       try {
-        const accounts = (await window.ethereum.request({
-          method: "eth_accounts",
-        })) as string[];
+        const eth = window.ethereum as unknown as {
+          request: (args: { method: string }) => Promise<string[]>;
+        };
+        const accounts = await eth.request({ method: "eth_accounts" });
         if (accounts.length > 0) {
           setWalletAddress(accounts[0]);
           await loadAgents(accounts[0]);
@@ -84,9 +85,10 @@ export default function CeloAgentVisaPage() {
   async function handleConnect() {
     if (!window.ethereum) return;
     try {
-      const accounts = (await window.ethereum.request({
-        method: "eth_requestAccounts",
-      })) as string[];
+      const eth = window.ethereum as unknown as {
+        request: (args: { method: string }) => Promise<string[]>;
+      };
+      const accounts = await eth.request({ method: "eth_requestAccounts" });
       if (accounts.length > 0) {
         setWalletAddress(accounts[0]);
         await loadAgents(accounts[0]);
