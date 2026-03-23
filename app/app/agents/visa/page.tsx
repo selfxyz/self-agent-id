@@ -5,12 +5,19 @@ import { ethers } from "ethers";
 import { VisaCard } from "@/components/VisaCard";
 import { REGISTRY_ABI, VISA_ABI } from "@/lib/constants";
 import { useNetwork } from "@/lib/NetworkContext";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { ExternalLink, Loader2, CheckCircle2 } from "lucide-react";
 
 interface AgentBasic {
   agentId: string;
   chainId: number;
   isWalletBased?: boolean;
+}
+
+interface MigrationState {
+  status: "migrating" | "success" | "error";
+  message: string;
+  newAgentId?: string;
+  txHash?: string;
 }
 
 /** Derive a deterministic agentId from a wallet address (for Tourist visa without registry) */
@@ -26,6 +33,7 @@ export default function CeloAgentVisaPage() {
   const [claimingTourist, setClaimingTourist] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
   const [agentWalletInput, setAgentWalletInput] = useState("");
+  const [migration, setMigration] = useState<MigrationState | null>(null);
 
   const loadAgents = useCallback(async (address: string) => {
     setLoading(true);
@@ -90,6 +98,25 @@ export default function CeloAgentVisaPage() {
       }
 
       setAgents(allAgents);
+
+      // Auto-detect migration opportunity: wallet-based visa + registry agent without visa
+      const walletAgent = allAgents.find((a) => a.isWalletBased);
+      const registryAgent = allAgents.find((a) => !a.isWalletBased);
+      if (walletAgent && registryAgent) {
+        try {
+          const provider = new ethers.JsonRpcProvider(network.rpcUrl);
+          const visa = new ethers.Contract(network.visaAddress, VISA_ABI, provider);
+          const registryTier = Number(
+            await visa.getTier(BigInt(registryAgent.agentId)),
+          );
+          if (registryTier === 0) {
+            // Registry agent has no visa — auto-migrate
+            void autoMigrate(address, walletAgent.agentId, registryAgent.agentId);
+          }
+        } catch {
+          // Skip — can't check, don't migrate
+        }
+      }
     } catch {
       setAgents([]);
     } finally {
@@ -144,6 +171,77 @@ export default function CeloAgentVisaPage() {
       eth.removeListener?.("accountsChanged", handleAccountsChanged);
     };
   }, [loadAgents]);
+
+  async function autoMigrate(
+    connectedWallet: string,
+    oldAgentId: string,
+    newAgentId: string,
+  ) {
+    setMigration({ status: "migrating", message: "Migrating your visa to your verified identity..." });
+    try {
+      const res = await fetch("/api/visa/migrate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chainId: String(network.chainId),
+          oldAgentId,
+          newAgentId,
+          connectedWallet,
+          targetTier: 2,
+        }),
+      });
+      const data = (await res.json()) as {
+        success?: boolean;
+        error?: string;
+        newTier?: number;
+        mintTxHash?: string;
+      };
+      if (!res.ok) {
+        // Retry once if registration hasn't landed on-chain yet
+        if (data.error?.includes("not registered") || data.error?.includes("fresh human proof")) {
+          await new Promise((r) => setTimeout(r, 5000));
+          const retry = await fetch("/api/visa/migrate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chainId: String(network.chainId),
+              oldAgentId,
+              newAgentId,
+              connectedWallet,
+              targetTier: 2,
+            }),
+          });
+          const retryData = (await retry.json()) as typeof data;
+          if (!retry.ok) {
+            setMigration({ status: "error", message: retryData.error ?? "Migration failed" });
+            return;
+          }
+          setMigration({
+            status: "success",
+            message: "Work Visa claimed! Your identity is verified and your visa has been upgraded.",
+            newAgentId,
+            txHash: retryData.mintTxHash,
+          });
+          await loadAgents(connectedWallet);
+          return;
+        }
+        setMigration({ status: "error", message: data.error ?? "Migration failed" });
+        return;
+      }
+      setMigration({
+        status: "success",
+        message: "Work Visa claimed! Your identity is verified and your visa has been upgraded.",
+        newAgentId,
+        txHash: data.mintTxHash,
+      });
+      await loadAgents(connectedWallet);
+    } catch (err) {
+      setMigration({
+        status: "error",
+        message: err instanceof Error ? err.message : "Migration failed",
+      });
+    }
+  }
 
   async function handleClaimTourist() {
     if (!walletAddress) return;
@@ -249,6 +347,53 @@ export default function CeloAgentVisaPage() {
         <p className="text-xs text-muted text-center mb-6 font-mono">
           Connected: {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
         </p>
+      )}
+
+      {/* Migration status */}
+      {migration && (
+        <div className="mb-6">
+          {migration.status === "migrating" && (
+            <div className="flex items-center justify-center gap-2 py-4 px-4 rounded-lg bg-surface-1 text-muted">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-sm">{migration.message}</span>
+            </div>
+          )}
+          {migration.status === "success" && (
+            <div className="text-center py-4 px-4 rounded-lg bg-surface-1 space-y-2">
+              <div className="flex items-center justify-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-accent-success" />
+                <span className="text-sm font-medium">{migration.message}</span>
+              </div>
+              {migration.txHash && (
+                <a
+                  href={`${network.blockExplorer}/tx/${migration.txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+                >
+                  View transaction <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+              <button
+                onClick={() => setMigration(null)}
+                className="block mx-auto text-xs text-muted hover:text-foreground"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+          {migration.status === "error" && (
+            <div className="text-center py-4 px-4 rounded-lg bg-surface-1 space-y-2">
+              <p className="text-sm text-accent-error">{migration.message}</p>
+              <button
+                onClick={() => setMigration(null)}
+                className="text-xs text-muted hover:text-foreground"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Agent Visa List */}
