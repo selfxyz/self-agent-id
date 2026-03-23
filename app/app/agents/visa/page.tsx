@@ -139,6 +139,7 @@ export default function CeloAgentVisaPage() {
     }
   }, [network]);
 
+  // Connect wallet and listen for account changes
   useEffect(() => {
     if (typeof window === "undefined" || !window.ethereum) {
       setLoading(false);
@@ -154,11 +155,9 @@ export default function CeloAgentVisaPage() {
       ) => void;
     };
 
-    // Handle account changes (wallet switch or disconnect)
     const handleAccountsChanged = (accounts: string[]) => {
       if (accounts.length > 0) {
         setWalletAddress(accounts[0]);
-        void loadAgents(accounts[0]);
       } else {
         setWalletAddress(null);
         setAgents([]);
@@ -167,13 +166,12 @@ export default function CeloAgentVisaPage() {
 
     eth.on?.("accountsChanged", handleAccountsChanged);
 
-    // Initial check
+    // Initial wallet check (only sets address, doesn't load agents)
     void (async () => {
       try {
         const accounts = await eth.request({ method: "eth_accounts" });
         if (accounts.length > 0) {
           setWalletAddress(accounts[0]);
-          await loadAgents(accounts[0]);
         } else {
           setLoading(false);
         }
@@ -185,7 +183,14 @@ export default function CeloAgentVisaPage() {
     return () => {
       eth.removeListener?.("accountsChanged", handleAccountsChanged);
     };
-  }, [loadAgents]);
+  }, []);
+
+  // Load agents when wallet address or network changes
+  useEffect(() => {
+    if (walletAddress) {
+      void loadAgents(walletAddress);
+    }
+  }, [walletAddress, loadAgents]);
 
   async function autoMigrate(
     connectedWallet: string,
