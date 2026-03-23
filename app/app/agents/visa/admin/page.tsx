@@ -33,7 +33,7 @@ export default function VisaAdminPage() {
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<Record<number, string>>({});
-  const [_walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [, setWalletAddress] = useState<string | null>(null);
 
   const chainId = DEFAULT_CHAIN_ID;
   const config = CHAIN_CONFIG[chainId];
