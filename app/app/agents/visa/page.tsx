@@ -48,33 +48,53 @@ export default function CeloAgentVisaPage() {
       const chainId = network.chainId;
       const allAgents: AgentBasic[] = [];
 
+      // Find registry-based agents via raw eth_getLogs fetch.
+      // ethers.js queryFilter silently fails in some browser environments.
+      const scanFrom = network.visaDeployBlock > 0
+        ? network.visaDeployBlock
+        : network.registryDeployBlock;
       try {
-        const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-        const registry = new ethers.Contract(
-          network.registryAddress,
-          REGISTRY_ABI,
-          provider,
-        );
-
-        // Query mint events (Transfer from zero address) for this owner
-        const filter = registry.filters.Transfer(ethers.ZeroAddress, address);
-        const events = await registry.queryFilter(
-          filter,
-          network.registryDeployBlock,
-        );
-        for (const event of events) {
-          const tokenId = (event as ethers.EventLog).args?.[2] as
-            | bigint
-            | undefined;
-          if (tokenId && BigInt(tokenId) > 0n) {
-            allAgents.push({
-              agentId: BigInt(tokenId).toString(),
-              chainId,
-            });
+        const transferTopic = ethers.id("Transfer(address,address,uint256)");
+        const addressTopic =
+          "0x000000000000000000000000" + address.slice(2).toLowerCase();
+        const resp = await fetch(network.rpcUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            method: "eth_getLogs",
+            params: [
+              {
+                address: network.registryAddress,
+                fromBlock: "0x" + scanFrom.toString(16),
+                toBlock: "latest",
+                topics: [transferTopic, null, addressTopic],
+              },
+            ],
+            id: 1,
+          }),
+        });
+        const json = (await resp.json()) as {
+          result?: Array<{ topics: string[] }>;
+          error?: { message: string };
+        };
+        if (json.result) {
+          for (const log of json.result) {
+            if (log.topics[3]) {
+              const tokenId = BigInt(log.topics[3]);
+              if (tokenId > 0n) {
+                allAgents.push({
+                  agentId: tokenId.toString(),
+                  chainId,
+                });
+              }
+            }
           }
+        } else {
+          console.warn("[visa] eth_getLogs error:", json.error?.message);
         }
-      } catch {
-        // Skip registry errors
+      } catch (err) {
+        console.warn("[visa] registry query failed:", err);
       }
 
       // Also check for wallet-based Tourist visa (no registry needed)
@@ -99,7 +119,16 @@ export default function CeloAgentVisaPage() {
         // Skip — no wallet visa on this chain
       }
 
-      setAgents(allAgents);
+      // If both wallet-based and registry-based agents exist, hide the wallet-based one.
+      // The old wallet-based visa can't be burned (soulbound), so it stays on-chain at tier 1.
+      const hasRegistryAgent = allAgents.some((a) => !a.isWalletBased);
+      const filteredAgents = hasRegistryAgent
+        ? allAgents.filter((a) => !a.isWalletBased)
+        : allAgents;
+
+      console.log("[visa] allAgents:", allAgents.map((a) => ({ id: a.agentId, wallet: !!a.isWalletBased })));
+      console.log("[visa] hasRegistry:", hasRegistryAgent, "showing:", filteredAgents.length);
+      setAgents(filteredAgents);
 
       // Auto-detect migration opportunity: wallet-based visa + registry agent without visa
       const walletAgent = allAgents.find((a) => a.isWalletBased);
