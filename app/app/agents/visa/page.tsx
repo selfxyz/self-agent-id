@@ -6,7 +6,6 @@ import { VisaCard } from "@/components/VisaCard";
 import { REGISTRY_ABI, VISA_ABI } from "@/lib/constants";
 import { CHAIN_CONFIG } from "@/lib/chain-config";
 import { ExternalLink, Loader2 } from "lucide-react";
-import Link from "next/link";
 
 interface AgentBasic {
   agentId: string;
@@ -265,16 +264,6 @@ export default function CeloAgentVisaPage() {
               "Claim Tourist Visa"
             )}
           </button>
-          <p className="text-xs text-muted">
-            Higher tiers (Work, Citizenship) require{" "}
-            <Link
-              href="/agents/register"
-              className="text-accent hover:underline"
-            >
-              Self Agent Registry
-            </Link>{" "}
-            registration and Self app verification.
-          </p>
         </div>
       ) : (
         <div className="space-y-4">
