@@ -52,9 +52,9 @@ const CELO_MAINNET: NetworkConfig = {
   demoAgentUrl: "",
   demoAgentAddress: "0xAc8BA8E6328c293Ff5aC4121E41AFb50c8D32107",
   nativeCurrency: { name: "CELO", symbol: "CELO", decimals: 18 },
-  visaAddress: "",
+  visaAddress: "0xCa97f7586CF9De62B8ca516d7Ee25f6AEae5e109",
   registryDeployBlock: 59_965_405,
-  visaDeployBlock: 0,
+  visaDeployBlock: 62_374_264,
 };
 
 // ── Celo Sepolia (Testnet) ────────────────────────────────────────────────
