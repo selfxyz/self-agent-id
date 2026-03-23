@@ -5,7 +5,7 @@ import { ethers } from "ethers";
 import { VisaCard } from "@/components/VisaCard";
 import { VisaUpgradeFlow } from "@/components/VisaUpgradeFlow";
 import { REGISTRY_ABI, VISA_ABI } from "@/lib/constants";
-import { CHAIN_CONFIG } from "@/lib/chain-config";
+import { useNetwork } from "@/lib/NetworkContext";
 import { ExternalLink, Loader2 } from "lucide-react";
 
 interface AgentBasic {
@@ -20,6 +20,7 @@ function walletToAgentId(address: string): string {
 }
 
 export default function CeloAgentVisaPage() {
+  const { network } = useNetwork();
   const [agents, setAgents] = useState<AgentBasic[]>([]);
   const [loading, setLoading] = useState(true);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
@@ -31,66 +32,63 @@ export default function CeloAgentVisaPage() {
   const loadAgents = useCallback(async (address: string) => {
     setLoading(true);
     try {
-      const chainsWithVisa = Object.entries(CHAIN_CONFIG).filter(
-        ([, config]) => config.visa,
-      );
+      if (!network.visaAddress) {
+        setAgents([]);
+        return;
+      }
 
+      const chainId = network.chainId;
       const allAgents: AgentBasic[] = [];
 
-      for (const [chainId, config] of chainsWithVisa) {
-        try {
-          const provider = new ethers.JsonRpcProvider(config.rpc);
-          const registry = new ethers.Contract(
-            config.registry,
-            REGISTRY_ABI,
-            provider,
-          );
+      try {
+        const provider = new ethers.JsonRpcProvider(network.rpcUrl);
+        const registry = new ethers.Contract(
+          network.registryAddress,
+          REGISTRY_ABI,
+          provider,
+        );
 
-          // Query mint events (Transfer from zero address) for this owner
-          const filter = registry.filters.Transfer(ethers.ZeroAddress, address);
-          const events = await registry.queryFilter(
-            filter,
-            config.registryDeployBlock,
-          );
-          for (const event of events) {
-            const tokenId = (event as ethers.EventLog).args?.[2] as
-              | bigint
-              | undefined;
-            if (tokenId && BigInt(tokenId) > 0n) {
-              allAgents.push({
-                agentId: BigInt(tokenId).toString(),
-                chainId: Number(chainId),
-              });
-            }
+        // Query mint events (Transfer from zero address) for this owner
+        const filter = registry.filters.Transfer(ethers.ZeroAddress, address);
+        const events = await registry.queryFilter(
+          filter,
+          network.registryDeployBlock,
+        );
+        for (const event of events) {
+          const tokenId = (event as ethers.EventLog).args?.[2] as
+            | bigint
+            | undefined;
+          if (tokenId && BigInt(tokenId) > 0n) {
+            allAgents.push({
+              agentId: BigInt(tokenId).toString(),
+              chainId,
+            });
           }
-        } catch {
-          // Skip chains that error
         }
+      } catch {
+        // Skip registry errors
       }
 
       // Also check for wallet-based Tourist visa (no registry needed)
       const walletAgentId = walletToAgentId(address);
-      for (const [chainId, config] of chainsWithVisa) {
-        try {
-          const provider = new ethers.JsonRpcProvider(config.rpc);
-          const visa = new ethers.Contract(config.visa, VISA_ABI, provider);
-          const tier = Number(await visa.getTier(BigInt(walletAgentId)));
-          if (tier > 0) {
-            const exists = allAgents.some(
-              (a) =>
-                a.agentId === walletAgentId && a.chainId === Number(chainId),
-            );
-            if (!exists) {
-              allAgents.push({
-                agentId: walletAgentId,
-                chainId: Number(chainId),
-                isWalletBased: true,
-              });
-            }
+      try {
+        const provider = new ethers.JsonRpcProvider(network.rpcUrl);
+        const visa = new ethers.Contract(network.visaAddress, VISA_ABI, provider);
+        const tier = Number(await visa.getTier(BigInt(walletAgentId)));
+        if (tier > 0) {
+          const exists = allAgents.some(
+            (a) => a.agentId === walletAgentId && a.chainId === chainId,
+          );
+          if (!exists) {
+            allAgents.push({
+              agentId: walletAgentId,
+              chainId,
+              isWalletBased: true,
+            });
           }
-        } catch {
-          // Skip — no wallet visa on this chain
         }
+      } catch {
+        // Skip — no wallet visa on this chain
       }
 
       setAgents(allAgents);
@@ -99,7 +97,7 @@ export default function CeloAgentVisaPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [network]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.ethereum) {
@@ -159,11 +157,8 @@ export default function CeloAgentVisaPage() {
     setClaimingTourist(true);
     setClaimError(null);
     try {
-      const chainsWithVisa = Object.entries(CHAIN_CONFIG).filter(
-        ([, config]) => config.visa,
-      );
-      if (chainsWithVisa.length === 0) return;
-      const [chainId] = chainsWithVisa[0];
+      if (!network.visaAddress) return;
+      const chainId = String(network.chainId);
       const agentId = walletToAgentId(walletAddress);
 
       const res = await fetch("/api/visa/claim", {
@@ -336,9 +331,7 @@ export default function CeloAgentVisaPage() {
                   oldAgentId={agent.agentId}
                   chainId={agent.chainId}
                   walletAddress={walletAddress!}
-                  blockExplorer={
-                    CHAIN_CONFIG[String(agent.chainId)]?.blockExplorer
-                  }
+                  blockExplorer={network.blockExplorer}
                   onComplete={() => {
                     setUpgradingAgent(null);
                     void loadAgents(walletAddress!);
@@ -349,9 +342,7 @@ export default function CeloAgentVisaPage() {
                 <VisaCard
                   agentId={agent.agentId}
                   chainId={agent.chainId}
-                  blockExplorer={
-                    CHAIN_CONFIG[String(agent.chainId)]?.blockExplorer
-                  }
+                  blockExplorer={network.blockExplorer}
                   isWalletBased={agent.isWalletBased}
                   onStartUpgrade={() => setUpgradingAgent(agent)}
                 />
