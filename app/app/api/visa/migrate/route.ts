@@ -53,7 +53,10 @@ export async function POST(req: NextRequest) {
   const { chainId, oldAgentId, newAgentId, connectedWallet, targetTier } = body;
 
   if (!chainId || !oldAgentId || !newAgentId || !connectedWallet) {
-    return errorResponse("chainId, oldAgentId, newAgentId, and connectedWallet are required", 400);
+    return errorResponse(
+      "chainId, oldAgentId, newAgentId, and connectedWallet are required",
+      400,
+    );
   }
 
   // Validate agentId formats
@@ -64,7 +67,10 @@ export async function POST(req: NextRequest) {
     newId = BigInt(newAgentId);
     if (oldId <= 0n || newId <= 0n) throw new Error();
   } catch {
-    return errorResponse("oldAgentId and newAgentId must be valid positive integers", 400);
+    return errorResponse(
+      "oldAgentId and newAgentId must be valid positive integers",
+      400,
+    );
   }
 
   // Validate wallet address format
@@ -72,7 +78,10 @@ export async function POST(req: NextRequest) {
   try {
     checksumWallet = ethers.getAddress(connectedWallet);
   } catch {
-    return errorResponse("connectedWallet is not a valid Ethereum address", 400);
+    return errorResponse(
+      "connectedWallet is not a valid Ethereum address",
+      400,
+    );
   }
 
   // Ownership check: oldAgentId must be uint256(connectedWallet)
@@ -92,7 +101,11 @@ export async function POST(req: NextRequest) {
     const provider = new ethers.JsonRpcProvider(config.rpc);
     const relayer = new ethers.Wallet(RELAYER_PK, provider);
     const visa = new ethers.Contract(config.visa, VISA_ABI, relayer);
-    const registry = new ethers.Contract(config.registry, REGISTRY_ABI, provider);
+    const registry = new ethers.Contract(
+      config.registry,
+      REGISTRY_ABI,
+      provider,
+    );
 
     // 1. Verify the old agent has a visa to migrate
     const oldTier = Number(await visa.getTier(oldId));
@@ -103,7 +116,10 @@ export async function POST(req: NextRequest) {
     // 2. Verify the new agentId exists in the Self registry with a fresh proof
     const proofFresh = (await registry.isProofFresh(newId)) as boolean;
     if (!proofFresh) {
-      return errorResponse("New agent does not have a fresh human proof in Self Agent Registry", 422);
+      return errorResponse(
+        "New agent does not have a fresh human proof in Self Agent Registry",
+        422,
+      );
     }
 
     // 3. Verify the new agentId doesn't already have a visa
@@ -138,7 +154,8 @@ export async function POST(req: NextRequest) {
     // for tier 2+ in the same call.
     // Note: The old wallet-based visa is NOT burned (soulbound contract has no burn).
     // It remains on-chain at tier 1 but becomes stale — the registry-based visa is canonical.
-    const mintTier = targetTier && targetTier >= 1 && targetTier <= 3 ? targetTier : 1;
+    const mintTier =
+      targetTier && targetTier >= 1 && targetTier <= 3 ? targetTier : 1;
     const mintTx = (await visa.mintVisa(
       newId,
       mintTier,

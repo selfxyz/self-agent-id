@@ -262,12 +262,9 @@ export function VisaUpgradeFlow({
     <Card>
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">
-            Verify Identity to Upgrade
-          </h3>
+          <h3 className="text-sm font-semibold">Verify Identity to Upgrade</h3>
           <Badge variant="info">
-            Step{" "}
-            {stage === "qr-ready" || stage === "scanning" ? "1" : "2"} of 2
+            Step {stage === "qr-ready" || stage === "scanning" ? "1" : "2"} of 2
           </Badge>
         </div>
 
@@ -278,49 +275,44 @@ export function VisaUpgradeFlow({
           </div>
         )}
 
-        {(stage === "qr-ready" || stage === "scanning") &&
-          session != null && (
-            <div className="space-y-3">
-              <p className="text-xs text-muted text-center">
-                Scan this QR code with the{" "}
-                <span className="font-medium text-foreground">
-                  Self app
-                </span>{" "}
-                to verify your identity
-              </p>
-              <div className="flex justify-center">
-                <SelfQRcodeWrapper
-                  selfApp={session.qrData}
-                  size={280}
-                  onSuccess={handleQRSuccess}
-                  onError={handleQRError}
-                />
-              </div>
-              {session.deepLink && (
-                <p className="text-center">
-                  <a
-                    href={session.deepLink}
-                    className="text-xs text-accent hover:underline"
-                  >
-                    Open Self app on this device
-                  </a>
-                </p>
-              )}
-              {stage === "scanning" && (
-                <div className="flex items-center justify-center gap-2 text-xs text-muted">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Waiting for passport scan...
-                </div>
-              )}
+        {(stage === "qr-ready" || stage === "scanning") && session != null && (
+          <div className="space-y-3">
+            <p className="text-xs text-muted text-center">
+              Scan this QR code with the{" "}
+              <span className="font-medium text-foreground">Self app</span> to
+              verify your identity
+            </p>
+            <div className="flex justify-center">
+              <SelfQRcodeWrapper
+                selfApp={session.qrData}
+                size={280}
+                onSuccess={handleQRSuccess}
+                onError={handleQRError}
+              />
             </div>
-          )}
+            {session.deepLink && (
+              <p className="text-center">
+                <a
+                  href={session.deepLink}
+                  className="text-xs text-accent hover:underline"
+                >
+                  Open Self app on this device
+                </a>
+              </p>
+            )}
+            {stage === "scanning" && (
+              <div className="flex items-center justify-center gap-2 text-xs text-muted">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Waiting for passport scan...
+              </div>
+            )}
+          </div>
+        )}
 
         {stage === "registering" && (
           <div className="flex flex-col items-center gap-2 py-8 text-muted">
             <Loader2 className="h-4 w-4 animate-spin" />
-            <p className="text-xs">
-              Confirming registration on-chain...
-            </p>
+            <p className="text-xs">Confirming registration on-chain...</p>
           </div>
         )}
 

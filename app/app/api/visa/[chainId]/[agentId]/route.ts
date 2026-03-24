@@ -78,16 +78,16 @@ export async function GET(
         const wallet =
           walletAddr && walletAddr !== ethers.ZeroAddress
             ? walletAddr
-            : ethers.getAddress(
-                "0x" + id.toString(16).padStart(40, "0"),
-              );
+            : ethers.getAddress("0x" + id.toString(16).padStart(40, "0"));
         const txCount = await rpc.getTransactionCount(wallet);
         if (txCount > liveTxCount) {
           liveTxCount = txCount;
           // Fire-and-forget: push update on-chain so eligibility checks work on next call
           const relayer = new ethers.Wallet(RELAYER_PK, rpc);
           const writable = new ethers.Contract(config.visa, VISA_ABI, relayer);
-          writable.updateMetrics(id, BigInt(txCount), BigInt(0)).catch(() => {});
+          writable
+            .updateMetrics(id, BigInt(txCount), BigInt(0))
+            .catch(() => {});
         }
       } catch {
         // Non-fatal — use on-chain metrics as fallback
