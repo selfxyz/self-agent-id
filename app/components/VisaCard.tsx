@@ -9,7 +9,13 @@ import { Card } from "./Card";
 import { Badge } from "./Badge";
 import { Button } from "./Button";
 import Image from "next/image";
-import { CheckCircle2, ArrowUp, Loader2, ExternalLink } from "lucide-react";
+import {
+  CheckCircle2,
+  ArrowUp,
+  Loader2,
+  ExternalLink,
+  Info,
+} from "lucide-react";
 
 interface VisaCardProps {
   agentId: string | number;
@@ -80,12 +86,47 @@ const TIER_BENEFITS: Record<number, string[]> = {
   ],
 };
 
-function ProgressBar({ value, label }: { value: number; label: string }) {
+function VolumeTooltip() {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        className="text-muted hover:text-foreground transition-colors"
+        aria-label="Volume info"
+      >
+        <Info className="h-3 w-3" />
+      </button>
+      {open && (
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-48 rounded-lg bg-foreground text-background text-[10px] leading-tight px-2.5 py-2 shadow-lg z-10 text-center">
+          Volume tracks stablecoin transfers: USDC, USDT, and cUSD (USDm) on
+          Celo. Other tokens are not counted.
+        </span>
+      )}
+    </span>
+  );
+}
+
+function ProgressBar({
+  value,
+  label,
+  tooltip,
+}: {
+  value: number;
+  label: string;
+  tooltip?: React.ReactNode;
+}) {
   const pct = Math.min(value, 1) * 100;
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs text-muted">
-        <span>{label}</span>
+        <span className="inline-flex items-center gap-1">
+          {label}
+          {tooltip}
+        </span>
         <span className="tabular-nums">{Math.round(pct)}%</span>
       </div>
       <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden">
@@ -410,7 +451,9 @@ export function VisaCard({
           </div>
           {metrics.volumeUsd > 0 && (
             <div>
-              <p className="text-xs text-muted">Volume (USD)</p>
+              <p className="text-xs text-muted inline-flex items-center gap-1">
+                Volume (USD) <VolumeTooltip />
+              </p>
               <p className="text-sm font-medium tabular-nums">
                 ${metrics.volumeUsd.toLocaleString()}
               </p>
@@ -436,6 +479,7 @@ export function VisaCard({
             {nextThresholds.minVolumeUsd > 0 && (
               <ProgressBar
                 label="Volume (USD)"
+                tooltip={<VolumeTooltip />}
                 value={metrics.volumeUsd / nextThresholds.minVolumeUsd}
               />
             )}
