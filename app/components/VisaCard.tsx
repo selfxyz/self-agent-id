@@ -98,7 +98,13 @@ function ProgressBar({ value, label }: { value: number; label: string }) {
   );
 }
 
-export function VisaCard({ agentId, chainId, blockExplorer, isWalletBased, onStartUpgrade }: VisaCardProps) {
+export function VisaCard({
+  agentId,
+  chainId,
+  blockExplorer,
+  isWalletBased,
+  onStartUpgrade,
+}: VisaCardProps) {
   const explorerTxUrl = (hash: string) =>
     blockExplorer ? `${blockExplorer}/tx/${hash}` : null;
 
@@ -110,26 +116,29 @@ export function VisaCard({ agentId, chainId, blockExplorer, isWalletBased, onSta
   const [requesting, setRequesting] = useState(false);
   const [claimResult, setClaimResult] = useState<ClaimResult | null>(null);
 
-  const loadVisa = useCallback(async (showSpinner = true) => {
-    if (showSpinner) setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/visa/${chainId}/${agentId}`);
-      if (!res.ok) {
-        setError(
-          res.status === 404
-            ? "Visa not available on this network"
-            : "Failed to load visa data",
-        );
-        return;
+  const loadVisa = useCallback(
+    async (showSpinner = true) => {
+      if (showSpinner) setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/visa/${chainId}/${agentId}`);
+        if (!res.ok) {
+          setError(
+            res.status === 404
+              ? "Visa not available on this network"
+              : "Failed to load visa data",
+          );
+          return;
+        }
+        setData((await res.json()) as VisaData);
+      } catch {
+        setError("Failed to load visa data");
+      } finally {
+        setLoading(false);
       }
-      setData((await res.json()) as VisaData);
-    } catch {
-      setError("Failed to load visa data");
-    } finally {
-      setLoading(false);
-    }
-  }, [agentId, chainId]);
+    },
+    [agentId, chainId],
+  );
 
   useEffect(() => {
     void loadVisa();
@@ -185,8 +194,7 @@ export function VisaCard({ agentId, chainId, blockExplorer, isWalletBased, onSta
             );
           if (r.minVolumeUsd > 0)
             parts.push(`$${m.volumeUsd}/$${r.minVolumeUsd} volume`);
-          if (parts.length > 1 && r.requiresBoth)
-            parts.push("(both required)");
+          if (parts.length > 1 && r.requiresBoth) parts.push("(both required)");
           setError(
             parts.length > 0
               ? `Not eligible: ${parts.join(", ")}`
@@ -391,7 +399,9 @@ export function VisaCard({ agentId, chainId, blockExplorer, isWalletBased, onSta
         )}
 
         {/* Current Metrics */}
-        <div className={`grid gap-3 ${metrics.volumeUsd > 0 ? "grid-cols-2" : "grid-cols-1"}`}>
+        <div
+          className={`grid gap-3 ${metrics.volumeUsd > 0 ? "grid-cols-2" : "grid-cols-1"}`}
+        >
           <div>
             <p className="text-xs text-muted">Transactions</p>
             <p className="text-sm font-medium tabular-nums">
@@ -423,10 +433,9 @@ export function VisaCard({ agentId, chainId, blockExplorer, isWalletBased, onSta
                   : 1
               }
             />
-            {nextThresholds.minVolumeUsd > 0 &&
-              (metrics.volumeUsd > 0 || nextThresholds.requiresBoth) && (
+            {nextThresholds.minVolumeUsd > 0 && (
               <ProgressBar
-                label="Volume"
+                label="Volume (USD)"
                 value={metrics.volumeUsd / nextThresholds.minVolumeUsd}
               />
             )}
@@ -456,8 +465,8 @@ export function VisaCard({ agentId, chainId, blockExplorer, isWalletBased, onSta
               {isWalletBased ? (
                 <>
                   Upgrading to {nextTier !== null ? TIER_LABELS[nextTier] : ""}{" "}
-                  requires identity verification. Complete a one-time passport scan
-                  with the{" "}
+                  requires identity verification. Complete a one-time passport
+                  scan with the{" "}
                   <span className="font-medium text-foreground">Self app</span>{" "}
                   to unlock higher tiers.
                 </>
@@ -531,10 +540,7 @@ export function VisaCard({ agentId, chainId, blockExplorer, isWalletBased, onSta
             (!nextThresholds?.requiresManualReview ||
               data.manualReviewApproved) &&
             (isWalletBased && nextTier >= 2 ? (
-              <Button
-                size="sm"
-                onClick={onStartUpgrade}
-              >
+              <Button size="sm" onClick={onStartUpgrade}>
                 Verify with Self to Upgrade
               </Button>
             ) : (
