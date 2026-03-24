@@ -113,21 +113,26 @@ function VolumeTooltip() {
 function ProgressBar({
   value,
   label,
+  detail,
   tooltip,
 }: {
   value: number;
   label: string;
+  detail?: string;
   tooltip?: React.ReactNode;
 }) {
   const pct = Math.min(value, 1) * 100;
+  const pctStr =
+    pct < 1 && pct > 0 ? pct.toFixed(2) : Math.round(pct).toString();
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs text-muted">
         <span className="inline-flex items-center gap-1">
           {label}
+          {detail && <span className="text-[10px]">({detail})</span>}
           {tooltip}
         </span>
-        <span className="tabular-nums">{Math.round(pct)}%</span>
+        <span className="tabular-nums">{pctStr}%</span>
       </div>
       <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden">
         <div
@@ -470,6 +475,7 @@ export function VisaCard({
             </p>
             <ProgressBar
               label="Transactions"
+              detail={`${metrics.transactionCount.toLocaleString()} / ${nextThresholds.minTransactions.toLocaleString()}`}
               value={
                 nextThresholds.minTransactions > 0
                   ? metrics.transactionCount / nextThresholds.minTransactions
@@ -479,6 +485,7 @@ export function VisaCard({
             {nextThresholds.minVolumeUsd > 0 && (
               <ProgressBar
                 label="Volume (USD)"
+                detail={`$${metrics.volumeUsd.toLocaleString()} / $${nextThresholds.minVolumeUsd.toLocaleString()}`}
                 tooltip={<VolumeTooltip />}
                 value={metrics.volumeUsd / nextThresholds.minVolumeUsd}
               />
