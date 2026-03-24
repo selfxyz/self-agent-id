@@ -152,6 +152,36 @@ export interface TypedVisaContract extends ethers.BaseContract {
     requiresBoth: boolean;
     requiresManualReview: boolean;
   }>;
+  requestReview: ethers.BaseContractMethod<
+    [bigint, number],
+    void,
+    ethers.ContractTransactionResponse
+  >;
+  reviewRequestedTier(agentId: bigint): Promise<bigint>;
+  manualReviewApproved(agentId: bigint): Promise<boolean>;
+  hasRole(role: string, account: string): Promise<boolean>;
+  UPGRADER_ROLE(): Promise<string>;
+  setManualReviewStatus: ethers.BaseContractMethod<
+    [bigint, boolean],
+    void,
+    ethers.ContractTransactionResponse
+  >;
+  claimTierUpgrade: ethers.BaseContractMethod<
+    [bigint, number],
+    void,
+    ethers.ContractTransactionResponse
+  >;
+  mintVisa: ethers.BaseContractMethod<
+    [bigint, number, string],
+    void,
+    ethers.ContractTransactionResponse
+  >;
+  getVisaWallet(agentId: bigint): Promise<string>;
+  setVisaWallet: ethers.BaseContractMethod<
+    [bigint, string],
+    void,
+    ethers.ContractTransactionResponse
+  >;
 }
 
 // ─── Constructor helpers ─────────────────────────────────────────────────────

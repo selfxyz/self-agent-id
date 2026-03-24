@@ -47,8 +47,8 @@ function formatDate(timestamp: number): string {
 function CopyableAddress({ address }: { address: string }) {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(address);
+  const handleCopy = () => {
+    void navigator.clipboard.writeText(address);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

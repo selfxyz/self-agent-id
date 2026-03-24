@@ -9,7 +9,7 @@ import { NextResponse } from "next/server";
 /** Standard CORS headers for public API endpoints */
 export const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Cache-Control": "public, max-age=60",
 } as const;
 

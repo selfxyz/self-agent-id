@@ -8,12 +8,21 @@ import { useEffect, useState, useCallback } from "react";
 import { Card } from "./Card";
 import { Badge } from "./Badge";
 import { Button } from "./Button";
-import { CheckCircle2, ArrowUp, Loader2, ExternalLink } from "lucide-react";
+import Image from "next/image";
+import {
+  CheckCircle2,
+  ArrowUp,
+  Loader2,
+  ExternalLink,
+  Info,
+} from "lucide-react";
 
 interface VisaCardProps {
-  agentId: number;
+  agentId: string | number;
   chainId: number;
   blockExplorer?: string;
+  isWalletBased?: boolean;
+  onStartUpgrade?: () => void;
 }
 
 interface TierThresholds {
@@ -33,6 +42,8 @@ interface VisaData {
   };
   eligibility: Record<number, boolean>;
   thresholds: Record<number, TierThresholds>;
+  reviewRequestedTier: number;
+  manualReviewApproved: boolean;
 }
 
 interface ClaimResult {
@@ -54,6 +65,12 @@ const TIER_BADGE_VARIANT: Record<number, string> = {
   3: "success",
 };
 
+const TIER_IMAGES: Record<number, string> = {
+  1: "/visa-tourist.png",
+  2: "/visa-work.png",
+  3: "/visa-citizenship.png",
+};
+
 const TIER_BENEFITS: Record<number, string[]> = {
   1: [
     "Co-marketing support from Celo Core Co.",
@@ -69,13 +86,53 @@ const TIER_BENEFITS: Record<number, string[]> = {
   ],
 };
 
-function ProgressBar({ value, label }: { value: number; label: string }) {
+function VolumeTooltip() {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        className="text-muted hover:text-foreground transition-colors"
+        aria-label="Volume info"
+      >
+        <Info className="h-3 w-3" />
+      </button>
+      {open && (
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-48 rounded-lg bg-foreground text-background text-[10px] leading-tight px-2.5 py-2 shadow-lg z-10 text-center">
+          Volume tracks stablecoin transfers on Celo: USDC, USDT, and USDm.
+          Other tokens are not counted.
+        </span>
+      )}
+    </span>
+  );
+}
+
+function ProgressBar({
+  value,
+  label,
+  detail,
+  tooltip,
+}: {
+  value: number;
+  label: string;
+  detail?: string;
+  tooltip?: React.ReactNode;
+}) {
   const pct = Math.min(value, 1) * 100;
+  const pctStr =
+    pct < 1 && pct > 0 ? pct.toFixed(2) : Math.round(pct).toString();
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs text-muted">
-        <span>{label}</span>
-        <span className="tabular-nums">{Math.round(pct)}%</span>
+        <span className="inline-flex items-center gap-1">
+          {label}
+          {detail && <span className="text-[10px]">({detail})</span>}
+          {tooltip}
+        </span>
+        <span className="tabular-nums">{pctStr}%</span>
       </div>
       <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden">
         <div
@@ -87,7 +144,13 @@ function ProgressBar({ value, label }: { value: number; label: string }) {
   );
 }
 
-export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
+export function VisaCard({
+  agentId,
+  chainId,
+  blockExplorer,
+  isWalletBased,
+  onStartUpgrade,
+}: VisaCardProps) {
   const explorerTxUrl = (hash: string) =>
     blockExplorer ? `${blockExplorer}/tx/${hash}` : null;
 
@@ -96,28 +159,32 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [claiming, setClaiming] = useState(false);
+  const [requesting, setRequesting] = useState(false);
   const [claimResult, setClaimResult] = useState<ClaimResult | null>(null);
 
-  const loadVisa = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/visa/${chainId}/${agentId}`);
-      if (!res.ok) {
-        setError(
-          res.status === 404
-            ? "Visa not available on this network"
-            : "Failed to load visa data",
-        );
-        return;
+  const loadVisa = useCallback(
+    async (showSpinner = true) => {
+      if (showSpinner) setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/visa/${chainId}/${agentId}`);
+        if (!res.ok) {
+          setError(
+            res.status === 404
+              ? "Visa not available on this network"
+              : "Failed to load visa data",
+          );
+          return;
+        }
+        setData((await res.json()) as VisaData);
+      } catch {
+        setError("Failed to load visa data");
+      } finally {
+        setLoading(false);
       }
-      setData((await res.json()) as VisaData);
-    } catch {
-      setError("Failed to load visa data");
-    } finally {
-      setLoading(false);
-    }
-  }, [agentId, chainId]);
+    },
+    [agentId, chainId],
+  );
 
   useEffect(() => {
     void loadVisa();
@@ -127,7 +194,7 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
     setChecking(true);
     setError(null);
     try {
-      await loadVisa();
+      await loadVisa(false);
     } finally {
       setChecking(false);
     }
@@ -151,9 +218,37 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
         newTier?: number;
         txHash?: string;
         error?: string;
+        code?: string;
+        metrics?: { transactionCount: number; volumeUsd: number };
+        required?: {
+          minTransactions: number;
+          minVolumeUsd: number;
+          requiresBoth: boolean;
+        };
       };
       if (!res.ok) {
-        setError(result.error ?? "Claim failed");
+        if (
+          result.code === "NOT_ELIGIBLE" &&
+          result.metrics &&
+          result.required
+        ) {
+          const { metrics: m, required: r } = result;
+          const parts: string[] = [];
+          if (r.minTransactions > 0)
+            parts.push(
+              `${m.transactionCount}/${r.minTransactions} transactions`,
+            );
+          if (r.minVolumeUsd > 0)
+            parts.push(`$${m.volumeUsd}/$${r.minVolumeUsd} volume`);
+          if (parts.length > 1 && r.requiresBoth) parts.push("(both required)");
+          setError(
+            parts.length > 0
+              ? `Not eligible: ${parts.join(", ")}`
+              : "Not eligible for this tier yet",
+          );
+        } else {
+          setError(result.error ?? "Claim failed");
+        }
         return;
       }
       setClaimResult({
@@ -165,6 +260,32 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
       setError("Claim failed — please try again");
     } finally {
       setClaiming(false);
+    }
+  }
+
+  async function handleRequestReview(targetTier: number) {
+    setRequesting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/visa/request-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chainId: String(chainId),
+          agentId: String(agentId),
+          targetTier,
+        }),
+      });
+      if (!res.ok) {
+        const result = (await res.json()) as { error?: string };
+        setError(result.error ?? "Review request failed");
+        return;
+      }
+      await loadVisa();
+    } catch {
+      setError("Review request failed — please try again");
+    } finally {
+      setRequesting(false);
     }
   }
 
@@ -197,11 +318,33 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
   const nextThresholds = nextTier !== null ? thresholds[nextTier] : null;
   const canUpgrade = nextTier !== null && eligibility[nextTier];
 
+  // Check if metrics alone are met (ignoring manual review) for showing review button
+  const meetsMetrics =
+    nextTier !== null && nextThresholds
+      ? nextThresholds.requiresBoth
+        ? metrics.transactionCount >= nextThresholds.minTransactions &&
+          metrics.volumeUsd >= nextThresholds.minVolumeUsd
+        : metrics.transactionCount >= nextThresholds.minTransactions ||
+          metrics.volumeUsd >= nextThresholds.minVolumeUsd
+      : false;
+
+  // Whether Self verification is needed for the next tier
+  const needsSelfVerification = nextTier !== null && nextTier >= 2;
+
   // Success screen after claiming
   if (claimResult) {
     return (
       <Card>
         <div className="space-y-4 text-center py-4">
+          {TIER_IMAGES[claimResult.newTier] && (
+            <Image
+              src={TIER_IMAGES[claimResult.newTier]}
+              alt={`${TIER_LABELS[claimResult.newTier]} Visa`}
+              width={120}
+              height={120}
+              className="rounded-lg mx-auto"
+            />
+          )}
           <CheckCircle2 className="h-10 w-10 text-accent-success mx-auto" />
           <div>
             <h3 className="text-lg font-semibold">
@@ -269,6 +412,19 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
           </Badge>
         </div>
 
+        {/* Tier NFT image */}
+        {tier > 0 && TIER_IMAGES[tier] && (
+          <div className="flex justify-center">
+            <Image
+              src={TIER_IMAGES[tier]}
+              alt={`${TIER_LABELS[tier]} Visa`}
+              width={160}
+              height={160}
+              className="rounded-lg"
+            />
+          </div>
+        )}
+
         {/* No Visa state */}
         {tier === 0 && (
           <p className="text-xs text-muted">
@@ -289,19 +445,25 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
         )}
 
         {/* Current Metrics */}
-        <div className="grid grid-cols-2 gap-3">
+        <div
+          className={`grid gap-3 ${metrics.volumeUsd > 0 ? "grid-cols-2" : "grid-cols-1"}`}
+        >
           <div>
             <p className="text-xs text-muted">Transactions</p>
             <p className="text-sm font-medium tabular-nums">
               {metrics.transactionCount.toLocaleString()}
             </p>
           </div>
-          <div>
-            <p className="text-xs text-muted">Volume (USD)</p>
-            <p className="text-sm font-medium tabular-nums">
-              ${metrics.volumeUsd.toLocaleString()}
-            </p>
-          </div>
+          {metrics.volumeUsd > 0 && (
+            <div>
+              <p className="text-xs text-muted inline-flex items-center gap-1">
+                Volume (USD) <VolumeTooltip />
+              </p>
+              <p className="text-sm font-medium tabular-nums">
+                ${metrics.volumeUsd.toLocaleString()}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Progress to next tier */}
@@ -313,20 +475,21 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
             </p>
             <ProgressBar
               label="Transactions"
+              detail={`${metrics.transactionCount.toLocaleString()} / ${nextThresholds.minTransactions.toLocaleString()}`}
               value={
                 nextThresholds.minTransactions > 0
                   ? metrics.transactionCount / nextThresholds.minTransactions
                   : 1
               }
             />
-            <ProgressBar
-              label="Volume"
-              value={
-                nextThresholds.minVolumeUsd > 0
-                  ? metrics.volumeUsd / nextThresholds.minVolumeUsd
-                  : 1
-              }
-            />
+            {nextThresholds.minVolumeUsd > 0 && (
+              <ProgressBar
+                label="Volume (USD)"
+                detail={`$${metrics.volumeUsd.toLocaleString()} / $${nextThresholds.minVolumeUsd.toLocaleString()}`}
+                tooltip={<VolumeTooltip />}
+                value={metrics.volumeUsd / nextThresholds.minVolumeUsd}
+              />
+            )}
           </div>
         ) : tier === 3 ? (
           <p className="text-xs text-accent-success">Maximum tier reached</p>
@@ -343,6 +506,30 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
                 {b}
               </p>
             ))}
+          </div>
+        )}
+
+        {/* Self verification notice for Tier 2+ */}
+        {needsSelfVerification && tier < 2 && (
+          <div className="rounded-lg bg-surface-1 px-3 py-2">
+            <p className="text-xs text-muted">
+              {isWalletBased ? (
+                <>
+                  Upgrading to {nextTier !== null ? TIER_LABELS[nextTier] : ""}{" "}
+                  requires identity verification. Complete a one-time passport
+                  scan with the{" "}
+                  <span className="font-medium text-foreground">Self app</span>{" "}
+                  to unlock higher tiers.
+                </>
+              ) : (
+                <>
+                  Upgrading to {nextTier !== null ? TIER_LABELS[nextTier] : ""}{" "}
+                  requires verification through the{" "}
+                  <span className="font-medium text-foreground">Self app</span>.
+                  Download Self and verify your identity to unlock higher tiers.
+                </>
+              )}
+            </p>
           </div>
         )}
 
@@ -373,22 +560,56 @@ export function VisaCard({ agentId, chainId, blockExplorer }: VisaCardProps) {
           >
             {checking ? "Refreshing..." : "Refresh Status"}
           </Button>
-          {canUpgrade && nextTier !== null && (
-            <Button
-              size="sm"
-              onClick={() => void handleClaim(nextTier)}
-              disabled={claiming}
-            >
-              {claiming ? (
-                <>
-                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                  Claiming...
-                </>
-              ) : (
-                `Claim ${TIER_LABELS[nextTier]} Visa`
-              )}
-            </Button>
-          )}
+
+          {nextTier !== null &&
+            nextTier >= 2 &&
+            nextThresholds?.requiresManualReview &&
+            !data.manualReviewApproved &&
+            meetsMetrics &&
+            (data.reviewRequestedTier > 0 ? (
+              <Badge variant="info">Review Pending</Badge>
+            ) : (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => void handleRequestReview(nextTier)}
+                disabled={requesting}
+              >
+                {requesting ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                    Requesting...
+                  </>
+                ) : (
+                  `Request Review for ${TIER_LABELS[nextTier]}`
+                )}
+              </Button>
+            ))}
+
+          {canUpgrade &&
+            nextTier !== null &&
+            (!nextThresholds?.requiresManualReview ||
+              data.manualReviewApproved) &&
+            (isWalletBased && nextTier >= 2 ? (
+              <Button size="sm" onClick={onStartUpgrade}>
+                Verify with Self to Upgrade
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={() => void handleClaim(nextTier)}
+                disabled={claiming}
+              >
+                {claiming ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                    Claiming...
+                  </>
+                ) : (
+                  `Claim ${TIER_LABELS[nextTier]} Visa`
+                )}
+              </Button>
+            ))}
         </div>
 
         {/* Last updated */}

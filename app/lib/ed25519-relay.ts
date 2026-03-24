@@ -18,7 +18,10 @@ const store = new Map<string, RelayEntry>();
 
 const TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-export function setEd25519Relay(pubkey: string, data: Omit<RelayEntry, "createdAt">) {
+export function setEd25519Relay(
+  pubkey: string,
+  data: Omit<RelayEntry, "createdAt">,
+) {
   const key = pubkey.toLowerCase();
   store.set(key, { ...data, createdAt: Date.now() });
   setTimeout(() => store.delete(key), TTL_MS);

@@ -91,18 +91,15 @@ const FRAMEWORK_CATEGORIES: FrameworkCategory[] = [
   },
 ];
 
-const AGENT_PROMPT =
-  "Check if you have an Ed25519 keypair available. If you do, give me the public key (64 hex chars, no 0x prefix). If not, tell me what key types you support.";
-
 export function FrameworkSection({
   framework,
-  ed25519Pubkey,
-  ed25519Signature,
-  challengeHash,
-  hasEd25519,
+  ed25519Pubkey: _ed25519Pubkey,
+  ed25519Signature: _ed25519Signature,
+  challengeHash: _challengeHash,
+  hasEd25519: _hasEd25519,
   onFrameworkChange,
-  onPubkeyChange,
-  onSignatureChange,
+  onPubkeyChange: _onPubkeyChange,
+  onSignatureChange: _onSignatureChange,
 }: FrameworkSectionProps) {
   const [expandedCategories, setExpandedCategories] = useState<
     Record<string, boolean>
@@ -164,7 +161,6 @@ export function FrameworkSection({
           );
         })}
       </div>
-
     </section>
   );
 }

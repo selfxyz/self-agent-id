@@ -57,6 +57,7 @@ export const REGISTRY_ABI = [
   // Agent config identifier (used for proof refresh)
   "function agentConfigId(uint256 agentId) view returns (bytes32)",
   "function configIds(uint256 index) view returns (bytes32)",
+  "function getAgentWallet(uint256 agentId) external view returns (address)",
   "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
   // Proof refresh event
   "event HumanProofRefreshed(uint256 indexed agentId, uint256 newExpiry, uint256 nullifier, bytes32 configId)",
@@ -125,7 +126,17 @@ export const VISA_ABI = [
   "function getAgentId(uint256 tokenId) external view returns (uint256)",
   "function getTierThresholds(uint8 tier) external view returns (uint256 minTransactions, uint256 minVolumeUsd, bool requiresBoth, bool requiresManualReview)",
   "function claimTierUpgrade(uint256 agentId, uint8 targetTier) external",
-  "function mintVisa(uint256 agentId, uint8 tier) external",
+  "function mintVisa(uint256 agentId, uint8 tier, address wallet) external",
+  "function getVisaWallet(uint256 agentId) external view returns (address)",
+  "function setVisaWallet(uint256 agentId, address wallet) external",
+  "function requestReview(uint256 agentId, uint8 targetTier) external",
+  "function reviewRequestedTier(uint256 agentId) external view returns (uint8)",
+  "function manualReviewApproved(uint256 agentId) external view returns (bool)",
+  "function hasRole(bytes32 role, address account) external view returns (bool)",
+  "function UPGRADER_ROLE() external view returns (bytes32)",
+  "function setManualReviewStatus(uint256 agentId, bool approved) external",
+  "function updateMetrics(uint256 agentId, uint256 transactionCount, uint256 volumeUsd) external",
+  "event ReviewRequested(uint256 indexed agentId, uint8 targetTier)",
 ] as const;
 
 // Account Abstraction

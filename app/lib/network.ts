@@ -27,6 +27,7 @@ export interface NetworkConfig {
   nativeCurrency: { name: string; symbol: string; decimals: number };
   visaAddress: string;
   registryDeployBlock: number;
+  visaDeployBlock: number;
 }
 
 // ── Celo Mainnet ──────────────────────────────────────────────────────────
@@ -51,8 +52,9 @@ const CELO_MAINNET: NetworkConfig = {
   demoAgentUrl: "",
   demoAgentAddress: "0xAc8BA8E6328c293Ff5aC4121E41AFb50c8D32107",
   nativeCurrency: { name: "CELO", symbol: "CELO", decimals: 18 },
-  visaAddress: "",
+  visaAddress: "0xCa97f7586CF9De62B8ca516d7Ee25f6AEae5e109",
   registryDeployBlock: 59_965_405,
+  visaDeployBlock: 62_374_264,
 };
 
 // ── Celo Sepolia (Testnet) ────────────────────────────────────────────────
@@ -78,8 +80,9 @@ const CELO_SEPOLIA: NetworkConfig = {
   demoAgentUrl: "",
   demoAgentAddress: "0x56738c05507379C38Bbfa8f75064fd344716245F",
   nativeCurrency: { name: "CELO", symbol: "CELO", decimals: 18 },
-  visaAddress: "0xD97677344BB7f320415bd5cA51c5148e28C65c35",
+  visaAddress: "0xf049FD6260Fce964B82728A86CF1BbEB8AB3E875",
   registryDeployBlock: 18_577_934,
+  visaDeployBlock: 20_973_504,
 };
 
 // ── Exports ───────────────────────────────────────────────────────────────

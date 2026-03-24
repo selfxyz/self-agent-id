@@ -13,6 +13,9 @@ import {
 } from "@/lib/api-helpers";
 
 import { typedVisa } from "@/lib/contract-types";
+import { VISA_ABI } from "@/lib/constants";
+
+const RELAYER_PK = process.env.RELAYER_PRIVATE_KEY;
 
 const TIER_NAMES: Record<number, string> = {
   0: "None",
@@ -49,6 +52,8 @@ export async function GET(
       threshTourist,
       threshWork,
       threshCitizenship,
+      reviewTier,
+      manualApproved,
     ] = await Promise.all([
       visa.getTier(id),
       visa.getMetrics(id),
@@ -58,9 +63,41 @@ export async function GET(
       visa.getTierThresholds(1),
       visa.getTierThresholds(2),
       visa.getTierThresholds(3),
+      visa.reviewRequestedTier(id),
+      visa.manualReviewApproved(id),
     ]);
 
     const tierNum = Number(tier);
+
+    // Refresh metrics: read live tx count from RPC and use it directly.
+    // Also fire-and-forget an on-chain updateMetrics so eligibility checks stay current.
+    let liveTxCount = Number(metrics.transactionCount);
+    if (RELAYER_PK && tierNum > 0) {
+      try {
+        const walletAddr = await visa.getVisaWallet(id);
+        const wallet =
+          walletAddr && walletAddr !== ethers.ZeroAddress
+            ? walletAddr
+            : ethers.getAddress("0x" + id.toString(16).padStart(40, "0"));
+        const txCount = await rpc.getTransactionCount(wallet);
+        if (txCount > liveTxCount) {
+          liveTxCount = txCount;
+          // Fire-and-forget: push update on-chain so eligibility checks work on next call
+          const relayer = new ethers.Wallet(RELAYER_PK, rpc);
+          const writable = new ethers.Contract(config.visa, VISA_ABI, relayer);
+          writable
+            .updateMetrics(id, BigInt(txCount), BigInt(0))
+            .catch(() => {});
+        }
+      } catch {
+        // Non-fatal — use on-chain metrics as fallback
+      }
+    }
+
+    // Recompute eligibility using the live tx count
+    const liveEligWork = liveTxCount >= Number(threshWork.minTransactions);
+    const liveEligCitizenship =
+      liveTxCount >= Number(threshCitizenship.minTransactions);
 
     return NextResponse.json(
       {
@@ -69,27 +106,29 @@ export async function GET(
         tier: tierNum,
         tierName: TIER_NAMES[tierNum] ?? `Tier ${tierNum}`,
         metrics: {
-          transactionCount: Number(metrics.transactionCount),
+          transactionCount: liveTxCount,
           volumeUsd: Number(metrics.volumeUsd) / 1e6,
           lastUpdated: Number(metrics.lastUpdated),
         },
         eligibility: {
           1: eligTourist,
-          2: eligWork,
-          3: eligCitizenship,
+          2: liveEligWork,
+          3: liveEligCitizenship,
         },
+        reviewRequestedTier: Number(reviewTier),
+        manualReviewApproved: manualApproved,
         thresholds: {
           1: {
             minTransactions: Number(threshTourist.minTransactions),
             minVolumeUsd: Number(threshTourist.minVolumeUsd) / 1e6,
             requiresBoth: threshTourist.requiresBoth,
-            requiresManualReview: false,
+            requiresManualReview: threshTourist.requiresManualReview,
           },
           2: {
             minTransactions: Number(threshWork.minTransactions),
             minVolumeUsd: Number(threshWork.minVolumeUsd) / 1e6,
             requiresBoth: threshWork.requiresBoth,
-            requiresManualReview: false,
+            requiresManualReview: threshWork.requiresManualReview,
           },
           3: {
             minTransactions: Number(threshCitizenship.minTransactions),

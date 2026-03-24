@@ -1,5 +1,6 @@
 "use client";
 
+import type { SelfApp } from "@selfxyz/qrcode";
 import dynamic from "next/dynamic";
 import { CheckCircle2, Loader2 } from "lucide-react";
 
@@ -12,8 +13,7 @@ const SelfQRcodeWrapper = dynamic(
 
 interface QRPanelProps {
   qrState: QRState;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  qrData?: any;
+  qrData?: SelfApp | null;
   agentId?: string | null;
   agentAddress?: string | null;
   deepLink?: string | null;
@@ -51,7 +51,6 @@ export function QRPanel({
         {qrData && (
           <div className="rounded-xl overflow-hidden border border-gray-100 p-3 bg-white shadow-sm">
             <SelfQRcodeWrapper
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
               selfApp={qrData}
               size={350}
               onSuccess={onSuccess}
@@ -69,7 +68,6 @@ export function QRPanel({
         {qrData && (
           <div className="rounded-xl overflow-hidden border border-gray-100 p-3 bg-white shadow-sm">
             <SelfQRcodeWrapper
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
               selfApp={qrData}
               size={350}
               onSuccess={onSuccess}

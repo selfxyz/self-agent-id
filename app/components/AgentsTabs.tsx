@@ -5,8 +5,9 @@ import { usePathname } from "next/navigation";
 
 const tabs = [
   { href: "/agents/register", label: "Register" },
-  { href: "/agents", label: "My Agents" },
+  { href: "/agents", label: "My Agents", exact: true },
   { href: "/agents/verify", label: "Verify" },
+  { href: "/agents/visa", label: "Celo Agent Visa" },
 ];
 
 export function AgentsTabs() {
@@ -15,7 +16,10 @@ export function AgentsTabs() {
   return (
     <div className="flex justify-center gap-1 border-b border-border mb-8">
       {tabs.map((tab) => {
-        const active = pathname === tab.href;
+        const active =
+          "exact" in tab && tab.exact
+            ? pathname === tab.href
+            : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
         return (
           <Link
             key={tab.href}

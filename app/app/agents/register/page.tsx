@@ -1,5 +1,6 @@
 "use client";
 
+import type { SelfApp } from "@selfxyz/qrcode";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Copy, Check, CheckCircle, Terminal } from "lucide-react";
 
@@ -25,8 +26,7 @@ export default function RegisterPage() {
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [qrData, setQrData] = useState<any>(null);
+  const [qrData, setQrData] = useState<SelfApp | null>(null);
   const [deepLink, setDeepLink] = useState<string | null>(null);
   const [copiedHash, setCopiedHash] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
@@ -278,7 +278,7 @@ export default function RegisterPage() {
         if (data.sessionToken) reg.setSessionToken(data.sessionToken);
         if (data.agentAddress) reg.setAgentAddress(data.agentAddress);
         if (data.qrData) {
-          setQrData(data.qrData);
+          setQrData(data.qrData as SelfApp);
           reg.setQrState("live");
         }
         if (data.deepLink) setDeepLink(data.deepLink);
@@ -312,7 +312,14 @@ export default function RegisterPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reg.isReadyToRegister, reg.hasInteracted, reg.sessionToken, reg.mode, reg.hasEd25519, networkId]);
+  }, [
+    reg.isReadyToRegister,
+    reg.hasInteracted,
+    reg.sessionToken,
+    reg.mode,
+    reg.hasEd25519,
+    networkId,
+  ]);
 
   // ── 4a. Status polling (non-ed25519 — session token based) ───────────
   useEffect(() => {
@@ -390,12 +397,11 @@ export default function RegisterPage() {
         };
 
         if (data.ready && data.sessionToken) {
-          if (relayPollingRef.current)
-            clearInterval(relayPollingRef.current);
+          if (relayPollingRef.current) clearInterval(relayPollingRef.current);
           reg.setSessionToken(data.sessionToken);
           if (data.agentAddress) reg.setAgentAddress(data.agentAddress);
           if (data.qrData) {
-            setQrData(data.qrData);
+            setQrData(data.qrData as SelfApp);
             reg.setQrState("live");
           }
           if (data.deepLink) setDeepLink(data.deepLink);
@@ -472,7 +478,7 @@ export default function RegisterPage() {
   }, [reg.hasEd25519, reg.ed25519Pubkey, registrationComplete, networkId]);
 
   // ── Derived state ──────────────────────────────────────────────────────
-  const isEd25519Flow = reg.hasEd25519 && !showNoKeyOptions;
+  const _isEd25519Flow = reg.hasEd25519 && !showNoKeyOptions;
   const showQrPanel =
     reg.qrState === "live" ||
     reg.qrState === "scanning" ||
