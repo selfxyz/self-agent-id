@@ -123,10 +123,20 @@ export async function POST(req: NextRequest) {
     }
     const txCount = await provider.getTransactionCount(walletForMetrics);
     if (txCount > 0) {
+      // Preserve existing on-chain volume — only update tx count
+      let existingVolume = 0n;
+      try {
+        const m = (await visa.getMetrics(BigInt(agentId))) as {
+          volumeUsd: bigint;
+        };
+        existingVolume = m.volumeUsd;
+      } catch {
+        // No existing metrics yet
+      }
       const metricsTx = (await visa.updateMetrics(
         BigInt(agentId),
         BigInt(txCount),
-        BigInt(0),
+        existingVolume,
       )) as ethers.ContractTransactionResponse;
       await metricsTx.wait();
     }
