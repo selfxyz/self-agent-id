@@ -1,14 +1,16 @@
 {
-  "rewrites": [
+  "redirects": [
     {
       "source": "/",
       "has": [{ "type": "host", "value": "agentvisa.self.xyz" }],
-      "destination": "/agents/visa"
+      "destination": "/agents/visa",
+      "permanent": false
     },
     {
       "source": "/admin",
       "has": [{ "type": "host", "value": "agentvisa.self.xyz" }],
-      "destination": "/agents/visa/admin"
+      "destination": "/agents/visa/admin",
+      "permanent": false
     }
   ]
 }
