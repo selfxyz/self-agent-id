@@ -102,8 +102,8 @@ function VolumeTooltip() {
       </button>
       {open && (
         <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-48 rounded-lg bg-foreground text-background text-[10px] leading-tight px-2.5 py-2 shadow-lg z-10 text-center">
-          Volume tracks stablecoin transfers: USDC, USDT, and cUSD (USDm) on
-          Celo. Other tokens are not counted.
+          Volume tracks stablecoin transfers on Celo: USDC, USDT, and USDm.
+          Other tokens are not counted.
         </span>
       )}
     </span>
