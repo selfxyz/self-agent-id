@@ -37,57 +37,68 @@ export default function CeloAgentVisaPage() {
   const [migration, setMigration] = useState<MigrationState | null>(null);
   const [upgradingAgent, setUpgradingAgent] = useState<AgentBasic | null>(null);
 
-  const loadAgents = useCallback(async (address: string) => {
-    setLoading(true);
-    try {
-      if (!network.visaAddress) {
-        setAgents([]);
-        return;
-      }
-
-      // Fetch agents from server-side API to avoid browser RPC block-range limits
-      const res = await fetch(
-        `/api/visa/agents?wallet=${encodeURIComponent(address)}&chainId=${network.chainId}`,
-      );
-      const data = (await res.json()) as {
-        agents?: AgentBasic[];
-        error?: string;
-      };
-      const allAgents: AgentBasic[] = data.agents ?? [];
-
-      // If both wallet-based and registry-based agents exist, hide the wallet-based one.
-      // The old wallet-based visa can't be burned (soulbound), so it stays on-chain at tier 1.
-      const hasRegistryAgent = allAgents.some((a) => !a.isWalletBased);
-      const filteredAgents = hasRegistryAgent
-        ? allAgents.filter((a) => !a.isWalletBased)
-        : allAgents;
-
-      setAgents(filteredAgents);
-
-      // Auto-detect migration opportunity: wallet-based visa + registry agent without visa
-      const walletAgent = allAgents.find((a) => a.isWalletBased);
-      const registryAgent = allAgents.find((a) => !a.isWalletBased);
-      if (walletAgent && registryAgent) {
-        try {
-          const provider = new ethers.JsonRpcProvider(network.rpcUrl);
-          const visa = new ethers.Contract(network.visaAddress, VISA_ABI, provider);
-          const registryTier = Number(
-            await visa.getTier(BigInt(registryAgent.agentId)),
-          );
-          if (registryTier === 0) {
-            // Registry agent has no visa — auto-migrate
-            void autoMigrate(address, walletAgent.agentId, registryAgent.agentId);
-          }
-        } catch {
-          // Skip — can't check, don't migrate
+  const loadAgents = useCallback(
+    async (address: string) => {
+      setLoading(true);
+      try {
+        if (!network.visaAddress) {
+          setAgents([]);
+          return;
         }
+
+        // Fetch agents from server-side API to avoid browser RPC block-range limits
+        const res = await fetch(
+          `/api/visa/agents?wallet=${encodeURIComponent(address)}&chainId=${network.chainId}`,
+        );
+        const data = (await res.json()) as {
+          agents?: AgentBasic[];
+          error?: string;
+        };
+        const allAgents: AgentBasic[] = data.agents ?? [];
+
+        // If both wallet-based and registry-based agents exist, hide the wallet-based one.
+        // The old wallet-based visa can't be burned (soulbound), so it stays on-chain at tier 1.
+        const hasRegistryAgent = allAgents.some((a) => !a.isWalletBased);
+        const filteredAgents = hasRegistryAgent
+          ? allAgents.filter((a) => !a.isWalletBased)
+          : allAgents;
+
+        setAgents(filteredAgents);
+
+        // Auto-detect migration opportunity: wallet-based visa + registry agent without visa
+        const walletAgent = allAgents.find((a) => a.isWalletBased);
+        const registryAgent = allAgents.find((a) => !a.isWalletBased);
+        if (walletAgent && registryAgent) {
+          try {
+            const provider = new ethers.JsonRpcProvider(network.rpcUrl);
+            const visa = new ethers.Contract(
+              network.visaAddress,
+              VISA_ABI,
+              provider,
+            );
+            const registryTier = Number(
+              await visa.getTier(BigInt(registryAgent.agentId)),
+            );
+            if (registryTier === 0) {
+              // Registry agent has no visa — auto-migrate
+              void autoMigrate(
+                address,
+                walletAgent.agentId,
+                registryAgent.agentId,
+              );
+            }
+          } catch {
+            // Skip — can't check, don't migrate
+          }
+        }
+      } catch {
+        setAgents([]);
+      } finally {
+        setLoading(false);
       }
-    } catch {
-      setAgents([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [network]);
+    },
+    [network],
+  );
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.ethereum) {
@@ -142,7 +153,10 @@ export default function CeloAgentVisaPage() {
     oldAgentId: string,
     newAgentId: string,
   ) {
-    setMigration({ status: "migrating", message: "Migrating your visa to your verified identity..." });
+    setMigration({
+      status: "migrating",
+      message: "Migrating your visa to your verified identity...",
+    });
     try {
       const res = await fetch("/api/visa/migrate", {
         method: "POST",
@@ -163,7 +177,10 @@ export default function CeloAgentVisaPage() {
       };
       if (!res.ok) {
         // Retry once if registration hasn't landed on-chain yet
-        if (data.error?.includes("not registered") || data.error?.includes("fresh human proof")) {
+        if (
+          data.error?.includes("not registered") ||
+          data.error?.includes("fresh human proof")
+        ) {
           await new Promise((r) => setTimeout(r, 5000));
           const retry = await fetch("/api/visa/migrate", {
             method: "POST",
@@ -178,24 +195,32 @@ export default function CeloAgentVisaPage() {
           });
           const retryData = (await retry.json()) as typeof data;
           if (!retry.ok) {
-            setMigration({ status: "error", message: retryData.error ?? "Migration failed" });
+            setMigration({
+              status: "error",
+              message: retryData.error ?? "Migration failed",
+            });
             return;
           }
           setMigration({
             status: "success",
-            message: "Work Visa claimed! Your identity is verified and your visa has been upgraded.",
+            message:
+              "Work Visa claimed! Your identity is verified and your visa has been upgraded.",
             newAgentId,
             txHash: retryData.mintTxHash,
           });
           await loadAgents(connectedWallet);
           return;
         }
-        setMigration({ status: "error", message: data.error ?? "Migration failed" });
+        setMigration({
+          status: "error",
+          message: data.error ?? "Migration failed",
+        });
         return;
       }
       setMigration({
         status: "success",
-        message: "Work Visa claimed! Your identity is verified and your visa has been upgraded.",
+        message:
+          "Work Visa claimed! Your identity is verified and your visa has been upgraded.",
         newAgentId,
         txHash: data.mintTxHash,
       });
@@ -239,6 +264,11 @@ export default function CeloAgentVisaPage() {
         required?: { minTransactions: number; minVolumeUsd: number };
       };
       if (!res.ok) {
+        if (res.status === 409) {
+          // Visa already exists — refresh agent list to show it
+          await loadAgents(walletAddress);
+          return;
+        }
         if (data.code === "NOT_ELIGIBLE" && data.metrics && data.required) {
           const r = data.required;
           const m = data.metrics;
@@ -383,8 +413,8 @@ export default function CeloAgentVisaPage() {
         <div className="text-center py-12 space-y-4">
           <p className="text-muted">
             Get started by claiming your Tourist Visa. No registration or
-            verification needed for Tier 1. Your agent wallet must have at
-            least 1 transaction on Celo to qualify.
+            verification needed for Tier 1. Your agent wallet must have at least
+            1 transaction on Celo to qualify.
           </p>
           <div className="max-w-md mx-auto space-y-2">
             <label
