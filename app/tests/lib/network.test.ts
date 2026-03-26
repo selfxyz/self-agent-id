@@ -50,14 +50,21 @@ describe("isNetworkReady", () => {
 
 describe("CHAIN_CONFIG", () => {
   it("maps string chainIds to rpc and registry", () => {
-    expect(CHAIN_CONFIG["42220"]).toEqual({
-      rpc: NETWORKS["celo-mainnet"].rpcUrl,
-      registry: NETWORKS["celo-mainnet"].registryAddress,
-    });
-    expect(CHAIN_CONFIG["11142220"]).toEqual({
-      rpc: NETWORKS["celo-sepolia"].rpcUrl,
-      registry: NETWORKS["celo-sepolia"].registryAddress,
-    });
+    const mainnet = CHAIN_CONFIG["42220"];
+    expect(mainnet.rpc).toBe(NETWORKS["celo-mainnet"].rpcUrl);
+    expect(mainnet.registry).toBe(NETWORKS["celo-mainnet"].registryAddress);
+    expect(mainnet.visa).toBe(NETWORKS["celo-mainnet"].visaAddress);
+    expect(mainnet.blockExplorer).toBe(NETWORKS["celo-mainnet"].blockExplorer);
+    expect(mainnet.registryDeployBlock).toBe(
+      NETWORKS["celo-mainnet"].registryDeployBlock,
+    );
+    expect(mainnet.visaDeployBlock).toBe(
+      NETWORKS["celo-mainnet"].visaDeployBlock,
+    );
+
+    const sepolia = CHAIN_CONFIG["11142220"];
+    expect(sepolia.rpc).toBe(NETWORKS["celo-sepolia"].rpcUrl);
+    expect(sepolia.registry).toBe(NETWORKS["celo-sepolia"].registryAddress);
   });
 
   it("does not contain unknown chain IDs", () => {
