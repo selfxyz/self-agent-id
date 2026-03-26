@@ -69,7 +69,9 @@ export async function POST(req: NextRequest) {
 
   try {
     const provider = new ethers.JsonRpcProvider(config.rpc);
-    const relayer = new ethers.Wallet(RELAYER_PK, provider);
+    const relayer = new ethers.NonceManager(
+      new ethers.Wallet(RELAYER_PK, provider),
+    );
     const visa = new ethers.Contract(config.visa, VISA_ABI, relayer);
 
     // Check current tier first

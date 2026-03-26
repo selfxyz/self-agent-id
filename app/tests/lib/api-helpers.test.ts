@@ -34,7 +34,7 @@ describe("corsResponse", () => {
     expect(res.status).toBe(204);
     expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
     expect(res.headers.get("Access-Control-Allow-Methods")).toBe(
-      "GET, OPTIONS",
+      "GET, POST, OPTIONS",
     );
     expect(res.headers.get("Cache-Control")).toBe("public, max-age=60");
   });
@@ -58,7 +58,7 @@ describe("CORS_HEADERS", () => {
   it("has expected shape", () => {
     expect(CORS_HEADERS).toEqual({
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Cache-Control": "public, max-age=60",
     });
   });
