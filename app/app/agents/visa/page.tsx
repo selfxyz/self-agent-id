@@ -468,11 +468,11 @@ export default function CeloAgentVisaPage() {
                 <VisaUpgradeFlow
                   oldAgentId={agent.agentId}
                   chainId={agent.chainId}
-                  walletAddress={walletAddress!}
+                  walletAddress={walletAddress}
                   blockExplorer={network.blockExplorer}
                   onComplete={() => {
                     setUpgradingAgent(null);
-                    void loadAgents(walletAddress!);
+                    void loadAgents(walletAddress);
                   }}
                   onCancel={() => setUpgradingAgent(null)}
                 />

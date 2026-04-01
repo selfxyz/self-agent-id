@@ -39,6 +39,21 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(getJsonLd()) }}
         />
+        <meta
+          name="agent-registration"
+          content="https://app.ai.self.xyz/api/agent/bootstrap"
+        />
+        <link
+          rel="agent-api"
+          href="/api/agent/bootstrap"
+          type="application/json"
+        />
+        <link
+          rel="agent-card"
+          href="/.well-known/agent-card.json"
+          type="application/json"
+        />
+        <link rel="llms-txt" href="/llms.txt" type="text/plain" />
       </head>
       <body className={`${geist.variable} ${geistMono.variable} antialiased`}>
         <ClientProviders>

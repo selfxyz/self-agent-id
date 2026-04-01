@@ -4,23 +4,17 @@
 
 import { NextResponse } from "next/server";
 import { getAgentDiscoveryJSON } from "@/lib/agent-discovery";
+import { CORS_HEADERS, corsResponse } from "@/lib/api-helpers";
 
 export function GET() {
   return NextResponse.json(getAgentDiscoveryJSON(), {
     headers: {
-      "Access-Control-Allow-Origin": "*",
+      ...CORS_HEADERS,
       "Cache-Control": "public, max-age=3600",
     },
   });
 }
 
 export function OPTIONS() {
-  return new NextResponse(null, {
-    status: 204,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-    },
-  });
+  return corsResponse();
 }

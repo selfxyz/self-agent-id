@@ -437,6 +437,21 @@ export default function Home() {
               </div>
             </Card>
           </div>
+
+          {/* Agent quick-start hint */}
+          <p className="mt-6 text-center text-xs text-muted">
+            Building an agent?{" "}
+            <code className="text-foreground bg-surface-2 rounded px-1.5 py-0.5 font-mono">
+              curl https://app.ai.self.xyz/api/agent/bootstrap
+            </code>{" "}
+            or read{" "}
+            <Link
+              href="/llms.txt"
+              className="text-accent hover:text-accent-2 underline underline-offset-2"
+            >
+              /llms.txt
+            </Link>
+          </p>
         </div>
       </section>
 

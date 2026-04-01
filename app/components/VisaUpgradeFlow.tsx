@@ -115,20 +115,22 @@ export function VisaUpgradeFlow({
     const token = session.sessionToken;
     setStage("registering");
 
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await fetch("/api/agent/register/status", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) return;
-        const data = (await res.json()) as { agentId?: number };
-        if (data.agentId) {
-          if (pollRef.current) clearInterval(pollRef.current);
-          void runMigration(String(data.agentId));
+    pollRef.current = setInterval(() => {
+      void (async () => {
+        try {
+          const res = await fetch("/api/agent/register/status", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!res.ok) return;
+          const data = (await res.json()) as { agentId?: number };
+          if (data.agentId) {
+            if (pollRef.current) clearInterval(pollRef.current);
+            void runMigration(String(data.agentId));
+          }
+        } catch {
+          // Polling errors are transient — keep polling
         }
-      } catch {
-        // Polling errors are transient — keep polling
-      }
+      })();
     }, 3000);
   }, [session]);
 
