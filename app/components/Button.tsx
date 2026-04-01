@@ -24,7 +24,9 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
   variant?: keyof typeof variants;
   size?: "sm" | "md" | "lg";
-  /** Render as a <span> instead of <button> when used inside a Link */
+  /** Render as a <span> instead of <button> when used inside a Link.
+   *  Do not pass onClick or disabled when as="span" — they have no
+   *  effect on non-interactive elements. */
   as?: "button" | "span";
 }
 

@@ -38,3 +38,11 @@ export function PUT() {
 export function DELETE() {
   return NextResponse.json(body, { status: 404, headers: CORS_HEADERS });
 }
+
+export function PATCH() {
+  return NextResponse.json(body, { status: 404, headers: CORS_HEADERS });
+}
+
+export function HEAD() {
+  return new NextResponse(null, { status: 404, headers: CORS_HEADERS });
+}
