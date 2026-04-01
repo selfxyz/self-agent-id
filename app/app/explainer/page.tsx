@@ -55,7 +55,7 @@ export default function ExplainerPage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-3">
             <Link href="/integration">
-              <Button variant="primary" size="lg">
+              <Button as="span" variant="primary" size="lg">
                 Integration Guide
               </Button>
             </Link>
@@ -202,10 +202,14 @@ export default function ExplainerPage() {
             </p>
             <div className="flex justify-center gap-3">
               <Link href="/integration">
-                <Button variant="primary">Integration Guide</Button>
+                <Button as="span" variant="primary">
+                  Integration Guide
+                </Button>
               </Link>
               <Link href="/demo">
-                <Button variant="secondary">Try the Demo</Button>
+                <Button as="span" variant="secondary">
+                  Try the Demo
+                </Button>
               </Link>
             </div>
           </Card>

@@ -116,12 +116,12 @@ export default function Home() {
               </div>
               <div className="flex flex-col sm:flex-row gap-3 mb-8">
                 <Link href="/agents/register">
-                  <Button variant="primary" size="lg">
+                  <Button as="span" variant="primary" size="lg">
                     Register Your Agent
                   </Button>
                 </Link>
                 <Link href="/explainer">
-                  <Button variant="secondary" size="lg">
+                  <Button as="span" variant="secondary" size="lg">
                     How It Works
                   </Button>
                 </Link>
@@ -355,7 +355,7 @@ export default function Home() {
               </div>
               <div className="mt-6 pt-4 border-t border-border">
                 <Link href="/agents/register">
-                  <Button variant="primary" size="sm">
+                  <Button as="span" variant="primary" size="sm">
                     Open Registration Wizard <ArrowRight size={14} />
                   </Button>
                 </Link>
@@ -412,7 +412,7 @@ export default function Home() {
               </div>
               <div className="mt-6 pt-4 border-t border-border">
                 <Link href="/integration">
-                  <Button variant="secondary" size="sm">
+                  <Button as="span" variant="secondary" size="sm">
                     Integration Guide <ArrowRight size={14} />
                   </Button>
                 </Link>
@@ -508,7 +508,7 @@ export default function Home() {
                 </div>
                 <p className="text-sm text-muted mb-6 flex-1">{item.desc}</p>
                 <Link href={item.href}>
-                  <Button variant={item.btnVariant} size="sm">
+                  <Button as="span" variant={item.btnVariant} size="sm">
                     <item.btnIcon size={14} />
                     {item.btnLabel}
                   </Button>
@@ -731,7 +731,7 @@ const res = await agent.fetch(url);`,
 
           <div className="flex justify-center mt-8">
             <Link href="/integration">
-              <Button variant="primary">
+              <Button as="span" variant="primary">
                 See the full integration guide <ArrowRight size={14} />
               </Button>
             </Link>

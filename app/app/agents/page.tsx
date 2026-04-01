@@ -1434,7 +1434,9 @@ export default function MyAgentsPage() {
                   No agents found for this Privy wallet.
                 </p>
                 <Link href="/agents/register">
-                  <Button variant="primary">Register an Agent</Button>
+                  <Button as="span" variant="primary">
+                    Register an Agent
+                  </Button>
                 </Link>
               </Card>
             )}
@@ -1525,7 +1527,9 @@ export default function MyAgentsPage() {
                   No agents found for this passkey.
                 </p>
                 <Link href="/agents/register">
-                  <Button variant="primary">Register an Agent</Button>
+                  <Button as="span" variant="primary">
+                    Register an Agent
+                  </Button>
                 </Link>
               </Card>
             )}
@@ -1599,7 +1603,9 @@ export default function MyAgentsPage() {
                   No agents found for this wallet.
                 </p>
                 <Link href="/agents/register">
-                  <Button variant="primary">Register an Agent</Button>
+                  <Button as="span" variant="primary">
+                    Register an Agent
+                  </Button>
                 </Link>
               </Card>
             )}

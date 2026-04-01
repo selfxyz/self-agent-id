@@ -24,21 +24,26 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
   variant?: keyof typeof variants;
   size?: "sm" | "md" | "lg";
+  /** Render as a <span> instead of <button> when used inside a Link.
+   *  Do not pass onClick or disabled when as="span" — they have no
+   *  effect on non-interactive elements. */
+  as?: "button" | "span";
 }
 
 export function Button({
   children,
   variant = "primary",
   size = "md",
+  as: Tag = "button",
   className = "",
   ...props
 }: ButtonProps) {
   return (
-    <button
+    <Tag
       className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-all disabled:opacity-50 disabled:pointer-events-none ${variants[variant]} ${sizes[size]} ${className}`}
-      {...props}
+      {...(props as Record<string, unknown>)}
     >
       {children}
-    </button>
+    </Tag>
   );
 }

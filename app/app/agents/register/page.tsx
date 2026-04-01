@@ -492,6 +492,24 @@ export default function RegisterPage() {
         Register your agent
       </h1>
 
+      <div className="mb-8 mx-auto max-w-xl rounded-lg border border-border bg-surface-1 px-4 py-3 text-center text-sm text-muted">
+        AI agent?{" "}
+        <a
+          href="/api/agent/bootstrap"
+          className="text-accent hover:text-accent-2 underline underline-offset-2 font-medium"
+        >
+          Fetch the OpenAPI spec
+        </a>{" "}
+        or read{" "}
+        <a
+          href="/llms.txt"
+          className="text-accent hover:text-accent-2 underline underline-offset-2 font-medium"
+        >
+          /llms.txt
+        </a>{" "}
+        for full instructions.
+      </div>
+
       {error && (
         <div className="mb-6 rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
           {error}

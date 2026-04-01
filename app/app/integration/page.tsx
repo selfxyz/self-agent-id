@@ -319,12 +319,12 @@ self-agent register export --session .self/session.json`,
             </p>
             <div className="mt-3 flex gap-3">
               <Link href="/cli">
-                <Button variant="secondary" size="sm">
+                <Button as="span" variant="secondary" size="sm">
                   CLI Quickstart
                 </Button>
               </Link>
               <Link href="/api-docs">
-                <Button variant="ghost" size="sm">
+                <Button as="span" variant="ghost" size="sm">
                   API Reference
                 </Button>
               </Link>

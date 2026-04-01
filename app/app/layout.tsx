@@ -41,7 +41,7 @@ export default function RootLayout({
         />
         <meta
           name="agent-registration"
-          content="https://app.ai.self.xyz/api/agent/bootstrap"
+          content={`${process.env.NEXT_PUBLIC_APP_URL || "https://app.ai.self.xyz"}/api/agent/bootstrap`}
         />
         <link
           rel="agent-api"

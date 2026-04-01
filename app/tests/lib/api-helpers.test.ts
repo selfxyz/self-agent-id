@@ -36,7 +36,7 @@ describe("corsResponse", () => {
     expect(res.headers.get("Access-Control-Allow-Methods")).toBe(
       "GET, POST, OPTIONS",
     );
-    expect(res.headers.get("Cache-Control")).toBe("public, max-age=60");
+    expect(res.headers.get("Access-Control-Max-Age")).toBe("86400");
   });
 });
 
@@ -59,7 +59,7 @@ describe("CORS_HEADERS", () => {
     expect(CORS_HEADERS).toEqual({
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Cache-Control": "public, max-age=60",
+      "Access-Control-Allow-Headers": "Content-Type, Accept",
     });
   });
 });
