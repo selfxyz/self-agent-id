@@ -12,7 +12,8 @@ import { useNetwork } from "@/lib/NetworkContext";
 import { getNetwork, isNetworkReady } from "@/lib/network";
 
 const directLinks = [
-  { href: "/agents/register", label: "Manage Agents", match: "/agents" },
+  { href: "/agents/register", label: "Register", match: "/agents/register" },
+  { href: "/agents", label: "My Agents" },
   { href: "/demo", label: "Demo" },
 ];
 

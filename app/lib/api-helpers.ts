@@ -10,12 +10,19 @@ import { NextResponse } from "next/server";
 export const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Accept",
   "Cache-Control": "public, max-age=60",
 } as const;
 
 /** Handle OPTIONS preflight requests */
 export function corsResponse(): NextResponse {
-  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      ...CORS_HEADERS,
+      "Access-Control-Max-Age": "86400",
+    },
+  });
 }
 
 /** Return a standardized JSON error response */

@@ -10,6 +10,7 @@
 // Stateless, no auth, cacheable.
 
 import { NextResponse } from "next/server";
+import { CORS_HEADERS, corsResponse } from "@/lib/api-helpers";
 
 const spec = {
   openapi: "3.1.0",
@@ -256,24 +257,15 @@ const spec = {
   },
 } as const;
 
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
-
 export function GET() {
   return NextResponse.json(spec, {
     headers: {
-      "Cache-Control": "public, max-age=3600",
       ...CORS_HEADERS,
+      "Cache-Control": "public, max-age=3600",
     },
   });
 }
 
 export function OPTIONS() {
-  return new NextResponse(null, {
-    status: 204,
-    headers: CORS_HEADERS,
-  });
+  return corsResponse();
 }

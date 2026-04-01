@@ -13,6 +13,11 @@ export function middleware(req: NextRequest) {
     return NextResponse.rewrite(new URL("/api/agent-discovery", req.url));
   }
 
+  // If the request accepts plain text but not HTML, serve LLM-readable discovery
+  if (accept.includes("text/plain") && !accept.includes("text/html")) {
+    return NextResponse.rewrite(new URL("/llms.txt", req.url));
+  }
+
   return NextResponse.next();
 }
 
