@@ -400,7 +400,7 @@ if (card) {
 
 ## REST API Reference
 
-All query operations are available via REST endpoints hosted at `https://self-agent-id.vercel.app` (override with `SELF_AGENT_API_BASE` environment variable).
+All query operations are available via REST endpoints hosted at `https://app.ai.self.xyz` (override with `SELF_AGENT_API_BASE` environment variable).
 
 | Endpoint                                | Method | Description                            | Auth Required |
 | --------------------------------------- | ------ | -------------------------------------- | ------------- |
@@ -421,11 +421,11 @@ All endpoints are public and do not require authentication. Rate limiting may ap
 
 ```bash
 # Get agent info for agent ID 5 on mainnet
-curl https://self-agent-id.vercel.app/api/agent/info/42220/5
+curl https://app.ai.self.xyz/api/agent/info/42220/5
 
 # List agents for a human on testnet
-curl https://self-agent-id.vercel.app/api/agent/agents/11142220/0x83fa4380903fecb801F4e123835664973001ff00
+curl https://app.ai.self.xyz/api/agent/agents/11142220/0x83fa4380903fecb801F4e123835664973001ff00
 
 # Get agent card
-curl https://self-agent-id.vercel.app/api/cards/42220/5
+curl https://app.ai.self.xyz/api/cards/42220/5
 ```

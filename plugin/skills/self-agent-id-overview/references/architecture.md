@@ -264,7 +264,7 @@ The `@selfxyz/mcp-server` package implements the Model Context Protocol for AI c
 
 ## REST API Endpoints
 
-Base URL: `https://self-agent-id.vercel.app` (override via `SELF_AGENT_API_BASE` environment variable).
+Base URL: `https://app.ai.self.xyz` (override via `SELF_AGENT_API_BASE` environment variable).
 
 ### Registration
 
@@ -297,6 +297,47 @@ Base URL: `https://self-agent-id.vercel.app` (override via `SELF_AGENT_API_BASE`
 | ------ | ------------------------------------- | ------------------------------- |
 | `GET`  | `/api/cards/{chainId}/{agentId}`      | Get agent's public profile card |
 | `GET`  | `/api/reputation/{chainId}/{agentId}` | Get agent's reputation score    |
+
+### Discovery & Health
+
+| Method | Path                              | Description                                                   |
+| ------ | --------------------------------- | ------------------------------------------------------------- |
+| `GET`  | `/api/health`                     | Health check — returns `{ status, service, timestamp }`       |
+| `GET`  | `/api/agent/bootstrap`            | OpenAPI 3.1.0 spec for registration endpoints                 |
+| `GET`  | `/api/agent-discovery`            | Full structured discovery JSON (modes, networks, endpoints)   |
+| `GET`  | `/llms.txt`                       | Plain-text LLM-readable documentation                         |
+| `GET`  | `/agents.json`                    | Compact discovery JSON with links to all endpoints            |
+| `GET`  | `/.well-known/agent-card.json`    | A2A v0.3.0 agent card (generic or per-agent with `?agentId=`) |
+| `GET`  | `/.well-known/self-agent-id.json` | Structured agent discovery metadata                           |
+| `GET`  | `/.well-known/agent-registration` | 307 redirect to `/api/agent/bootstrap`                        |
+
+### Content Negotiation
+
+The root path (`/`) serves different content based on the `Accept` header:
+
+| Accept Header         | Response                           |
+| --------------------- | ---------------------------------- |
+| `application/json`    | Rewrites to `/api/agent-discovery` |
+| `text/plain`          | Rewrites to `/llms.txt`            |
+| `text/html` (default) | HTML homepage                      |
+
+### HTML Meta Tags
+
+The site includes agent-discoverable meta tags in `<head>`:
+
+```html
+<meta
+  name="agent-registration"
+  content="https://app.ai.self.xyz/api/agent/bootstrap"
+/>
+<link rel="agent-api" href="/api/agent/bootstrap" type="application/json" />
+<link
+  rel="agent-card"
+  href="/.well-known/agent-card.json"
+  type="application/json"
+/>
+<link rel="llms-txt" href="/llms.txt" type="text/plain" />
+```
 
 ## Data Flow Diagrams
 

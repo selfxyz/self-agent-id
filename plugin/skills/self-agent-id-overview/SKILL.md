@@ -31,7 +31,7 @@ The system consists of:
 - **SDKs** — Client libraries in TypeScript, Python, and Rust for agent registration, HTTP request signing, and server-side verification.
 - **MCP Server** — A Model Context Protocol server (`@selfxyz/mcp-server`) exposing 10 tools for AI coding assistants like Claude Code and Cursor.
 - **REST API** — Hosted endpoints for registration flows, agent discovery, verification, and agent cards.
-- **dApp** — A web application at [self-agent-id.vercel.app](https://self-agent-id.vercel.app) for interactive registration and agent management.
+- **dApp** — A web application at [app.ai.self.xyz](https://app.ai.self.xyz) for interactive registration and agent management.
 
 ## ERC-8004 Standard
 

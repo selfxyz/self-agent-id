@@ -367,7 +367,7 @@ For agents with a designated guardian (wallet-free and smart-wallet modes), the 
 All REST API calls for registration use the base URL:
 
 ```
-https://self-agent-id.vercel.app
+https://app.ai.self.xyz
 ```
 
 Override by setting the `SELF_AGENT_API_BASE` environment variable. The previous `selfagentid.xyz` domain is retired — use the Vercel URL.
