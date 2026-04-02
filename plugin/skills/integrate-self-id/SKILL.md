@@ -287,7 +287,7 @@ Add to the MCP settings (`.claude/mcp_servers.json` or project-level config):
     "env": {
       "SELF_AGENT_PRIVATE_KEY": "0x...",
       "SELF_NETWORK": "testnet",
-      "SELF_AGENT_API_BASE": "https://self-agent-id.vercel.app"
+      "SELF_AGENT_API_BASE": "https://app.ai.self.xyz"
     }
   }
 }
@@ -306,7 +306,7 @@ Add to `.cursor/mcp.json`:
       "env": {
         "SELF_AGENT_PRIVATE_KEY": "0x...",
         "SELF_NETWORK": "testnet",
-        "SELF_AGENT_API_BASE": "https://self-agent-id.vercel.app"
+        "SELF_AGENT_API_BASE": "https://app.ai.self.xyz"
       }
     }
   }
@@ -319,7 +319,7 @@ Add to `.cursor/mcp.json`:
 | ------------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `SELF_AGENT_PRIVATE_KEY` | No       | Agent's hex private key (0x-prefixed). Enables identity and auth tools. If omitted, only read-only tools (lookup, list, verify) are available. |
 | `SELF_NETWORK`           | No       | `mainnet` or `testnet`. Default: `testnet`.                                                                                                    |
-| `SELF_AGENT_API_BASE`    | No       | API base URL override. Default: `https://self-agent-id.vercel.app`.                                                                            |
+| `SELF_AGENT_API_BASE`    | No       | API base URL override. Default: `https://app.ai.self.xyz`.                                                                                     |
 
 `SELF_AGENT_API_BASE` is the canonical environment variable. The previous `SELF_API_URL` has been removed.
 
@@ -468,7 +468,7 @@ These are the most frequently encountered issues during integration. Read throug
 | **Provider verification is CRITICAL** | Without checking `getProofProvider()`, a fake provider could deploy a malicious contract that always returns `true` and register illegitimate agents. Always call `.requireSelfProvider()` in the SDK or check `getProofProvider(agentId) == SELF_PROVIDER` on-chain. |
 | **bytes32 positioning**               | Use `bytes32(bytes1(uint8(x)))` not `bytes32(uint256(x))` for byte positioning in bytes32. Use `bytes32(uint256(uint160(addr)))` for address-to-agentKey conversion (right-padded, not left-padded).                                                                  |
 | **NEXT_PUBLIC_SELF_ENDPOINT**         | The `.env.local` variable `NEXT_PUBLIC_SELF_ENDPOINT` must be lowercase. A scope mismatch occurs if casing differs.                                                                                                                                                   |
-| **SELF_AGENT_API_BASE**               | `SELF_AGENT_API_BASE` is the canonical env var. `SELF_API_URL` has been removed. Default: `https://self-agent-id.vercel.app`. The old `selfagentid.xyz` domain is retired.                                                                                            |
+| **SELF_AGENT_API_BASE**               | `SELF_AGENT_API_BASE` is the canonical env var. `SELF_API_URL` has been removed. Default: `https://app.ai.self.xyz`. The old `selfagentid.xyz` domain is retired.                                                                                                     |
 | **Celo Sepolia chain ID**             | Celo Sepolia is chain `11142220`, NOT `44787` (deprecated Alfajores). RPC: `https://forno.celo-sepolia.celo-testnet.org`.                                                                                                                                             |
 | **Blockscout verification**           | Blockscout does not need an API key for contract verification. Celoscan verification should use the Sourcify verifier (not etherscan verifier) as the Celoscan API endpoint is flaky.                                                                                 |
 | **Timestamp precision**               | Auth headers use millisecond timestamps (e.g., `"1708704000000"`), not seconds.                                                                                                                                                                                       |

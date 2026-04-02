@@ -46,13 +46,13 @@ let agent = SelfAgent::new(config)?;
 
 ### SelfAgentConfig
 
-| Field             | Type                     | Default                            | Description                                                                 |
-| ----------------- | ------------------------ | ---------------------------------- | --------------------------------------------------------------------------- |
-| `privateKey`      | `string`                 | Auto-generated                     | Hex private key, 0x-prefixed. If omitted, a new ECDSA keypair is generated. |
-| `network`         | `"mainnet" \| "testnet"` | `"testnet"`                        | Network selection. Sets chain ID, RPC URL, and contract addresses.          |
-| `registryAddress` | `string`                 | Network default                    | Override the registry contract address.                                     |
-| `rpcUrl`          | `string`                 | Network default                    | Override the JSON-RPC endpoint.                                             |
-| `apiBase`         | `string`                 | `https://self-agent-id.vercel.app` | Override the REST API base URL.                                             |
+| Field             | Type                     | Default                   | Description                                                                 |
+| ----------------- | ------------------------ | ------------------------- | --------------------------------------------------------------------------- |
+| `privateKey`      | `string`                 | Auto-generated            | Hex private key, 0x-prefixed. If omitted, a new ECDSA keypair is generated. |
+| `network`         | `"mainnet" \| "testnet"` | `"testnet"`               | Network selection. Sets chain ID, RPC URL, and contract addresses.          |
+| `registryAddress` | `string`                 | Network default           | Override the registry contract address.                                     |
+| `rpcUrl`          | `string`                 | Network default           | Override the JSON-RPC endpoint.                                             |
+| `apiBase`         | `string`                 | `https://app.ai.self.xyz` | Override the REST API base URL.                                             |
 
 Python uses snake_case: `private_key`, `registry_address`, `rpc_url`, `api_base`.
 
@@ -921,7 +921,7 @@ try {
 
 The SDK calls these endpoints internally. They are also available for direct use.
 
-**Base URL:** `https://self-agent-id.vercel.app` (override with `SELF_AGENT_API_BASE`)
+**Base URL:** `https://app.ai.self.xyz` (override with `SELF_AGENT_API_BASE`)
 
 ### Agent Info
 

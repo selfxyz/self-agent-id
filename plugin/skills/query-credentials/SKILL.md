@@ -261,7 +261,7 @@ All query operations are also available via REST endpoints:
 | `GET /api/cards/{chainId}/{agentId}`        | Agent card (A2A metadata)              |
 | `GET /api/reputation/{chainId}/{agentId}`   | Reputation score and provider details  |
 
-Base URL: `https://self-agent-id.vercel.app`
+Base URL: `https://app.ai.self.xyz`
 
 Override the base URL by setting the `SELF_AGENT_API_BASE` environment variable. This is useful for local development or self-hosted deployments.
 
@@ -276,13 +276,13 @@ Use the following chain IDs in API paths:
 
 ```bash
 # Look up agent ID 5 on mainnet
-curl https://self-agent-id.vercel.app/api/agent/info/42220/5
+curl https://app.ai.self.xyz/api/agent/info/42220/5
 
 # Get the agent card for agent ID 5
-curl https://self-agent-id.vercel.app/api/cards/42220/5
+curl https://app.ai.self.xyz/api/cards/42220/5
 
 # List all agents for a human address on testnet
-curl https://self-agent-id.vercel.app/api/agent/agents/11142220/0x83fa...
+curl https://app.ai.self.xyz/api/agent/agents/11142220/0x83fa...
 ```
 
 ## Common Query Patterns
