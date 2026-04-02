@@ -1,6 +1,6 @@
 # self-agent-sdk
 
-Rust SDK for [Self Agent ID](https://self-agent-id.vercel.app) — on-chain AI agent identity with proof-of-human verification.
+Rust SDK for [Self Agent ID](https://app.ai.self.xyz) — on-chain AI agent identity with proof-of-human verification.
 
 Sign requests in Rust, verify in TypeScript or Python, or vice versa. The signing protocol is language-agnostic — all SDKs produce identical signatures.
 

@@ -1,6 +1,6 @@
 # selfxyz-agent-sdk
 
-Python SDK for [Self Agent ID](https://self-agent-id.vercel.app) — on-chain AI agent identity with proof-of-human verification.
+Python SDK for [Self Agent ID](https://app.ai.self.xyz) — on-chain AI agent identity with proof-of-human verification.
 
 Sign requests in Python, verify in TypeScript or Rust, or vice versa. The signing protocol is language-agnostic — all SDKs produce identical signatures.
 
