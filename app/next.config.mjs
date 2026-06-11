@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-// API-only deployment: no client bundles, so the browser crypto/stream
-// webpack shims have been removed. Security headers apply to all API responses.
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ["@noble/curves", "@noble/hashes"],
