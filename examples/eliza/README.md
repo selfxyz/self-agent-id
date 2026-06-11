@@ -21,7 +21,7 @@ Eliza agents on Solana already use Ed25519 keypairs. This plugin registers the s
 
 Or reuse your existing Solana key (the plugin falls back to `SOLANA_PRIVATE_KEY`).
 
-3. Register: Visit https://app.ai.self.xyz/register with your Ed25519 seed
+3. Register: Visit https://docs.self.xyz/agent-id/guides/agent-builder with your Ed25519 seed
 
 ## Actions
 

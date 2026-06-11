@@ -2,7 +2,7 @@
 
 ## System Overview
 
-Self Agent ID is a multi-layer system spanning smart contracts, backend APIs, client SDKs, an MCP server, and a web application. The following diagram illustrates the primary data flows:
+Self Agent ID is a multi-layer system spanning smart contracts, backend APIs, client SDKs, and an MCP server. The following diagram illustrates the primary data flows:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -264,7 +264,7 @@ The `@selfxyz/mcp-server` package implements the Model Context Protocol for AI c
 
 ## REST API Endpoints
 
-Base URL: `https://app.ai.self.xyz` (override via `SELF_AGENT_API_BASE` environment variable).
+Base URL: `https://agent-api.self.xyz` (override via `SELF_AGENT_API_BASE` environment variable).
 
 ### Registration
 
@@ -328,7 +328,7 @@ The site includes agent-discoverable meta tags in `<head>`:
 ```html
 <meta
   name="agent-registration"
-  content="https://app.ai.self.xyz/api/agent/bootstrap"
+  content="https://agent-api.self.xyz/api/agent/bootstrap"
 />
 <link rel="agent-api" href="/api/agent/bootstrap" type="application/json" />
 <link
@@ -345,8 +345,7 @@ The site includes agent-discoverable meta tags in `<head>`:
 
 ```
 1. Agent/User initiates registration
-   ├── SDK: SelfAgent.register(mode, { configIndex, ... })
-   └── dApp: User clicks "Register" button
+   └── SDK: SelfAgent.register(mode, { configIndex, ... })
 
 2. Backend creates registration session
    └── POST /api/agent/register → returns { sessionToken, qrData, deepLink }

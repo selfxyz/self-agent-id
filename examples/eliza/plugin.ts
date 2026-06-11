@@ -73,7 +73,7 @@ export function createSelfIdentityPlugin(runtime: ElizaRuntime): ElizaPlugin {
           if (!registered) {
             return {
               registered: false,
-              message: "Not registered. Visit https://app.ai.self.xyz/register",
+              message: "Not registered. Visit https://docs.self.xyz/agent-id/guides/agent-builder",
               agentKey: agent.agentKey,
             };
           }
@@ -122,7 +122,7 @@ export function createSelfIdentityPlugin(runtime: ElizaRuntime): ElizaPlugin {
         handler: async (params) => {
           const network = (params.network as string) || "celo-sepolia";
           const res = await agent.fetch(
-            `https://app.ai.self.xyz/api/demo/agent-to-agent?network=${network}`,
+            `https://agent-api.self.xyz/api/demo/agent-to-agent?network=${network}`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },

@@ -74,7 +74,7 @@ class SelfIdentityTool(BaseTool):
     def _run(self, tool_input: str = "") -> str:
         registered = self._agent.is_registered()
         if not registered:
-            return "Agent not registered. Register at https://app.ai.self.xyz/register"
+            return "Agent not registered. Register at https://docs.self.xyz/agent-id/guides/agent-builder"
         info = self._agent.get_info()
         return (
             f"Registered: True\n"

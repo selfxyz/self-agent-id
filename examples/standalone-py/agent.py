@@ -31,7 +31,7 @@ print(f"Registered: {registered}")
 
 if not registered:
     print("\nAgent not registered. To register:")
-    print("1. Visit https://app.ai.self.xyz/register")
+    print("1. Visit https://docs.self.xyz/agent-id/guides/agent-builder")
     print("2. Enter your Ed25519 seed (64 hex chars, no 0x prefix)")
     print("3. Scan the QR code with your Self app")
     print("4. Re-run this script after registration completes")

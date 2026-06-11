@@ -41,7 +41,7 @@ def check_identity() -> str:
     """Check this agent's Self Agent ID registration and verification status."""
     registered = self_agent.is_registered()
     if not registered:
-        return "Not registered. Register at https://app.ai.self.xyz/register"
+        return "Not registered. Register at https://docs.self.xyz/agent-id/guides/agent-builder"
     info = self_agent.get_info()
     return json.dumps({
         "registered": True,

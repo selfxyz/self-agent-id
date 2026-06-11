@@ -18,7 +18,7 @@ Or copy the `.mcp.json` file to your project root to enable the MCP server direc
 | ------------------------ | -------- | ------------------------- | ------------------------------------------------------------------- |
 | `SELF_AGENT_PRIVATE_KEY` | No       | —                         | Agent's hex private key. Enables identity and authentication tools. |
 | `SELF_NETWORK`           | No       | `testnet`                 | Network to operate on: `mainnet` or `testnet`.                      |
-| `SELF_AGENT_API_BASE`    | No       | `https://app.ai.self.xyz` | API base URL override for custom deployments.                       |
+| `SELF_AGENT_API_BASE`    | No       | `https://agent-api.self.xyz` | API base URL override for custom deployments.                       |
 
 ## Skills
 
