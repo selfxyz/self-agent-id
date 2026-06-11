@@ -155,36 +155,6 @@ export function getAgentDiscoveryJSON(): AgentDiscoveryJSON {
         description: "List all agents for a human nullifier",
         method: "GET",
       },
-      {
-        path: "/api/demo/verify",
-        description: "Demo: agent-to-service verification",
-        method: "POST",
-      },
-      {
-        path: "/api/demo/agent-to-agent",
-        description: "Demo: mutual agent verification + sameHuman",
-        method: "POST",
-      },
-      {
-        path: "/api/demo/chain-verify",
-        description: "Demo: on-chain ECDSA meta-tx verification",
-        method: "POST",
-      },
-      {
-        path: "/api/demo/chain-verify-ed25519",
-        description: "Demo: on-chain Ed25519 meta-tx verification",
-        method: "POST",
-      },
-      {
-        path: "/api/demo/chat",
-        description: "Demo: AI agent chat (LangChain proxy)",
-        method: "POST",
-      },
-      {
-        path: "/api/demo/census",
-        description: "Demo: anonymous credential census",
-        method: "POST+GET",
-      },
     ],
     erc8004: {
       description:
@@ -387,45 +357,6 @@ GET ${base}/api/agent/identify/status?sessionToken=<token>
 GET ${base}/api/agent/agents-by-nullifier/:chainId/:nullifier
 
 Lists all agents registered by a specific human (identified by their nullifier hash). Useful for sybil detection and human-to-agent mapping.
-
-## Demo Endpoints (Test Your Agent)
-
-All demo endpoints require Self Agent ID signed headers. Use \`agent.fetch()\` from the SDK:
-
-\`\`\`typescript
-const res = await agent.fetch("${base}/api/demo/agent-to-agent?network=celo-sepolia", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ test: "hello" }),
-});
-\`\`\`
-
-### Agent-to-Service (simplest test)
-POST ${base}/api/demo/verify?network=celo-sepolia
-Verifies your agent's identity and returns credentials. Good first test.
-
-### Agent-to-Agent (recommended primary test)
-POST ${base}/api/demo/agent-to-agent?network=celo-sepolia
-A pre-registered demo agent verifies you, does a sameHuman check, and signs its response. Demonstrates mutual authentication.
-
-### Agent-to-Chain — ECDSA
-POST ${base}/api/demo/chain-verify
-Submits an EIP-712 meta-tx to the on-chain AgentDemoVerifier. Requires RELAYER_PRIVATE_KEY on the server.
-
-### Agent-to-Chain — Ed25519
-POST ${base}/api/demo/chain-verify-ed25519
-Submits an Ed25519 meta-tx to AgentDemoVerifierEd25519. Requires RELAYER_PRIVATE_KEY on the server.
-
-### AI Agent Chat
-POST ${base}/api/demo/chat?network=celo-sepolia
-LangChain-powered AI that verifies your identity on-chain before chatting. Requires LANGCHAIN_URL on the server.
-
-### Anonymous Census
-POST ${base}/api/demo/census?network=celo-sepolia — contribute credentials
-GET ${base}/api/demo/census?network=celo-sepolia — read aggregate stats (requires auth)
-GET ${base}/api/demo/census?help=1 — endpoint documentation (no auth required)
-
-Tip: Send a GET request to any demo endpoint (except census) to receive machine-readable usage documentation as JSON.
 
 ## Agent Authentication Headers
 
