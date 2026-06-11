@@ -31,7 +31,7 @@ This document defines the shared CLI contract for agent registration and deregis
 
 ### Prerequisites
 
-1. A running Self Agent ID web app host (default handoff target is `https://self-agent-id.vercel.app`).
+1. A running Self Agent ID web app host (default handoff target is `https://agent-api.self.xyz`).
 2. One CLI implementation:
    1. TypeScript: `self-agent` / `self-agent-cli`
    2. Python: `self-agent` / `self-agent-python` / `python -m self_agent_sdk.cli`
@@ -331,7 +331,7 @@ Use the SDK or on-chain query to check whether a proof is still fresh:
 
 ```bash
 # Check via REST API
-curl https://self-agent-id.vercel.app/api/agent/verify/{chainId}/{agentId}
+curl https://agent-api.self.xyz/api/agent/verify/{chainId}/{agentId}
 # Response includes proofExpiresAt and isProofFresh fields
 ```
 
