@@ -20,7 +20,7 @@ const spec = {
     description:
       "Minimal OpenAPI spec exposing only the registration-relevant endpoints for agent bootstrap and tool discovery.",
   },
-  servers: [{ url: "https://app.ai.self.xyz" }],
+  servers: [{ url: "https://agent-api.self.xyz" }],
   paths: {
     "/api/agent/register": {
       post: {

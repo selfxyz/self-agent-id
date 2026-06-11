@@ -5,7 +5,7 @@
 import { NextResponse } from "next/server";
 import { CORS_HEADERS, corsResponse } from "@/lib/api-helpers";
 
-const BASE = process.env.NEXT_PUBLIC_APP_URL || "https://app.ai.self.xyz";
+const BASE = process.env.NEXT_PUBLIC_APP_URL || "https://agent-api.self.xyz";
 
 const body = {
   error: "Not found",

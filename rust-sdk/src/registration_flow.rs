@@ -33,7 +33,7 @@ use serde::Serialize;
 use std::time::{Duration, Instant};
 
 /// Default API base URL (overridden by `SELF_AGENT_API_BASE` when set).
-pub const DEFAULT_API_BASE: &str = "https://self-agent-id.vercel.app";
+pub const DEFAULT_API_BASE: &str = "https://agent-api.self.xyz";
 
 /// Default polling timeout (30 minutes).
 pub const DEFAULT_TIMEOUT_MS: u64 = 30 * 60 * 1000;
