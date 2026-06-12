@@ -1070,15 +1070,23 @@ export class SelfAgentVerifier {
 // ---------------------------------------------------------------------------
 
 /**
- * Build a re-authentication URL that the agent operator can visit to renew
- * their expired (or soon-to-expire) human proof.
+ * Build a re-authentication URL for renewing an expired (or soon-to-expire)
+ * human proof.
+ *
+ * The API-only service has no hosted re-auth page, so this points at the
+ * `GET /api/agent/refresh` entry point: it mints the proof-refresh deep link
+ * server-side (deriving the config from the agent's on-chain configId) and
+ * 302-redirects to the Self universal link. Opening it on mobile launches the
+ * Self app; on desktop the Self redirect page shows a scannable QR. The human
+ * scans to renew the proof; completion is detected on-chain. Override the host
+ * with `reauthBaseUrl` if you front the API on a different domain.
  */
 function buildReauthUrl(
   agentId: bigint,
   options: { chainId: number; registryAddress: string; reauthBaseUrl?: string },
 ): string {
   const base = options.reauthBaseUrl ?? REAUTH_BASE_URL;
-  return `${base}/reauth?agentId=${agentId}&chainId=${options.chainId}&registry=${options.registryAddress}`;
+  return `${base}/api/agent/refresh?agentId=${agentId}&chainId=${options.chainId}&registry=${options.registryAddress}`;
 }
 
 /**

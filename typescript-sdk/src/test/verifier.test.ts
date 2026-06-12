@@ -37,6 +37,7 @@ function createMockRegistry(
     selfProofProvider: () => Promise<string>;
     getAgentCredentials: (id: bigint) => Promise<any>;
     isProofFresh: (id: bigint) => Promise<boolean>;
+    proofExpiresAt: (id: bigint) => Promise<bigint>;
   }> = {},
 ) {
   return {
@@ -61,6 +62,9 @@ function createMockRegistry(
         ofac: [true, false, false],
       })),
     isProofFresh: overrides.isProofFresh ?? (async () => true),
+    // Far-future expiry (year ~2100) so proofs read as fresh / not expiring soon
+    // unless a test overrides it. The verifier reads proofExpiresAt (Unix seconds).
+    proofExpiresAt: overrides.proofExpiresAt ?? (async () => 4102444800n),
   };
 }
 
