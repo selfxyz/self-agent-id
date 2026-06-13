@@ -7,7 +7,6 @@ export default defineConfig({
     fileParallelism: false,
     clearMocks: true,
     restoreMocks: true,
-    environmentMatchGlobs: [["tests/register/**", "jsdom"]],
   },
   resolve: {
     alias: {
