@@ -44,11 +44,13 @@ import { SelfAgentVerifier } from "@selfxyz/agent-sdk";
 import express from "express";
 
 const app = express();
-app.use(express.json({
-  verify: (req: any, _res: any, buf: any) => {
-    req.rawBody = typeof buf === "string" ? buf : buf.toString("utf8");
-  },
-}));
+app.use(
+  express.json({
+    verify: (req: any, _res: any, buf: any) => {
+      req.rawBody = typeof buf === "string" ? buf : buf.toString("utf8");
+    },
+  }),
+);
 const verifier = SelfAgentVerifier.create().build();
 
 app.use("/api", verifier.auth());
@@ -333,16 +335,14 @@ import { ethers } from "ethers";
 // Your agent wallet — fund this address with gas
 const wallet = new ethers.Wallet(
   process.env.AGENT_PRIVATE_KEY,
-  new ethers.JsonRpcProvider("https://forno.celo.org")
+  new ethers.JsonRpcProvider("https://forno.celo.org"),
 );
 
 console.log("Agent address:", wallet.address);
 console.log("Fund this address with CELO for gas");
 
 // Call any contract that uses onlyVerifiedAgent modifier
-const contract = new ethers.Contract(
-  CONTRACT_ADDRESS, CONTRACT_ABI, wallet
-);
+const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, wallet);
 const tx = await contract.agentAction("0x...");
 await tx.wait();
 // Contract checks msg.sender against the registry automatically
@@ -643,31 +643,31 @@ claude plugin add /path/to/self-agent-id/plugin
 
 ### 10 MCP Tools
 
-| Tool | Description |
-| --- | --- |
-| `self_register_agent` | Start agent registration (QR URL) |
-| `self_check_registration` | Poll registration status |
-| `self_get_identity` | Get current agent identity |
-| `self_deregister_agent` | Initiate deregistration |
-| `self_sign_request` | Generate auth headers |
-| `self_authenticated_fetch` | Make a signed HTTP request |
-| `self_lookup_agent` | Look up agent by ID or address |
-| `self_list_agents_for_human` | List agents for a human |
-| `self_verify_agent` | Verify on-chain proof status |
-| `self_verify_request` | Verify signed request headers |
+| Tool                         | Description                       |
+| ---------------------------- | --------------------------------- |
+| `self_register_agent`        | Start agent registration (QR URL) |
+| `self_check_registration`    | Poll registration status          |
+| `self_get_identity`          | Get current agent identity        |
+| `self_deregister_agent`      | Initiate deregistration           |
+| `self_sign_request`          | Generate auth headers             |
+| `self_authenticated_fetch`   | Make a signed HTTP request        |
+| `self_lookup_agent`          | Look up agent by ID or address    |
+| `self_list_agents_for_human` | List agents for a human           |
+| `self_verify_agent`          | Verify on-chain proof status      |
+| `self_verify_request`        | Verify signed request headers     |
 
 ### 6 Plugin Skills
 
 Each skill is a self-contained knowledge module with decision trees, code examples, and reference docs. They load automatically in Claude Code when triggered by your request.
 
-| Skill | Description |
-| --- | --- |
-| `self-agent-id-overview` | Architecture, contracts, trust model, ERC-8004 standard, provider system |
-| `register-agent` | Step-by-step registration in all modes (linked, wallet-free, smart-wallet, privy, ed25519, ed25519+guardian) |
-| `sign-requests` | ECDSA request signing, 3-header auth system, signed fetch patterns |
-| `verify-agents` | On-chain verification, SelfAgentVerifier middleware, reputation, freshness, sybil detection |
-| `query-credentials` | ZK-attested credentials, agent cards (A2A format), reputation scores |
-| `integrate-self-id` | End-to-end integration: agent-side, service-side, on-chain gating, MCP setup |
+| Skill                    | Description                                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `self-agent-id-overview` | Architecture, contracts, trust model, ERC-8004 standard, provider system                                     |
+| `register-agent`         | Step-by-step registration in all modes (linked, wallet-free, smart-wallet, privy, ed25519, ed25519+guardian) |
+| `sign-requests`          | ECDSA request signing, 3-header auth system, signed fetch patterns                                           |
+| `verify-agents`          | On-chain verification, SelfAgentVerifier middleware, reputation, freshness, sybil detection                  |
+| `query-credentials`      | ZK-attested credentials, agent cards (A2A format), reputation scores                                         |
+| `integrate-self-id`      | End-to-end integration: agent-side, service-side, on-chain gating, MCP setup                                 |
 
 ### Building a custom agent? Use our system prompts
 

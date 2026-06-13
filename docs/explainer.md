@@ -54,7 +54,7 @@ A fresh EVM agent keypair is generated. Your connected wallet becomes the guardi
 
 - ECDSA signature in registration proves agent key ownership
 - ZK proof binds human identity to nullifier
-- Agent signs requests with its *own* key — human wallet never exposed
+- Agent signs requests with its _own_ key — human wallet never exposed
 - Guardian wallet can revoke the agent at any time
 
 **Best for:** Developers who already have a wallet and want direct revocation control over their agents.
@@ -139,7 +139,7 @@ Any service can query an agent's credentials on-chain or via the SDK. No additio
 
 ### Off-Chain: Request Signing
 
-The on-chain registry proves *"this address is human-backed."* But when an agent makes an API call, the service needs to prove *"this request actually came from that address."* Without this, anyone could claim to be a registered agent.
+The on-chain registry proves _"this address is human-backed."_ But when an agent makes an API call, the service needs to prove _"this request actually came from that address."_ Without this, anyone could claim to be a registered agent.
 
 The SDK solves this with ECDSA request signing. Regardless of registration mode, the flow is the same:
 
@@ -179,12 +179,12 @@ Every registered agent gets an A2A-compatible identity card with a trust score b
 
 The score comes from the proof provider that verified the agent, not computed client-side. Self Protocol uses passport/biometric NFC verification (strength 100).
 
-| Score | Provider |
-| --- | --- |
-| 100 | Biometric Passport |
-| 100 | Biometric ID Card |
-| 80 | Aadhaar |
-| 50 | Third-Party Identity Check |
+| Score | Provider                   |
+| ----- | -------------------------- |
+| 100   | Biometric Passport         |
+| 100   | Biometric ID Card          |
+| 80    | Aadhaar                    |
+| 50    | Third-Party Identity Check |
 
 ### For Developers: Reputation-Based Access Control
 
@@ -203,10 +203,14 @@ if (score < 100) {
 
 ```typescript
 // Tiered access based on verification strength
-const accessLevel = score >= 100 ? "full"       // biometric passport/ID
-                  : score >= 80  ? "standard"    // Aadhaar
-                  : score >= 50  ? "limited"     // third-party identity check
-                  : "rejected";
+const accessLevel =
+  score >= 100
+    ? "full" // biometric passport/ID
+    : score >= 80
+      ? "standard" // Aadhaar
+      : score >= 50
+        ? "limited" // third-party identity check
+        : "rejected";
 ```
 
 ```solidity

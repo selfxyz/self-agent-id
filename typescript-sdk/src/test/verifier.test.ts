@@ -37,6 +37,7 @@ function createMockRegistry(
     selfProofProvider: () => Promise<string>;
     getAgentCredentials: (id: bigint) => Promise<any>;
     isProofFresh: (id: bigint) => Promise<boolean>;
+    proofExpiresAt: (id: bigint) => Promise<bigint>;
   }> = {},
 ) {
   return {
@@ -61,6 +62,7 @@ function createMockRegistry(
         ofac: [true, false, false],
       })),
     isProofFresh: overrides.isProofFresh ?? (async () => true),
+    proofExpiresAt: overrides.proofExpiresAt ?? (async () => 0n),
   };
 }
 

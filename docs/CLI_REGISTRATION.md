@@ -9,18 +9,18 @@ This document defines the shared CLI contract for agent registration and deregis
 
 ### Off-chain (no human wallet needed)
 
-| Mode | Keys | Use when |
-|---|---|---|
-| `wallet-free` | Server-generated EVM | You have no keys and don't need any |
-| `ed25519` | Your Ed25519 keypair | You're an OpenClaw/Eliza/IronClaw agent |
+| Mode          | Keys                 | Use when                                |
+| ------------- | -------------------- | --------------------------------------- |
+| `wallet-free` | Server-generated EVM | You have no keys and don't need any     |
+| `ed25519`     | Your Ed25519 keypair | You're an OpenClaw/Eliza/IronClaw agent |
 
 ### On-chain (human wallet required)
 
-| Mode | Keys | Use when |
-|---|---|---|
-| `self-custody` | Human's wallet = agent | You ARE the agent (human-operated) |
-| `linked` | Separate EVM keypair | You want agent keys linked to a human wallet |
-| `ed25519-linked` | Your Ed25519 keypair | You want Ed25519 keys linked to a human wallet |
+| Mode             | Keys                   | Use when                                       |
+| ---------------- | ---------------------- | ---------------------------------------------- |
+| `self-custody`   | Human's wallet = agent | You ARE the agent (human-operated)             |
+| `linked`         | Separate EVM keypair   | You want agent keys linked to a human wallet   |
+| `ed25519-linked` | Your Ed25519 keypair   | You want Ed25519 keys linked to a human wallet |
 
 ## 1. Overview & Supported Modes
 

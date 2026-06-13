@@ -46,12 +46,12 @@ let agent = SelfAgent::new(config)?;
 
 ### SelfAgentConfig
 
-| Field             | Type                     | Default                   | Description                                                                 |
-| ----------------- | ------------------------ | ------------------------- | --------------------------------------------------------------------------- |
-| `privateKey`      | `string`                 | Auto-generated            | Hex private key, 0x-prefixed. If omitted, a new ECDSA keypair is generated. |
-| `network`         | `"mainnet" \| "testnet"` | `"testnet"`               | Network selection. Sets chain ID, RPC URL, and contract addresses.          |
-| `registryAddress` | `string`                 | Network default           | Override the registry contract address.                                     |
-| `rpcUrl`          | `string`                 | Network default           | Override the JSON-RPC endpoint.                                             |
+| Field             | Type                     | Default                      | Description                                                                 |
+| ----------------- | ------------------------ | ---------------------------- | --------------------------------------------------------------------------- |
+| `privateKey`      | `string`                 | Auto-generated               | Hex private key, 0x-prefixed. If omitted, a new ECDSA keypair is generated. |
+| `network`         | `"mainnet" \| "testnet"` | `"testnet"`                  | Network selection. Sets chain ID, RPC URL, and contract addresses.          |
+| `registryAddress` | `string`                 | Network default              | Override the registry contract address.                                     |
+| `rpcUrl`          | `string`                 | Network default              | Override the JSON-RPC endpoint.                                             |
 | `apiBase`         | `string`                 | `https://agent-api.self.xyz` | Override the REST API base URL.                                             |
 
 Python uses snake_case: `private_key`, `registry_address`, `rpc_url`, `api_base`.

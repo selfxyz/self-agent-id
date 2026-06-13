@@ -269,7 +269,7 @@ describe("CLI registration", () => {
     assert.strictEqual(open.status, 0, open.stderr);
     assert.match(
       open.stdout,
-      /"url":\s*"https:\/\/self-agent-id\.vercel\.app\/cli\/register\?payload=/,
+      /"url":\s*"https:\/\/agent-api\.self\.xyz\/cli\/register\?payload=/,
     );
   });
 

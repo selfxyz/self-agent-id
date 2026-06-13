@@ -134,8 +134,8 @@ Webhook endpoint called by the Self app after the user scans the QR and submits 
 
 **Parameters**
 
-| Name | In | Type | Required | Description |
-|------|-----|------|----------|-------------|
+| Name  | In    | Type   | Required | Description             |
+| ----- | ----- | ------ | -------- | ----------------------- |
 | token | query | string | required | Encrypted session token |
 
 **Responses**
@@ -253,8 +253,8 @@ Webhook endpoint for the Self app after the user confirms deregistration.
 
 **Parameters**
 
-| Name | In | Type | Required | Description |
-|------|-----|------|----------|-------------|
+| Name  | In    | Type   | Required | Description             |
+| ----- | ----- | ------ | -------- | ----------------------- |
 | token | query | string | required | Encrypted session token |
 
 **Responses**
@@ -275,10 +275,10 @@ Returns full agent information: address, verification status, proof provider, cr
 
 **Parameters**
 
-| Name | In | Type | Required | Description |
-|------|-----|------|----------|-------------|
+| Name    | In   | Type   | Required | Description                           |
+| ------- | ---- | ------ | -------- | ------------------------------------- |
 | chainId | path | number | required | 42220 (mainnet) or 11142220 (testnet) |
-| agentId | path | number | required | On-chain agent token ID |
+| agentId | path | number | required | On-chain agent token ID               |
 
 **Responses**
 
@@ -313,10 +313,10 @@ Returns all agent IDs registered by a specific human wallet address.
 
 **Parameters**
 
-| Name | In | Type | Required | Description |
-|------|-----|------|----------|-------------|
+| Name    | In   | Type   | Required | Description                           |
+| ------- | ---- | ------ | -------- | ------------------------------------- |
 | chainId | path | number | required | 42220 (mainnet) or 11142220 (testnet) |
-| address | path | string | required | Human wallet address (0x...) |
+| address | path | string | required | Human wallet address (0x...)          |
 
 **Responses**
 
@@ -338,10 +338,10 @@ Checks whether an agent has valid proof-of-human verification, the proof provide
 
 **Parameters**
 
-| Name | In | Type | Required | Description |
-|------|-----|------|----------|-------------|
+| Name    | In   | Type   | Required | Description                           |
+| ------- | ---- | ------ | -------- | ------------------------------------- |
 | chainId | path | number | required | 42220 (mainnet) or 11142220 (testnet) |
-| agentId | path | number | required | On-chain agent token ID |
+| agentId | path | number | required | On-chain agent token ID               |
 
 **Responses**
 
@@ -378,7 +378,13 @@ Returns the service discovery document with API base URL, supported networks, re
 {
   "api": "https://agent-api.self.xyz/api/agent",
   "networks": ["mainnet", "testnet"],
-  "modes": ["self-custody", "linked", "wallet-free", "ed25519", "ed25519-linked"],
+  "modes": [
+    "self-custody",
+    "linked",
+    "wallet-free",
+    "ed25519",
+    "ed25519-linked"
+  ],
   "capabilities": ["register", "deregister", "query", "verify"]
 }
 ```
@@ -468,14 +474,14 @@ The API uses encrypted session tokens instead of API keys. Tokens are returned b
 
 All errors return `{ "error": "message" }` with the appropriate HTTP status.
 
-| Code | Meaning |
-|------|---------|
-| 400 | Bad request — invalid parameters, missing fields, or wrong mode |
-| 401 | Invalid or tampered session token |
-| 404 | Agent not found on-chain |
-| 409 | Operation not available at current session stage |
-| 410 | Session expired (30-minute TTL) |
-| 500 | Server error — RPC failure or configuration issue |
+| Code | Meaning                                                         |
+| ---- | --------------------------------------------------------------- |
+| 400  | Bad request — invalid parameters, missing fields, or wrong mode |
+| 401  | Invalid or tampered session token                               |
+| 404  | Agent not found on-chain                                        |
+| 409  | Operation not available at current session stage                |
+| 410  | Session expired (30-minute TTL)                                 |
+| 500  | Server error — RPC failure or configuration issue               |
 
 ## Footer
 

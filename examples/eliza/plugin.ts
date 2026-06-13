@@ -73,7 +73,8 @@ export function createSelfIdentityPlugin(runtime: ElizaRuntime): ElizaPlugin {
           if (!registered) {
             return {
               registered: false,
-              message: "Not registered. Visit https://docs.self.xyz/agent-id/guides/agent-builder",
+              message:
+                "Not registered. Visit https://docs.self.xyz/agent-id/guides/agent-builder",
               agentKey: agent.agentKey,
             };
           }
