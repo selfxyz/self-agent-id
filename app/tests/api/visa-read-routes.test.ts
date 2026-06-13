@@ -147,7 +147,7 @@ describe("visa read route (GET /api/visa/[chainId]/[agentId])", () => {
     vi.resetModules();
   });
 
-  it("returns live eligibility derived from metrics and only queries tourist eligibility", async () => {
+  it("derives eligibility from live metrics without an on-chain eligibility call", async () => {
     const { GET } = await import("@/app/api/visa/[chainId]/[agentId]/route");
     const res = await GET(makeNextRequest("https://test.com"), {
       params: Promise.resolve({ chainId: "42220", agentId: "123" }),
@@ -168,8 +168,48 @@ describe("visa read route (GET /api/visa/[chainId]/[agentId])", () => {
         3: false,
       },
     });
-    expect(mockCheckTierEligibility).toHaveBeenCalledTimes(1);
-    expect(mockCheckTierEligibility).toHaveBeenCalledWith(123n, 1);
+    // Eligibility is derived in-process from live metrics, not via an on-chain
+    // checkTierEligibility round-trip.
+    expect(mockCheckTierEligibility).not.toHaveBeenCalled();
+  });
+
+  it("honors minVolumeUsd and requiresBoth when deriving eligibility", async () => {
+    // tier 1: tx-only, met. tier 2: requiresBoth tx+volume, volume short.
+    // tier 3: either-axis, volume clears even though tx does not.
+    mockGetTierThresholds.mockReset();
+    mockGetTierThresholds
+      .mockResolvedValueOnce({
+        minTransactions: 1n,
+        minVolumeUsd: 0n,
+        requiresBoth: false,
+        requiresManualReview: false,
+      })
+      .mockResolvedValueOnce({
+        minTransactions: 10n,
+        minVolumeUsd: 5_000_000n, // $5 — metrics only have $2.5
+        requiresBoth: true,
+        requiresManualReview: false,
+      })
+      .mockResolvedValueOnce({
+        minTransactions: 50n, // not met (12 tx)
+        minVolumeUsd: 1_000_000n, // $1 — met by $2.5
+        requiresBoth: false,
+        requiresManualReview: false,
+      });
+
+    const { GET } = await import("@/app/api/visa/[chainId]/[agentId]/route");
+    const res = await GET(makeNextRequest("https://test.com"), {
+      params: Promise.resolve({ chainId: "42220", agentId: "123" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await jsonBody(res)).toMatchObject({
+      eligibility: {
+        1: true,
+        2: false, // requiresBoth but volume short
+        3: true, // either-axis: volume clears
+      },
+    });
   });
 });
 

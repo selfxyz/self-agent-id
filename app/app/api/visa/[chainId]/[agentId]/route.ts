@@ -24,6 +24,32 @@ const TIER_NAMES: Record<number, string> = {
   3: "Citizenship",
 };
 
+type TierThreshold = {
+  minTransactions: bigint;
+  minVolumeUsd: bigint;
+  requiresBoth: boolean;
+};
+
+// Mirror the on-chain VisaManager.checkTierEligibility metric check so the read
+// endpoint agrees with the claim endpoint while still reflecting the live tx
+// count we read below. A zero threshold means that axis is not a criterion
+// (rather than being trivially satisfied). `requiresBoth` switches AND/OR
+// between the tx and volume axes. Manual review is a separate gate and is
+// surfaced via `manualReviewApproved`, exactly as the contract treats it.
+function metricsEligible(
+  txCount: number,
+  volumeUsd: number,
+  t: TierThreshold,
+): boolean {
+  const txRequired = t.minTransactions > 0n;
+  const volRequired = t.minVolumeUsd > 0n;
+  const metTx = txCount >= Number(t.minTransactions);
+  const metVol = volumeUsd >= Number(t.minVolumeUsd);
+  return t.requiresBoth
+    ? (!txRequired || metTx) && (!volRequired || metVol)
+    : (txRequired && metTx) || (volRequired && metVol);
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ chainId: string; agentId: string }> },
@@ -46,7 +72,6 @@ export async function GET(
     const [
       tier,
       metrics,
-      eligTourist,
       threshTourist,
       threshWork,
       threshCitizenship,
@@ -55,7 +80,6 @@ export async function GET(
     ] = await Promise.all([
       visa.getTier(id),
       visa.getMetrics(id),
-      visa.checkTierEligibility(id, 1),
       visa.getTierThresholds(1),
       visa.getTierThresholds(2),
       visa.getTierThresholds(3),
@@ -90,10 +114,24 @@ export async function GET(
       }
     }
 
-    // Recompute eligibility using the live tx count
-    const liveEligWork = liveTxCount >= Number(threshWork.minTransactions);
-    const liveEligCitizenship =
-      liveTxCount >= Number(threshCitizenship.minTransactions);
+    // Recompute eligibility using the live tx count and on-chain volume.
+    // Volume is not refreshed live (only tx count is), so use the stored value.
+    const liveVolumeUsd = Number(metrics.volumeUsd);
+    const eligTourist = metricsEligible(
+      liveTxCount,
+      liveVolumeUsd,
+      threshTourist,
+    );
+    const liveEligWork = metricsEligible(
+      liveTxCount,
+      liveVolumeUsd,
+      threshWork,
+    );
+    const liveEligCitizenship = metricsEligible(
+      liveTxCount,
+      liveVolumeUsd,
+      threshCitizenship,
+    );
 
     return NextResponse.json(
       {
