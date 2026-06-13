@@ -14,7 +14,7 @@ import { MODE_INFO, type Mode } from "@/lib/registration-modes";
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function appUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || "https://app.ai.self.xyz";
+  return process.env.NEXT_PUBLIC_APP_URL || "https://agent-api.self.xyz";
 }
 
 // ── Types ───────────────────────────────────────────────────────────────────

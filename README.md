@@ -3,12 +3,12 @@
 [![npm](https://img.shields.io/npm/v/@selfxyz/agent-sdk?label=npm)](https://www.npmjs.com/package/@selfxyz/agent-sdk)
 [![PyPI](https://img.shields.io/pypi/v/selfxyz-agent-sdk?label=pypi)](https://pypi.org/project/selfxyz-agent-sdk/)
 [![crates.io](https://img.shields.io/crates/v/self-agent-sdk?label=crates.io)](https://crates.io/crates/self-agent-sdk)
-[![MCP](https://img.shields.io/badge/MCP-remote-blue)](https://app.ai.self.xyz/api/mcp)
+[![MCP](https://img.shields.io/badge/MCP-remote-blue)](https://agent-api.self.xyz/api/mcp)
 [![License: BUSL--1.1](https://img.shields.io/badge/license-BUSL--1.1-blue.svg)](LICENSE)
 
 Proof-of-human identity for AI agents on Celo.
 
-- **Live**: [app.ai.self.xyz](https://app.ai.self.xyz)
+- **Live**: [agent-api.self.xyz](https://agent-api.self.xyz)
 - **Standard**: [ERC-8004 Proof-of-Human extension](https://eips.ethereum.org/EIPS/eip-8004)
 - **SDKs**: TypeScript, Python, Rust — identical feature parity
 - **Docs**: [docs.self.xyz/agent-id](https://docs.self.xyz/agent-id)
@@ -27,9 +27,7 @@ cargo add self-agent-sdk           # Rust
 
 Agents need a human-backed identity before they can make authenticated requests. Registration binds an agent keypair to a human's passport via a ZK proof.
 
-**Option A — Web UI**: Visit [app.ai.self.xyz/register](https://app.ai.self.xyz/register) and follow the guided flow.
-
-**Option B — CLI** (all three SDKs ship the same CLI):
+**Option A — CLI** (all three SDKs ship the same CLI):
 
 ```bash
 self-agent register init --mode agent-identity --human-address 0xYourWallet --network testnet
@@ -38,7 +36,7 @@ self-agent register wait --session .self/session.json   # Polls until on-chain
 self-agent register export --session .self/session.json --unsafe --print-private-key
 ```
 
-**Option C — REST API** (for programmatic/agent-guided flows):
+**Option B — REST API** (for programmatic/agent-guided flows):
 
 ```typescript
 import { requestRegistration } from "@selfxyz/agent-sdk";
@@ -893,7 +891,7 @@ Connect any MCP-compatible client directly via URL — no local install required
 {
   "mcpServers": {
     "self-agent-id": {
-      "url": "https://app.ai.self.xyz/api/mcp"
+      "url": "https://agent-api.self.xyz/api/mcp"
     }
   }
 }
@@ -960,7 +958,7 @@ Set `SELF_AGENT_PRIVATE_KEY` in `env` for full mode (register, sign, fetch). Omi
 
 ## 9. REST API
 
-Base URL: `https://app.ai.self.xyz` (or your deployment)
+Base URL: `https://agent-api.self.xyz` (or your deployment)
 
 SDK default base URL can be overridden with env var `SELF_AGENT_API_BASE`.
 
@@ -1419,20 +1417,12 @@ See the [`examples/`](examples/) directory for framework integrations:
 
 ```
 self-agent-id/
-├── app/                  # Next.js web app + REST API
-│   ├── app/              # Pages and API routes
-│   │   ├── api/          # REST API (agent/, demo/, aa/, cards/, reputation/, a2a/)
-│   │   ├── register/     # Registration flow pages (4 modes)
+├── app/                  # API service (Next.js route handlers, no UI)
+│   ├── app/              # API routes
+│   │   ├── api/          # REST API (agent/, aa/, cards/, reputation/, visa/, a2a/, mcp/)
 │   │   ├── .well-known/  # Agent discovery endpoints
-│   │   ├── llms.txt/     # LLM-readable discovery
-│   │   ├── explainer/    # Technical explainer page
-│   │   ├── api-docs/     # API documentation page
-│   │   ├── cli/          # CLI documentation + browser handoff
-│   │   ├── demo/         # Live demo page
-│   │   ├── verify/       # Agent inspection page
-│   │   ├── my-agents/    # Agent lookup by wallet/passkey/key
-│   │   └── erc8004/      # ERC-8004 spec page
-│   └── lib/              # Shared utilities (network.ts, snippets.ts)
+│   │   └── llms.txt/     # LLM-readable discovery
+│   └── lib/              # Shared utilities (network.ts, selfVerifier.ts)
 ├── typescript-sdk/       # TypeScript SDK (@selfxyz/agent-sdk)
 │   └── src/              # SelfAgent, Ed25519Agent, SelfAgentVerifier, CLI, registration
 ├── python-sdk/           # Python SDK (selfxyz-agent-sdk)
@@ -1499,7 +1489,7 @@ See [plugin README](plugin/README.md) for setup details.
 # Smart contracts
 cd contracts && forge install && forge build --evm-version cancun && forge test
 
-# dApp
+# API service
 cd app && cp .env.example .env.local && npm install && npm run dev
 
 # TypeScript SDK
@@ -1512,7 +1502,7 @@ cd python-sdk && pip install -e ".[dev]" && pytest
 cd rust-sdk && cargo test
 ```
 
-### Run the web app locally
+### Run the API locally
 
 ```bash
 cd app
@@ -1529,11 +1519,11 @@ npm install && npm run dev
 
 ### Environment Variables
 
-| Variable                 | Default                   | Purpose                 |
-| ------------------------ | ------------------------- | ----------------------- |
-| `SELF_AGENT_PRIVATE_KEY` | —                         | Agent's hex private key |
-| `SELF_NETWORK`           | `testnet`                 | `mainnet` or `testnet`  |
-| `SELF_AGENT_API_BASE`    | `https://app.ai.self.xyz` | API base URL override   |
+| Variable                 | Default                      | Purpose                 |
+| ------------------------ | ---------------------------- | ----------------------- |
+| `SELF_AGENT_PRIVATE_KEY` | —                            | Agent's hex private key |
+| `SELF_NETWORK`           | `testnet`                    | `mainnet` or `testnet`  |
+| `SELF_AGENT_API_BASE`    | `https://agent-api.self.xyz` | API base URL override   |
 
 Priority: explicit param > env var > default. Note: `SELF_API_URL` is removed — use `SELF_AGENT_API_BASE`.
 

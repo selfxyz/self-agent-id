@@ -111,7 +111,8 @@ export async function GET(req: NextRequest) {
       // Metadata is not valid JSON — we'll build the card from contract state
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://selfagentid.xyz";
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL || "https://agent-api.self.xyz";
     const a2aEndpoint = `${appUrl}/api/a2a`;
 
     // Try to enrich with on-chain proof data via buildAgentCard

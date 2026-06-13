@@ -211,7 +211,7 @@ type FlagMap = Record<string, FlagValue | FlagValue[]>;
 
 /** Base URL for the browser handoff app. Override via SELF_AGENT_APP_URL env var. */
 const DEFAULT_APP_URL =
-  process.env.SELF_AGENT_APP_URL || "https://app.ai.self.xyz";
+  process.env.SELF_AGENT_APP_URL || "https://agent-api.self.xyz";
 
 /** Application name shown during Self verification. Override via SELF_AGENT_APP_NAME env var. */
 const DEFAULT_APP_NAME = process.env.SELF_AGENT_APP_NAME || "Self Agent ID";

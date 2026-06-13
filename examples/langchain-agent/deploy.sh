@@ -34,4 +34,4 @@ gcloud run deploy langchain-agent \
   --cpu-throttling \
   --memory=1Gi \
   --timeout=60 \
-  --set-env-vars="OPENAI_API_KEY=${OPENAI_KEY},CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://app.ai.self.xyz}"
+  --set-env-vars="OPENAI_API_KEY=${OPENAI_KEY},CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://agent-api.self.xyz}"

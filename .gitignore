@@ -41,9 +41,6 @@ build/
 .coverage
 htmlcov/
 
-# Plans
-docs
-
 # Yarn PnP
 .pnp.cjs
 .pnp.loader.mjs
