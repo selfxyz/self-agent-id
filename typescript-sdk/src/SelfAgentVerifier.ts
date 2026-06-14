@@ -17,7 +17,6 @@ import {
   DEFAULT_CACHE_TTL_MS,
   NETWORKS,
   DEFAULT_NETWORK,
-  REAUTH_BASE_URL,
 } from "./constants";
 import type { NetworkName } from "./constants";
 import { canonicalizeSigningUrl, computeSigningMessage } from "./signing";
@@ -1070,18 +1069,6 @@ export class SelfAgentVerifier {
 // ---------------------------------------------------------------------------
 
 /**
- * Build a re-authentication URL that the agent operator can visit to renew
- * their expired (or soon-to-expire) human proof.
- */
-function buildReauthUrl(
-  agentId: bigint,
-  options: { chainId: number; registryAddress: string; reauthBaseUrl?: string },
-): string {
-  const base = options.reauthBaseUrl ?? REAUTH_BASE_URL;
-  return `${base}/reauth?agentId=${agentId}&chainId=${options.chainId}&registry=${options.registryAddress}`;
-}
-
-/**
  * Standalone proof-expiry-aware agent verification.
  *
  * Unlike `SelfAgentVerifier.verify()` (which validates ECDSA request
@@ -1094,14 +1081,14 @@ function buildReauthUrl(
  * or administrative tooling).
  *
  * @param agentKey - The agent's bytes32 on-chain key (zero-padded address)
- * @param options  - `chainId` (used in reauth URL) and `registryAddress`
+ * @param options  - `chainId` and `registryAddress`
  * @param rpcUrl   - RPC endpoint to use (default: Celo mainnet)
  *
  * @returns A {@link VerifyResult} discriminated union:
  *   - `{ verified: true, agentId, expiresAt }` — active proof
  *   - `{ verified: false, reason: 'NOT_REGISTERED' }` — unknown key
  *   - `{ verified: false, reason: 'NO_HUMAN_PROOF' }` — key registered but no proof
- *   - `{ verified: false, reason: 'PROOF_EXPIRED', expiredAt, reauthUrl }` — proof lapsed
+ *   - `{ verified: false, reason: 'PROOF_EXPIRED', expiredAt }` — proof lapsed
  *
  * @example
  * ```ts
@@ -1110,7 +1097,7 @@ function buildReauthUrl(
  * const result = await verifyAgent(agentKey, { chainId: 42220, registryAddress: "0x..." });
  * if (!result.verified) {
  *   if (result.reason === "PROOF_EXPIRED") {
- *     console.warn("Re-auth at:", result.reauthUrl);
+ *     console.warn("Proof expired — agent must re-register");
  *   }
  *   return;
  * }
@@ -1121,7 +1108,7 @@ function buildReauthUrl(
  */
 export async function verifyAgent(
   agentKey: string,
-  options: { chainId: number; registryAddress: string; reauthBaseUrl?: string },
+  options: { chainId: number; registryAddress: string },
   rpcUrl?: string,
 ): Promise<VerifyResult> {
   if (!/^0x[0-9a-fA-F]{64}$/.test(agentKey)) {
@@ -1164,7 +1151,6 @@ export async function verifyAgent(
       verified: false,
       reason: "PROOF_EXPIRED",
       expiredAt: new Date(Number(expiresAtSecs) * 1000),
-      reauthUrl: buildReauthUrl(agentId, options),
     };
   }
 
