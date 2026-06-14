@@ -30,8 +30,7 @@ The system consists of:
 - **Smart contracts** — An ERC-721 registry with soulbound NFTs, proof providers, reputation scoring, and freshness validation. Deployed on Celo Mainnet and Celo Sepolia testnet.
 - **SDKs** — Client libraries in TypeScript, Python, and Rust for agent registration, HTTP request signing, and server-side verification.
 - **MCP Server** — A Model Context Protocol server (`@selfxyz/mcp-server`) exposing 10 tools for AI coding assistants like Claude Code and Cursor.
-- **REST API** — Hosted endpoints for registration flows, agent discovery, verification, and agent cards.
-- **dApp** — A web application at [app.ai.self.xyz](https://app.ai.self.xyz) for interactive registration and agent management.
+- **REST API** — Hosted endpoints at [agent-api.self.xyz](https://agent-api.self.xyz) for registration flows, agent discovery, verification, and agent cards.
 
 ## ERC-8004 Standard
 

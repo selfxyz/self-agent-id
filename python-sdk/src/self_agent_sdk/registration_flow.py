@@ -34,7 +34,7 @@ import httpx
 from .constants import NetworkName
 
 # Default API base URL (overridden by SELF_AGENT_API_BASE when set).
-DEFAULT_API_BASE = os.environ.get("SELF_AGENT_API_BASE", "https://self-agent-id.vercel.app")
+DEFAULT_API_BASE = os.environ.get("SELF_AGENT_API_BASE", "https://agent-api.self.xyz")
 
 DEFAULT_TIMEOUT_MS = 30 * 60_000   # 30 minutes
 DEFAULT_POLL_INTERVAL_MS = 5_000   # 5 seconds

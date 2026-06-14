@@ -97,9 +97,9 @@ export async function GET(req: NextRequest) {
   // This is a single contract call — no event scanning needed.
   try {
     const simpleKey = ethers.zeroPadValue(wallet, 32);
-    const simpleAgentId: bigint = await registry.getAgentId(simpleKey);
+    const simpleAgentId = (await registry.getAgentId(simpleKey)) as bigint;
     if (simpleAgentId !== 0n) {
-      const owner: string = await registry.ownerOf(simpleAgentId);
+      const owner = (await registry.ownerOf(simpleAgentId)) as string;
       if (owner.toLowerCase() === wallet.toLowerCase()) {
         agents.push({
           agentId: simpleAgentId.toString(),
@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
   // Only needed if wallet owns more registry tokens than we found above.
   let registryBalance = 0n;
   try {
-    registryBalance = await registry.balanceOf(wallet);
+    registryBalance = (await registry.balanceOf(wallet)) as bigint;
   } catch {
     registryBalance = -1n; // unknown — must scan
   }
@@ -147,7 +147,7 @@ export async function GET(req: NextRequest) {
           const id = BigInt(tokenId).toString();
           if (seen.has(id)) continue;
           try {
-            const owner: string = await registry.ownerOf(tokenId);
+            const owner = (await registry.ownerOf(tokenId)) as string;
             if (owner.toLowerCase() !== wallet.toLowerCase()) continue;
           } catch {
             continue;

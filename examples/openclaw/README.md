@@ -8,7 +8,7 @@ OpenClaw uses Ed25519 keypairs natively for device identity (Clawdentity), makin
 
 1. Copy `self-identity/` into your OpenClaw skills directory
 2. Install the SDK: `pip install selfxyz-agent-sdk`
-3. Register your device's Ed25519 key at https://app.ai.self.xyz/register
+3. Register your device's Ed25519 key at https://docs.self.xyz/agent-id/guides/agent-builder
 
 ## Usage
 
