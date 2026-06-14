@@ -141,7 +141,11 @@ describe("generateRegistrationJSON", () => {
         url: "https://agent.example.com/a2a",
         provider: { name: "TestCo", url: "https://testco.com" },
         skills: [
-          { id: "translate", name: "translate", description: "Translate text" },
+          {
+            id: "translate",
+            name: "translate",
+            description: "Translate text",
+          },
         ],
       },
     });
@@ -171,10 +175,11 @@ describe("generateRegistrationJSON", () => {
     assert.deepEqual(doc.capabilities, {
       streaming: false,
       pushNotifications: false,
-      extendedAgentCard: false,
       stateTransitionHistory: false,
+      extendedAgentCard: false,
     });
     assert.equal(doc.securitySchemes, undefined);
+    assert.equal(doc.security, undefined);
   });
 
   it("includes optional ERC-8004 fields when provided", () => {

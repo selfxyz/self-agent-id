@@ -2,7 +2,6 @@ name: Lint & Format
 
 on:
   pull_request:
-    branches: [main]
 
 jobs:
   typescript:
@@ -36,3 +35,11 @@ jobs:
 
       - name: Lint
         run: npx eslint .
+
+      - name: Test app
+        run: npm test
+        working-directory: app
+
+      - name: Test TypeScript SDK
+        run: npm test
+        working-directory: typescript-sdk

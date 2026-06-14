@@ -1519,10 +1519,10 @@ npm install && npm run dev
 
 ### Environment Variables
 
-| Variable                 | Default                   | Purpose                 |
-| ------------------------ | ------------------------- | ----------------------- |
-| `SELF_AGENT_PRIVATE_KEY` | —                         | Agent's hex private key |
-| `SELF_NETWORK`           | `testnet`                 | `mainnet` or `testnet`  |
+| Variable                 | Default                      | Purpose                 |
+| ------------------------ | ---------------------------- | ----------------------- |
+| `SELF_AGENT_PRIVATE_KEY` | —                            | Agent's hex private key |
+| `SELF_NETWORK`           | `testnet`                    | `mainnet` or `testnet`  |
 | `SELF_AGENT_API_BASE`    | `https://agent-api.self.xyz` | API base URL override   |
 
 Priority: explicit param > env var > default. Note: `SELF_API_URL` is removed — use `SELF_AGENT_API_BASE`.

@@ -6,9 +6,9 @@ Most reads are thin wrappers over registry contract calls, so you can also repro
 
 ## Networks
 
-| Network | Chain ID | Registry |
-|---------|----------|----------|
-| Celo Mainnet | `42220` | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` |
+| Network                | Chain ID   | Registry                                     |
+| ---------------------- | ---------- | -------------------------------------------- |
+| Celo Mainnet           | `42220`    | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` |
 | Celo Sepolia (testnet) | `11142220` | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` |
 
 Endpoints that take a `chainId` accept either. Use `?network=celo-sepolia` (or `testnet`) where a query param is supported.
@@ -34,7 +34,9 @@ import { SelfAgent, SelfAgentVerifier } from "@selfxyz/agent-sdk";
 
 // Sign outbound requests as a registered agent
 const agent = new SelfAgent({ privateKey, registryAddress, rpcUrl });
-await agent.fetch("https://service.example.com/api/protected", { method: "POST" });
+await agent.fetch("https://service.example.com/api/protected", {
+  method: "POST",
+});
 
 // Verify inbound agent requests in your service (100% on-chain, no API needed)
 const verifier = new SelfAgentVerifier({ registryAddress, rpcUrl });
@@ -71,94 +73,94 @@ curl -s "$BASE/api/agent/register/status?token=<sessionToken>"
 
 ### Discovery and metadata — no auth
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/` | Content-negotiated root. `Accept: application/json` returns discovery; `text/plain` returns `llms.txt`. |
-| GET | `/api/health` | Health check. |
-| GET | `/api/agent-discovery` | Full machine-readable service descriptor (networks, modes, endpoints). |
-| GET, POST | `/api/agent/bootstrap` | Agent bootstrap descriptor for autonomous clients. |
-| GET | `/.well-known/self-agent-id.json` | Service discovery document. |
-| GET | `/.well-known/agent-card.json` | A2A agent card. |
-| GET | `/.well-known/agent-registration` | ERC-8004 registration descriptor. |
-| GET | `/.well-known/a2a/:agentId` | A2A discovery; resolves to the agent card. |
-| GET | `/agents.json` | Index of registered agents. |
-| GET | `/llms.txt` | LLM-readable usage guide. |
+| Method    | Path                              | Purpose                                                                                                 |
+| --------- | --------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| GET       | `/`                               | Content-negotiated root. `Accept: application/json` returns discovery; `text/plain` returns `llms.txt`. |
+| GET       | `/api/health`                     | Health check.                                                                                           |
+| GET       | `/api/agent-discovery`            | Full machine-readable service descriptor (networks, modes, endpoints).                                  |
+| GET, POST | `/api/agent/bootstrap`            | Agent bootstrap descriptor for autonomous clients.                                                      |
+| GET       | `/.well-known/self-agent-id.json` | Service discovery document.                                                                             |
+| GET       | `/.well-known/agent-card.json`    | A2A agent card.                                                                                         |
+| GET       | `/.well-known/agent-registration` | ERC-8004 registration descriptor.                                                                       |
+| GET       | `/.well-known/a2a/:agentId`       | A2A discovery; resolves to the agent card.                                                              |
+| GET       | `/agents.json`                    | Index of registered agents.                                                                             |
+| GET       | `/llms.txt`                       | LLM-readable usage guide.                                                                               |
 
 ### Reads / queries — no auth (on-chain wrappers)
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/api/agent/info/:chainId/:agentId` | Agent registration details, verification status, credentials. |
-| GET | `/api/agent/agents/:chainId/:address` | Agent IDs owned by a wallet. |
-| GET | `/api/agent/agents-by-nullifier/:chainId/:nullifier` | Agents for a human nullifier (sybil view). |
-| GET | `/api/agent/verify/:chainId/:agentId` | Proof-of-human status, provider, strength, sybil metrics. |
-| GET | `/api/cards/:chainId/:agentId` | A2A-compatible agent card. |
-| GET | `/api/reputation/:chainId/:agentId` | Verification strength score. |
-| GET | `/api/verify-status/:chainId/:agentId` | Real-time proof status and freshness. |
-| GET | `/api/visa/:chainId/:agentId` | Visa tier, metrics, eligibility. |
-| GET | `/api/visa/:chainId/batch` | Visa status for many agents at once. |
-| GET | `/api/visa/agents` | Visa-holding agents for a wallet (`?wallet=&chainId=`). |
+| Method | Path                                                 | Purpose                                                       |
+| ------ | ---------------------------------------------------- | ------------------------------------------------------------- |
+| GET    | `/api/agent/info/:chainId/:agentId`                  | Agent registration details, verification status, credentials. |
+| GET    | `/api/agent/agents/:chainId/:address`                | Agent IDs owned by a wallet.                                  |
+| GET    | `/api/agent/agents-by-nullifier/:chainId/:nullifier` | Agents for a human nullifier (sybil view).                    |
+| GET    | `/api/agent/verify/:chainId/:agentId`                | Proof-of-human status, provider, strength, sybil metrics.     |
+| GET    | `/api/cards/:chainId/:agentId`                       | A2A-compatible agent card.                                    |
+| GET    | `/api/reputation/:chainId/:agentId`                  | Verification strength score.                                  |
+| GET    | `/api/verify-status/:chainId/:agentId`               | Real-time proof status and freshness.                         |
+| GET    | `/api/visa/:chainId/:agentId`                        | Visa tier, metrics, eligibility.                              |
+| GET    | `/api/visa/:chainId/batch`                           | Visa status for many agents at once.                          |
+| GET    | `/api/visa/agents`                                   | Visa-holding agents for a wallet (`?wallet=&chainId=`).       |
 
 ### A2A — no auth
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| POST | `/api/a2a` | A2A JSON-RPC 2.0. Intents: `register`, `status`, `lookup`, `verify`, `deregister`, `freshness`, `help`. |
+| Method | Path       | Purpose                                                                                                 |
+| ------ | ---------- | ------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/a2a` | A2A JSON-RPC 2.0. Intents: `register`, `status`, `lookup`, `verify`, `deregister`, `freshness`, `help`. |
 
 ### Registration and lifecycle — session-token auth
 
 Each flow starts with a POST that returns an encrypted `sessionToken` (30 min TTL); subsequent calls pass it as `?token=` (or in the body for `export`). The mint itself happens on-chain via the Self app.
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| POST | `/api/agent/register` | Start a registration session; returns `sessionToken`, `deepLink`, `qrData`, `agentAddress`. |
-| GET | `/api/agent/register/status` | Poll registration (`qr-ready` → `proof-received` → `completed`). |
-| GET | `/api/agent/register/qr` | QR payload / deep link for the session. |
-| POST | `/api/agent/register/callback` | Self-app webhook after passport scan (updates session stage). |
-| POST | `/api/agent/register/export` | Export the generated agent key (token in body). |
-| POST | `/api/agent/register/ed25519-challenge` | Get the Ed25519 registration challenge. |
-| GET | `/api/agent/register/ed25519-check` | Check an Ed25519 signature/key. |
-| GET | `/api/agent/register/ed25519-poll` | Poll an Ed25519 registration. |
-| POST | `/api/agent/deregister` | Start deregistration (burns the NFT after re-proof). |
-| GET | `/api/agent/deregister/status` | Poll deregistration. |
-| POST | `/api/agent/deregister/callback` | Self-app webhook for deregistration. |
-| POST | `/api/agent/identify` | Start an identify session (find agents for a human). |
-| GET | `/api/agent/identify/status` | Poll identify; returns nullifier and agent count. |
-| POST | `/api/agent/refresh` | Start a proof refresh for an existing agent. |
-| GET | `/api/agent/refresh/status` | Poll refresh. |
-| GET | `/api/qr/:sessionToken` | Server-rendered QR PNG for a session (no SDK needed). |
+| Method | Path                                    | Purpose                                                                                     |
+| ------ | --------------------------------------- | ------------------------------------------------------------------------------------------- |
+| POST   | `/api/agent/register`                   | Start a registration session; returns `sessionToken`, `deepLink`, `qrData`, `agentAddress`. |
+| GET    | `/api/agent/register/status`            | Poll registration (`qr-ready` → `proof-received` → `completed`).                            |
+| GET    | `/api/agent/register/qr`                | QR payload / deep link for the session.                                                     |
+| POST   | `/api/agent/register/callback`          | Self-app webhook after passport scan (updates session stage).                               |
+| POST   | `/api/agent/register/export`            | Export the generated agent key (token in body).                                             |
+| POST   | `/api/agent/register/ed25519-challenge` | Get the Ed25519 registration challenge.                                                     |
+| GET    | `/api/agent/register/ed25519-check`     | Check an Ed25519 signature/key.                                                             |
+| GET    | `/api/agent/register/ed25519-poll`      | Poll an Ed25519 registration.                                                               |
+| POST   | `/api/agent/deregister`                 | Start deregistration (burns the NFT after re-proof).                                        |
+| GET    | `/api/agent/deregister/status`          | Poll deregistration.                                                                        |
+| POST   | `/api/agent/deregister/callback`        | Self-app webhook for deregistration.                                                        |
+| POST   | `/api/agent/identify`                   | Start an identify session (find agents for a human).                                        |
+| GET    | `/api/agent/identify/status`            | Poll identify; returns nullifier and agent count.                                           |
+| POST   | `/api/agent/refresh`                    | Start a proof refresh for an existing agent.                                                |
+| GET    | `/api/agent/refresh/status`             | Poll refresh.                                                                               |
+| GET    | `/api/qr/:sessionToken`                 | Server-rendered QR PNG for a session (no SDK needed).                                       |
 
 ### Account-abstraction proxy — origin + proxy-token auth
 
 Backs the gasless smart-wallet mode. Origin-restricted (`AA_PROXY_ALLOWED_ORIGINS`); bundler/paymaster require the `x-aa-proxy-token` header from `/api/aa/token`.
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| POST | `/api/aa/token` | Issue a short-lived proxy token (origin-checked). |
-| POST | `/api/aa/bundler` | Proxy ERC-4337 bundler JSON-RPC to Pimlico. |
-| POST | `/api/aa/paymaster` | Proxy ERC-4337 paymaster JSON-RPC to Pimlico. |
+| Method | Path                | Purpose                                           |
+| ------ | ------------------- | ------------------------------------------------- |
+| POST   | `/api/aa/token`     | Issue a short-lived proxy token (origin-checked). |
+| POST   | `/api/aa/bundler`   | Proxy ERC-4337 bundler JSON-RPC to Pimlico.       |
+| POST   | `/api/aa/paymaster` | Proxy ERC-4337 paymaster JSON-RPC to Pimlico.     |
 
 ### Visa writes — relayer-backed, rate-limited
 
 The server signs and submits with `RELAYER_PRIVATE_KEY` so the user pays no gas.
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| POST | `/api/visa/claim` | Gasless mint/upgrade of a visa. |
-| POST | `/api/visa/migrate` | Migrate a visa. |
-| POST | `/api/visa/request-review` | Request manual tier review. |
+| Method | Path                       | Purpose                         |
+| ------ | -------------------------- | ------------------------------- |
+| POST   | `/api/visa/claim`          | Gasless mint/upgrade of a visa. |
+| POST   | `/api/visa/migrate`        | Migrate a visa.                 |
+| POST   | `/api/visa/request-review` | Request manual tier review.     |
 
 ### MCP — signed agent headers (optional)
 
-| Method | Path | Purpose |
-|--------|------|---------|
+| Method                 | Path       | Purpose                                                                                               |
+| ---------------------- | ---------- | ----------------------------------------------------------------------------------------------------- |
 | GET, POST, PUT, DELETE | `/api/mcp` | MCP server. Accepts `x-self-agent-*` signed headers for authenticated tools; query-only without them. |
 
 ### Fallback
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| any | `/api/*` | Unknown API paths return a structured JSON error. |
+| Method | Path     | Purpose                                           |
+| ------ | -------- | ------------------------------------------------- |
+| any    | `/api/*` | Unknown API paths return a structured JSON error. |
 
 ## Authentication
 
