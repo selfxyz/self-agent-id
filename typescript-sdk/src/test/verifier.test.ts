@@ -5,9 +5,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { ethers } from "ethers";
-import { SelfAgentVerifier } from "../SelfAgentVerifier";
+import { SelfAgentVerifier, buildReauthUrl } from "../SelfAgentVerifier";
 import { SelfAgent } from "../SelfAgent";
-import { HEADERS } from "../constants";
+import { HEADERS, REAUTH_BASE_URL } from "../constants";
 
 // ---------------------------------------------------------------------------
 // Test constants
@@ -758,5 +758,56 @@ describe("SelfAgentVerifier", () => {
       assert.ok(jsonBody.retryAfterMs > 0, "retryAfterMs should be positive");
       assert.match(jsonBody.error, /Rate limit exceeded/);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildReauthUrl — the clickable proof-renewal URL handed to expired agents
+// ---------------------------------------------------------------------------
+
+describe("buildReauthUrl", () => {
+  const OPTIONS = {
+    chainId: 42220,
+    registryAddress: "0xaC3DF9ABf80d0F5c020C06B04Cced27763355944",
+  };
+
+  it("targets the live GET /api/agent/refresh endpoint, not the removed /reauth page", () => {
+    const url = buildReauthUrl(7n, OPTIONS);
+    const parsed = new URL(url);
+
+    assert.equal(parsed.pathname, "/api/agent/refresh");
+    // Regression guard against the old dead-page pointer.
+    assert.doesNotMatch(parsed.pathname, /\/reauth$/);
+  });
+
+  it("defaults to the agent-api.self.xyz host", () => {
+    const url = buildReauthUrl(7n, OPTIONS);
+    assert.ok(
+      url.startsWith(`${REAUTH_BASE_URL}/api/agent/refresh`),
+      `expected URL to start with ${REAUTH_BASE_URL}/api/agent/refresh, got ${url}`,
+    );
+    assert.equal(new URL(url).origin, "https://agent-api.self.xyz");
+  });
+
+  it("encodes agentId, chainId, and registry as query params", () => {
+    const params = new URL(buildReauthUrl(123n, OPTIONS)).searchParams;
+    assert.equal(params.get("agentId"), "123");
+    assert.equal(params.get("chainId"), "42220");
+    assert.equal(params.get("registry"), OPTIONS.registryAddress);
+  });
+
+  it("honors a custom reauthBaseUrl override (self-hosted API front)", () => {
+    const url = buildReauthUrl(1n, {
+      ...OPTIONS,
+      reauthBaseUrl: "https://api.example.com",
+    });
+    assert.equal(new URL(url).origin, "https://api.example.com");
+    assert.equal(new URL(url).pathname, "/api/agent/refresh");
+  });
+
+  it("renders a bigint agentId without scientific notation or the 'n' suffix", () => {
+    const big = 90071992547409910n; // > Number.MAX_SAFE_INTEGER
+    const params = new URL(buildReauthUrl(big, OPTIONS)).searchParams;
+    assert.equal(params.get("agentId"), "90071992547409910");
   });
 });

@@ -1080,8 +1080,11 @@ export class SelfAgentVerifier {
  * Self app; on desktop the Self redirect page shows a scannable QR. The human
  * scans to renew the proof; completion is detected on-chain. Override the host
  * with `reauthBaseUrl` if you front the API on a different domain.
+ *
+ * Exported for unit testing the URL contract; not re-exported from the package
+ * entry point, so it stays out of the public API surface.
  */
-function buildReauthUrl(
+export function buildReauthUrl(
   agentId: bigint,
   options: { chainId: number; registryAddress: string; reauthBaseUrl?: string },
 ): string {

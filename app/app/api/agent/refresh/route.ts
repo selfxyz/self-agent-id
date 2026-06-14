@@ -273,7 +273,10 @@ export async function POST(req: NextRequest) {
 }
 
 /** Inverse of toConfigIndex (SDK): config index → the disclosures it encodes. */
-const INDEX_TO_DISCLOSURES: Record<number, { minimumAge: 0 | 18 | 21; ofac: boolean }> = {
+const INDEX_TO_DISCLOSURES: Record<
+  number,
+  { minimumAge: 0 | 18 | 21; ofac: boolean }
+> = {
   0: { minimumAge: 0, ofac: false },
   1: { minimumAge: 18, ofac: false },
   2: { minimumAge: 21, ofac: false },
@@ -305,7 +308,10 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const agentId = Number(sp.get("agentId"));
   if (!Number.isInteger(agentId) || agentId <= 0) {
-    return errorResponse("agentId query param is required (positive integer)", 400);
+    return errorResponse(
+      "agentId query param is required (positive integer)",
+      400,
+    );
   }
 
   // Accept either ?network= or ?chainId= (the SDK reauth URL sends chainId).
@@ -348,7 +354,10 @@ export async function GET(req: NextRequest) {
       }
     }
     if (configIndex < 0) {
-      return errorResponse("Could not resolve the agent's verification config", 400);
+      return errorResponse(
+        "Could not resolve the agent's verification config",
+        400,
+      );
     }
 
     const nftOwner: string = await registry.ownerOf(BigInt(agentId));
