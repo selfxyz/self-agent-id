@@ -394,7 +394,7 @@ export async function POST(req: NextRequest) {
       new Date(expiresAt).getTime() - Date.now(),
     );
 
-    const scanUrl = `${appUrl}/scan/${finalToken}`;
+    const scanUrl = `${appUrl}/api/qr/${finalToken}`;
 
     // Relay QR data for ed25519 modes so the frontend can pick it up via polling
     if (

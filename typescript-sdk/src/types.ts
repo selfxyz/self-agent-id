@@ -13,6 +13,7 @@ export type VerifyResult =
       verified: false;
       reason: "PROOF_EXPIRED";
       expiredAt: Date;
+      reauthUrl: string;
     };
 
 /** Seconds before expiry at which the proof is considered "expiring soon" (30 days). */

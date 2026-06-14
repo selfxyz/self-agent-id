@@ -17,6 +17,7 @@ import {
   DEFAULT_CACHE_TTL_MS,
   NETWORKS,
   DEFAULT_NETWORK,
+  REAUTH_BASE_URL,
 } from "./constants";
 import type { NetworkName } from "./constants";
 import { canonicalizeSigningUrl, computeSigningMessage } from "./signing";
@@ -1069,6 +1070,29 @@ export class SelfAgentVerifier {
 // ---------------------------------------------------------------------------
 
 /**
+ * Build a re-authentication URL for renewing an expired (or soon-to-expire)
+ * human proof.
+ *
+ * The API-only service has no hosted re-auth page, so this points at the
+ * `GET /api/agent/refresh` entry point: it mints the proof-refresh deep link
+ * server-side (deriving the config from the agent's on-chain configId) and
+ * 302-redirects to the Self universal link. Opening it on mobile launches the
+ * Self app; on desktop the Self redirect page shows a scannable QR. The human
+ * scans to renew the proof; completion is detected on-chain. Override the host
+ * with `reauthBaseUrl` if you front the API on a different domain.
+ *
+ * Exported for unit testing the URL contract; not re-exported from the package
+ * entry point, so it stays out of the public API surface.
+ */
+export function buildReauthUrl(
+  agentId: bigint,
+  options: { chainId: number; registryAddress: string; reauthBaseUrl?: string },
+): string {
+  const base = options.reauthBaseUrl ?? REAUTH_BASE_URL;
+  return `${base}/api/agent/refresh?agentId=${agentId}&chainId=${options.chainId}&registry=${options.registryAddress}`;
+}
+
+/**
  * Standalone proof-expiry-aware agent verification.
  *
  * Unlike `SelfAgentVerifier.verify()` (which validates ECDSA request
@@ -1081,14 +1105,14 @@ export class SelfAgentVerifier {
  * or administrative tooling).
  *
  * @param agentKey - The agent's bytes32 on-chain key (zero-padded address)
- * @param options  - `chainId` and `registryAddress`
+ * @param options  - `chainId` (used in reauth URL) and `registryAddress`
  * @param rpcUrl   - RPC endpoint to use (default: Celo mainnet)
  *
  * @returns A {@link VerifyResult} discriminated union:
  *   - `{ verified: true, agentId, expiresAt }` — active proof
  *   - `{ verified: false, reason: 'NOT_REGISTERED' }` — unknown key
  *   - `{ verified: false, reason: 'NO_HUMAN_PROOF' }` — key registered but no proof
- *   - `{ verified: false, reason: 'PROOF_EXPIRED', expiredAt }` — proof lapsed
+ *   - `{ verified: false, reason: 'PROOF_EXPIRED', expiredAt, reauthUrl }` — proof lapsed
  *
  * @example
  * ```ts
@@ -1097,7 +1121,7 @@ export class SelfAgentVerifier {
  * const result = await verifyAgent(agentKey, { chainId: 42220, registryAddress: "0x..." });
  * if (!result.verified) {
  *   if (result.reason === "PROOF_EXPIRED") {
- *     console.warn("Proof expired — agent must re-register");
+ *     console.warn("Re-auth at:", result.reauthUrl);
  *   }
  *   return;
  * }
@@ -1108,7 +1132,7 @@ export class SelfAgentVerifier {
  */
 export async function verifyAgent(
   agentKey: string,
-  options: { chainId: number; registryAddress: string },
+  options: { chainId: number; registryAddress: string; reauthBaseUrl?: string },
   rpcUrl?: string,
 ): Promise<VerifyResult> {
   if (!/^0x[0-9a-fA-F]{64}$/.test(agentKey)) {
@@ -1151,6 +1175,7 @@ export async function verifyAgent(
       verified: false,
       reason: "PROOF_EXPIRED",
       expiredAt: new Date(Number(expiresAtSecs) * 1000),
+      reauthUrl: buildReauthUrl(agentId, options),
     };
   }
 

@@ -151,11 +151,11 @@ export async function handleRegisterAgent(
     const agentAddress = asString(data.agentAddress);
     const deepLink = asString(data.deepLink);
     const expiresAt = asString(data.expiresAt);
-    // scanUrl is the single URL the agent should share with the human.
-    // It opens a hosted page that shows the QR and deep link button,
-    // works on every device and platform, and polls for completion.
+    // API-only build: the hosted /scan page was removed. The human completes
+    // registration via the deep_link (opens the Self app) or by scanning the QR
+    // image returned below. scan_url now points at the server-rendered QR PNG.
     const scanUrl =
-      asString(data.scanUrl) ?? `${config.apiUrl}/scan/${sessionToken}`;
+      asString(data.scanUrl) ?? `${config.apiUrl}/api/qr/${sessionToken}`;
 
     // Prefer the pre-rendered base64 from the API; fall back to rendering from deepLink.
     let qrBase64 = asString(data.qrImageBase64);
@@ -167,16 +167,17 @@ export async function handleRegisterAgent(
       type: "text" as const,
       text: JSON.stringify(
         {
-          scan_url: scanUrl,
+          deep_link: deepLink,
+          qr_png_url: scanUrl,
           session_token: sessionToken,
           agent_address: agentAddress,
-          deep_link: deepLink,
           expires_at: expiresAt,
           instructions:
-            `Share this URL with the human to complete registration: ${scanUrl}\n` +
+            "Show the QR code image (included in this response) to the human to scan with the Self app, " +
+            `or share the deep_link to open the Self app directly. A scannable QR PNG is also at: ${scanUrl}\n` +
             (instructions ?? "Scan the QR code with the Self app."),
           next_step:
-            "Share scan_url with the human — they open it on any device to scan the QR or tap the deep link. " +
+            "Display the QR image or share the deep_link with the human. " +
             "Then call self_check_registration with this session_token to poll for completion.",
         },
         null,
@@ -299,7 +300,8 @@ export async function handleDeregisterAgent(
     const session = (await agent.requestDeregistration({
       apiBase: config.apiUrl,
     })) as DeregistrationRequestSession;
-    const scanUrl = `${config.apiUrl}/scan/${session.sessionToken}`;
+    // API-only build: /scan/:token page removed — point at the QR PNG endpoint.
+    const scanUrl = `${config.apiUrl}/api/qr/${session.sessionToken}`;
 
     let qrBase64: string | undefined;
     if (session.deepLink) {
@@ -310,12 +312,13 @@ export async function handleDeregisterAgent(
       type: "text" as const,
       text: JSON.stringify(
         {
-          scan_url: scanUrl,
-          session_id: session.sessionToken,
           deep_link: session.deepLink,
+          qr_png_url: scanUrl,
+          session_id: session.sessionToken,
           expires_at: session.expiresAt,
           instructions:
-            `Share this URL with the human to confirm deregistration: ${scanUrl}\n` +
+            "Show the QR code image (included in this response) to the human, " +
+            `or share the deep_link to open the Self app. A scannable QR PNG is also at: ${scanUrl}\n` +
             session.humanInstructions.join("\n"),
           warning:
             "WARNING: Deregistration is IRREVERSIBLE. The agent's on-chain identity will be permanently revoked. " +

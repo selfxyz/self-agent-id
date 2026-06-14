@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2025-2026 Social Connect Labs, Inc.
 // SPDX-License-Identifier: BUSL-1.1
 
-//! Integration tests for A2AAgentCard, provider scoring helpers, and serde behaviour.
+//! Integration tests for Erc8004AgentDocument, provider scoring helpers, and serde behaviour.
 
 use self_agent_sdk::{
-    A2AAgentCard, AgentSkill, CardCredentials, SelfProtocolExtension, TrustModel,
-    get_provider_label, get_strength_color,
+    AgentSkill, CardCredentials, Erc8004AgentDocument, Erc8004Service,
+    SelfProtocolExtension, TrustModel, get_provider_label, get_strength_color,
 };
 
 // =========================================================================
@@ -125,18 +125,36 @@ fn strength_color_gray_at_1() {
 // Helper: build a fully-populated card for reuse
 // =========================================================================
 
-fn full_card() -> A2AAgentCard {
-    A2AAgentCard {
-        a2a_version: "0.1".into(),
+const DOC_TYPE: &str = "https://eips.ethereum.org/EIPS/eip-8004#registration-v1";
+
+fn full_card() -> Erc8004AgentDocument {
+    Erc8004AgentDocument {
+        doc_type: DOC_TYPE.into(),
         name: "Test Agent".into(),
-        description: Some("A test agent".into()),
+        description: "A test agent".into(),
+        image: "https://example.com/agent.png".into(),
+        services: vec![Erc8004Service {
+            name: "A2A".into(),
+            endpoint: "https://example.com/a2a".into(),
+            version: Some("1.0".into()),
+        }],
+        active: None,
+        registrations: None,
+        supported_trust: None,
+        version: Some("0.1".into()),
         url: Some("https://example.com/a2a".into()),
+        provider: None,
         capabilities: None,
-        skills: Some(vec![AgentSkill {
-            name: "chat".into(),
-            description: Some("Chat capability".into()),
-        }]),
-        self_protocol: SelfProtocolExtension {
+        security_schemes: None,
+        security: None,
+        default_input_modes: None,
+        default_output_modes: None,
+        supported_interfaces: None,
+        icon_url: None,
+        documentation_url: None,
+        signatures: None,
+        extensions: None,
+        self_protocol: Some(SelfProtocolExtension {
             agent_id: 42,
             registry: "0xaC3DF9ABf80d0F5c020C06B04Cced27763355944".into(),
             chain_id: 42220,
@@ -159,33 +177,48 @@ fn full_card() -> A2AAgentCard {
                 has_gender: None,
                 document_expiry: Some("2030-01-01".into()),
             }),
-        },
+        }),
+        skills: Some(vec![AgentSkill {
+            id: "chat".into(),
+            name: "chat".into(),
+            description: Some("Chat capability".into()),
+            tags: None,
+            examples: None,
+            input_modes: None,
+            output_modes: None,
+        }]),
     }
 }
 
-fn minimal_card() -> A2AAgentCard {
-    A2AAgentCard {
-        a2a_version: "0.1".into(),
+fn minimal_card() -> Erc8004AgentDocument {
+    Erc8004AgentDocument {
+        doc_type: DOC_TYPE.into(),
         name: "Minimal".into(),
-        description: None,
+        description: "Minimal agent".into(),
+        image: "https://example.com/min.png".into(),
+        services: vec![Erc8004Service {
+            name: "A2A".into(),
+            endpoint: "https://example.com/a2a".into(),
+            version: None,
+        }],
+        active: None,
+        registrations: None,
+        supported_trust: None,
+        version: None,
         url: None,
+        provider: None,
         capabilities: None,
+        security_schemes: None,
+        security: None,
+        default_input_modes: None,
+        default_output_modes: None,
+        supported_interfaces: None,
+        icon_url: None,
+        documentation_url: None,
+        signatures: None,
+        extensions: None,
+        self_protocol: None,
         skills: None,
-        self_protocol: SelfProtocolExtension {
-            agent_id: 1,
-            registry: "0x0000000000000000000000000000000000000001".into(),
-            chain_id: 42220,
-            proof_provider: "0x0000000000000000000000000000000000000002".into(),
-            provider_name: "Test".into(),
-            verification_strength: 50,
-            trust_model: TrustModel {
-                proof_type: "liveness".into(),
-                sybil_resistant: false,
-                ofac_screened: false,
-                minimum_age_verified: 0,
-            },
-            credentials: None,
-        },
     }
 }
 
@@ -197,22 +230,23 @@ fn minimal_card() -> A2AAgentCard {
 fn agent_card_serde_round_trip() {
     let card = full_card();
     let json = serde_json::to_string(&card).unwrap();
-    let deserialized: A2AAgentCard = serde_json::from_str(&json).unwrap();
+    let deserialized: Erc8004AgentDocument = serde_json::from_str(&json).unwrap();
 
-    assert_eq!(deserialized.a2a_version, "0.1");
+    assert_eq!(deserialized.version, Some("0.1".into()));
     assert_eq!(deserialized.name, "Test Agent");
-    assert_eq!(deserialized.description, Some("A test agent".into()));
+    assert_eq!(deserialized.description, "A test agent");
     assert_eq!(deserialized.url, Some("https://example.com/a2a".into()));
     assert!(deserialized.capabilities.is_none());
 
     // Skills
     let skills = deserialized.skills.unwrap();
     assert_eq!(skills.len(), 1);
+    assert_eq!(skills[0].id, "chat");
     assert_eq!(skills[0].name, "chat");
     assert_eq!(skills[0].description, Some("Chat capability".into()));
 
-    // Self protocol extension
-    let sp = &deserialized.self_protocol;
+    // Self protocol extension (now optional on the unified document)
+    let sp = deserialized.self_protocol.as_ref().unwrap();
     assert_eq!(sp.agent_id, 42);
     assert_eq!(sp.registry, "0xaC3DF9ABf80d0F5c020C06B04Cced27763355944");
     assert_eq!(sp.chain_id, 42220);
@@ -246,7 +280,7 @@ fn agent_card_round_trip_preserves_json_value() {
     let card = full_card();
     let json = serde_json::to_string(&card).unwrap();
     let value: serde_json::Value = serde_json::from_str(&json).unwrap();
-    let back: A2AAgentCard = serde_json::from_value(value.clone()).unwrap();
+    let back: Erc8004AgentDocument = serde_json::from_value(value.clone()).unwrap();
     let json2 = serde_json::to_string(&back).unwrap();
 
     // Round-tripping through Value should produce identical JSON.
@@ -264,11 +298,11 @@ fn agent_card_skip_serializing_none_fields() {
 
     // These optional fields are None and should be omitted entirely.
     assert!(
-        !json.contains("description"),
-        "None description should be omitted from JSON"
+        !json.contains("\"version\""),
+        "None version should be omitted from JSON"
     );
     assert!(
-        !json.contains("url"),
+        !json.contains("\"url\""),
         "None url should be omitted from JSON"
     );
     assert!(
@@ -278,6 +312,10 @@ fn agent_card_skip_serializing_none_fields() {
     assert!(
         !json.contains("skills"),
         "None skills should be omitted from JSON"
+    );
+    assert!(
+        !json.contains("selfProtocol"),
+        "None self_protocol should be omitted from JSON"
     );
     assert!(
         !json.contains("credentials"),
@@ -308,8 +346,8 @@ fn agent_card_camel_case_field_names() {
 
     // Top-level camelCase
     assert!(
-        json.contains("a2aVersion"),
-        "a2a_version should serialize as a2aVersion"
+        json.contains("\"version\""),
+        "version should be present in JSON"
     );
     assert!(
         json.contains("selfProtocol"),
@@ -628,10 +666,16 @@ fn trust_model_mixed_booleans() {
 #[test]
 fn agent_skill_with_description() {
     let skill = AgentSkill {
+        id: "summarize".into(),
         name: "summarize".into(),
         description: Some("Summarize documents".into()),
+        tags: None,
+        examples: None,
+        input_modes: None,
+        output_modes: None,
     };
     let json = serde_json::to_string(&skill).unwrap();
+    assert!(json.contains(r#""id":"summarize""#));
     assert!(json.contains(r#""name":"summarize""#));
     assert!(json.contains(r#""description":"Summarize documents""#));
 }
@@ -639,8 +683,13 @@ fn agent_skill_with_description() {
 #[test]
 fn agent_skill_without_description() {
     let skill = AgentSkill {
+        id: "translate".into(),
         name: "translate".into(),
         description: None,
+        tags: None,
+        examples: None,
+        input_modes: None,
+        output_modes: None,
     };
     let json = serde_json::to_string(&skill).unwrap();
     assert!(json.contains(r#""name":"translate""#));
@@ -657,8 +706,11 @@ fn agent_skill_without_description() {
 #[test]
 fn deserialize_from_external_json() {
     let external_json = r#"{
-        "a2aVersion": "0.1",
+        "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
         "name": "External Agent",
+        "description": "An externally-authored agent document",
+        "image": "https://example.com/ext.png",
+        "services": [{ "name": "A2A", "endpoint": "https://example.com/a2a" }],
         "selfProtocol": {
             "agentId": 99,
             "registry": "0x1234567890abcdef1234567890abcdef12345678",
@@ -675,25 +727,28 @@ fn deserialize_from_external_json() {
         }
     }"#;
 
-    let card: A2AAgentCard = serde_json::from_str(external_json).unwrap();
+    let card: Erc8004AgentDocument = serde_json::from_str(external_json).unwrap();
     assert_eq!(card.name, "External Agent");
-    assert_eq!(card.self_protocol.agent_id, 99);
-    assert_eq!(card.self_protocol.chain_id, 11142220);
-    assert_eq!(card.self_protocol.verification_strength, 80);
-    assert_eq!(card.self_protocol.trust_model.proof_type, "kyc");
-    assert!(card.self_protocol.trust_model.ofac_screened);
-    assert!(!card.self_protocol.trust_model.sybil_resistant);
-    assert!(card.description.is_none());
+    let sp = card.self_protocol.as_ref().unwrap();
+    assert_eq!(sp.agent_id, 99);
+    assert_eq!(sp.chain_id, 11142220);
+    assert_eq!(sp.verification_strength, 80);
+    assert_eq!(sp.trust_model.proof_type, "kyc");
+    assert!(sp.trust_model.ofac_screened);
+    assert!(!sp.trust_model.sybil_resistant);
     assert!(card.skills.is_none());
-    assert!(card.self_protocol.credentials.is_none());
+    assert!(sp.credentials.is_none());
 }
 
 #[test]
 fn deserialize_with_unknown_fields_is_permissive() {
     // serde default allows (and ignores) unknown fields — verify this works.
     let json_with_extras = r#"{
-        "a2aVersion": "0.1",
+        "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
         "name": "Flexible Agent",
+        "description": "Flexible",
+        "image": "https://example.com/flex.png",
+        "services": [{ "name": "A2A", "endpoint": "https://example.com/a2a" }],
         "extraField": "should be ignored",
         "selfProtocol": {
             "agentId": 1,
@@ -712,6 +767,6 @@ fn deserialize_with_unknown_fields_is_permissive() {
         }
     }"#;
 
-    let card: A2AAgentCard = serde_json::from_str(json_with_extras).unwrap();
+    let card: Erc8004AgentDocument = serde_json::from_str(json_with_extras).unwrap();
     assert_eq!(card.name, "Flexible Agent");
 }
