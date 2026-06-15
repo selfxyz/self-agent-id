@@ -8,8 +8,8 @@ Reference implementation demonstrating the full Ed25519 agent lifecycle with `@s
 npm install
 # Generate a new keypair and check registration
 npx tsx agent.ts
-# Run E2E demo tests against Sepolia
-ED25519_SEED=<your-seed> npx tsx e2e-demo-test.ts
+# Send a signed request to a protected service (see minimal-ts for a verifier)
+SERVICE_URL=http://localhost:3000/api/data ED25519_SEED=<your-seed> npx tsx agent.ts
 ```
 
 ## What This Demonstrates
@@ -21,11 +21,10 @@ ED25519_SEED=<your-seed> npx tsx e2e-demo-test.ts
 
 ## Environment Variables
 
-| Variable        | Description                      | Default                                 |
-| --------------- | -------------------------------- | --------------------------------------- |
-| `ED25519_SEED`  | 64-char hex Ed25519 seed         | Random (generated)                      |
-| `SERVICE_URL`   | Target service URL               | `http://localhost:3000/api/demo/verify` |
-| `DEMO_BASE_URL` | Demo API base URL (for E2E test) | `https://agent-api.self.xyz`            |
+| Variable       | Description                                 | Default            |
+| -------------- | ------------------------------------------- | ------------------ |
+| `ED25519_SEED` | 64-char hex Ed25519 seed                    | Random (generated) |
+| `SERVICE_URL`  | Protected endpoint to send a signed request | _(unset; skipped)_ |
 
 ## Ed25519 vs ECDSA
 

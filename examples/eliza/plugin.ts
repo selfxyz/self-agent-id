@@ -117,26 +117,6 @@ export function createSelfIdentityPlugin(runtime: ElizaRuntime): ElizaPlugin {
         },
       },
 
-      demoVerify: {
-        description:
-          "Test your agent against the live Self Agent ID demo endpoint",
-        handler: async (params) => {
-          const network = (params.network as string) || "celo-sepolia";
-          const res = await agent.fetch(
-            `https://agent-api.self.xyz/api/demo/agent-to-agent?network=${network}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ test: "eliza-demo" }),
-            },
-          );
-          return {
-            status: res.status,
-            body: await res.json(),
-          };
-        },
-      },
-
       verifyAgent: {
         description: "Verify an inbound request from another agent",
         handler: async (params) => {

@@ -152,6 +152,45 @@ describe("agent refresh reauth entry point (GET /api/agent/refresh)", () => {
     expect(mockGetNetworkConfig).toHaveBeenCalledWith("testnet");
   });
 
+  it("accepts a ?registry= that matches the chain's configured registry", async () => {
+    const { GET } = await loadRoute();
+    const res = await GET(
+      makeNextRequest(
+        refreshUrl({ agentId: 7, chainId: 42220, registry: "0xRegistry" }),
+      ),
+    );
+    expect(res.status).toBe(302);
+  });
+
+  it("accepts a ?registry= that matches case-insensitively", async () => {
+    const { GET } = await loadRoute();
+    const res = await GET(
+      makeNextRequest(
+        refreshUrl({ agentId: 7, chainId: 42220, registry: "0xREGISTRY" }),
+      ),
+    );
+    expect(res.status).toBe(302);
+  });
+
+  it("returns 400 when ?registry= does not match the configured registry", async () => {
+    const { GET } = await loadRoute();
+    const res = await GET(
+      makeNextRequest(
+        refreshUrl({
+          agentId: 7,
+          chainId: 42220,
+          registry: "0xDeadBeef",
+        }),
+      ),
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      error: expect.stringMatching(/does not match/i),
+    });
+    // Must reject before any on-chain read against the wrong contract.
+    expect(mockAgentConfigId).not.toHaveBeenCalled();
+  });
+
   it("returns 429 when rate limited", async () => {
     mockCheckRateLimit.mockResolvedValue({
       allowed: false,

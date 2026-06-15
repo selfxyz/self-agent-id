@@ -15,7 +15,6 @@ This skill:
 """
 
 import os
-import json
 from typing import Any
 
 from self_agent_sdk import Ed25519Agent, SelfAgentVerifier
@@ -165,20 +164,6 @@ def handle(event: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
             body=event.get("body"),
         )
         return {"status_code": res.status_code, "body": res.text}
-
-    elif action == "demo":
-        url = event.get("url", "https://agent-api.self.xyz/api/demo/agent-to-agent")
-        network = event.get("network", "celo-sepolia")
-        res = skill.fetch(
-            f"{url}?network={network}",
-            method="POST",
-            body=json.dumps({"test": "openclaw-demo"}),
-        )
-        try:
-            body = json.loads(res.text)
-        except (json.JSONDecodeError, AttributeError):
-            body = res.text
-        return {"status_code": res.status_code, "body": body}
 
     elif action == "info":
         return skill.get_info()

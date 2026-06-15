@@ -286,7 +286,7 @@ const INDEX_TO_DISCLOSURES: Record<
 };
 
 /**
- * GET /api/agent/refresh?agentId=<id>&chainId=<id>
+ * GET /api/agent/refresh?agentId=<id>&chainId=<id>&registry=<address>
  *
  * Clickable re-authentication entry point (used by the SDK's reauth URL). The
  * API-only build has no hosted page, so this mints the proof-refresh deep link
@@ -294,6 +294,11 @@ const INDEX_TO_DISCLOSURES: Record<
  * disclosures need to be supplied — and 302-redirects to the Self universal
  * link. On mobile that opens the Self app directly; on desktop the Self
  * redirect page renders a scannable QR. Completion is detected on-chain.
+ *
+ * The SDK appends ?registry=<address> (the contract it verified the agent
+ * against). When present it is validated against this service's configured
+ * registry for the chain; a mismatch is rejected rather than silently querying
+ * a different contract.
  */
 export async function GET(req: NextRequest) {
   const ip =
@@ -326,6 +331,26 @@ export async function GET(req: NextRequest) {
     );
   }
   const networkConfig = getNetworkConfig(network);
+
+  // The SDK appends ?registry=<address> — the contract it verified the agent
+  // against. This hosted service only serves its own canonical registries, so
+  // if a registry is supplied it must match the one configured for this chain.
+  // Otherwise we'd silently query a different contract (wrong agent/token id).
+  // Self-hosters who redeploy a registry must front the API with their own
+  // reauthBaseUrl, whose network config points at that registry.
+  const registryParam = sp.get("registry");
+  if (
+    registryParam &&
+    registryParam.toLowerCase() !== networkConfig.registryAddress.toLowerCase()
+  ) {
+    return errorResponse(
+      `registry "${registryParam}" does not match this service's registry for ` +
+        `${network} (${networkConfig.registryAddress}). This hosted endpoint ` +
+        "only serves its canonical registry; self-hosted registries must front " +
+        "the API with a matching reauthBaseUrl.",
+      400,
+    );
+  }
 
   try {
     const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
