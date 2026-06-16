@@ -35,7 +35,7 @@ console.log("Registered:", registered);
 
 if (!registered) {
   console.log("\nAgent not registered. To register:");
-  console.log("1. Visit https://app.ai.self.xyz/register");
+  console.log("1. Visit https://docs.self.xyz/agent-id/guides/agent-builder");
   console.log("2. Enter your Ed25519 seed (64 hex chars, no 0x prefix)");
   console.log("3. Scan the QR code with your Self app");
   console.log("4. Re-run this script after registration completes");
@@ -48,21 +48,28 @@ const info = await agent.getInfo();
 console.log(`\nAgent ID: #${info.agentId}`);
 console.log(`Verified: ${info.isVerified}`);
 
-// Sign and send a request to a protected service
-const SERVICE_URL =
-  process.env.SERVICE_URL || "http://localhost:3000/api/demo/verify";
+// Sign and send a request to a protected service. Set SERVICE_URL to an
+// endpoint that verifies Self agent signatures — the minimal-ts example ships a
+// runnable verifier service you can point this at.
+const SERVICE_URL = process.env.SERVICE_URL;
 
-console.log(`\nSending signed request to ${SERVICE_URL}...`);
+if (SERVICE_URL) {
+  console.log(`\nSending signed request to ${SERVICE_URL}...`);
 
-const res = await agent.fetch(SERVICE_URL, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ message: "Hello from Ed25519 agent" }),
-});
+  const res = await agent.fetch(SERVICE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: "Hello from Ed25519 agent" }),
+  });
 
-console.log(`Response: ${res.status}`);
-const data = await res.json();
-console.log(JSON.stringify(data, null, 2));
+  console.log(`Response: ${res.status}`);
+  const data = await res.json();
+  console.log(JSON.stringify(data, null, 2));
+} else {
+  console.log(
+    "\nSet SERVICE_URL to a protected endpoint to send a signed request.",
+  );
+}
 
 // ── 4. Verify another agent (service-side) ───────────────────────────────────
 

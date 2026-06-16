@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
       qrData: selfApp,
     };
     const finalToken = encryptSession(updatedData, secret);
-    const scanUrl = `${appUrl}/scan/${finalToken}`;
+    const scanUrl = `${appUrl}/api/qr/${finalToken}`;
 
     const expiresAt = updatedData.expiresAt!;
     const timeRemainingMs = Math.max(

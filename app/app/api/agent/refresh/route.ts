@@ -272,6 +272,151 @@ export async function POST(req: NextRequest) {
   }
 }
 
+/** Inverse of toConfigIndex (SDK): config index → the disclosures it encodes. */
+const INDEX_TO_DISCLOSURES: Record<
+  number,
+  { minimumAge: 0 | 18 | 21; ofac: boolean }
+> = {
+  0: { minimumAge: 0, ofac: false },
+  1: { minimumAge: 18, ofac: false },
+  2: { minimumAge: 21, ofac: false },
+  3: { minimumAge: 0, ofac: true },
+  4: { minimumAge: 18, ofac: true },
+  5: { minimumAge: 21, ofac: true },
+};
+
+/**
+ * GET /api/agent/refresh?agentId=<id>&chainId=<id>&registry=<address>
+ *
+ * Clickable re-authentication entry point (used by the SDK's reauth URL). The
+ * API-only build has no hosted page, so this mints the proof-refresh deep link
+ * server-side — deriving the config from the agent's on-chain configId, so no
+ * disclosures need to be supplied — and 302-redirects to the Self universal
+ * link. On mobile that opens the Self app directly; on desktop the Self
+ * redirect page renders a scannable QR. Completion is detected on-chain.
+ *
+ * The SDK appends ?registry=<address> (the contract it verified the agent
+ * against). When present it is validated against this service's configured
+ * registry for the chain; a mismatch is rejected rather than silently querying
+ * a different contract.
+ */
+export async function GET(req: NextRequest) {
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const rl = await checkRateLimit({
+    key: `refresh-get:${ip}`,
+    limit: 20,
+    windowMs: 60_000,
+  });
+  if (!rl.allowed) return errorResponse("Too many requests", 429);
+
+  const sp = req.nextUrl.searchParams;
+  const agentId = Number(sp.get("agentId"));
+  if (!Number.isInteger(agentId) || agentId <= 0) {
+    return errorResponse(
+      "agentId query param is required (positive integer)",
+      400,
+    );
+  }
+
+  // Accept either ?network= or ?chainId= (the SDK reauth URL sends chainId).
+  const chainId = sp.get("chainId");
+  const network =
+    sp.get("network") ||
+    (chainId === "42220" ? "mainnet" : chainId === "11142220" ? "testnet" : "");
+  if (!network || !isValidNetwork(network)) {
+    return errorResponse(
+      "Provide a valid ?network=mainnet|testnet or ?chainId=42220|11142220",
+      400,
+    );
+  }
+  const networkConfig = getNetworkConfig(network);
+
+  // The SDK appends ?registry=<address> — the contract it verified the agent
+  // against. This hosted service only serves its own canonical registries, so
+  // if a registry is supplied it must match the one configured for this chain.
+  // Otherwise we'd silently query a different contract (wrong agent/token id).
+  // Self-hosters who redeploy a registry must front the API with their own
+  // reauthBaseUrl, whose network config points at that registry.
+  const registryParam = sp.get("registry");
+  if (
+    registryParam &&
+    registryParam.toLowerCase() !== networkConfig.registryAddress.toLowerCase()
+  ) {
+    return errorResponse(
+      `registry "${registryParam}" does not match this service's registry for ` +
+        `${network} (${networkConfig.registryAddress}). This hosted endpoint ` +
+        "only serves its canonical registry; self-hosted registries must front " +
+        "the API with a matching reauthBaseUrl.",
+      400,
+    );
+  }
+
+  try {
+    const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
+    const registry = typedRegistry(networkConfig.registryAddress, provider);
+
+    const configId = await registry.agentConfigId(BigInt(agentId));
+    if (configId === ZERO_BYTES32) {
+      return errorResponse(
+        "Agent does not support proof refresh (configId is zero).",
+        400,
+      );
+    }
+    if (!(await registry.hasHumanProof(BigInt(agentId)))) {
+      return errorResponse(
+        "Agent does not currently have a valid human proof; re-register instead.",
+        400,
+      );
+    }
+
+    // Resolve config index from the on-chain configId (no disclosures needed).
+    let configIndex = -1;
+    for (let i = 0; i < 6; i++) {
+      if ((await registry.configIds(BigInt(i))) === configId) {
+        configIndex = i;
+        break;
+      }
+    }
+    if (configIndex < 0) {
+      return errorResponse(
+        "Could not resolve the agent's verification config",
+        400,
+      );
+    }
+
+    const nftOwner: string = await registry.ownerOf(BigInt(agentId));
+    const userDefinedData = buildRefreshUserData(agentId, configIndex);
+
+    const disc = INDEX_TO_DISCLOSURES[configIndex];
+    const selfAppDisclosures: Record<string, boolean | number> = {};
+    if (disc.minimumAge > 0) selfAppDisclosures.minimumAge = disc.minimumAge;
+    if (disc.ofac) selfAppDisclosures.ofac = true;
+
+    const selfApp = new SelfAppBuilder({
+      version: 2,
+      appName: process.env.NEXT_PUBLIC_SELF_APP_NAME || "Self Agent ID",
+      scope: process.env.NEXT_PUBLIC_SELF_SCOPE_SEED || "self-agent-id",
+      endpoint: networkConfig.registryAddress,
+      logoBase64: "https://i.postimg.cc/mrmVf9hm/self.png",
+      userId: nftOwner.toLowerCase(),
+      endpointType: networkConfig.selfEndpointType,
+      userIdType: "hex",
+      userDefinedData,
+      disclosures: selfAppDisclosures,
+    }).build();
+
+    const deepLink = getUniversalLink(selfApp);
+    return new Response(null, {
+      status: 302,
+      headers: { Location: deepLink, "Cache-Control": "no-store" },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return errorResponse(`Reauth link generation failed: ${message}`, 500);
+  }
+}
+
 export function OPTIONS() {
   return corsResponse();
 }

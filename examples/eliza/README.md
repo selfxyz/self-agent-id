@@ -21,29 +21,16 @@ Eliza agents on Solana already use Ed25519 keypairs. This plugin registers the s
 
 Or reuse your existing Solana key (the plugin falls back to `SOLANA_PRIVATE_KEY`).
 
-3. Register: Visit https://app.ai.self.xyz/register with your Ed25519 seed
+3. Register: Visit https://docs.self.xyz/agent-id/guides/agent-builder with your Ed25519 seed
 
 ## Actions
 
-| Action               | Description                                        |
-| -------------------- | -------------------------------------------------- |
-| `checkIdentity`      | Check registration status                          |
-| `signRequest`        | Sign an HTTP request                               |
-| `authenticatedFetch` | Make a signed HTTP request                         |
-| `demoVerify`         | Test against the live agent-to-agent demo endpoint |
-| `verifyAgent`        | Verify another agent's request                     |
-
-## Demo
-
-Test your agent against the live demo:
-
-```typescript
-const result = await plugin.actions.demoVerify.handler({
-  network: "celo-sepolia",
-});
-// result.body.verified === true if your agent is registered and verified
-// result.body.sameHuman tells you if you share the same human backer as the demo agent
-```
+| Action               | Description                    |
+| -------------------- | ------------------------------ |
+| `checkIdentity`      | Check registration status      |
+| `signRequest`        | Sign an HTTP request           |
+| `authenticatedFetch` | Make a signed HTTP request     |
+| `verifyAgent`        | Verify another agent's request |
 
 ## Key Reuse
 

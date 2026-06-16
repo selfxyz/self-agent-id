@@ -5,7 +5,7 @@
 /**
  * Registration and deregistration flow management via the Self Agent ID REST API.
  *
- * These functions call the hosted API at app.ai.self.xyz by default
+ * These functions call the hosted API at agent-api.self.xyz by default
  * (or SELF_AGENT_API_BASE / a custom base URL) and return session objects
  * with polling capabilities.
  */
@@ -14,7 +14,7 @@ import type { NetworkName } from "./constants";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const DEFAULT_API_BASE = "https://app.ai.self.xyz";
+const DEFAULT_API_BASE = "https://agent-api.self.xyz";
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -56,7 +56,7 @@ export interface RegistrationRequest {
   agentName?: string;
   /** Agent description */
   agentDescription?: string;
-  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://app.ai.self.xyz) */
+  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://agent-api.self.xyz) */
   apiBase?: string;
 }
 
@@ -108,7 +108,7 @@ export interface ProofRefreshRequest {
     gender?: boolean;
     issuing_state?: boolean;
   };
-  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://app.ai.self.xyz) */
+  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://agent-api.self.xyz) */
   apiBase?: string;
 }
 
@@ -148,7 +148,7 @@ export interface DeregistrationRequest {
     gender?: boolean;
     issuing_state?: boolean;
   };
-  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://app.ai.self.xyz) */
+  /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://agent-api.self.xyz) */
   apiBase?: string;
 }
 

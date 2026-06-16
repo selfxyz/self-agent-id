@@ -8,7 +8,7 @@ OpenClaw uses Ed25519 keypairs natively for device identity (Clawdentity), makin
 
 1. Copy `self-identity/` into your OpenClaw skills directory
 2. Install the SDK: `pip install selfxyz-agent-sdk`
-3. Register your device's Ed25519 key at https://app.ai.self.xyz/register
+3. Register your device's Ed25519 key at https://docs.self.xyz/agent-id/guides/agent-builder
 
 ## Usage
 
@@ -27,17 +27,6 @@ The skill automatically:
 - Signs outbound requests for agent-to-agent auth
 - Verifies inbound requests from other Self-registered agents
 - Provides registration status and agent info
-
-## Demo
-
-Test your agent against the live demo endpoint:
-
-```python
-# In your OpenClaw skill handler
-handle({"action": "demo", "network": "celo-sepolia"}, {"config": {...}})
-```
-
-This calls the agent-to-agent demo endpoint, which verifies your agent's identity on-chain and returns mutual verification results including a `sameHuman` check.
 
 ## Key Reuse
 

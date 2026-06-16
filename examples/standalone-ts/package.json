@@ -3,8 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "agent": "tsx agent.ts",
-    "e2e": "tsx e2e-demo-test.ts"
+    "agent": "tsx agent.ts"
   },
   "dependencies": {
     "@selfxyz/agent-sdk": "^0.1.1",

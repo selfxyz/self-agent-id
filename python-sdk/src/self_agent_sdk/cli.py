@@ -34,7 +34,7 @@ from .registration import (
     sign_registration_challenge,
 )
 
-DEFAULT_APP_URL = os.environ.get("SELF_AGENT_APP_URL", "https://self-agent-id.vercel.app")
+DEFAULT_APP_URL = os.environ.get("SELF_AGENT_APP_URL", "https://agent-api.self.xyz")
 DEFAULT_APP_NAME = os.environ.get("SELF_AGENT_APP_NAME", "Self Agent ID")
 DEFAULT_SCOPE = os.environ.get("SELF_AGENT_SCOPE", "self-agent-id")
 DEMO_VERIFIED_ADDRESS = "0x83fa4380903fecb801F4e123835664973001ff00"

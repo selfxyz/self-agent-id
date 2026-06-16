@@ -25,6 +25,7 @@ an agent is controlled by a unique human. Without this, agents can be Sybil-atta
 a single malicious actor registers thousands of agents to game reputation systems.
 
 This extension:
+
 1. Adds a sybil-resistance layer via nullifier-based unique-human verification
 2. Adds proof expiry so stale verifications trigger reauthentication
 3. Adds proof-of-human metadata that Reputation and Validation Registries can weight more highly
@@ -39,6 +40,7 @@ This extension:
 This proposal defines two interfaces:
 
 **`IERC8004`** — the base ERC-8004 Identity Registry interface, covering:
+
 - Agent registration (`register()` overloads)
 - Agent URI management (`setAgentURI`)
 - Key-value metadata (`getMetadata`, `setMetadata`)
@@ -46,6 +48,7 @@ This proposal defines two interfaces:
 - Events: `Registered`, `URIUpdated`, `MetadataSet`
 
 **`IERC8004ProofOfHuman`** — the extension interface, inheriting `IERC8004` and adding:
+
 - Proof-of-human registration (`registerWithHumanProof`)
 - Proof revocation (`revokeHumanProof`)
 - Proof query functions (`hasHumanProof`, `proofExpiresAt`, `isProofFresh`, etc.)
@@ -59,6 +62,7 @@ See `IERC8004.sol` and `IERC8004ProofOfHuman.sol` for the full Solidity interfac
 ### ERC-165 Interface Detection
 
 Implementations MUST report support for both interfaces via `supportsInterface`:
+
 - `type(IERC8004).interfaceId` for the base interface
 - `type(IERC8004ProofOfHuman).interfaceId` for the proof-of-human extension
 
@@ -97,6 +101,7 @@ fields and ignore the rest.
 
 **Verification Strength**
 A 0-100 score indicating how strongly the proof binds a human identity:
+
 - 100: Government ID + NFC chip + biometric match
 - 60: Government ID without chip
 - 40: Video liveness
@@ -112,11 +117,13 @@ A 0-100 score indicating how strongly the proof binds a human identity:
 ### Events
 
 **Base ERC-8004 events (defined in `IERC8004`):**
+
 - `Registered(agentId, agentURI, owner)`
 - `URIUpdated(agentId, newURI, updatedBy)`
 - `MetadataSet(agentId, indexedMetadataKey, metadataKey, metadataValue)`
 
 **Extension events (defined in `IERC8004ProofOfHuman`):**
+
 - `AgentRegisteredWithHumanProof(agentId, proofProvider, nullifier, verificationStrength)`
 - `HumanProofRevoked(agentId, nullifier)`
 - `ProofProviderAdded(provider, name)`
@@ -193,6 +200,6 @@ revoke (not transfer or modify metadata). This is an implementation detail of
 
 ---
 
-*This document is a starting point for ethereum-magicians discussion. The Self Protocol
+_This document is a starting point for ethereum-magicians discussion. The Self Protocol
 team intends to deploy the reference implementation on Celo Mainnet and initiate a forum
-thread on ethereum-magicians with deployed contract addresses before formal EIP submission.*
+thread on ethereum-magicians with deployed contract addresses before formal EIP submission._

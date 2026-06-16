@@ -28,7 +28,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const DEFAULT_APP_URL: &str = "https://self-agent-id.vercel.app";
+const DEFAULT_APP_URL: &str = "https://agent-api.self.xyz";
 const DEFAULT_APP_NAME: &str = "Self Agent ID";
 const DEFAULT_SCOPE: &str = "self-agent-id";
 const OP_REGISTER: &str = "register";

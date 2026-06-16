@@ -140,7 +140,13 @@ describe("generateRegistrationJSON", () => {
         version: "0.1.0",
         url: "https://agent.example.com/a2a",
         provider: { name: "TestCo", url: "https://testco.com" },
-        skills: [{ name: "translate", description: "Translate text" }],
+        skills: [
+          {
+            id: "translate",
+            name: "translate",
+            description: "Translate text",
+          },
+        ],
       },
     });
 
@@ -162,15 +168,18 @@ describe("generateRegistrationJSON", () => {
       url: "https://testco.com",
     });
     assert.deepEqual(doc.skills, [
-      { name: "translate", description: "Translate text" },
+      { id: "translate", name: "translate", description: "Translate text" },
     ]);
 
     // A2A defaults
     assert.deepEqual(doc.capabilities, {
       streaming: false,
       pushNotifications: false,
+      stateTransitionHistory: false,
+      extendedAgentCard: false,
     });
-    assert.deepEqual(doc.securitySchemes, [{ type: "none" }]);
+    assert.equal(doc.securitySchemes, undefined);
+    assert.equal(doc.security, undefined);
   });
 
   it("includes optional ERC-8004 fields when provided", () => {

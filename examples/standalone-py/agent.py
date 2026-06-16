@@ -31,7 +31,7 @@ print(f"Registered: {registered}")
 
 if not registered:
     print("\nAgent not registered. To register:")
-    print("1. Visit https://app.ai.self.xyz/register")
+    print("1. Visit https://docs.self.xyz/agent-id/guides/agent-builder")
     print("2. Enter your Ed25519 seed (64 hex chars, no 0x prefix)")
     print("3. Scan the QR code with your Self app")
     print("4. Re-run this script after registration completes")
@@ -43,19 +43,22 @@ info = agent.get_info()
 print(f"\nAgent ID: #{info.agent_id}")
 print(f"Verified: {info.is_verified}")
 
-SERVICE_URL = os.environ.get(
-    "SERVICE_URL", "http://localhost:3000/api/demo/verify"
-)
-print(f"\nSending signed request to {SERVICE_URL}...")
+# Set SERVICE_URL to an endpoint that verifies Self agent signatures — the
+# minimal-python example ships a runnable verifier service you can point at.
+SERVICE_URL = os.environ.get("SERVICE_URL")
 
-res = agent.fetch(
-    SERVICE_URL,
-    method="POST",
-    body='{"message": "Hello from Ed25519 agent"}',
-    headers={"Content-Type": "application/json"},
-)
-print(f"Response: {res.status_code}")
-print(res.text)
+if SERVICE_URL:
+    print(f"\nSending signed request to {SERVICE_URL}...")
+    res = agent.fetch(
+        SERVICE_URL,
+        method="POST",
+        body='{"message": "Hello from Ed25519 agent"}',
+        headers={"Content-Type": "application/json"},
+    )
+    print(f"Response: {res.status_code}")
+    print(res.text)
+else:
+    print("\nSet SERVICE_URL to a protected endpoint to send a signed request.")
 
 # ── 4. Verify another agent (service-side) ───────────────────────────────────
 
