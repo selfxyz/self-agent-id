@@ -10,9 +10,6 @@ cd standalone-ts && npm install && ED25519_SEED=<seed> npx tsx agent.ts
 
 # Python (reference implementation)
 cd standalone-py && pip install -r requirements.txt && ED25519_SEED=<seed> python agent.py
-
-# E2E demo test (requires registered agent)
-cd standalone-ts && ED25519_SEED=<seed> SKIP_REGISTRATION=1 npx tsx e2e-demo-test.ts
 ```
 
 ## Framework Compatibility
@@ -90,7 +87,7 @@ result = verifier.verify(signature=sig, timestamp=ts, method="POST", url=url, bo
 ```
 examples/
 ├── README.md                    # This file
-├── standalone-ts/               # TypeScript Ed25519 reference + E2E test
+├── standalone-ts/               # TypeScript Ed25519 reference
 ├── standalone-py/               # Python Ed25519 reference
 ├── minimal-ts/                  # TypeScript ECDSA reference (existing)
 ├── minimal-python/              # Python ECDSA reference (existing)

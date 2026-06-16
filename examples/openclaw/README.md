@@ -28,17 +28,6 @@ The skill automatically:
 - Verifies inbound requests from other Self-registered agents
 - Provides registration status and agent info
 
-## Demo
-
-Test your agent against the live demo endpoint:
-
-```python
-# In your OpenClaw skill handler
-handle({"action": "demo", "network": "celo-sepolia"}, {"config": {...}})
-```
-
-This calls the agent-to-agent demo endpoint, which verifies your agent's identity on-chain and returns mutual verification results including a `sameHuman` check.
-
 ## Key Reuse
 
 OpenClaw's Clawdentity Ed25519 key can be directly registered with Self Agent ID — no new key generation required. The same key provides both device identity (OpenClaw) and human-verified agent identity (Self).
