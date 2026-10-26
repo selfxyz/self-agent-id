@@ -113,11 +113,12 @@ const NETWORK_MAP: Record<ApiNetwork, NetworkId> = {
  * @throws If the network name is unknown (validate with isValidNetwork first).
  */
 export function getNetworkConfig(network: ApiNetwork): NetworkConfig {
-  const id = NETWORK_MAP[network];
-  if (!id) {
-    throw new Error(`Unknown network: ${network}`);
+  // Own keys only ("constructor" is not a network). The message never echoes
+  // the input: it can come from a decrypted session token, and errors get logged.
+  if (!Object.hasOwn(NETWORK_MAP, network)) {
+    throw new Error("Unknown network");
   }
-  return NETWORKS[id];
+  return NETWORKS[NETWORK_MAP[network]];
 }
 
 /**

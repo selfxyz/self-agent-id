@@ -101,10 +101,12 @@ describe("agent-api-helpers (pure)", () => {
       expect(config.chainId).toBe(11142220);
     });
 
-    it("throws for unknown network", () => {
-      expect(() => mod.getNetworkConfig("badnet" as any)).toThrow(
-        "Unknown network",
-      );
+    it("throws a constant message for unknown or inherited names", () => {
+      for (const bad of ["badnet", "constructor", "__proto__"]) {
+        expect(() => mod.getNetworkConfig(bad as any)).toThrow(
+          /^Unknown network$/,
+        );
+      }
     });
   });
 
