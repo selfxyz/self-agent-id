@@ -13,20 +13,9 @@
 
 # Dependencies
 **/node_modules/
-/functions/node_modules/
-/functions/dist/
-/functions/*.tgz
 
 # Next.js build outputs
 **/.next/
-
-# Node (test vector generation in python-sdk/)
-python-sdk/node_modules/
-python-sdk/package.json
-python-sdk/package-lock.json
-
-# Rust
-rust-sdk/target/
 
 # Python
 __pycache__/

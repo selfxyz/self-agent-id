@@ -26,10 +26,6 @@ jobs:
         run: npm ci
         working-directory: typescript-sdk
 
-      - name: Install functions dependencies
-        run: npm ci
-        working-directory: functions
-
       - name: Check formatting
         run: npx prettier --check .
 
