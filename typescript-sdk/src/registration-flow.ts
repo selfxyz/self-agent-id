@@ -289,13 +289,26 @@ function defaultApiBaseFromEnv(): string {
 }
 
 /**
+ * Strip trailing "/" characters in linear time (a `/\\/+$/` regex is
+ * polynomial on long runs of slashes in caller-supplied URLs).
+ *
+ * @param url - URL or base URL.
+ * @returns `url` without trailing slashes.
+ */
+export function trimTrailingSlashes(url: string): string {
+  let end = url.length;
+  while (end > 0 && url.charCodeAt(end - 1) === 47) end--;
+  return url.slice(0, end);
+}
+
+/**
  * Resolve the final API base URL, stripping any trailing slashes.
  *
  * @param apiBase - Explicit override, or undefined to use the environment/default.
  * @returns A normalized base URL with no trailing slash.
  */
 function resolveApiBase(apiBase?: string): string {
-  return (apiBase ?? defaultApiBaseFromEnv()).replace(/\/+$/, "");
+  return trimTrailingSlashes(apiBase ?? defaultApiBaseFromEnv());
 }
 
 /**

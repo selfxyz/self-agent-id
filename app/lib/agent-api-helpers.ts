@@ -389,6 +389,19 @@ export function getClientIp(req: {
 }
 
 /**
+ * Strip trailing "/" characters in linear time (a `/\\/+$/` regex is
+ * polynomial on long runs of slashes).
+ *
+ * @param url - URL or base URL.
+ * @returns `url` without trailing slashes.
+ */
+export function trimTrailingSlashes(url: string): string {
+  let end = url.length;
+  while (end > 0 && url.charCodeAt(end - 1) === 47) end--;
+  return url.slice(0, end);
+}
+
+/**
  * Public base URL used to build links handed to clients (scanUrl etc.).
  *
  * Never derived from Host / X-Forwarded-Host in production, so a client
@@ -399,7 +412,9 @@ export function getClientIp(req: {
  *   origin outside production; else "https://agent-api.self.xyz".
  */
 export function getAppBaseUrl(req?: { nextUrl: { origin: string } }): string {
-  const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "");
+  const configured = process.env.NEXT_PUBLIC_APP_URL
+    ? trimTrailingSlashes(process.env.NEXT_PUBLIC_APP_URL)
+    : undefined;
   if (configured) return configured;
   if (req && process.env.NODE_ENV !== "production") return req.nextUrl.origin;
   return "https://agent-api.self.xyz";

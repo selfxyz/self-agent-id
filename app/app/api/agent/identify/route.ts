@@ -15,7 +15,7 @@
 
 import type { NextRequest } from "next/server";
 import { ethers } from "ethers";
-import { getUniversalLink } from "@selfxyz/qrcode";
+import { getUniversalLink } from "@selfxyz/sdk-common";
 import { renderQrBase64 } from "@/lib/render-qr";
 import {
   createQrToken,

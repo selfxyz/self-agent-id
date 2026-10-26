@@ -49,7 +49,7 @@ async function load<T>(path: string): Promise<T> {
   vi.doMock("@/lib/render-qr", () => ({
     renderQrBase64: mockRenderQrBase64,
   }));
-  vi.doMock("@selfxyz/qrcode", () => ({
+  vi.doMock("@selfxyz/sdk-common", () => ({
     SelfAppBuilder: MockSelfAppBuilder,
     getUniversalLink: () => "https://redirect.self.xyz/?selfApp=x",
   }));
@@ -69,8 +69,10 @@ interface FakeEvent {
 }
 let events: FakeEvent[] = [];
 let latestBlock = START_BLOCK;
-let getBlockNumber: ReturnType<typeof vi.fn>;
-let queryFilter: ReturnType<typeof vi.fn>;
+let getBlockNumber: ReturnType<typeof vi.fn<() => Promise<number>>>;
+let queryFilter: ReturnType<
+  typeof vi.fn<ethers.BaseContract["queryFilter"]>
+>;
 
 /**
  * Build fake proof-tx calldata whose userContextData is packed the way the
@@ -111,15 +113,18 @@ beforeEach(() => {
     async (hash) =>
       ({ data: events.find((e) => e.txHash === hash)!.data }) as never,
   );
-  queryFilter = vi.fn(async (_filter: unknown, from: number, to: number) =>
-    events
-      .filter(
-        (e) => e.block === undefined || (e.block >= from && e.block <= to),
-      )
-      .map((e) => ({
-        transactionHash: e.txHash,
-        args: [e.nullifier, e.agentCount],
-      })),
+  queryFilter = vi.fn<ethers.BaseContract["queryFilter"]>(
+    async (_filter, from, to) =>
+      events
+        .filter(
+          (e) =>
+            e.block === undefined ||
+            (e.block >= Number(from) && e.block <= Number(to)),
+        )
+        .map((e) => ({
+          transactionHash: e.txHash,
+          args: [e.nullifier, e.agentCount],
+        })) as never,
   );
   vi.spyOn(ethers.BaseContract.prototype, "queryFilter").mockImplementation(
     queryFilter,

@@ -28,6 +28,7 @@ import {
 } from "./index";
 
 import { typedRegistry } from "./contract-types";
+import { trimTrailingSlashes } from "./registration-flow";
 
 /**
  * Modes the CLI can register. The `/cli/register` browser handoff only
@@ -379,9 +380,8 @@ function parseNetwork(flags: FlagMap): CliNetwork {
     : undefined;
   const registryFlag = flags.registry ? String(flags.registry) : undefined;
   const rpcFlag = flags.rpc ? String(flags.rpc) : undefined;
-  const appUrl = String(flags["app-url"] || DEFAULT_APP_URL).replace(
-    /\/+$/,
-    "",
+  const appUrl = trimTrailingSlashes(
+    String(flags["app-url"] || DEFAULT_APP_URL),
   );
   const appName = String(flags["app-name"] || DEFAULT_APP_NAME);
   const scope = String(flags.scope || DEFAULT_SCOPE);

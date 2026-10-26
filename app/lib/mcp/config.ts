@@ -12,6 +12,7 @@
 
 import { NETWORKS } from "@selfxyz/agent-sdk";
 import type { NetworkName } from "@selfxyz/agent-sdk";
+import { trimTrailingSlashes } from "@/lib/agent-api-helpers";
 
 /** Config every MCP tool handler receives. */
 export interface McpConfig {
@@ -47,7 +48,9 @@ export function loadMcpConfig(
   const network: NetworkName =
     process.env.SELF_AGENT_NETWORK === "testnet" ? "testnet" : "mainnet";
   const networkConfig = NETWORKS[network];
-  const remote = process.env.SELF_AGENT_API_BASE?.replace(/\/+$/, "");
+  const remote = process.env.SELF_AGENT_API_BASE
+    ? trimTrailingSlashes(process.env.SELF_AGENT_API_BASE)
+    : undefined;
 
   return {
     privateKey: process.env.SELF_AGENT_PRIVATE_KEY || undefined,

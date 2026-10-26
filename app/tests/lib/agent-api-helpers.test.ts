@@ -189,6 +189,25 @@ describe("agent-api-helpers (pure)", () => {
     });
   });
 
+  describe("trimTrailingSlashes", () => {
+    it("strips any number of trailing slashes and nothing else", () => {
+      expect(mod.trimTrailingSlashes("https://a.example///")).toBe(
+        "https://a.example",
+      );
+      expect(mod.trimTrailingSlashes("https://a.example/x")).toBe(
+        "https://a.example/x",
+      );
+      expect(mod.trimTrailingSlashes("///")).toBe("");
+    });
+
+    it("stays linear on a pathological input (no ReDoS)", () => {
+      const input = "a" + "/".repeat(200_000) + "b";
+      const start = performance.now();
+      expect(mod.trimTrailingSlashes(input)).toBe(input);
+      expect(performance.now() - start).toBeLessThan(50);
+    });
+  });
+
   describe("getAppBaseUrl", () => {
     const req = { nextUrl: { origin: "http://evil.example" } };
 

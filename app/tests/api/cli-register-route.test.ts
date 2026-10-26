@@ -38,7 +38,7 @@ class MockSelfAppBuilder {
   }
 }
 
-vi.mock("@selfxyz/qrcode", () => ({
+vi.mock("@selfxyz/sdk-common", () => ({
   SelfAppBuilder: MockSelfAppBuilder,
   getUniversalLink: mockGetUniversalLink,
 }));

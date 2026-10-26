@@ -18,7 +18,7 @@ import {
   buildAdvancedDeregisterUserDataAscii,
   getRegistrationConfigIndex,
 } from "@selfxyz/agent-sdk";
-import { getUniversalLink } from "@selfxyz/qrcode";
+import { getUniversalLink } from "@selfxyz/sdk-common";
 import { renderQrBase64 } from "@/lib/render-qr";
 import {
   createQrToken,

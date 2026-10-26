@@ -15,7 +15,7 @@
  */
 
 import type { NextRequest } from "next/server";
-import { getUniversalLink } from "@selfxyz/qrcode";
+import { getUniversalLink } from "@selfxyz/sdk-common";
 import { renderQrPng } from "@/lib/render-qr";
 import {
   errorResponse,

@@ -9,7 +9,7 @@
  * identify and the CLI handoff.
  */
 
-import { SelfAppBuilder, type SelfApp } from "@selfxyz/qrcode";
+import { SelfAppBuilder, type SelfApp } from "@selfxyz/sdk-common";
 import {
   DISCLOSURE_KEYS,
   getNetworkConfig,

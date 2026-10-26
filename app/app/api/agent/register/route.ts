@@ -21,7 +21,7 @@ import {
   getRegistrationConfigIndex,
   type RegistrationDisclosures,
 } from "@selfxyz/agent-sdk";
-import { getUniversalLink } from "@selfxyz/qrcode";
+import { getUniversalLink } from "@selfxyz/sdk-common";
 import {
   createQrToken,
   createSessionToken,

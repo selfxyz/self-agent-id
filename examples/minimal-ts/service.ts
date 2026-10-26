@@ -3,11 +3,13 @@
 /**
  * Minimal Express service that only accepts signed requests from verified agents.
  *
- * Policy: testnet, age 18+, OFAC passed, at most 3 agents per human. Listens on :3000.
+ * Policy: testnet, age 18+, OFAC passed, at most 3 agents per human; 60 req/min per IP.
+ * Listens on :3000.
  */
 
 import { SelfAgentVerifier } from "@selfxyz/agent-sdk";
 import express from "express";
+import rateLimit from "express-rate-limit";
 
 const verifier = SelfAgentVerifier.create()
   .network("testnet")
@@ -26,6 +28,8 @@ app.use(
   }),
 );
 
+// Cap requests per IP before any signature or on-chain check runs.
+app.use("/api", rateLimit({ windowMs: 60_000, limit: 60 }));
 app.use("/api", verifier.auth());
 
 app.post("/api/data", (req, res) => {

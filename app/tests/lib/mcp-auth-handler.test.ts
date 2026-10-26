@@ -9,10 +9,10 @@ import type { McpConfig } from "@/lib/mcp/config";
 
 const fetchMock = vi.fn();
 const signRequestMock = vi.fn();
-const selfAgentCtorMock = vi.fn(() => ({
-  fetch: fetchMock,
-  signRequest: signRequestMock,
-}));
+// A `function` (not an arrow) so Vitest 4 lets the handler call it with `new`.
+const selfAgentCtorMock = vi.fn(function () {
+  return { fetch: fetchMock, signRequest: signRequestMock };
+});
 const lookupMock = vi.fn();
 
 vi.mock("@selfxyz/agent-sdk", () => ({ SelfAgent: selfAgentCtorMock }));

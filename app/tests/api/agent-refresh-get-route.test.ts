@@ -54,7 +54,7 @@ class MockSelfAppBuilder {
  */
 async function loadRoute() {
   vi.resetModules();
-  vi.doMock("@selfxyz/qrcode", () => ({
+  vi.doMock("@selfxyz/sdk-common", () => ({
     SelfAppBuilder: MockSelfAppBuilder,
     getUniversalLink: () => "self://renew-proof",
   }));

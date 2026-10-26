@@ -61,7 +61,7 @@ async function load<T>(path: string): Promise<T> {
   vi.doMock("@/lib/render-qr", () => ({
     renderQrBase64: mockRenderQrBase64,
   }));
-  vi.doMock("@selfxyz/qrcode", () => ({
+  vi.doMock("@selfxyz/sdk-common", () => ({
     SelfAppBuilder: MockSelfAppBuilder,
     getUniversalLink: () => "https://redirect.self.xyz/?selfApp=x",
   }));

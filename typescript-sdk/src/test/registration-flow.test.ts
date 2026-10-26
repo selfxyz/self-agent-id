@@ -12,6 +12,7 @@ import {
   getAgentInfo,
   ExpiredSessionError,
   RegistrationError,
+  trimTrailingSlashes,
 } from "../registration-flow";
 
 const API = "https://api.test";
@@ -182,5 +183,22 @@ describe("registration flow (REST)", () => {
       getAgentInfo(999, { network: "testnet", apiBase: API }),
       (err: unknown) => err instanceof RegistrationError && err.status === 404,
     );
+  });
+});
+
+describe("trimTrailingSlashes", () => {
+  it("strips trailing slashes only, in linear time", () => {
+    assert.strictEqual(
+      trimTrailingSlashes("https://a.example///"),
+      "https://a.example",
+    );
+    assert.strictEqual(
+      trimTrailingSlashes("https://a.example/x"),
+      "https://a.example/x",
+    );
+    const input = "a" + "/".repeat(200_000) + "b"; // ReDoS shape for /\/+$/
+    const start = Date.now();
+    assert.strictEqual(trimTrailingSlashes(input), input);
+    assert.ok(Date.now() - start < 50);
   });
 });

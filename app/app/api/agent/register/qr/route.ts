@@ -11,8 +11,8 @@
  */
 
 import type { NextRequest } from "next/server";
-import { getUniversalLink } from "@selfxyz/qrcode";
-import type { SelfApp } from "@selfxyz/qrcode";
+import { getUniversalLink } from "@selfxyz/sdk-common";
+import type { SelfApp } from "@selfxyz/sdk-common";
 import {
   jsonResponse,
   errorResponse,
