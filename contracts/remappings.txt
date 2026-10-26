@@ -2,5 +2,5 @@ forge-std/=lib/forge-std/src/
 @selfxyz/contracts/=lib/self/contracts/
 @openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
 @openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/
-hardhat/=lib/hardhat/
+hardhat/=lib/hardhat/v-next/hardhat/
 @solidity/=lib/crypto-lib/src/

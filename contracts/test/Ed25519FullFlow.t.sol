@@ -116,18 +116,22 @@ contract Ed25519FullFlowTest is Test {
         uint256[5] memory extKpub,
         address guardian
     ) internal pure returns (bytes memory) {
-        return abi.encodePacked(
+        // Packed in chunks (same bytes): one 10-argument encodePacked overflows
+        // the stack without via-IR.
+        bytes memory head = abi.encodePacked(
             "E0", // action 'E' + config index 0
             _toHexString32(pubkey),
             _toHexStringUint256(sigR),
-            _toHexStringUint256(sigS),
+            _toHexStringUint256(sigS)
+        );
+        bytes memory key = abi.encodePacked(
             _toHexStringUint256(extKpub[0]),
             _toHexStringUint256(extKpub[1]),
             _toHexStringUint256(extKpub[2]),
             _toHexStringUint256(extKpub[3]),
-            _toHexStringUint256(extKpub[4]),
-            _toHexString(guardian)
+            _toHexStringUint256(extKpub[4])
         );
+        return abi.encodePacked(head, key, _toHexString(guardian));
     }
 
     // ── Full flow test ────────────────────────────────────────────────────
