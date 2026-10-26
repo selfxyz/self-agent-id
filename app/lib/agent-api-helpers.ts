@@ -160,7 +160,7 @@ export function requireSessionSecret(): string | NextResponse {
   try {
     return getSessionSecret();
   } catch (err) {
-    console.error("session secret unavailable:", err);
+    console.error("session secret unavailable:", safeErrorDescription(err));
     return errorResponse("Server configuration error", 500);
   }
 }
@@ -386,6 +386,21 @@ export function getClientIp(req: {
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     "unknown"
   );
+}
+
+/**
+ * Describe an error for logs without its message or payload, which can carry
+ * secrets (ethers echoes an invalid private key in its message) or RPC URLs.
+ *
+ * @param err - Anything that was thrown.
+ * @returns The error's name plus its ethers-style `code` when present.
+ */
+export function safeErrorDescription(err: unknown): string {
+  if (!(err instanceof Error)) return typeof err;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === "string" && /^[A-Z_]+$/.test(code)
+    ? `${err.name} (${code})`
+    : err.name;
 }
 
 /**

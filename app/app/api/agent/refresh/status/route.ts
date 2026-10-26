@@ -91,11 +91,13 @@ export async function GET(req: NextRequest) {
       session.stage = "failed";
       session.error = "Agent was deregistered before the refresh completed.";
     }
-    return respond();
   } catch (err) {
     console.error("[refresh/status] check failed:", err);
     return errorResponse(ERRORS.rpc, 502);
   }
+  // Outside the try: only the chain reads above are logged on failure, never
+  // the token rotation that uses SESSION_SECRET.
+  return respond();
 }
 
 /**

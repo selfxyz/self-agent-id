@@ -10,6 +10,7 @@
  * SELF_AGENT_PRIVATE_KEY (privileged). All flows call the REST routes.
  */
 
+import { safeErrorDescription } from "@/lib/agent-api-helpers";
 import { ethers } from "ethers";
 import { SelfAgent } from "@selfxyz/agent-sdk";
 import { rpcUrlFor, type McpConfig } from "../config";
@@ -159,7 +160,7 @@ export async function handleGetIdentity(
       network,
     });
   } catch (err) {
-    console.error("[mcp] get identity failed:", err);
+    console.error("[mcp] get identity failed:", safeErrorDescription(err));
     return toolError("Failed to get agent identity: RPC error");
   }
 }
@@ -342,7 +343,12 @@ export async function handleCheckRegistration(
         "requests as this agent and cannot be recovered after the session expires.",
     });
   } catch (err) {
-    console.error("[mcp] check registration failed:", err);
+    // The routes called above log their own failures; log no token, key or
+    // secret-derived text here.
+    console.error(
+      "[mcp] check registration failed:",
+      safeErrorDescription(err),
+    );
     return toolError("Failed to check registration status: API unreachable");
   }
 }
@@ -396,7 +402,7 @@ export async function handleDeregisterAgent(
         "GET /api/agent/deregister/status with Authorization: Bearer <session_token> for progress.",
     });
   } catch (err) {
-    console.error("[mcp] deregister failed:", err);
+    console.error("[mcp] deregister failed:", safeErrorDescription(err));
     return toolError("Failed to initiate deregistration: API unreachable");
   }
 }

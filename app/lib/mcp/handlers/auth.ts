@@ -13,7 +13,7 @@ import { SelfAgent } from "@selfxyz/agent-sdk";
 import type { McpConfig } from "../config";
 import { validateAuthenticatedFetchUrl } from "../egress";
 import { OUTBOUND_TIMEOUT_MS, toolError, toolSuccess } from "../utils";
-import { readTextCapped } from "@/lib/agent-api-helpers";
+import { readTextCapped, safeErrorDescription } from "@/lib/agent-api-helpers";
 
 /** Arguments of the sign-request tool. */
 interface SignRequestArgs {
@@ -72,7 +72,7 @@ export async function handleSignRequest(
         "The receiving service can verify them to confirm this agent is backed by a real human.",
     });
   } catch (err) {
-    console.error("[mcp] sign request failed:", err);
+    console.error("[mcp] sign request failed:", safeErrorDescription(err));
     return toolError("Failed to sign request");
   }
 }
@@ -108,7 +108,10 @@ export async function handleAuthenticatedFetch(
       rpcUrl: config.rpcUrl,
     });
   } catch (err) {
-    console.error("[mcp] authenticated fetch: agent setup failed:", err);
+    console.error(
+      "[mcp] authenticated fetch: agent setup failed:",
+      safeErrorDescription(err),
+    );
     return toolError("Authenticated fetch failed: invalid agent key");
   }
 

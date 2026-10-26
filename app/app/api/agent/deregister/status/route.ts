@@ -72,11 +72,13 @@ export async function GET(req: NextRequest) {
     session.stage = (await registry.hasHumanProof(BigInt(session.agentId!)))
       ? "qr-ready"
       : "completed";
-    return respond();
   } catch (err) {
     console.error("[deregister/status] check failed:", err);
     return errorResponse(ERRORS.rpc, 502);
   }
+  // Outside the try: only the chain reads above are logged on failure, never
+  // the token rotation that uses SESSION_SECRET.
+  return respond();
 }
 
 /**

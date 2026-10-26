@@ -189,6 +189,20 @@ describe("agent-api-helpers (pure)", () => {
     });
   });
 
+  describe("safeErrorDescription", () => {
+    it("never includes the error message (it can echo a private key)", () => {
+      const err = Object.assign(
+        new Error('invalid private key (value="0xdeadbeef")'),
+        { code: "INVALID_ARGUMENT" },
+      );
+      expect(mod.safeErrorDescription(err)).toBe("Error (INVALID_ARGUMENT)");
+      expect(mod.safeErrorDescription(new TypeError("0xsecret"))).toBe(
+        "TypeError",
+      );
+      expect(mod.safeErrorDescription("0xsecret")).toBe("string");
+    });
+  });
+
   describe("trimTrailingSlashes", () => {
     it("strips any number of trailing slashes and nothing else", () => {
       expect(mod.trimTrailingSlashes("https://a.example///")).toBe(
