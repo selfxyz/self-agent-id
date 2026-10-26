@@ -4,7 +4,7 @@ description: >
   End-to-end integration guide for adding Self Agent ID to a project. Covers
   agent-side setup (SelfAgent class), service-side verification (SelfAgentVerifier),
   MCP server configuration, on-chain Solidity integration, and quick starts for
-  TypeScript, Python, Rust, Express, FastAPI, Axum, and Hono. Use when the user
+  TypeScript (Express, Hono, Next.js) and the REST API. Use when the user
   asks to "add self agent id", "integrate self id", "setup self agent", "add agent
   verification to my project", "self agent id sdk", "install agent sdk", or
   "integrate proof of human".
@@ -38,7 +38,7 @@ Start
   |
   +-- "Want AI tool (Claude Code / Cursor) to manage agent identity"
   |     -> MCP server setup
-  |        Install @selfxyz/mcp-server, configure env vars, use MCP tools for registration and signing.
+  |        Connect to the hosted MCP server, use MCP tools for registration, lookup and verification.
   |
   +-- Not sure?
         -> Most projects need BOTH agent-side AND service-side.
@@ -68,18 +68,14 @@ const agent = new SelfAgent({
   network: "mainnet", // or "testnet"
 });
 
-// Check if registered
+// Check registration: isVerified = human proof present AND fresh
 const info = await agent.getInfo();
-if (!info.registered) {
-  // Initiate registration — human scans QR with Self app
-  // requestRegistration is a static method
-  const session = await SelfAgent.requestRegistration({
-    mode: "linked",
-    network: "mainnet",
-    disclosures: { minimumAge: 18, ofac: true },
-    humanAddress: "0x...", // the human's wallet address
-  });
-  console.log("Scan QR:", session.deepLink);
+if (!info.isVerified) {
+  console.warn(
+    info.hasHumanProof
+      ? "Proof expired: refresh it (requestProofRefresh)"
+      : "Not registered: register first (see the register-agent skill)",
+  );
 }
 
 // Make authenticated requests (auto-signs with 3-header system)
@@ -89,62 +85,21 @@ const res = await agent.fetch("https://api.example.com/data", {
 });
 ```
 
-For Ed25519 agents (Python/Rust-friendly), use `Ed25519Agent` after registering with mode `"ed25519-linked"`:
+A new agent key comes from registration: `requestRegistration({ mode: "linked", humanAddress, ... })` returns a session whose `scanUrl` the human scans; after `waitForCompletion()`, `exportKey()` returns the private key. See the `register-agent` skill.
+
+For Ed25519 agents (e.g. keys from Solana, OpenClaw or Eliza), use `Ed25519Agent` after registering the key with mode `"ed25519"` or `"ed25519-linked"`:
 
 ```typescript
 import { Ed25519Agent } from "@selfxyz/agent-sdk";
 
-const agent = new Ed25519Agent({ privateKey: process.env.AGENT_PRIVATE_KEY! });
+const agent = new Ed25519Agent({ privateKey: process.env.ED25519_SEED! }); // 64 hex chars
 const res = await agent.fetch("https://api.example.com/data", {
   method: "POST",
   body: JSON.stringify({ query: "hello" }),
 });
 ```
 
-### Python
-
-```bash
-pip install selfxyz-agent-sdk
-```
-
-```python
-import os
-from self_agent_sdk import SelfAgent
-
-agent = SelfAgent(private_key=os.environ["AGENT_PRIVATE_KEY"], network="mainnet")
-
-# Check registration status
-info = agent.get_info()
-
-# Make authenticated requests
-response = agent.fetch(
-    "https://api.example.com/data",
-    method="POST",
-    body='{"query":"hello"}'
-)
-```
-
-### Rust
-
-```bash
-cargo add self-agent-sdk
-```
-
-```rust
-use self_agent_sdk::SelfAgent;
-
-let agent = SelfAgent::new(std::env::var("AGENT_PRIVATE_KEY").unwrap())?;
-let info = agent.get_info().await?;
-
-let response = agent.fetch(
-    "https://api.example.com/data",
-    "POST",
-    Some(r#"{"query":"hello"}"#),
-    None,
-).await?;
-```
-
-All three SDKs expose identical API surfaces. The `fetch()` method wraps the native HTTP client, auto-attaching the `x-self-agent-address`, `x-self-agent-signature`, and `x-self-agent-timestamp` headers to every request.
+The TypeScript SDK (`@selfxyz/agent-sdk`) is the only SDK; agents in other languages call the REST API directly (registration via `POST /api/agent/register`) and sign requests by reproducing the algorithm in the `sign-requests` skill. The `fetch()` method wraps the native HTTP client, auto-attaching the `x-self-agent-address`, `x-self-agent-signature`, and `x-self-agent-timestamp` headers to every request (Ed25519 agents send `x-self-agent-key` and `x-self-agent-keytype` instead of the address).
 
 ---
 
@@ -159,14 +114,21 @@ import express from "express";
 import { SelfAgentVerifier } from "@selfxyz/agent-sdk";
 
 const app = express();
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as { rawBody?: Buffer }).rawBody = buf; // auth() verifies the exact bytes
+    },
+  }),
+);
 
 const verifier = SelfAgentVerifier.create()
   .network("mainnet")
   .requireAge(18)
   .requireOFAC()
-  .requireSelfProvider() // CRITICAL: always include in production
+  .requireSelfProvider() // on by default; keep it in production
   .sybilLimit(3)
+  .includeCredentials()
   .build();
 
 // Protect all /api routes
@@ -174,120 +136,34 @@ app.use("/api", verifier.auth());
 
 // Access verified agent info in handlers
 app.get("/api/profile", (req, res) => {
-  const agent = req.verifiedAgent;
+  const agent = req.agent!; // set by verifier.auth() // { address, agentKey, agentId, agentCount, nullifier, credentials? }
   res.json({
-    agentId: agent.agentId,
-    nationality: agent.credentials.nationality,
+    agentId: agent.agentId.toString(),
+    nationality: agent.credentials?.nationality,
   });
 });
 
 app.listen(3000);
 ```
 
-### Python (FastAPI)
-
-```python
-from fastapi import FastAPI, Request, HTTPException
-from self_agent_sdk import SelfAgentVerifier
-
-app = FastAPI()
-
-verifier = (
-    SelfAgentVerifier.create()
-    .network("mainnet")
-    .require_age(18)
-    .require_ofac()
-    .require_self_provider()  # CRITICAL
-    .sybil_limit(3)
-    .build()
-)
-
-@app.middleware("http")
-async def verify_agent(request: Request, call_next):
-    if request.url.path.startswith("/api"):
-        address = request.headers.get("x-self-agent-address")
-        signature = request.headers.get("x-self-agent-signature")
-        timestamp = request.headers.get("x-self-agent-timestamp")
-
-        if not all([address, signature, timestamp]):
-            raise HTTPException(status_code=401, detail="Missing agent auth headers")
-
-        body = await request.body()
-        result = await verifier.verify(
-            address=address, signature=signature, timestamp=timestamp,
-            method=request.method, path=request.url.path,
-            body=body.decode("utf-8") if body else "",
-        )
-
-        if not result.valid:
-            raise HTTPException(status_code=401, detail=result.error)
-
-        request.state.agent = result
-
-    return await call_next(request)
-
-@app.get("/api/profile")
-async def profile(request: Request):
-    agent = request.state.agent
-    return {"agent_id": agent.agent_id}
-```
-
-### Rust (Axum)
-
-```rust
-use axum::{routing::get, Router, middleware};
-use self_agent_sdk::SelfAgentVerifier;
-use std::sync::Arc;
-
-let verifier = SelfAgentVerifier::builder()
-    .network("mainnet")
-    .require_age(18)
-    .require_ofac()
-    .require_self_provider() // CRITICAL
-    .sybil_limit(3)
-    .build()?;
-
-let state = AppState { verifier: Arc::new(verifier) };
-
-let protected = Router::new()
-    .route("/api/profile", get(profile_handler))
-    .layer(middleware::from_fn_with_state(state.clone(), verify_agent_middleware));
-
-let app = Router::new()
-    .route("/health", get(health))
-    .merge(protected)
-    .with_state(state);
-```
+Services in other languages can verify incoming requests with the public `self_verify_request` MCP tool, or check an agent's status with `GET /api/agent/verify/{chainId}/{agentId}`.
 
 ---
 
 ## MCP Server Setup
 
-Install the MCP server to give AI coding assistants (Claude Code, Cursor, Windsurf) access to Self Agent ID tools.
-
-### Installation
-
-```bash
-# Install globally
-npm install -g @selfxyz/mcp-server
-
-# Or run via npx (no install required)
-npx @selfxyz/mcp-server
-```
+Give AI coding assistants (Claude Code, Cursor, Windsurf) access to Self Agent ID tools through the hosted MCP server (Streamable HTTP). This plugin's `.mcp.json` already configures it.
 
 ### Claude Code Configuration
 
-Add to the MCP settings (`.claude/mcp_servers.json` or project-level config):
+Project `.mcp.json`:
 
 ```json
 {
-  "self-agent-id": {
-    "command": "npx",
-    "args": ["-y", "@selfxyz/mcp-server"],
-    "env": {
-      "SELF_AGENT_PRIVATE_KEY": "0x...",
-      "SELF_NETWORK": "testnet",
-      "SELF_AGENT_API_BASE": "https://agent-api.self.xyz"
+  "mcpServers": {
+    "self-agent-id": {
+      "type": "http",
+      "url": "https://agent-api.self.xyz/api/mcp"
     }
   }
 }
@@ -301,78 +177,62 @@ Add to `.cursor/mcp.json`:
 {
   "mcpServers": {
     "self-agent-id": {
-      "command": "npx",
-      "args": ["-y", "@selfxyz/mcp-server"],
-      "env": {
-        "SELF_AGENT_PRIVATE_KEY": "0x...",
-        "SELF_NETWORK": "testnet",
-        "SELF_AGENT_API_BASE": "https://agent-api.self.xyz"
-      }
+      "url": "https://agent-api.self.xyz/api/mcp"
     }
   }
 }
 ```
 
-### Environment Variables
+### Public vs Privileged Tools
 
-| Variable                 | Required | Description                                                                                                                                    |
-| ------------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SELF_AGENT_PRIVATE_KEY` | No       | Agent's hex private key (0x-prefixed). Enables identity and auth tools. If omitted, only read-only tools (lookup, list, verify) are available. |
-| `SELF_NETWORK`           | No       | `mainnet` or `testnet`. Default: `testnet`.                                                                                                    |
-| `SELF_AGENT_API_BASE`    | No       | API base URL override. Default: `https://agent-api.self.xyz`.                                                                                  |
+| Access     | Tool                         | Description                                                   |
+| ---------- | ---------------------------- | ------------------------------------------------------------- |
+| Public     | `self_register_agent`        | Start agent registration (QR + `session_token`)               |
+| Public     | `self_check_registration`    | Poll registration; `reveal_private_key: true` exports the key |
+| Public     | `self_lookup_agent`          | Look up any agent by `agent_id` or `agent_address`            |
+| Public     | `self_list_agents_for_human` | List agents for a human address                               |
+| Public     | `self_verify_agent`          | Verify an agent address against a policy                      |
+| Public     | `self_verify_request`        | Validate a signed HTTP request against a policy               |
+| Privileged | `self_get_identity`          | The server's configured agent identity                        |
+| Privileged | `self_deregister_agent`      | Start deregistration of the server's agent                    |
+| Privileged | `self_sign_request`          | Auth headers signed as the server's agent                     |
+| Privileged | `self_authenticated_fetch`   | Signed HTTP request as the server's agent                     |
 
-`SELF_AGENT_API_BASE` is the canonical environment variable. The previous `SELF_API_URL` has been removed.
+Privileged tools need `Authorization: Bearer <key>` matching the server's `MCP_PRIVILEGED_API_KEY(S)`, and the server's own `SELF_AGENT_PRIVATE_KEY`. The shared hosted deployment has no agent key, so these tools are only useful on a deployment you run yourself (configure it via `app/.env.example`: `SELF_AGENT_PRIVATE_KEY`, `SELF_AGENT_NETWORK` = `mainnet` (default) or `testnet`, `MCP_PRIVILEGED_API_KEY`). To sign with your own key in your own process, use the SDK.
 
-### Available MCP Tools
+### Legacy stdio package
 
-Once configured, the MCP server exposes 10 tools:
-
-| Category     | Tool                         | Description                        |
-| ------------ | ---------------------------- | ---------------------------------- |
-| Identity     | `self_register_agent`        | Start agent registration flow      |
-| Identity     | `self_check_registration`    | Poll registration status           |
-| Identity     | `self_get_identity`          | Get own agent info                 |
-| Identity     | `self_deregister_agent`      | Start deregistration flow          |
-| Auth         | `self_sign_request`          | Generate auth headers              |
-| Auth         | `self_authenticated_fetch`   | Make signed HTTP request           |
-| Discovery    | `self_lookup_agent`          | Look up any agent by address or ID |
-| Discovery    | `self_list_agents_for_human` | List agents for a human address    |
-| Verification | `self_verify_agent`          | Verify agent on-chain              |
-| Verification | `self_verify_request`        | Validate signed HTTP request       |
+`npx @selfxyz/mcp-server` (0.2.0, configured with `SELF_AGENT_PRIVATE_KEY`, `SELF_NETWORK` (default `testnet`) and `SELF_AGENT_API_BASE`) signs locally with your own key, but it is out of step with the current API: with `@selfxyz/agent-sdk` 0.2.1 (the current npm release) it polls session status with `?token=` query parameters, which the API now rejects (Bearer only), and the `qr_url` it returns points at a `/qr/<sessionToken>` route that does not exist. Use the hosted server for registration until a new stdio release is published.
 
 ---
 
 ## On-Chain Integration Quick Start (Solidity)
 
-Import the registry interface and add modifiers that gate contract functions on agent identity.
+Declare the registry functions you need and add modifiers that gate contract functions on agent identity.
 
 ```solidity
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {IERC8004ProofOfHuman} from "./interfaces/IERC8004ProofOfHuman.sol";
-
-interface ISelfAgentRegistryReader is IERC8004ProofOfHuman {
-    function isVerifiedAgent(bytes32 agentKey) external view returns (bool);
-    function getAgentId(bytes32 agentKey) external view returns (uint256);
+interface ISelfAgentRegistry {
+    function hasHumanProof(uint256 agentId) external view returns (bool);
+    function isProofFresh(uint256 agentId) external view returns (bool);
     function getProofProvider(uint256 agentId) external view returns (address);
-    function getAgentKey(uint256 agentId) external view returns (bytes32);
 }
 
 contract MyContract {
-    ISelfAgentRegistryReader public immutable registry;
+    ISelfAgentRegistry public immutable registry;
     address public immutable selfProvider;
 
     constructor(address _registry, address _selfProvider) {
-        registry = ISelfAgentRegistryReader(_registry);
+        registry = ISelfAgentRegistry(_registry);
         selfProvider = _selfProvider;
     }
 
     modifier onlyVerifiedAgent(uint256 agentId) {
-        require(
-            registry.isVerifiedAgent(registry.getAgentKey(agentId)),
-            "Not verified"
-        );
+        require(registry.hasHumanProof(agentId), "Not verified");
+        // hasHumanProof ignores expiry; also require freshness
+        require(registry.isProofFresh(agentId), "Proof expired");
         require(
             registry.getProofProvider(agentId) == selfProvider,
             "Wrong provider"
@@ -385,14 +245,6 @@ contract MyContract {
     }
 }
 ```
-
-Compile with Foundry:
-
-```bash
-forge build --evm-version cancun
-```
-
-The `--evm-version cancun` flag is required because Hub V2 uses the PUSH0 opcode introduced in the Cancun upgrade.
 
 ### Contract Addresses
 
@@ -410,22 +262,21 @@ Human proofs expire after `maxProofAge` (default: 365 days) or when the passport
 
 ### Service-Side: Detect Expired Proofs
 
-The `SelfAgentVerifier` checks proof freshness via `isProofFresh()` as part of its `verify()` flow. When a proof has expired, the verifier returns `valid: false` with an error message. Handle this in your error responses to guide agents toward re-registration:
+The `SelfAgentVerifier` checks proof freshness via `isProofFresh()` as part of its `verify()` flow. When a proof has expired, the verifier returns `valid: false` with an error message. Handle this in your error responses to guide agents toward a proof refresh:
 
 ```typescript
 // TypeScript
 const result = await verifier.verify({
-  address,
   signature,
   timestamp,
   method,
-  path,
+  url,
   body,
 });
-if (!result.valid && result.error?.includes("proof has expired")) {
+if (!result.valid && result.error === "Agent's human proof has expired") {
   return res.status(401).json({
     error: "Agent proof has expired",
-    action: "deregister_and_reregister",
+    action: "refresh_proof",
   });
 }
 ```
@@ -437,10 +288,10 @@ Check `proofExpiresAt` proactively and warn before expiry:
 ```typescript
 // TypeScript
 const info = await agent.getInfo();
-const THIRTY_DAYS = 30 * 24 * 60 * 60;
-const now = Math.floor(Date.now() / 1000);
-if (info.proofExpiresAt > 0 && info.proofExpiresAt - now < THIRTY_DAYS) {
-  console.warn("Proof expiring soon — initiate refresh");
+if (info.isExpiringSoon) {
+  console.warn(
+    `Proof expires in ${info.daysUntilExpiry} days — initiate refresh`,
+  );
 }
 ```
 
@@ -453,9 +304,9 @@ require(registry.isProofFresh(agentId), "Proof expired");
 
 ### Refresh Flow
 
-**In-place refresh (preferred):** Use `requestProofRefresh({ agentId, network, disclosures })` — the human scans their passport again and `proofExpiresAt` is updated without changing the agentId.
+**In-place refresh (preferred):** Use `requestProofRefresh({ agentId, network })` (or `POST /api/agent/refresh`) — the human scans their passport again and `proofExpiresAt` is updated without changing the agentId. Disclosures default to the agent's on-chain config.
 
-**Deregister + re-register:** If changing verification config or key type, deregister first then re-register. The agentId changes — update any stored references.
+**Deregister + re-register:** Required when changing verification config or key type, and for agent ids that the refresh endpoint rejects with 422 (ids whose 32-byte big-endian form contains a byte `>= 0x80`, e.g. 128–255: the Self app encodes `userDefinedData` as UTF-8). The agentId changes — update any stored references.
 
 ## Troubleshooting
 
@@ -464,10 +315,10 @@ These are the most frequently encountered issues during integration. Read throug
 | Gotcha                                | Detail                                                                                                                                                                                                                                                                |
 | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **userDefinedData is UTF-8**          | The Self SDK passes `userDefinedData` as a UTF-8 string, NOT raw bytes. All hex values in the payload are ASCII hex characters. An address is 40 ASCII characters, not 20 raw bytes.                                                                                  |
-| **Use `--evm-version cancun`**        | Foundry builds referencing Hub V2 must use `forge build --evm-version cancun`. Hub V2 uses the PUSH0 opcode which requires the Cancun EVM version.                                                                                                                    |
+| **Use `--evm-version cancun`**        | Foundry builds that compile against Hub V2 / `@selfxyz/contracts` (e.g. this repo) need `--evm-version cancun` (PUSH0). Calling the registry through an interface does not.                                                                                           |
 | **Provider verification is CRITICAL** | Without checking `getProofProvider()`, a fake provider could deploy a malicious contract that always returns `true` and register illegitimate agents. Always call `.requireSelfProvider()` in the SDK or check `getProofProvider(agentId) == SELF_PROVIDER` on-chain. |
-| **bytes32 positioning**               | Use `bytes32(bytes1(uint8(x)))` not `bytes32(uint256(x))` for byte positioning in bytes32. Use `bytes32(uint256(uint160(addr)))` for address-to-agentKey conversion (right-padded, not left-padded).                                                                  |
-| **NEXT_PUBLIC_SELF_ENDPOINT**         | The `.env.local` variable `NEXT_PUBLIC_SELF_ENDPOINT` must be lowercase. A scope mismatch occurs if casing differs.                                                                                                                                                   |
+| **bytes32 positioning**               | Use `bytes32(bytes1(uint8(x)))` not `bytes32(uint256(x))` for byte positioning in bytes32. Use `bytes32(uint256(uint160(addr)))` for address-to-agentKey conversion (address in the low-order bytes), not `bytes32(bytes20(addr))`.                                   |
+| **Session tokens**                    | Registration/deregistration/refresh status, QR and export calls take the session token only as `Authorization: Bearer <sessionToken>`, and every status response rotates it. `?token=` query parameters are rejected.                                                 |
 | **SELF_AGENT_API_BASE**               | `SELF_AGENT_API_BASE` is the canonical env var. `SELF_API_URL` has been removed. Default: `https://agent-api.self.xyz`.                                                                                                                                               |
 | **Celo Sepolia chain ID**             | Celo Sepolia is chain `11142220`, NOT `44787` (deprecated Alfajores). RPC: `https://forno.celo-sepolia.celo-testnet.org`.                                                                                                                                             |
 | **Blockscout verification**           | Blockscout does not need an API key for contract verification. Celoscan verification should use the Sourcify verifier (not etherscan verifier) as the Celoscan API endpoint is flaky.                                                                                 |
@@ -480,24 +331,24 @@ These are the most frequently encountered issues during integration. Read throug
 
 Follow this sequence to validate a full integration from registration through verification:
 
-1. **Register on testnet first** — Use chain `11142220` (Celo Sepolia). No real funds needed. Set `network: "testnet"` in the SDK or `SELF_NETWORK=testnet` in MCP config.
+1. **Register on testnet first** — Use chain `11142220` (Celo Sepolia). No real funds needed. Set `network: "testnet"` in the SDK or pass `network: "testnet"` to the MCP tools.
 
 2. **Scan QR with Self app** — The registration flow generates a QR code. Open the Self app, scan the QR, and scan the passport NFC chip. The Self app generates a ZK proof locally and submits it on-chain.
 
-3. **Poll for completion** — Call `agent.getRegistrationStatus()` (SDK) or `self_check_registration` (MCP) every 5-10 seconds. The flow typically takes 30-90 seconds. Sessions expire after 30 minutes.
+3. **Poll for completion** — `await session.waitForCompletion()` (SDK) or call `self_check_registration` (MCP) every 5-10 seconds. The flow typically takes 30-90 seconds. Sessions expire after 30 minutes.
 
-4. **Test request signing** — Use `agent.signRequest()` or `self_sign_request` to generate the 3 auth headers. Verify them using `SelfAgentVerifier` or `self_verify_request`.
+4. **Test request signing** — Use `agent.signRequest()` to generate the 3 auth headers. Verify them using `SelfAgentVerifier` or `self_verify_request`.
 
-5. **Verify credentials match** — Call `agent.getCredentials()` or `self_get_identity` and confirm the stored credentials (nationality, age threshold, OFAC status) match the selected verification config.
+5. **Verify credentials match** — Call `agent.getCredentials()` or `self_lookup_agent` and confirm the stored credentials (nationality, age threshold, OFAC status) match the selected verification config.
 
 6. **Test signed fetch** — Make a full round-trip: agent signs a request to a protected endpoint, the server verifies the signature and on-chain state, and returns agent-specific data.
 
-7. **Test failure cases** — Verify that the server correctly rejects: missing headers (401), expired timestamps (401), invalid signatures (401), unregistered agents (401), wrong provider (401), and sybil limit exceeded (403).
+7. **Test failure cases** — Verify that the server correctly rejects: missing headers (401), expired timestamps (401), invalid signatures (401), unregistered agents (401), wrong provider (401), and sybil limit exceeded (401). The SDK middleware answers every verification failure with 401, and 429 when rate limited.
 
 ---
 
 ## Reference Documentation
 
-For the complete SDK API reference covering all classes, methods, types, and constants across TypeScript, Python, and Rust, see [`references/sdk-reference.md`](references/sdk-reference.md).
+For the complete SDK API reference covering all classes, methods, types, and constants of the TypeScript SDK, see [`references/sdk-reference.md`](references/sdk-reference.md).
 
-For full runnable integration examples across Express, FastAPI, Axum, Hono, Next.js, LangChain, and Solidity, see [`references/framework-examples.md`](references/framework-examples.md).
+For full runnable integration examples across Express, Hono, Next.js, and Solidity, see [`references/framework-examples.md`](references/framework-examples.md).

@@ -1,21 +1,21 @@
 # Self Protocol Integration Guide
 
 Status: active  
-Last updated: 2026-02-22
+Last updated: 2026-10-26
 
 ## What this project gives you
 
 Self Agent ID lets you:
 
 1. Register an agent identity backed by a Self Protocol human proof.
-2. Deregister and rotate agent identity using the same proof flow.
+2. Deregister, refresh the human proof, or rotate agent identity using the same proof flow.
 3. Sign outbound agent API requests with a dedicated agent key.
 4. Verify inbound agent requests in your service with policy controls.
 
 ## Who should use which part
 
 1. Agent builders:
-   Use registration flow (`/register` or CLI), then sign requests with `SelfAgent`.
+   Register via the REST API (`POST /api/agent/register`), the SDK's `requestRegistration`, or the CLI, then sign requests with `SelfAgent`.
 2. Service/API teams:
    Use `SelfAgentVerifier` middleware to enforce proof policy.
 3. Infra/protocol teams:
@@ -24,19 +24,21 @@ Self Agent ID lets you:
 ## Supported registration modes
 
 1. `linked`:
-   Dedicated generated agent keypair. Recommended for autonomous agents.
-2. `self-custody`:
-   Wallet address is the verified identity. Best for human-operated on-chain gating.
-3. `wallet-free`:
-   No user wallet required. Agent keypair is generated locally.
-4. `smartwallet`:
-   Passkey smart wallet guardian + generated agent keypair.
+   Server-generated agent keypair linked to the human's wallet, which owns the agent NFT. Recommended for autonomous agents.
+2. `wallet-free`:
+   No user wallet required. Server-generated agent keypair that owns its own NFT.
+3. `privy` / `smartwallet`:
+   Same as `linked`, with `humanAddress` set to the human's Privy embedded wallet or passkey smart wallet.
+4. `ed25519`:
+   The agent registers its existing Ed25519 public key with a signed challenge; no wallet needed.
+5. `ed25519-linked`:
+   Like `ed25519`, with the human's wallet as guardian.
 
-## SDKs
+The CLI supports `linked` and `wallet-free`; the REST API and SDK support all six.
 
-1. TypeScript package: `@selfxyz/agent-sdk`
-2. Python package: `selfxyz-agent-sdk` (import path `self_agent_sdk`)
-3. Rust crate: `self-agent-sdk`
+## SDK
+
+The TypeScript SDK (`@selfxyz/agent-sdk`) is the official client. Other languages call the REST API directly and implement the request-signing scheme (`x-self-agent-*` headers).
 
 ## Service-side verification defaults
 
@@ -51,7 +53,7 @@ If you set `requireSelfProvider: false`, your service accepts verification provi
 ## Critical prerequisites for success-path verification
 
 1. Agent key must already be registered on-chain for your selected network.
-2. If not registered, protected requests should fail with `Agent not verified on-chain`.
+2. If not registered, protected requests should fail with `Agent not verified on-chain`; if the human proof has expired, with `Agent's human proof has expired` (refresh it via `POST /api/agent/refresh`).
 3. Verify both sides are on the same network (`mainnet` vs `testnet`) before debugging signatures.
 
 ## Request body fidelity (raw body requirement)
@@ -80,7 +82,7 @@ Use these to validate an integration quickly:
    - Submit identical signed request twice.
    - Expected: first accepted, second rejected when replay protection is enabled.
 
-## Pre-demo smoke checklist
+## Pre-launch smoke checklist
 
 1. Build and test changed components.
 2. Confirm verifier service health endpoint.
@@ -89,10 +91,14 @@ Use these to validate an integration quickly:
 
 ## Public APIs
 
-1. `GET /api/cards/{chainId}/{agentId}`
-2. `GET /api/reputation/{chainId}/{agentId}`
-3. `GET /api/verify-status/{chainId}/{agentId}`
-4. `GET /.well-known/a2a/{agentId}?chain={chainId}` (redirects to card resolver)
+1. `GET /api/agent/info/{chainId}/{agentId}`
+2. `GET /api/agent/verify/{chainId}/{agentId}`
+3. `GET /api/cards/{chainId}/{agentId}`
+4. `GET /api/reputation/{chainId}/{agentId}`
+5. `GET /api/verify-status/{chainId}/{agentId}`
+6. `GET /.well-known/a2a/{agentId}?chain={chainId}` (redirects to card resolver)
+
+Per-agent routes return 404 for agents that don't exist or were deregistered; "verified" always means `hasHumanProof && isProofFresh`. Full reference: `docs/api-docs.md`.
 
 ## JSON Schema & SDK helpers
 

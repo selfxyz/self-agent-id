@@ -1,31 +1,20 @@
-# Standalone TypeScript Ed25519 Agent
+# Standalone TypeScript example (Ed25519)
 
-Reference implementation demonstrating the full Ed25519 agent lifecycle with `@selfxyz/agent-sdk`.
-
-## Quick Start
+Full Ed25519 agent lifecycle with `Ed25519Agent`: keygen, registration, signed requests, then a `SelfAgentVerifier` check of its own signature. Testnet.
 
 ```bash
-npm install
-# Generate a new keypair and check registration
-npx tsx agent.ts
-# Send a signed request to a protected service (see minimal-ts for a verifier)
-SERVICE_URL=http://localhost:3000/api/data ED25519_SEED=<your-seed> npx tsx agent.ts
+npm install                                         # SDK 0.3.0; until it's on npm: npm install ../../typescript-sdk
+npx tsx agent.ts                                    # new random seed; prints address and registration status
+ED25519_SEED=<seed> npx tsx agent.ts --register     # prints a QR URL for the Self app, waits on-chain
+SERVICE_URL=http://localhost:3000/api/data ED25519_SEED=<seed> npx tsx agent.ts   # signed request
 ```
 
-## What This Demonstrates
+`SERVICE_URL` can point at the [minimal-ts](../minimal-ts/) verifier service.
 
-1. **Keygen** — Generate an Ed25519 keypair from a 32-byte seed
-2. **Register** — Check registration status, guide user through QR flow
-3. **Authenticate** — Sign HTTP requests with Ed25519 via `agent.fetch()`
-4. **Verify** — Service-side verification using `SelfAgentVerifier`
+| Variable              | Meaning                                 | Default                      |
+| --------------------- | --------------------------------------- | ---------------------------- |
+| `ED25519_SEED`        | 64-hex Ed25519 seed                     | Random                       |
+| `SERVICE_URL`         | Protected endpoint for a signed request | Unset: skipped               |
+| `SELF_AGENT_API_BASE` | Self Agent ID API base                  | `https://agent-api.self.xyz` |
 
-## Environment Variables
-
-| Variable       | Description                                 | Default            |
-| -------------- | ------------------------------------------- | ------------------ |
-| `ED25519_SEED` | 64-char hex Ed25519 seed                    | Random (generated) |
-| `SERVICE_URL`  | Protected endpoint to send a signed request | _(unset; skipped)_ |
-
-## Ed25519 vs ECDSA
-
-Ed25519 agents are ideal for non-Ethereum environments (Python, Rust, embedded systems). The signing protocol is identical — only the cryptographic primitive changes. Services verify both types transparently via `SelfAgentVerifier`.
+**Registration flow** (`--register`): `POST /api/agent/register/ed25519-challenge` → sign the raw 32 bytes of `challengeHash` → `POST /api/agent/register` with `mode: "ed25519"`, `ed25519Pubkey`, `ed25519Signature` → show `scanUrl` → poll `isRegistered()` until it lands or the session expires.

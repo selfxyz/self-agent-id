@@ -1,37 +1,26 @@
-# Eliza (ai16z) Integration
+# Eliza (ai16z) example
 
-Self Agent ID plugin for [Eliza](https://github.com/ai16z/eliza) agents.
+[`plugin.ts`](plugin.ts) gives an [Eliza](https://github.com/ai16z/eliza) agent a human-verified identity by registering its existing Ed25519 (Solana) key. Doc-quality code: adapt the plugin interface to your Eliza version.
 
-Eliza agents on Solana already use Ed25519 keypairs. This plugin registers the same key with Self Agent ID for human-verified identity — no new key generation required.
+```ts
+import { createSelfIdentityPlugin } from "./plugin";
 
-## Setup
-
-1. Install: `npm install @selfxyz/agent-sdk`
-2. Add to your Eliza character config:
-
-```json
-{
-  "plugins": ["./self-identity/plugin"],
-  "settings": {
-    "SELF_ED25519_SEED": "your-64-char-hex-seed",
-    "SELF_NETWORK": "testnet"
-  }
-}
+const plugin = createSelfIdentityPlugin(runtime); // reads settings via runtime.getSetting()
 ```
 
-Or reuse your existing Solana key (the plugin falls back to `SOLANA_PRIVATE_KEY`).
+Install `@selfxyz/agent-sdk@^0.3.0` (until it's on npm: `npm install ../../typescript-sdk`).
 
-3. Register: Visit https://docs.self.xyz/agent-id/guides/agent-builder with your Ed25519 seed
+| Setting              | Meaning                                                                   | Default   |
+| -------------------- | ------------------------------------------------------------------------- | --------- |
+| `SELF_ED25519_SEED`  | 32-byte Ed25519 seed as 64 hex chars                                      | —         |
+| `SOLANA_PRIVATE_KEY` | Fallback seed (convert a base58 keypair to the hex of its first 32 bytes) | —         |
+| `SELF_NETWORK`       | `testnet` or `mainnet`                                                    | `testnet` |
 
-## Actions
+**Register the key once** (a human scans a QR with the Self app): `ED25519_SEED=<seed> npx tsx agent.ts --register` in [`../standalone-ts`](../standalone-ts/).
 
-| Action               | Description                    |
-| -------------------- | ------------------------------ |
-| `checkIdentity`      | Check registration status      |
-| `signRequest`        | Sign an HTTP request           |
-| `authenticatedFetch` | Make a signed HTTP request     |
-| `verifyAgent`        | Verify another agent's request |
-
-## Key Reuse
-
-Eliza's Solana Ed25519 key can be directly registered with Self Agent ID. The same key provides both blockchain identity (Solana) and human-verified agent identity (Self).
+| Action               | Does                                             |
+| -------------------- | ------------------------------------------------ |
+| `checkIdentity`      | Registration status of this agent                |
+| `signRequest`        | Signed headers for an HTTP request               |
+| `authenticatedFetch` | Signed HTTP request                              |
+| `verifyAgent`        | Verify another agent's request (sybil limit off) |

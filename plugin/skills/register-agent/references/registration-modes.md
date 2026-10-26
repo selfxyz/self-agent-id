@@ -1,6 +1,17 @@
 # Registration Modes — Detailed Reference
 
-Self Agent ID supports four registration modes, each encoding a different relationship between the human, the agent keypair, and the on-chain identity. All modes produce the same output: a soulbound ERC-721 NFT with ZK-attested credentials. The modes differ in how the agent key is derived, who owns the NFT, and what the `userDefinedData` field contains.
+Self Agent ID supports six registration modes through `POST /api/agent/register`: `linked`, `wallet-free`, `privy`, `smartwallet`, `ed25519` and `ed25519-linked` (the server also accepts the legacy spellings `walletfree` → `wallet-free` and `smart-wallet` → `smartwallet`). All modes produce the same output: a soulbound ERC-721 NFT with ZK-attested credentials. The modes differ in how the agent key is derived, who owns the NFT, and what the `userDefinedData` field contains.
+
+On-chain, the registry understands four registration actions (plus `F` refresh and `I` identify). The API modes map onto them like this:
+
+| API mode                         | On-chain action            | Agent key                                            |
+| -------------------------------- | -------------------------- | ---------------------------------------------------- |
+| `linked`, `privy`, `smartwallet` | `K` — advanced register    | Server-generated ECDSA key, linked to `humanAddress` |
+| `wallet-free`                    | `W` — wallet-free register | Server-generated ECDSA key that owns its NFT         |
+| `ed25519`, `ed25519-linked`      | `E` — Ed25519 register     | Agent's own Ed25519 public key                       |
+| (not offered by the API)         | `R` — simple register      | The human's own wallet address                       |
+
+`privy` and `smartwallet` differ from `linked` only in where the human's wallet address comes from (a Privy embedded wallet or a passkey smart wallet). The server treats all three identically: it generates the agent key, binds it to `humanAddress`, and the key is exported after completion. No bundler, paymaster or smart-account transaction is involved.
 
 ## userDefinedData Overview
 
@@ -16,19 +27,17 @@ Position [2+]: Mode-specific payload
 
 ---
 
-## verified-wallet Mode
+## Simple Register (Action `R`) — human wallet as the agent
 
 **Action byte:** `R` (0x52)
 
-The simplest registration path. The human's own wallet address becomes the agent key. No separate keypair is generated — the human IS the agent.
+The human's own wallet address becomes the agent key. No separate keypair is generated — the human IS the agent. The hosted API does not offer this action as a mode; it is listed here because the registry supports it and the SDK exports `buildSimpleRegisterUserDataAscii()`.
 
 ### Agent Key Derivation
 
 ```solidity
 bytes32 agentKey = bytes32(uint256(uint160(humanWalletAddress)));
 ```
-
-The human's wallet address is zero-padded to 32 bytes (address in the low-order 20 bytes). This is the same address that the Self app uses as the `userIdentifier` during proof submission.
 
 ### userDefinedData Format
 
@@ -37,44 +46,17 @@ Position [0]: 'R' (0x52) — simple register action
 Position [1]: Config digit ('0'-'5')
 ```
 
-**Total length:** 2 characters
+**Total length:** 2 characters. Example: `"R4"` — simple register with config 4 (age 18+ and OFAC check).
 
-Example: `"R3"` — simple register with config 3 (age 18+ and OFAC check).
-
-### NFT Ownership
-
-The soulbound NFT is minted to the human's wallet address. The human directly owns and controls the agent identity.
-
-### Characteristics
-
-| Property           | Value                               |
-| ------------------ | ----------------------------------- |
-| Agent key source   | Human's wallet address              |
-| NFT owner          | Human's wallet                      |
-| Keypair management | None — uses human's existing wallet |
-| Guardian           | Not applicable                      |
-| Gas payment        | Human pays gas directly             |
-
-### When to Use
-
-- Personal agents where the human directly operates the AI agent
-- Prototyping and development — fastest path to a registered identity
-- Single-agent setups where wallet exposure is acceptable
-
-### Limitations
-
-- The human's wallet address is publicly linked to the agent identity on-chain
-- The human must sign all agent HTTP requests using their wallet's private key
-- Cannot have multiple independent agents under the same wallet (each wallet maps to one agent key)
-- No separation between human identity and agent operations
+The soulbound NFT is minted to the human's wallet address. The human must sign all agent HTTP requests with that wallet's key, so there is no separation between the human and the agent.
 
 ---
 
-## agent-identity Mode (Recommended)
+## linked Mode (Recommended for ECDSA) — also `privy` and `smartwallet`
 
 **Action byte:** `K` (0x4B)
 
-The recommended mode for production agents. The agent generates its own ECDSA keypair, separate from the human's wallet. The agent signs a challenge to prove ownership of the keypair, and the ECDSA signature is verified on-chain by the registry.
+The server generates a fresh ECDSA keypair for the agent, separate from the human's wallet, signs the registration challenge with it, and embeds the signature in the QR code. The registry verifies the ECDSA signature on-chain.
 
 ### Agent Key Derivation
 
@@ -97,36 +79,34 @@ Position [170-171]: ECDSA signature v-value (2 hex ASCII characters)
 
 **Total length:** 172 characters
 
-The signature covers a challenge derived from the registration parameters. The registry recovers the signer address from the signature and verifies it matches the agent address at positions [2-41]. If the recovered address does not match, the transaction reverts with `InvalidAgentSignature()`.
+The signature covers `keccak256("self-agent-id:register:" + humanAddress + chainId + registryAddress + nonce)`. The registry recovers the signer address and verifies it matches the agent address at positions [2-41]; otherwise the proof reverts with `InvalidAgentSignature()`.
 
 ### NFT Ownership
 
-The soulbound NFT is minted to the human's wallet address (the `userIdentifier` from the Hub V2 callback). The human owns the NFT but the agent has its own keypair for signing requests.
+The soulbound NFT is minted to the human's wallet address (`humanAddress`, which the Self app uses as the `userIdentifier`). The human owns the NFT; the agent has its own keypair for signing requests.
 
 ### Characteristics
 
-| Property              | Value                                                                |
-| --------------------- | -------------------------------------------------------------------- |
-| Agent key source      | Agent's own ECDSA keypair                                            |
-| NFT owner             | Human's wallet                                                       |
-| Keypair management    | Agent generates and stores private key                               |
-| Guardian              | Not applicable (human can deregister via NFT ownership)              |
-| Gas payment           | Human pays gas for registration; agent signs HTTP requests off-chain |
-| On-chain verification | ECDSA recovery verifies agent keypair ownership                      |
+| Property              | Value                                                                             |
+| --------------------- | --------------------------------------------------------------------------------- |
+| Agent key source      | Server-generated ECDSA keypair                                                    |
+| NFT owner             | Human's wallet (`humanAddress`)                                                   |
+| Key delivery          | `POST /api/agent/register/export` (Bearer token), within 30 minutes of completion |
+| Guardian              | Not applicable (the human deregisters via NFT ownership)                          |
+| Gas payment           | None for the agent; the Self app relays the proof                                 |
+| On-chain verification | ECDSA recovery verifies agent keypair ownership                                   |
 
 ### When to Use
 
-- Production AI agents that need their own signing identity
-- Multi-agent setups where each agent needs an independent keypair
-- Services where the human's wallet should not be exposed in API calls
-- Any scenario requiring separation between the human identity and agent operations
+- Production AI agents that need their own signing identity, owned by a human wallet
+- `privy`: the human signed in with email/social login and has a Privy embedded wallet
+- `smartwallet`: the human's wallet is a passkey smart wallet (its address is just passed as `humanAddress`)
 
 ### Security Notes
 
-- The agent's private key must be stored securely (environment variable, secrets manager)
-- The private key is generated once and cannot be recovered if lost
-- Losing the key requires deregistration (by the NFT owner) and fresh registration with a new keypair
-- The human retains ultimate control via NFT ownership — they can call `selfDeregister()` at any time
+- Export the private key before the session expires and store it securely (environment variable, secrets manager). It cannot be recovered afterwards.
+- Losing the key requires deregistration and a fresh registration.
+- The human retains control via NFT ownership — they can call `selfDeregister()` from their wallet at any time.
 
 ---
 
@@ -134,7 +114,7 @@ The soulbound NFT is minted to the human's wallet address (the `userIdentifier` 
 
 **Action byte:** `W` (0x57)
 
-Designed for scenarios where the human does not have or does not want to use a crypto wallet. The agent generates its own keypair, and a guardian address (typically controlled by the Self app) is designated as a safety mechanism.
+For humans who do not have or do not want to use a crypto wallet. The server generates the agent's keypair, and the agent address owns its own NFT.
 
 ### Agent Key Derivation
 
@@ -142,15 +122,13 @@ Designed for scenarios where the human does not have or does not want to use a c
 bytes32 agentKey = bytes32(uint256(uint160(agentAddress)));
 ```
 
-Same derivation as agent-identity mode — the agent has its own address.
-
 ### userDefinedData Format
 
 ```
 Position [0]:     'W' (0x57) — wallet-free register action
 Position [1]:     Config digit ('0'-'5')
 Position [2-41]:  Agent address (40 hex ASCII characters)
-Position [42-81]: Guardian address (40 hex ASCII characters)
+Position [42-81]: Guardian address (40 hex ASCII characters; all zeros = no guardian)
 Position [82-145]: ECDSA signature r-value (64 hex ASCII characters)
 Position [146-209]: ECDSA signature s-value (64 hex ASCII characters)
 Position [210-211]: ECDSA signature v-value (2 hex ASCII characters)
@@ -158,121 +136,61 @@ Position [210-211]: ECDSA signature v-value (2 hex ASCII characters)
 
 **Total length:** 212 characters
 
-The guardian address at positions [42-81] is stored on-chain and has the authority to call `guardianRevoke()` if the agent's key is compromised.
-
-### NFT Ownership
-
-The soulbound NFT is minted to the **agent's address**, not the human's wallet. The agent is the NFT owner, and the guardian serves as the revocation authority.
+The hosted API always sends a zero guardian for `wallet-free`. A non-zero guardian (set when building `userDefinedData` yourself with `buildWalletFreeRegisterUserDataAscii({ guardianAddress })`) is stored on-chain and may call `guardianRevoke()`.
 
 ### Characteristics
 
-| Property           | Value                                                                |
-| ------------------ | -------------------------------------------------------------------- |
-| Agent key source   | Agent's own ECDSA keypair                                            |
-| NFT owner          | Agent's address                                                      |
-| Keypair management | Agent generates and stores private key                               |
-| Guardian           | Designated address (e.g., Self app) with revocation authority        |
-| Gas payment        | Agent pays gas or uses a relayer                                     |
-| Revocation         | Guardian calls `guardianRevoke()`, or agent calls `selfDeregister()` |
+| Property         | Value                                                                                                          |
+| ---------------- | -------------------------------------------------------------------------------------------------------------- |
+| Agent key source | Server-generated ECDSA keypair (CLI: generated locally)                                                        |
+| NFT owner        | Agent's address                                                                                                |
+| Key delivery     | Export endpoint (API) or the session file (CLI)                                                                |
+| Guardian         | None via the API; optional when building userDefinedData yourself                                              |
+| Revocation       | Deregister via the Self app (action `D`), agent calls `selfDeregister()`, or guardian calls `guardianRevoke()` |
 
 ### When to Use
 
-- Agents for users who have no crypto wallet and do not want to manage one
-- Agents managed entirely through the Self mobile app
-- Scenarios where a trusted third party (the guardian) should have emergency revocation authority
-
-### Guardian Revocation
-
-If the agent's private key is compromised, the guardian can force-revoke the identity:
-
-```solidity
-registry.guardianRevoke(agentId);
-```
-
-This revokes the human proof, clears all credentials, and burns the soulbound NFT. The agent must re-register to obtain a new identity.
-
-### Limitations
-
-- The guardian has unilateral revocation power — choose the guardian carefully
-- If the guardian address itself is compromised, there is no recovery mechanism beyond re-registration
-- Gas costs fall on the agent (or a relayer) since there is no human wallet in the loop
+- Quick starts and agents for users who have no crypto wallet
+- Embedded agents, CLI-only workflows
 
 ---
 
-## smart-wallet Mode
+## ed25519 and ed25519-linked Modes
 
-**Action byte:** Uses the same underlying mechanics as agent-identity mode, but wrapped in a smart account.
+**Action byte:** `E` (0x45)
 
-The most user-friendly mode, using WebAuthn passkeys instead of traditional ECDSA private keys. Built on ZeroDev Kernel smart accounts with Pimlico as the bundler and paymaster. On mainnet, the paymaster covers all gas costs, making the experience completely gasless for the user.
+For agents that already have an Ed25519 key (OpenClaw, Eliza/Solana, SSH-style keys). The agent keeps its own key; the server never sees it.
 
-### Architecture
+### Flow
+
+1. `POST /api/agent/register/ed25519-challenge` with `{ "pubkey": "<64 hex>", "network": "testnet", "humanAddress": "0x..." }` (`humanAddress` only for `ed25519-linked`) → `{ challengeHash, nonce }`.
+2. The agent signs the raw 32 bytes of `challengeHash` with its Ed25519 key.
+3. `POST /api/agent/register` with `mode`, `network`, `ed25519Pubkey` (64 hex) and `ed25519Signature` (128 hex), plus `humanAddress` for `ed25519-linked`.
+
+### Agent Key and Ownership
+
+- Agent key: the raw 32-byte Ed25519 public key.
+- NFT owner: an address derived from the public key (`address(uint160(uint256(keccak256(pubkey))))`).
+- `ed25519-linked`: the human's wallet is stored as the **guardian** and can call `guardianRevoke(agentId)`.
+- `ed25519`: no guardian.
+
+### userDefinedData Format
 
 ```
-Human (passkey / biometric)
-    │
-    ▼
-WebAuthn authentication (browser / device)
-    │
-    ▼
-ZeroDev Kernel smart account
-    │
-    ▼
-Pimlico bundler → submits UserOperation to Celo
-    │
-    ▼
-Pimlico paymaster → sponsors gas (mainnet only)
+Position [0]:       'E' (0x45)
+Position [1]:       Config digit ('0'-'5')
+Position [2-65]:    Ed25519 public key (64 hex)
+Position [66-193]:  Ed25519 signature R‖S (128 hex)
+Position [194-513]: Extended public key data for on-chain verification (5 × 64 hex)
+Position [514-553]: Guardian address (40 hex; zeros for ed25519)
 ```
 
-### Key Components
-
-| Component      | Details                                                    |
-| -------------- | ---------------------------------------------------------- |
-| Smart account  | ZeroDev Kernel v3 (ERC-4337 compatible)                    |
-| Bundler        | Pimlico (`https://api.pimlico.io/v2/{chainId}/rpc`)        |
-| Paymaster      | Pimlico (mainnet gasless sponsorship)                      |
-| Passkey server | `https://passkeys.zerodev.app/api/v3/{projectId}` (NOT v4) |
-| Authentication | WebAuthn (FIDO2) — fingerprint, face, or security key      |
-
-### Characteristics
-
-| Property         | Value                                                          |
-| ---------------- | -------------------------------------------------------------- |
-| Agent key source | Smart account address (derived from passkey)                   |
-| NFT owner        | Smart account                                                  |
-| Key management   | Passkey stored by browser/OS — no seed phrase                  |
-| Guardian         | Smart account can designate a guardian                         |
-| Gas payment      | Paymaster on mainnet (gasless); counterfactual only on testnet |
-
-### When to Use
-
-- Consumer-facing applications where UX is the top priority
-- Agents for non-technical users who should never see a seed phrase or private key
-- Mainnet deployments where gasless transactions improve onboarding conversion
-
-### Network Differences
-
-| Behavior                 | Testnet (Celo Sepolia) | Mainnet (Celo)                  |
-| ------------------------ | ---------------------- | ------------------------------- |
-| Smart account deployment | Counterfactual only    | Deployed by first UserOperation |
-| Gas sponsorship          | Not available          | Pimlico paymaster covers gas    |
-| Passkey registration     | Works (for testing)    | Works (production)              |
-
-### WebAuthn Requirements
-
-WebAuthn passkey authentication has specific browser requirements:
-
-- **HTTPS** is required in production
-- **Chrome** supports WebAuthn on `http://localhost` for development
-- **Firefox** blocks WebAuthn on `http://localhost` — use Chrome for local development
-- **Safari** supports WebAuthn but may require additional permissions
-- **Mobile browsers** support WebAuthn via platform authenticators (fingerprint, face)
+**Total length:** 554 characters
 
 ### Limitations
 
-- Most complex setup — requires ZeroDev project ID, Pimlico API key, and passkey server configuration
-- Testnet mode is counterfactual only (smart account not actually deployed, no gasless sponsorship)
-- Passkey recovery depends on the browser/OS passkey sync mechanism (iCloud Keychain, Google Password Manager, etc.)
-- Debugging is harder due to the additional abstraction layers (UserOperation, bundler, paymaster)
+- Ed25519 agents cannot be deregistered through `POST /api/agent/deregister` (400). Use `guardianRevoke(agentId)` from the guardian wallet (`ed25519-linked`).
+- There is no key to export (`/api/agent/register/export` returns 400 for these modes).
 
 ---
 
@@ -281,23 +199,23 @@ WebAuthn passkey authentication has specific browser requirements:
 ```
 Start
   │
-  ├─ Need the simplest possible setup?
-  │   └─ YES → verified-wallet
-  │
-  ├─ Building a production agent with its own keypair?
-  │   └─ YES → agent-identity
+  ├─ Agent already has an Ed25519 key?
+  │   ├─ Human wants wallet-based revocation → ed25519-linked
+  │   └─ Otherwise → ed25519
   │
   ├─ Human has no crypto wallet?
   │   └─ YES → wallet-free
   │
-  ├─ Want the best UX with passkeys and gasless transactions?
-  │   └─ YES → smart-wallet
+  ├─ Human has a wallet?
+  │   ├─ Privy embedded wallet → privy
+  │   ├─ Passkey smart wallet  → smartwallet
+  │   └─ Any other wallet      → linked
   │
   └─ Not sure?
-      └─ agent-identity (default recommendation)
+      └─ linked (default recommendation)
 ```
 
-**General guidance:** Start with agent-identity mode unless there is a specific reason to use another mode. It provides the best balance of security, flexibility, and simplicity for most production use cases.
+**General guidance:** Start with `linked` unless there is a specific reason to use another mode. It gives the agent its own key while the human's wallet keeps ownership. The CLI supports only `linked` and `wallet-free`.
 
 ---
 
@@ -327,11 +245,11 @@ The digit is an ASCII character (`'0'` = 0x30, `'5'` = 0x35), not a raw byte val
 
 ## Deregistration
 
-Agents can be deregistered through two mechanisms, depending on the registration mode.
+`POST /api/agent/deregister` with `{ "network": "testnet", "agentAddress": "0x..." }` (or `agentId`) starts a deregistration session; the human scans the QR code with the Self app. The server picks the action from the NFT owner:
 
 ### Simple Deregister (Action `D`)
 
-For verified-wallet mode agents. The same human who registered initiates deregistration through the Self app. The `userDefinedData` format:
+Used when the agent owns its own NFT (`wallet-free`, or the simple `R` registration). The Self app's user identifier is the agent address.
 
 ```
 Position [0]: 'D' (0x44)
@@ -342,7 +260,7 @@ Position [1]: Config digit
 
 ### Advanced Deregister (Action `X`)
 
-For agent-identity and wallet-free mode agents. Includes the agent address to identify which agent to deregister:
+Used when a human wallet owns the NFT (`linked`, `privy`, `smartwallet`). Includes the agent address to identify which agent to deregister:
 
 ```
 Position [0]:    'X' (0x58)
@@ -354,11 +272,11 @@ Position [2-41]: Agent address (40 hex ASCII characters)
 
 ### Direct Deregistration
 
-The NFT owner can also call `selfDeregister(agentId)` directly on the registry contract, bypassing the Hub V2 flow entirely. This is the simplest deregistration path for agents registered in agent-identity or wallet-free modes.
+The NFT owner can also call `selfDeregister(agentId)` directly on the registry contract, bypassing the Hub V2 flow entirely.
 
 ### Guardian Revocation
 
-For agents with a designated guardian (wallet-free and smart-wallet modes), the guardian can call `guardianRevoke(agentId)` to force-revoke the agent identity. This is an emergency mechanism for compromised agents.
+For agents with a guardian (`ed25519-linked`, or a `wallet-free` registration built with a guardian), the guardian can call `guardianRevoke(agentId)` to force-revoke the agent identity. This is an emergency mechanism for compromised agents.
 
 ---
 
@@ -370,24 +288,31 @@ All REST API calls for registration use the base URL:
 https://agent-api.self.xyz
 ```
 
-Override by setting the `SELF_AGENT_API_BASE` environment variable.
+The SDK honours the `SELF_AGENT_API_BASE` environment variable as an override.
+
+Session tokens are sent only as `Authorization: Bearer <sessionToken>`, never in the query string. Every status response returns a rotated `sessionToken`; use the newest one for the next call.
 
 ### Registration Endpoints
 
-| Method | Path                                 | Description                  |
-| ------ | ------------------------------------ | ---------------------------- |
-| `POST` | `/api/agent/register`                | Start a registration session |
-| `GET`  | `/api/agent/register/status?token=X` | Poll registration status     |
-| `GET`  | `/api/agent/register/qr?token=X`     | Get QR code for Self app     |
-| `POST` | `/api/agent/register/callback`       | Hub V2 callback (internal)   |
+| Method | Path                                    | Description                                                 |
+| ------ | --------------------------------------- | ----------------------------------------------------------- |
+| `POST` | `/api/agent/register`                   | Start a registration session                                |
+| `GET`  | `/api/agent/register/status`            | Poll registration status (Bearer)                           |
+| `GET`  | `/api/agent/register/qr`                | QR data, deep link and `scanUrl` (Bearer)                   |
+| `POST` | `/api/agent/register/export`            | Export the generated private key after completion (Bearer)  |
+| `POST` | `/api/agent/register/ed25519-challenge` | Challenge for Ed25519 modes                                 |
+| `GET`  | `/api/qr/{qrToken}`                     | PNG QR code (the `scanUrl` from any session-start response) |
 
-### Deregistration Endpoints
+### Deregistration and Refresh Endpoints
 
-| Method | Path                                   | Description                    |
-| ------ | -------------------------------------- | ------------------------------ |
-| `POST` | `/api/agent/deregister`                | Start a deregistration session |
-| `GET`  | `/api/agent/deregister/status?token=X` | Poll deregistration status     |
-| `POST` | `/api/agent/deregister/callback`       | Hub V2 callback (internal)     |
+| Method | Path                           | Description                         |
+| ------ | ------------------------------ | ----------------------------------- |
+| `POST` | `/api/agent/deregister`        | Start a deregistration session      |
+| `GET`  | `/api/agent/deregister/status` | Poll deregistration status (Bearer) |
+| `POST` | `/api/agent/refresh`           | Start an in-place proof refresh     |
+| `GET`  | `/api/agent/refresh/status`    | Poll proof refresh status (Bearer)  |
+
+Registration and deregistration stages are `qr-ready` → `completed`, or `expired` once the session times out (status endpoints return 410). Completion is read from the chain; there are no callback endpoints.
 
 ---
 

@@ -52,10 +52,11 @@ This proposal defines two interfaces:
 - Proof-of-human registration (`registerWithHumanProof`)
 - Proof revocation (`revokeHumanProof`)
 - Proof query functions (`hasHumanProof`, `proofExpiresAt`, `isProofFresh`, etc.)
-- Sybil resistance queries (`getHumanNullifier`, `getAgentCountForHuman`, `sameHuman`)
+- Sybil resistance queries (`getHumanNullifier`, `getAgentCountForHuman`, `getAgentsForNullifier`, `sameHuman`)
 - Provider management (`isApprovedProvider`)
 - Events: `AgentRegisteredWithHumanProof`, `HumanProofRevoked`, `ProofProviderAdded`,
-  `ProofProviderRemoved`, `MaxProofAgeUpdated`, `MaxAgentsPerHumanUpdated`
+  `ProofProviderRemoved`, `MaxProofAgeUpdated`, `MaxAgentsPerHumanUpdated`,
+  `HumanProofRefreshed`, `NullifierIdentified`
 
 See `IERC8004.sol` and `IERC8004ProofOfHuman.sol` for the full Solidity interfaces.
 
@@ -130,6 +131,8 @@ A 0-100 score indicating how strongly the proof binds a human identity:
 - `ProofProviderRemoved(provider)`
 - `MaxProofAgeUpdated(newMaxProofAge)`
 - `MaxAgentsPerHumanUpdated(newMax)`
+- `HumanProofRefreshed(agentId, nullifier, newExpiresAt, configId)`
+- `NullifierIdentified(nullifier, agentCount)`
 
 ---
 
@@ -181,9 +184,9 @@ the owner from transferring out and leaving the agent orphaned.
 
 ## Reference Implementation
 
-- **SelfAgentRegistry** (Celo Mainnet): `0x62E37d0f6c5f67784b8828B3dF68BCDbB2e55095`
-- **SelfReputationRegistry** (Celo Mainnet): TBD
-- **SelfValidationRegistry** (Celo Mainnet): TBD
+- **SelfAgentRegistry** (Celo Mainnet): `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944`
+- **SelfReputationRegistry** (Celo Mainnet): `0x69Da18CF4Ac27121FD99cEB06e38c3DC78F363f4`
+- **SelfValidationRegistry** (Celo Mainnet): `0x71a025e0e338EAbcB45154F8b8CA50b41e7A0577`
 - **Source:** https://github.com/selfxyz/self-agent-id
 
 The reference implementation uses the UUPS upgradeable proxy pattern, but implementers

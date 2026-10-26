@@ -4,7 +4,7 @@ description: >
   How to sign HTTP requests with Self Agent ID's 3-header authentication
   system. Covers ECDSA and Ed25519 signing, the signing algorithm, MCP tools
   (self_sign_request, self_authenticated_fetch), SDK usage in
-  TypeScript/Python/Rust, and replay protection. Use when the user asks to
+  TypeScript, and replay protection. Use when the user asks to
   "sign a request", "authenticate as agent", "agent auth headers",
   "self agent fetch", "signed HTTP request", "ed25519 signing", or
   "make authenticated call".
@@ -31,7 +31,7 @@ The address header is informational only. The receiving service recovers the sig
 
 ## Signing Algorithm
 
-The signing algorithm is identical across all three SDKs (TypeScript, Python, Rust) and the MCP server. The steps are:
+The signing algorithm is the same in the TypeScript SDK and the MCP server, and is straightforward to reproduce in any language with keccak256 and EIP-191 signing. The steps are:
 
 1. **Compute the body hash.** Take the request body as a UTF-8 string. If there is no body (e.g., GET requests), use an empty string. Hash it with Keccak-256. The result is a hex string with `0x` prefix.
 
@@ -72,7 +72,7 @@ signature     = personal_sign(message, privateKey)
 
 ## Using MCP Tools
 
-The MCP server provides two tools for request signing. Both require `SELF_AGENT_PRIVATE_KEY` to be configured as an environment variable in the MCP server.
+The hosted MCP server provides two **privileged** tools for request signing. They sign as the MCP server's own configured agent (`SELF_AGENT_PRIVATE_KEY` on the server) and require `Authorization: Bearer <MCP_PRIVILEGED_API_KEY>`. The shared deployment at `agent-api.self.xyz` has no agent key, so use these only against a deployment you run yourself; to sign with your own key, use the SDK (below).
 
 ### self_sign_request
 
@@ -93,7 +93,7 @@ Generate authentication headers to attach manually.
     "x-self-agent-signature": "0x...",
     "x-self-agent-timestamp": "1708704000000"
   },
-  "instructions": "Attach these headers to your HTTP request."
+  "instructions": "Add these three headers to your HTTP request. The receiving service can verify them to confirm this agent is backed by a real human."
 }
 ```
 
@@ -115,12 +115,13 @@ Have the MCP server perform the full signed HTTP request.
 ```json
 {
   "status": 200,
+  "url": "https://api.example.com/data",
   "body": "{\"result\":\"success\"}",
   "truncated": false
 }
 ```
 
-The response body is capped at 10 KB. If the response exceeds this limit, the `truncated` flag is set to `true`. Use this tool for simple request-response flows where inspecting headers is not necessary.
+The response body is capped at 10 KB. If the response exceeds this limit, the `truncated` flag is set to `true`. Requests to localhost / private / reserved networks are blocked, and redirects (max 3) are followed only to allowed targets.
 
 ## Using SDK (TypeScript)
 
@@ -163,90 +164,6 @@ console.log(res.status, await res.json());
 
 The `signRequest()` method accepts the HTTP method as a string, the full URL (or just the path), and optionally the body as a string. It returns a plain object with the three header key-value pairs. The `fetch()` method is a drop-in wrapper around the global `fetch()` that automatically signs each request before sending.
 
-## Python SDK
-
-```python
-import os
-from self_agent_sdk import SelfAgent
-
-agent = SelfAgent(private_key=os.environ["AGENT_PRIVATE_KEY"])
-
-# Option 1: Get headers manually
-headers = agent.sign_request(
-    method="POST",
-    url="https://api.example.com/protected",
-    body='{"data":"value"}'
-)
-# headers = {
-#     "x-self-agent-address": "0x...",
-#     "x-self-agent-signature": "0x...",
-#     "x-self-agent-timestamp": "1708704000000"
-# }
-
-# Use with any HTTP library (requests, httpx, aiohttp)
-import httpx
-response = httpx.post(
-    "https://api.example.com/protected",
-    headers={**headers, "Content-Type": "application/json"},
-    content='{"data":"value"}'
-)
-
-# Option 2: Signed fetch (recommended)
-# Uses httpx internally, auto-attaches all 3 headers.
-response = agent.fetch(
-    "https://api.example.com/protected",
-    method="POST",
-    body='{"data":"value"}'
-)
-
-print(response.status_code, response.json())
-```
-
-The Python SDK's `sign_request()` returns a `dict[str, str]`. The `fetch()` method returns an `httpx.Response` with the authentication headers already attached.
-
-## Rust SDK
-
-```rust
-use self_agent_sdk::{SelfAgent, SelfAgentConfig};
-use reqwest::Method;
-
-let agent = SelfAgent::new(SelfAgentConfig {
-    private_key: std::env::var("AGENT_PRIVATE_KEY").unwrap(),
-    network: None,       // defaults to mainnet
-    registry_address: None,
-    rpc_url: None,
-})?;
-
-// Option 1: Get headers manually
-let headers = agent.sign_request(
-    "POST",
-    "https://api.example.com/protected",
-    Some(r#"{"data":"value"}"#),
-).await?;
-// headers: HashMap<String, String> with the 3 auth headers
-
-// Use with reqwest or any HTTP client
-let client = reqwest::Client::new();
-let mut request = client.post("https://api.example.com/protected")
-    .header("content-type", "application/json")
-    .body(r#"{"data":"value"}"#.to_string());
-for (k, v) in &headers {
-    request = request.header(k.as_str(), v.as_str());
-}
-let response = request.send().await?;
-
-// Option 2: Signed fetch (recommended)
-let response = agent.fetch(
-    "https://api.example.com/protected",
-    Some(Method::POST),
-    Some(r#"{"data":"value"}"#.to_string()),
-).await?;
-
-println!("{} {}", response.status(), response.text().await?);
-```
-
-The Rust SDK's `sign_request()` returns a `HashMap<String, String>`. The `fetch()` method returns a `reqwest::Response` with headers already attached.
-
 ## Replay Protection
 
 The timestamp-based replay protection works as follows:
@@ -257,41 +174,20 @@ The timestamp-based replay protection works as follows:
 
 - **Millisecond precision.** Timestamps use millisecond precision (not seconds) to reduce the collision window for concurrent requests from the same agent.
 
-- **No nonce required.** The combination of millisecond timestamps and per-request body binding makes explicit nonce tracking unnecessary for most use cases. For high-security scenarios requiring strict at-most-once delivery, services can additionally track seen `(address, timestamp, signature)` tuples within the freshness window.
+- **Replay cache.** A signed request can be resent unchanged within the freshness window, so `SelfAgentVerifier` also remembers seen signatures and rejects repeats (replay protection is on by default). The cache is in memory per verifier instance; services running several instances that need strict at-most-once delivery should share a replay store or use idempotency keys.
 
 ## Ed25519 Signing
 
-All three SDKs also provide an `Ed25519Agent` class for Ed25519-based signing. The API is identical to `SelfAgent`, but uses Ed25519 keys instead of ECDSA (secp256k1).
-
-### TypeScript
+The SDK also provides an `Ed25519Agent` class for Ed25519-based signing. The API is identical to `SelfAgent`, but uses Ed25519 keys instead of ECDSA (secp256k1).
 
 ```typescript
 import { Ed25519Agent } from "@selfxyz/agent-sdk";
 
-const agent = new Ed25519Agent({ privateKey: process.env.AGENT_PRIVATE_KEY! });
+const agent = new Ed25519Agent({ privateKey: process.env.ED25519_SEED! }); // 64 hex chars
 
 // Same API as SelfAgent
 const headers = await agent.signRequest("POST", url, body);
 const response = await agent.fetch(url, { method: "POST", body });
-```
-
-### Python
-
-```python
-from self_agent_sdk import Ed25519Agent
-
-agent = Ed25519Agent(private_key=os.environ["AGENT_PRIVATE_KEY"])
-headers = agent.sign_request("POST", url, body)
-response = agent.fetch(url, method="POST", body=body)
-```
-
-### Rust
-
-```rust
-use self_agent_sdk::Ed25519Agent;
-
-let agent = Ed25519Agent::new(std::env::var("AGENT_PRIVATE_KEY").unwrap())?;
-let headers = agent.sign_request("POST", url, Some(body)).await?;
 ```
 
 Ed25519 agents include an additional header `x-self-agent-keytype: "ed25519"` and use `x-self-agent-key` (public key) instead of `x-self-agent-address`. The `SelfAgentVerifier` handles both key types transparently — no server-side changes needed.
@@ -305,13 +201,15 @@ Before making signed requests, verify the agent is registered:
 ```typescript
 const agent = new SelfAgent({ privateKey: process.env.AGENT_PRIVATE_KEY! });
 
-if (await agent.isRegistered()) {
+const info = await agent.getInfo();
+if (info.isVerified) {
+  // registered AND the human proof has not expired
   const response = await agent.fetch("https://api.example.com/protected");
   // handle response
+} else if (info.hasHumanProof) {
+  console.error("Human proof expired — refresh it (requestProofRefresh)");
 } else {
-  console.error(
-    "Agent not registered — register first before making signed requests",
-  );
+  console.error("Agent not registered — register first");
 }
 ```
 
@@ -341,10 +239,6 @@ const headers = await agent.signRequest(
   "GET",
   "https://api.example.com/data?page=1",
 );
-```
-
-```python
-headers = agent.sign_request("GET", "https://api.example.com/data?page=1")
 ```
 
 ## Complete Examples
