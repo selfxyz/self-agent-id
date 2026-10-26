@@ -31,6 +31,8 @@
     "vitest": "^4.1.12"
   },
   "overrides": {
-    "postcss": "^8.5.31"
+    "postcss": "^8.5.31",
+    "hono": "4.13.13",
+    "ip-address": "10.7.4"
   }
 }

@@ -70,9 +70,7 @@ interface FakeEvent {
 let events: FakeEvent[] = [];
 let latestBlock = START_BLOCK;
 let getBlockNumber: ReturnType<typeof vi.fn<() => Promise<number>>>;
-let queryFilter: ReturnType<
-  typeof vi.fn<ethers.BaseContract["queryFilter"]>
->;
+let queryFilter: ReturnType<typeof vi.fn<ethers.BaseContract["queryFilter"]>>;
 
 /**
  * Build fake proof-tx calldata whose userContextData is packed the way the
