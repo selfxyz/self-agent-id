@@ -2,48 +2,49 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-// GET /api/agent/register/qr
-//
-// Returns QR code data for the registration deep link.
-// Provides the deep link plus a URL to a public QR image API
-// so the caller can display a scannable QR without extra dependencies.
+/**
+ * GET /api/agent/register/qr — re-fetch the QR of a pending registration.
+ *
+ * Auth: session token (Authorization: Bearer). Rate limit: 120/min per IP.
+ * Returns the Self app request (qrData), its deep link and a fresh scanUrl
+ * that serves the QR as a PNG, so callers need no QR library.
+ */
 
 import type { NextRequest } from "next/server";
 import { getUniversalLink } from "@selfxyz/qrcode";
 import type { SelfApp } from "@selfxyz/qrcode";
 import {
-  decryptAndValidateSession,
   jsonResponse,
   errorResponse,
   corsResponse,
-  readSessionTokenFromRequest,
+  requireSession,
+  getAppBaseUrl,
+  getClientIp,
+  rateLimitResponse,
 } from "@/lib/agent-api-helpers";
+import { createQrToken } from "@/lib/session-token";
+import { checkRateLimit } from "@/lib/rate-limit";
 
-export function GET(req: NextRequest) {
-  const tokenResult = readSessionTokenFromRequest(req);
-  if (!tokenResult.token) {
-    return errorResponse(tokenResult.error || "Missing session token", 400);
-  }
-  const token = tokenResult.token;
+/**
+ * Rebuild the deep link and scan URL for a session still at "qr-ready".
+ *
+ * @param req - Request carrying the session token as a bearer.
+ * @returns 200 {deepLink, qrData, scanUrl}; 400 {error} missing token, wrong
+ *   session type or no QR data; 401 {error} invalid token; 409 {error} stage
+ *   is no longer "qr-ready"; 410 {error} expired; 429 {error, retryAfterMs};
+ *   500 {error} SESSION_SECRET unset.
+ */
+export async function GET(req: NextRequest) {
+  const rl = await checkRateLimit({
+    key: `register-qr:${getClientIp(req)}`,
+    limit: 120,
+    windowMs: 60_000,
+  });
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs);
 
-  let session;
-  try {
-    const result = decryptAndValidateSession(token);
-    session = result.session;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("expired")) {
-      return errorResponse("Session expired", 410);
-    }
-    return errorResponse("Invalid session token", 401);
-  }
-
-  if (session.type !== "register" && session.type !== "deregister") {
-    return errorResponse(
-      "Token is not for a registration/deregistration session",
-      400,
-    );
-  }
+  const auth = requireSession(req, "register");
+  if (auth instanceof Response) return auth;
+  const { session, secret } = auth;
 
   if (session.stage !== "qr-ready") {
     return errorResponse(
@@ -61,15 +62,20 @@ export function GET(req: NextRequest) {
   }
 
   const deepLink = getUniversalLink(qrData);
+  const qrToken = createQrToken(deepLink, session.expiresAt!, secret);
 
-  // QR code should be generated client-side to avoid leaking registration
-  // metadata to external services (previously used api.qrserver.com).
   return jsonResponse({
     deepLink,
-    selfApp: qrData,
+    qrData,
+    scanUrl: `${getAppBaseUrl(req)}/api/qr/${qrToken}`,
   });
 }
 
+/**
+ * Answer the CORS preflight.
+ *
+ * @returns 204 with CORS headers.
+ */
 export function OPTIONS() {
   return corsResponse();
 }

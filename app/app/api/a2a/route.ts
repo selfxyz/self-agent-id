@@ -2,2012 +2,1738 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { type NextRequest, NextResponse } from "next/server";
-import { ethers } from "ethers";
-import QRCode from "qrcode";
-import {
-  A2AServer,
-  A2AErrorCodes,
-  getProviderLabel,
-  type TaskHandler,
-  type Message,
-  type Task,
-  type Part,
-  type JSONRPCResponse,
-  type TaskPushNotificationConfig,
-} from "@selfxyz/agent-sdk";
-import { typedRegistry, typedProvider } from "@/lib/contract-types";
+/**
+ * POST /api/a2a — A2A v0.3.0 JSON-RPC 2.0 endpoint of the registry.
+ *
+ * Auth: none; an optional `X-Agent-Id` header requires the calling agent to
+ * have a fresh human proof on the default network (403 otherwise). The
+ * default network (DEFAULT_NETWORK: mainnet unless NEXT_PUBLIC_DEFAULT_NETWORK
+ * says otherwise) also applies to registrations and agent queries that name
+ * no network or chain.
+ * Rate limit: message/send 60/min per IP; agent reads (lookup, verify,
+ * freshness, deregister, X-Agent-Id check) also spend the 120/min read
+ * budget; session intents count against the called route's own limit.
+ * Body limit 64 KB.
+ *
+ * Methods: message/send, tasks/get, tasks/cancel. A message's intent comes
+ * from a data part ({ intent, ... }), a text part holding JSON, or plain
+ * English ("look up agent 5 on testnet"). Intents: register, status, lookup,
+ * verify, freshness, deregister, refresh-proof, help.
+ *
+ * Session-starting intents call the registration / lifecycle route handlers
+ * in-process (no HTTP hop, no URLs derived from request headers) and hand the
+ * session token back in the task's data part. Clients poll with
+ * { intent: "status", sessionToken }, which works on any server instance.
+ * Polling by taskId only works on the instance that started the task (task
+ * state is per-instance memory), so it is a fallback, not the documented path.
+ */
+
+import { randomUUID } from "node:crypto";
+import { NextRequest, NextResponse } from "next/server";
+import { A2AErrorCodes } from "@selfxyz/agent-sdk";
 import { CHAIN_CONFIG } from "@/lib/chain-config";
 import { DEFAULT_NETWORK, NETWORKS } from "@/lib/network";
+import {
+  AGENT_CORS_HEADERS,
+  ERRORS,
+  corsResponse,
+  getAppBaseUrl,
+  getClientIp,
+  getSessionSecret,
+  networkForChainId,
+  parseAgentIdField,
+  readJsonObjectBody,
+  validateAgentId,
+} from "@/lib/agent-api-helpers";
+import {
+  AgentNotFoundError,
+  checkReadLimit,
+  connectRegistry,
+  publicCredentials,
+  readAgentState,
+  readProviderStrength,
+  type AgentTarget,
+} from "@/lib/agent-read";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { MODES_REQUIRING_HUMAN, normalizeMode } from "@/lib/registration-modes";
+import { decryptSession } from "@/lib/session-token";
+import { POST as registerPOST } from "@/app/api/agent/register/route";
+import { GET as registerStatusGET } from "@/app/api/agent/register/status/route";
+import { POST as deregisterPOST } from "@/app/api/agent/deregister/route";
+import { GET as deregisterStatusGET } from "@/app/api/agent/deregister/status/route";
+import { POST as refreshPOST } from "@/app/api/agent/refresh/route";
+import { GET as refreshStatusGET } from "@/app/api/agent/refresh/status/route";
 
-// ── CORS headers ────────────────────────────────────────────────────────────
-
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+/** Response headers: CORS (plus X-Agent-Id) and no caching. */
+const HEADERS = {
+  ...AGENT_CORS_HEADERS,
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Agent-Id",
   "Cache-Control": "no-store",
-} as const;
+};
 
-// ── In-memory task store ────────────────────────────────────────────────────
+/** Largest accepted JSON-RPC body (64 KB). */
+const MAX_BODY_BYTES = 64 * 1024;
 
-const taskStore = new Map<string, Task>();
-// Maps taskId → session token for automatic status polling
-const taskSessionStore = new Map<string, string>();
-// Maps taskId → push notification config for webhook delivery
-const taskPushConfigStore = new Map<string, TaskPushNotificationConfig>();
-let taskCounter = 0;
+/** message/send per IP per minute (each can cost RPC calls or start a session). */
+const SEND_LIMIT = 60;
+/** JSON-RPC server-error code for rate limiting (A2A defines none). */
+const RATE_LIMITED = -32000;
 
-function generateTaskId(): string {
-  taskCounter += 1;
-  return `task-${Date.now()}-${taskCounter}`;
+// ── A2A v0.3.0 wire types (parts are discriminated by `kind`) ───────────────
+
+/** A message part; `kind` discriminates text, file (base64 bytes) and data. */
+type Part =
+  | { kind: "text"; text: string }
+  | { kind: "file"; file: { name: string; mimeType: string; bytes: string } }
+  | { kind: "data"; data: Record<string, unknown> };
+
+/** An A2A message (user or agent turn). */
+interface Message {
+  kind: "message";
+  messageId: string;
+  role: "user" | "agent";
+  parts: Part[];
+  taskId?: string;
+  contextId?: string;
 }
 
-// ── QR code generation ──────────────────────────────────────────────────────
+/** A2A task states this server produces. */
+type TaskState =
+  | "working"
+  | "input-required"
+  | "completed"
+  | "canceled"
+  | "failed";
 
-async function generateQRBase64(data: string): Promise<string> {
-  return QRCode.toDataURL(data, {
-    width: 400,
-    margin: 2,
-    color: { dark: "#000000", light: "#ffffff" },
-    errorCorrectionLevel: "M",
-  });
+/** An A2A task: one message/send exchange and its current status. */
+interface Task {
+  kind: "task";
+  id: string;
+  contextId: string;
+  status: { state: TaskState; message: Message; timestamp: string };
+  history: Message[];
 }
 
-// ── Push notification delivery ──────────────────────────────────────────────
+/** What an intent handler produces; wrapped into a Task by `makeTask`. */
+interface Reply {
+  state: TaskState;
+  parts: Part[];
+}
 
-async function sendPushNotification(
-  config: TaskPushNotificationConfig,
-  task: Task,
-): Promise<void> {
-  try {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (config.token) {
-      headers["Authorization"] = `Bearer ${config.token}`;
-    }
-    if (config.authentication?.credentials) {
-      headers["Authorization"] = config.authentication.credentials;
-    }
-    await fetch(config.url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        taskId: task.id,
-        status: task.status,
-        artifacts: task.artifacts,
-      }),
-    });
-  } catch {
-    // Push notification delivery is best-effort
+/** Bad intent parameters → JSON-RPC INVALID_PARAMS with this message. */
+class InvalidParamsError extends Error {}
+
+/** A per-IP limit was hit (here or in a route called in-process). */
+class RateLimitedError extends Error {
+  /**
+   * @param retryAfterMs - How long the caller should wait before retrying.
+   */
+  constructor(readonly retryAfterMs: number) {
+    super("Rate limit exceeded. Try again later.");
   }
 }
 
-// ── Intent detection ────────────────────────────────────────────────────────
+/** Per-request context, passed explicitly (never module state). */
+interface Ctx {
+  req: NextRequest;
+  baseUrl: string;
+}
 
-type Intent =
-  | {
-      type: "register";
-      network: string;
-      humanAddress?: string;
-      mode?: string;
-      pushConfig?: TaskPushNotificationConfig;
-      ed25519Pubkey?: string;
-      ed25519Signature?: string;
-    }
-  | { type: "register-ask"; network: string }
-  | { type: "register-status"; sessionToken: string }
-  | { type: "register-poll"; taskId: string }
-  | { type: "lookup"; agentId: number; chainId?: number }
-  | { type: "verify"; agentId: number; chainId?: number }
-  | { type: "deregister"; agentId: number; chainId?: number }
-  | { type: "check-freshness"; agentId: number; chainId?: number }
-  | { type: "refresh-proof"; agentId: number; chainId?: number }
-  | { type: "help" }
-  | { type: "unknown"; text: string };
+// ── In-memory stores (per instance, bounded) ────────────────────────────────
 
-function extractText(message: Message): string {
-  return message.parts
-    .filter((p): p is { type: "text"; text: string } => p.type === "text")
-    .map((p) => p.text)
+/** Human-in-the-loop flows an A2A task can start. */
+type Flow = "registration" | "deregistration" | "refresh";
+
+/** Cap on each in-memory store; the oldest entry is evicted first. */
+const MAX_TASKS = 500;
+/** taskId → task, for tasks/get and tasks/cancel. */
+const taskStore = new Map<string, Task>();
+/** taskId → latest session token of the flow that task started. */
+const taskSessions = new Map<string, string>();
+
+/**
+ * Insert or refresh `key` as the newest entry, evicting the oldest entry once
+ * the map exceeds MAX_TASKS.
+ *
+ * @param map - Store to update (insertion order = age).
+ * @param key - Entry key.
+ * @param value - Entry value.
+ */
+function remember<V>(map: Map<string, V>, key: string, value: V): void {
+  map.delete(key);
+  map.set(key, value);
+  if (map.size > MAX_TASKS) map.delete(map.keys().next().value!);
+}
+
+// ── Parts ────────────────────────────────────────────────────────────────────
+
+/**
+ * Wrap strings as text parts.
+ *
+ * @param texts - One string per part.
+ * @returns The text parts, in order.
+ */
+function textParts(...texts: string[]): Part[] {
+  return texts.map((text) => ({ kind: "text" as const, text }));
+}
+
+/**
+ * Wrap an object as a data part.
+ *
+ * @param data - Structured payload for the client.
+ * @returns The data part.
+ */
+function dataPart(data: Record<string, unknown>): Part {
+  return { kind: "data", data };
+}
+
+/**
+ * Build an intent handler's reply.
+ *
+ * @param state - Task state to report.
+ * @param parts - Parts or arrays of parts, flattened in order.
+ * @returns The reply.
+ */
+function reply(state: TaskState, ...parts: (Part | Part[])[]): Reply {
+  return { state, parts: parts.flat() };
+}
+
+/**
+ * Read a part's discriminator. v0.3.0 uses `kind`; older clients (and
+ * SDK <= 0.2) send `type`.
+ *
+ * @param p - A raw part from the request.
+ * @returns `kind`, else `type`, else undefined.
+ */
+function partKind(p: unknown): unknown {
+  if (!p || typeof p !== "object") return undefined;
+  const part = p as { kind?: unknown; type?: unknown };
+  return part.kind ?? part.type;
+}
+
+/**
+ * Join the text of all text parts.
+ *
+ * @param parts - Raw parts from the request.
+ * @returns Non-empty texts joined by spaces, trimmed ("" if none).
+ */
+function extractText(parts: unknown[]): string {
+  return parts
+    .map((p) => (partKind(p) === "text" ? (p as { text?: unknown }).text : ""))
+    .filter((t): t is string => typeof t === "string" && t !== "")
     .join(" ")
     .trim();
 }
 
-function extractData(message: Message): Record<string, unknown> | null {
-  const dataPart = message.parts.find((p) => p.type === "data");
-  if (dataPart && dataPart.type === "data") return dataPart.data;
-  return null;
+/**
+ * Find the first data part's payload.
+ *
+ * @param parts - Raw parts from the request.
+ * @returns The payload when it is a plain object, else null.
+ */
+function extractData(parts: unknown[]): Record<string, unknown> | null {
+  const part = parts.find((p) => partKind(p) === "data") as
+    | { data?: unknown }
+    | undefined;
+  const data = part?.data;
+  return data && typeof data === "object" && !Array.isArray(data)
+    ? (data as Record<string, unknown>)
+    : null;
 }
 
-function parseIntent(message: Message): Intent {
-  const text = extractText(message).toLowerCase();
-  let data = extractData(message);
+// ── Intent parsing ───────────────────────────────────────────────────────────
 
-  // If no data part, try to parse text as JSON (agents sometimes send structured JSON as text)
-  // Use the raw (non-lowercased) text to preserve key casing
-  if (!data && text.startsWith("{")) {
-    const rawText = extractText(message).trim();
+/** Intents that act on one existing agent. */
+type AgentIntentType =
+  | "lookup"
+  | "verify"
+  | "deregister"
+  | "check-freshness"
+  | "refresh-proof";
+
+/** A parsed request; "register-ask" means register with no mode chosen. */
+type Intent =
+  | {
+      type: "register";
+      network: "mainnet" | "testnet";
+      mode: string;
+      humanAddress?: unknown;
+      ed25519Pubkey?: unknown;
+      ed25519Signature?: unknown;
+      disclosures?: unknown;
+    }
+  | { type: "register-ask"; network: string }
+  | { type: "status"; taskId: string }
+  | { type: "session-status"; sessionToken: string }
+  | { type: AgentIntentType; agentId: bigint; chainId: string }
+  | { type: "help" }
+  | { type: "unknown" };
+
+/** Chain for agent queries that name no chain or network. */
+const DEFAULT_CHAIN_ID = String(NETWORKS[DEFAULT_NETWORK].chainId);
+/** Network for registrations that name none; same default as agent queries. */
+const DEFAULT_API_NETWORK = networkForChainId(DEFAULT_CHAIN_ID)!;
+/** Network name → chain ID (decimal string). */
+const NETWORK_CHAIN_IDS: Record<string, string> = {
+  mainnet: String(NETWORKS["celo-mainnet"].chainId),
+  testnet: String(NETWORKS["celo-sepolia"].chainId),
+};
+
+/**
+ * Parse an agent ID from intent data. Same rules as the REST routes: IDs
+ * above 2^53 parse, then are not found.
+ *
+ * @param value - Number or decimal string.
+ * @returns The agent ID.
+ * @throws InvalidParamsError when it is not a positive integer.
+ */
+function agentIdParam(value: unknown): bigint {
+  const id = parseAgentIdField(value);
+  if (id === null) {
+    throw new InvalidParamsError("agentId must be a positive integer");
+  }
+  return id;
+}
+
+/**
+ * Parse a `network` field (default: DEFAULT_NETWORK, as for agent queries).
+ *
+ * @param value - "mainnet", "testnet" or undefined.
+ * @returns The network.
+ * @throws InvalidParamsError for any other value.
+ */
+function networkParam(value: unknown): "mainnet" | "testnet" {
+  if (value === undefined) return DEFAULT_API_NETWORK;
+  if (value === "mainnet" || value === "testnet") return value;
+  throw new InvalidParamsError(ERRORS.invalidNetwork);
+}
+
+/**
+ * Pick the chain for an agent intent: chainId (number or decimal string),
+ * else network, else the default chain.
+ *
+ * @param data - Intent data.
+ * @returns A supported chain ID (decimal string).
+ * @throws InvalidParamsError for an unsupported chainId or bad network.
+ */
+function chainParam(data: Record<string, unknown>): string {
+  if (data.chainId !== undefined) {
+    const chainId =
+      typeof data.chainId === "number" || typeof data.chainId === "string"
+        ? String(data.chainId)
+        : "";
+    if (!CHAIN_CONFIG[chainId]) {
+      throw new InvalidParamsError(
+        `${ERRORS.unsupportedChain}. Supported chainIds: ${Object.values(NETWORK_CHAIN_IDS).join(", ")}`,
+      );
+    }
+    return chainId;
+  }
+  if (data.network !== undefined) {
+    return NETWORK_CHAIN_IDS[networkParam(data.network)];
+  }
+  return DEFAULT_CHAIN_ID;
+}
+
+/**
+ * Pick the chain named in plain-English text.
+ *
+ * @param text - Lower-cased message text.
+ * @returns Testnet or mainnet chain ID if mentioned, else the default chain.
+ */
+function chainFromText(text: string): string {
+  if (text.includes("testnet")) return NETWORK_CHAIN_IDS.testnet;
+  if (text.includes("mainnet")) return NETWORK_CHAIN_IDS.mainnet;
+  return DEFAULT_CHAIN_ID;
+}
+
+/** Accepted `intent` names (and aliases) → agent intent. */
+const AGENT_INTENTS: Record<string, AgentIntentType> = {
+  lookup: "lookup",
+  info: "lookup",
+  verify: "verify",
+  check: "verify",
+  deregister: "deregister",
+  unregister: "deregister",
+  revoke: "deregister",
+  freshness: "check-freshness",
+  "check-freshness": "check-freshness",
+  "refresh-proof": "refresh-proof",
+  refresh: "refresh-proof",
+  renew: "refresh-proof",
+  "re-verify": "refresh-proof",
+  reauthenticate: "refresh-proof",
+};
+
+/**
+ * Work out what the message asks for: a data part (or JSON text) with an
+ * `intent` field, else plain-English matching.
+ *
+ * "deregister agent #5" is matched before "register"; a register request
+ * without a recognisable mode or address becomes "register-ask".
+ *
+ * @param parts - Raw parts from the request.
+ * @returns The parsed intent ("unknown" when nothing matches).
+ * @throws InvalidParamsError for bad agentId, chain, network, or a status
+ *   intent without sessionToken / taskId.
+ */
+function parseIntent(parts: unknown[]): Intent {
+  const rawText = extractText(parts);
+  const text = rawText.toLowerCase();
+  let data = extractData(parts);
+
+  // Agents sometimes send the structured request as JSON inside a text part.
+  if (!data && rawText.startsWith("{")) {
     try {
-      data = JSON.parse(rawText) as Record<string, unknown>;
+      const parsed = JSON.parse(rawText) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        data = parsed as Record<string, unknown>;
+      }
     } catch {
-      // Not valid JSON, fall through to NLP
+      // Not JSON: fall through to natural language.
     }
   }
 
-  // Structured data takes priority (for programmatic agent callers)
-  if (data) {
-    const intent = data.intent as string | undefined;
+  if (data && typeof data.intent === "string") {
+    const intent = data.intent;
     if (intent === "register" || intent === "registration") {
-      const hasEd25519 = !!data.ed25519Pubkey;
-      return {
-        type: "register",
-        network: (data.network as string) || "mainnet",
-        humanAddress: data.humanAddress as string | undefined,
-        mode:
-          (data.mode as string) ||
-          (hasEd25519
+      const mode =
+        typeof data.mode === "string"
+          ? data.mode
+          : data.ed25519Pubkey
             ? data.humanAddress
               ? "ed25519-linked"
               : "ed25519"
-            : "wallet-free"),
-        pushConfig: data.pushNotificationUrl
-          ? {
-              url: data.pushNotificationUrl as string,
-              token: data.pushNotificationToken as string | undefined,
-            }
-          : undefined,
-        ed25519Pubkey: data.ed25519Pubkey as string | undefined,
-        ed25519Signature: data.ed25519Signature as string | undefined,
+            : data.humanAddress
+              ? "linked"
+              : "wallet-free";
+      return {
+        type: "register",
+        network: networkParam(data.network),
+        mode,
+        humanAddress: data.humanAddress,
+        ed25519Pubkey: data.ed25519Pubkey,
+        ed25519Signature: data.ed25519Signature,
+        disclosures: data.disclosures,
       };
     }
-    if (intent === "register-status" || intent === "status") {
-      // Support polling by taskId (auto-resolves session token)
-      if (data.taskId) {
-        return { type: "register-poll", taskId: data.taskId as string };
+    if (intent === "status" || intent === "register-status") {
+      if (typeof data.sessionToken === "string" && data.sessionToken) {
+        return { type: "session-status", sessionToken: data.sessionToken };
       }
-      if (data.sessionToken) {
-        return {
-          type: "register-status",
-          sessionToken: data.sessionToken as string,
-        };
+      if (typeof data.taskId === "string" && data.taskId) {
+        return { type: "status", taskId: data.taskId };
       }
+      throw new InvalidParamsError(
+        "status needs the sessionToken from the task's data part",
+      );
+    }
+    if (intent === "help") return { type: "help" };
+    const type = AGENT_INTENTS[intent];
+    if (type) {
       return {
-        type: "unknown",
-        text: "Please provide either a taskId or sessionToken to check status.",
+        type,
+        agentId: agentIdParam(data.agentId),
+        chainId: chainParam(data),
       };
     }
-    if (intent === "lookup" || intent === "info") {
-      return {
-        type: "lookup",
-        agentId: Number(data.agentId),
-        chainId: data.chainId ? Number(data.chainId) : undefined,
-      };
-    }
-    if (intent === "verify" || intent === "check") {
-      return {
-        type: "verify",
-        agentId: Number(data.agentId),
-        chainId: data.chainId ? Number(data.chainId) : undefined,
-      };
-    }
-    if (
-      intent === "deregister" ||
-      intent === "unregister" ||
-      intent === "revoke"
-    ) {
-      return {
-        type: "deregister",
-        agentId: Number(data.agentId),
-        chainId: data.chainId ? Number(data.chainId) : undefined,
-      };
-    }
-    if (intent === "freshness" || intent === "check-freshness") {
-      return {
-        type: "check-freshness",
-        agentId: Number(data.agentId),
-        chainId: data.chainId ? Number(data.chainId) : undefined,
-      };
-    }
-    if (
-      intent === "refresh-proof" ||
-      intent === "refresh" ||
-      intent === "renew" ||
-      intent === "re-verify" ||
-      intent === "reauthenticate"
-    ) {
-      return {
-        type: "refresh-proof",
-        agentId: Number(data.agentId),
-        chainId: data.chainId ? Number(data.chainId) : undefined,
-      };
-    }
+    return { type: "unknown" };
   }
 
-  // Natural language parsing
+  // ── Natural language ──
+  // "deregister agent #5" must be checked before "register".
+  const agentMatchers: [AgentIntentType, RegExp][] = [
+    [
+      "deregister",
+      /(?:deregister|unregister|revoke|remove|delete)\s+(?:agent\s*)?#?(\d+)/,
+    ],
+    [
+      "refresh-proof",
+      /(?:refresh|renew|re-?verif)\w*\s+(?:proof\s+(?:for\s+)?)?(?:agent\s*)?#?(\d+)/,
+    ],
+    ["check-freshness", /(?:fresh|expir)\w*\s+(?:of\s+)?(?:agent\s*)?#?(\d+)/],
+    [
+      "lookup",
+      /(?:look\s*up|info|details|get|fetch|card)\s+(?:agent\s*)?#?(\d+)/,
+    ],
+    ["verify", /(?:verify|check|is|has|does)\s+(?:agent\s*)?#?(\d+)/],
+  ];
+  const [dereg, ...rest] = agentMatchers;
+  const match = ([type, re]: [AgentIntentType, RegExp]): Intent | null => {
+    const m = text.match(re);
+    if (!m) return null;
+    return { type, agentId: agentIdParam(m[1]), chainId: chainFromText(text) };
+  };
 
-  // "deregister agent #5" / "unregister agent 5" / "revoke agent 5"
-  // Must come before the register check since "deregister" contains "register"
-  const deregMatch = text.match(
-    /(?:deregister|unregister|revoke|remove|delete)\s+(?:agent\s*)?#?(\d+)/,
-  );
-  if (deregMatch) {
-    const chainId = text.includes("mainnet")
-      ? 42220
-      : text.includes("testnet")
-        ? 11142220
-        : undefined;
-    return { type: "deregister", agentId: Number(deregMatch[1]), chainId };
-  }
+  const deregIntent = match(dereg);
+  if (deregIntent) return deregIntent;
 
   if (
-    (text.includes("register") &&
-      !text.includes("deregister") &&
-      !text.includes("unregister")) ||
+    (text.includes("register") && !/(?:de|un)register/.test(text)) ||
     text.includes("sign up") ||
     text.includes("create agent") ||
     text.includes("new agent")
   ) {
-    const network = text.includes("testnet") ? "testnet" : "mainnet";
-
-    // If the user explicitly specified a mode or provided an address, proceed directly
-    const addrMatch = text.match(/0x[a-fA-F0-9]{40}/);
-    const hasExplicitMode =
-      text.includes("ed25519") ||
-      text.includes("linked") ||
-      text.includes("wallet-free") ||
-      text.includes("walletfree") ||
-      text.includes("wallet free") ||
-      text.includes("quick") ||
-      text.includes("simple");
-
-    if (hasExplicitMode || addrMatch) {
-      return {
-        type: "register",
-        network,
-        humanAddress: addrMatch?.[0],
-        mode:
-          text.includes("ed25519-linked") || text.includes("ed25519 linked")
-            ? "ed25519-linked"
-            : text.includes("ed25519")
-              ? "ed25519"
-              : text.includes("linked")
-                ? "linked"
-                : addrMatch
-                  ? "linked"
-                  : "wallet-free",
-      };
-    }
-
-    // No mode specified — ask the user about their setup first
-    return { type: "register-ask", network };
-  }
-
-  if (text.includes("status") && text.includes("registration")) {
-    // Look for session token in data parts
-    const token = data?.sessionToken as string | undefined;
-    if (token) return { type: "register-status", sessionToken: token };
+    const network = text.includes("testnet")
+      ? "testnet"
+      : text.includes("mainnet")
+        ? "mainnet"
+        : DEFAULT_API_NETWORK;
+    const addrMatch = rawText.match(/0x[a-fA-F0-9]{40}/);
+    const explicitMode =
+      /ed25519|linked|wallet-?\s?free|quick|simple/.test(text) || addrMatch;
+    if (!explicitMode) return { type: "register-ask", network };
     return {
-      type: "unknown",
-      text: "Please provide your session token to check registration status. Send a data part with { intent: 'register-status', sessionToken: '<token>' }.",
+      type: "register",
+      network,
+      humanAddress: addrMatch?.[0],
+      mode: /ed25519[- ]linked/.test(text)
+        ? "ed25519-linked"
+        : text.includes("ed25519")
+          ? "ed25519"
+          : text.includes("linked") || addrMatch
+            ? "linked"
+            : "wallet-free",
     };
   }
 
-  // "refresh proof for agent #5" / "renew agent 5" / "re-verify agent 5"
-  const refreshMatch = text.match(
-    /(?:refresh|renew|re-?verif)\w*\s+(?:proof\s+(?:for\s+)?)?(?:agent\s*)?#?(\d+)/i,
+  for (const matcher of rest) {
+    const intent = match(matcher);
+    if (intent) return intent;
+  }
+
+  if (/help|what can you do|capabilities/.test(text)) return { type: "help" };
+  return { type: "unknown" };
+}
+
+// ── In-process calls to the lifecycle routes ────────────────────────────────
+
+/** Signature shared by the route handlers called in-process. */
+type RouteHandler = (req: NextRequest) => Response | Promise<Response>;
+
+/**
+ * Invoke another route handler of this app directly. Client IP headers are
+ * forwarded so per-IP rate limits still apply to the original caller.
+ *
+ * @param ctx - Current request context (caller IP headers, base URL).
+ * @param handler - Route handler to call.
+ * @param path - Route path, for the synthetic request URL.
+ * @param opts.body - JSON body; makes the call a POST (GET otherwise).
+ * @param opts.bearer - Session token to send as Authorization: Bearer.
+ * @returns {ok, status, body} of the route's JSON response.
+ * @throws RateLimitedError on a 429; InvalidParamsError on a 400 (bad input
+ *   from our caller).
+ */
+async function callRoute(
+  ctx: Ctx,
+  handler: RouteHandler,
+  path: string,
+  opts: { body?: Record<string, unknown>; bearer?: string },
+): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
+  const headers = new Headers();
+  for (const name of ["x-real-ip", "x-forwarded-for"]) {
+    const value = ctx.req.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  if (opts.bearer) headers.set("authorization", `Bearer ${opts.bearer}`);
+  if (opts.body) headers.set("content-type", "application/json");
+  const res = await handler(
+    new NextRequest(`${ctx.baseUrl}${path}`, {
+      method: opts.body ? "POST" : "GET",
+      headers,
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    }),
   );
-  if (refreshMatch) {
-    const chainId = text.includes("mainnet")
-      ? 42220
-      : text.includes("testnet")
-        ? 11142220
-        : undefined;
-    return { type: "refresh-proof", agentId: Number(refreshMatch[1]), chainId };
+  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (res.status === 429) {
+    throw new RateLimitedError(
+      typeof body.retryAfterMs === "number" ? body.retryAfterMs : 60_000,
+    );
   }
+  if (res.status === 400) {
+    throw new InvalidParamsError(
+      typeof body.error === "string" ? body.error : "Invalid parameters",
+    );
+  }
+  return { ok: res.ok, status: res.status, body };
+}
 
-  // "freshness agent #5" / "is agent 5 expired" / "check freshness of agent #1"
-  const freshMatch = text.match(
-    /(?:fresh|expir)\w*\s+(?:of\s+)?(?:agent\s*)?#?(\d+)/,
+/**
+ * Pull the error message out of a route's JSON body.
+ *
+ * @param body - Route response body.
+ * @returns `body.error`, or "Unknown error".
+ */
+function errorText(body: Record<string, unknown>): string {
+  return typeof body.error === "string" ? body.error : "Unknown error";
+}
+
+/**
+ * Build the session-start reply (QR file part, scan link, poll hint) and
+ * remember the session token under the task.
+ *
+ * @param taskId - Task that started the session.
+ * @param flow - Which flow was started (names the QR file).
+ * @param intro - Lines shown before the QR instructions.
+ * @param result - Body of the session-start route (sessionToken, scanUrl,
+ *   deepLink, qrImageBase64, expiresAt, timeRemainingMs).
+ * @param extra - Flow-specific fields for the data part.
+ * @returns An "input-required" reply.
+ */
+function sessionStarted(
+  taskId: string,
+  flow: Flow,
+  intro: string[],
+  result: Record<string, unknown>,
+  extra: Record<string, unknown>,
+): Reply {
+  remember(taskSessions, taskId, String(result.sessionToken));
+  const qr =
+    typeof result.qrImageBase64 === "string" && result.qrImageBase64
+      ? [
+          {
+            kind: "file" as const,
+            file: {
+              name: `${flow}-qr.png`,
+              mimeType: "image/png",
+              bytes: result.qrImageBase64,
+            },
+          },
+        ]
+      : [];
+  return reply(
+    "input-required",
+    textParts(
+      ...intro,
+      "",
+      "**Show the human the QR code** (attached as an image). If you cannot display images, give them this link to open on any screen and scan with the Self app:",
+      String(result.scanUrl),
+      "",
+      `Only on the phone that has the Self app installed, this deep link opens it directly: ${String(result.deepLink)}`,
+      "",
+      `Session expires at ${String(result.expiresAt)}.`,
+      'Then poll every few seconds with { "intent": "status", "sessionToken": "<sessionToken from the data part>" }, each time using the newest sessionToken from the previous reply.',
+    ),
+    qr,
+    dataPart({
+      sessionToken: result.sessionToken,
+      scanUrl: result.scanUrl,
+      deepLink: result.deepLink,
+      qrImageIncluded: qr.length > 0,
+      expiresAt: result.expiresAt,
+      timeRemainingMs: result.timeRemainingMs,
+      ...extra,
+      pollHint: { intent: "status", sessionToken: result.sessionToken },
+    }),
   );
-  if (freshMatch) {
-    const chainId = text.includes("mainnet")
-      ? 42220
-      : text.includes("testnet")
-        ? 11142220
-        : undefined;
-    return { type: "check-freshness", agentId: Number(freshMatch[1]), chainId };
-  }
-
-  // "look up agent #5" / "info agent 5" / "agent 5"
-  const lookupMatch = text.match(
-    /(?:look\s*up|info|details|get|fetch|card)\s+(?:agent\s*)?#?(\d+)/,
-  );
-  if (lookupMatch) {
-    const chainId = text.includes("mainnet")
-      ? 42220
-      : text.includes("testnet")
-        ? 11142220
-        : undefined;
-    return { type: "lookup", agentId: Number(lookupMatch[1]), chainId };
-  }
-
-  // "verify agent 5" / "is agent 5 verified" / "check agent 5" / "has human proof"
-  const verifyMatch = text.match(
-    /(?:verify|check|is|has|does)\s+(?:agent\s*)?#?(\d+)/,
-  );
-  if (verifyMatch) {
-    const chainId = text.includes("mainnet")
-      ? 42220
-      : text.includes("testnet")
-        ? 11142220
-        : undefined;
-    return { type: "verify", agentId: Number(verifyMatch[1]), chainId };
-  }
-
-  if (
-    text.includes("help") ||
-    text.includes("what can you do") ||
-    text.includes("capabilities")
-  ) {
-    return { type: "help" };
-  }
-
-  return { type: "unknown", text };
 }
 
 // ── Intent handlers ─────────────────────────────────────────────────────────
 
-function textParts(...texts: string[]): Part[] {
-  return texts.map((t) => ({ type: "text" as const, text: t }));
-}
-
-function dataPart(data: Record<string, unknown>): Part {
-  return { type: "data" as const, data };
-}
-
-function resolveChainConfig(chainId?: number) {
-  const cid = chainId
-    ? String(chainId)
-    : String(NETWORKS[DEFAULT_NETWORK].chainId);
-  const config = CHAIN_CONFIG[cid];
-  return { chainId: cid, config };
-}
-
-/** Derive the app's base URL from the incoming request or env. */
-function getAppBaseUrl(req?: NextRequest): string {
-  // Explicit env var takes priority
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
-  // Derive from request headers (works on Vercel preview deployments)
-  if (req) {
-    const proto = req.headers.get("x-forwarded-proto") || "https";
-    const host = req.headers.get("host");
-    if (host) return `${proto}://${host}`;
-  }
-  return "https://agent-api.self.xyz";
-}
-
+/**
+ * Start a registration through POST /api/agent/register.
+ *
+ * @param ctx - Current request context.
+ * @param intent - Parsed register intent (mode, network, keys, disclosures).
+ * @param taskId - Task to attach the session to.
+ * @returns "input-required" with the QR, or asking for humanAddress when the
+ *   mode needs one; "failed" when the route refuses.
+ * @throws RateLimitedError / InvalidParamsError from the route (429 / 400).
+ */
 async function handleRegister(
+  ctx: Ctx,
   intent: Extract<Intent, { type: "register" }>,
   taskId: string,
-  req?: NextRequest,
-): Promise<Task> {
-  // wallet-free and ed25519 modes don't need a human address — the server generates everything
-  const isWalletFree =
-    intent.mode === "wallet-free" || intent.mode === "ed25519";
-
-  if (!intent.humanAddress && !isWalletFree) {
-    // Non-wallet-free modes need a human address
-    return {
-      id: taskId,
-      status: {
-        state: "input-required",
-        message: {
-          role: "agent",
-          parts: [
-            ...textParts(
-              "To register with this mode, I need the human wallet address that will verify this agent.",
-              "Please provide your Ethereum address (0x...), or use wallet-free mode (no wallet needed):",
-            ),
-            dataPart({
-              examples: [
-                {
-                  intent: "register",
-                  network: "mainnet",
-                  mode: "wallet-free",
-                  note: "Simplest — no human wallet needed, human just scans QR",
-                },
-                {
-                  intent: "register",
-                  network: "mainnet",
-                  humanAddress: "0xYourAddress...",
-                  mode: "linked",
-                  note: "Ties agent to a specific human wallet",
-                },
-              ],
-            }),
-          ],
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
+): Promise<Reply> {
+  const mode = normalizeMode(intent.mode);
+  if (!intent.humanAddress && mode && MODES_REQUIRING_HUMAN.has(mode)) {
+    return reply(
+      "input-required",
+      textParts(
+        `Mode "${intent.mode}" needs the human's wallet address (humanAddress, 0x...).`,
+        "Provide it, or use wallet-free mode (no wallet needed):",
+      ),
+      dataPart({
+        examples: [
+          { intent: "register", network: intent.network, mode: "wallet-free" },
+          {
+            intent: "register",
+            network: intent.network,
+            mode: "linked",
+            humanAddress: "0xYourAddress...",
+          },
+        ],
+      }),
+    );
   }
 
-  // Call the registration API internally
-  const appUrl = getAppBaseUrl(req);
-  try {
-    const fetchHeaders: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    // Forward Vercel deployment protection bypass (one-time project env var)
-    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-    if (bypassSecret) {
-      fetchHeaders["x-vercel-protection-bypass"] = bypassSecret;
-    }
-    // Forward cookies from the incoming request (handles SSO auth on previews)
-    const cookies = req?.headers.get("cookie");
-    if (cookies) {
-      fetchHeaders["cookie"] = cookies;
-    }
-
-    const registerBody: Record<string, unknown> = {
-      mode: intent.mode || "wallet-free",
+  const result = await callRoute(ctx, registerPOST, "/api/agent/register", {
+    body: {
+      mode: intent.mode,
       network: intent.network,
-      disclosures: { minimumAge: 18, ofac: true },
-    };
-    if (intent.humanAddress) {
-      registerBody.humanAddress = intent.humanAddress;
-    }
-    if (intent.ed25519Pubkey) {
-      registerBody.ed25519Pubkey = intent.ed25519Pubkey;
-    }
-    if (intent.ed25519Signature) {
-      registerBody.ed25519Signature = intent.ed25519Signature;
-    }
+      ...(intent.disclosures !== undefined && {
+        disclosures: intent.disclosures,
+      }),
+      ...(intent.humanAddress !== undefined && {
+        humanAddress: intent.humanAddress,
+      }),
+      ...(intent.ed25519Pubkey !== undefined && {
+        ed25519Pubkey: intent.ed25519Pubkey,
+      }),
+      ...(intent.ed25519Signature !== undefined && {
+        ed25519Signature: intent.ed25519Signature,
+      }),
+    },
+  });
+  if (!result.ok) {
+    return reply(
+      "failed",
+      textParts(`Registration failed: ${errorText(result.body)}`),
+    );
+  }
 
-    const res = await fetch(`${appUrl}/api/agent/register`, {
-      method: "POST",
-      headers: fetchHeaders,
-      body: JSON.stringify(registerBody),
+  return sessionStarted(
+    taskId,
+    "registration",
+    [
+      "Registration initiated! A human must now verify this agent with the Self app.",
+      "(Their passport was scanned when they set up the Self app; they only scan this QR.)",
+    ],
+    result.body,
+    {
+      agentAddress: result.body.agentAddress,
+      network: result.body.network,
+      mode: result.body.mode,
+    },
+  );
+}
+
+/** Status route polled for each flow. */
+const STATUS_ROUTES: Record<Flow, { handler: RouteHandler; path: string }> = {
+  registration: {
+    handler: registerStatusGET,
+    path: "/api/agent/register/status",
+  },
+  deregistration: {
+    handler: deregisterStatusGET,
+    path: "/api/agent/deregister/status",
+  },
+  refresh: { handler: refreshStatusGET, path: "/api/agent/refresh/status" },
+};
+
+/** Text shown when a flow completes. */
+const COMPLETED_TEXT: Record<Flow, string> = {
+  registration: "Registration complete! The agent is now verified on-chain.",
+  deregistration: "Deregistration complete. The agent NFT has been burned.",
+  refresh: "Proof refresh complete. The human proof has been renewed.",
+};
+
+/** Session token `type` → A2A flow (identify sessions are not pollable here). */
+const FLOW_OF_SESSION: Record<string, Flow | undefined> = {
+  register: "registration",
+  deregister: "deregistration",
+  refresh: "refresh",
+};
+
+/**
+ * Flow and mode of a session token, read from the token itself so any
+ * instance can poll it. Expiry is ignored here so an expired token still
+ * reaches its own flow's status route, which answers 410. A token that can't
+ * be decrypted at all goes to the registration route, which answers 401.
+ *
+ * @param token - Session token from the client.
+ * @returns The flow, plus the registration mode when the token has one.
+ * @throws InvalidParamsError for a valid token of another flow (identify).
+ */
+function sessionOf(token: string): { flow: Flow; mode?: string } {
+  try {
+    const session = decryptSession(token, getSessionSecret(), {
+      graceMs: Number.MAX_SAFE_INTEGER,
     });
-
-    const result = (await res.json()) as Record<string, unknown>;
-
-    if (!res.ok) {
-      return {
-        id: taskId,
-        status: {
-          state: "failed",
-          message: {
-            role: "agent",
-            parts: textParts(
-              `Registration failed: ${typeof result.error === "string" ? result.error : JSON.stringify(result.error) || "Unknown error"}`,
-            ),
-          },
-          timestamp: new Date().toISOString(),
-        },
-      };
+    const flow = FLOW_OF_SESSION[session.type];
+    if (!flow) {
+      throw new InvalidParamsError(
+        "That sessionToken is not for a registration, deregistration or refresh",
+      );
     }
-
-    // Store session token for automatic task-based polling
-    taskSessionStore.set(taskId, result.sessionToken as string);
-
-    // Store push notification config if provided
-    if (intent.pushConfig) {
-      taskPushConfigStore.set(taskId, intent.pushConfig);
-    }
-
-    // Generate QR code image
-    const deepLink = result.deepLink as string;
-    let qrParts: Part[] = [];
-    let qrDataUrl: string | null = null;
-    try {
-      qrDataUrl = await generateQRBase64(deepLink);
-      // Extract base64 from data URL (data:image/png;base64,...)
-      const base64 = qrDataUrl.split(",")[1];
-      qrParts = [
-        {
-          type: "file" as const,
-          file: {
-            name: "registration-qr.png",
-            mimeType: "image/png",
-            bytes: base64,
-          },
-        },
-      ];
-    } catch {
-      // QR generation failed — deep link is still available in data
-    }
-
-    // Provide the QR in EVERY format so any agent can display it:
-    //  1. `file` part — native A2A image (agents with rich rendering)
-    //  2. Markdown `![](data:...)` — agents that render markdown in text
-    //  3. Raw data URL string — agents that can render <img src="...">
-    //  4. Deep link URL — last resort, human opens on mobile manually
-
-    return {
-      id: taskId,
-      status: {
-        state: "input-required",
-        message: {
-          role: "agent",
-          parts: [
-            ...textParts(
-              "Registration initiated! A human must now verify this agent using the Self app.",
-              "",
-              "**CRITICAL: You MUST display the QR code below to the human. Registration cannot proceed without it.**",
-              "",
-              "The QR code is provided in multiple formats. Use whichever your platform supports:",
-              "- If you can render images: display the attached PNG or the markdown image below",
-              '- If you can render HTML: use `<img src="...">` with the `qrDataUrl` from the data part',
-              "",
-            ),
-            // ── Format 1: file part (native A2A image) ──
-            ...qrParts,
-            // ── Format 2: markdown image with data URL ──
-            ...(qrDataUrl
-              ? textParts(`\n![Registration QR Code](${qrDataUrl})\n`)
-              : []),
-            ...textParts(
-              "",
-              "**Show these steps to the human:**",
-              "1. Look at the QR code on this screen",
-              "2. Open your phone camera and point it at the QR code",
-              "3. Tap the notification that appears to open the Self app",
-              "4. Follow the prompts in the Self app to confirm verification",
-              "5. The agent will be verified on-chain automatically",
-              "",
-              "(The human's passport was already scanned when they first set up the Self app — they don't need to scan it again.)",
-              "",
-              '**After showing the QR, ask the human: "Can you see the QR code on your screen?"**',
-              "- If YES: great — they should scan it with their phone camera now.",
-              `- If NO: as a last resort, they can open this link **on their mobile phone that has the Self app installed**: ${deepLink}`,
-              "  (This link ONLY works on the phone with the Self app — it will not work on a desktop or a phone without Self.)",
-              "",
-              `Session expires at: ${String(result.expiresAt)} (${Math.round((result.timeRemainingMs as number) / 1000)}s remaining)`,
-              "",
-              "Once the human confirms they can see the QR (or have opened the link on their phone), poll for status:",
-              `  { "intent": "status", "taskId": "${taskId}" }`,
-            ),
-            dataPart({
-              taskId,
-              sessionToken: result.sessionToken,
-              // Raw data URL — agents can use this in <img src="..."> or any image renderer
-              qrDataUrl: qrDataUrl || undefined,
-              qrImageIncluded: qrParts.length > 0,
-              agentAddress: result.agentAddress,
-              network: result.network,
-              mode: result.mode,
-              expiresAt: result.expiresAt,
-              timeRemainingMs: result.timeRemainingMs,
-              displayInstructions: {
-                priority: [
-                  "1. Render the attached 'registration-qr.png' file part as an image",
-                  "2. Render the markdown image (![Registration QR Code](data:...)) in a text block",
-                  "3. Render an <img> tag using the qrDataUrl field",
-                  "4. LAST RESORT ONLY: show the deepLink and tell the human they must open it on their mobile phone that has the Self app installed",
-                ],
-                verification:
-                  "After displaying the QR, ask the human: 'Can you see a QR code on your screen?' If yes, they scan it with their phone camera. If no, give them the deep link and explain it must be opened on their mobile phone with the Self app installed.",
-                deepLink,
-                deepLinkWarning:
-                  "The deep link ONLY works on a mobile phone with the Self app installed. It will NOT work on desktop browsers or phones without Self.",
-              },
-            }),
-          ],
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
+    return { flow, mode: session.mode };
   } catch (err) {
-    return {
-      id: taskId,
-      status: {
-        state: "failed",
-        message: {
-          role: "agent",
-          parts: textParts(
-            `Registration request failed: ${err instanceof Error ? err.message : "Network error"}`,
-          ),
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
+    if (err instanceof InvalidParamsError) throw err;
+    return { flow: "registration" };
   }
 }
 
-async function handleRegisterStatus(
-  sessionToken: string,
-  taskId: string,
-  originalTaskId?: string,
-  req?: NextRequest,
-): Promise<Task> {
-  const appUrl = getAppBaseUrl(req);
-  try {
-    const statusHeaders: Record<string, string> = {
-      Authorization: `Bearer ${sessionToken}`,
-    };
-    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-    if (bypassSecret) {
-      statusHeaders["x-vercel-protection-bypass"] = bypassSecret;
-    }
-    const cookies = req?.headers.get("cookie");
-    if (cookies) {
-      statusHeaders["cookie"] = cookies;
-    }
+/**
+ * Poll the status route of a session and translate the stage into a reply.
+ *
+ * @param ctx - Current request context.
+ * @param token - Newest session token.
+ * @param taskId - Task whose stored session is being polled (taskId polling);
+ *   its stored token is rotated or dropped as the session progresses.
+ * @returns "working" with the rotated token; "completed" with the route's
+ *   details (and export instructions for server-generated keys); "failed"
+ *   when expired, refused or the flow failed.
+ * @throws RateLimitedError / InvalidParamsError from the route (429 / 400).
+ */
+async function handleSessionStatus(
+  ctx: Ctx,
+  token: string,
+  taskId?: string,
+): Promise<Reply> {
+  const { flow, mode } = sessionOf(token);
+  const { handler, path } = STATUS_ROUTES[flow];
+  const result = await callRoute(ctx, handler, path, { bearer: token });
+  const stage = result.body.stage;
 
-    const res = await fetch(`${appUrl}/api/agent/register/status`, {
-      method: "GET",
-      headers: statusHeaders,
-    });
-
-    const result = (await res.json()) as Record<string, unknown>;
-
-    if (!res.ok) {
-      const errorMsg = (result.error as string) || "Unknown error";
-
-      // Detect expired sessions
-      if (res.status === 410 || errorMsg.toLowerCase().includes("expired")) {
-        // Clean up stores
-        if (originalTaskId) {
-          taskSessionStore.delete(originalTaskId);
-          taskPushConfigStore.delete(originalTaskId);
-        }
-        return {
-          id: taskId,
-          status: {
-            state: "failed",
-            message: {
-              role: "agent",
-              parts: [
-                ...textParts(
-                  "Registration session has expired (sessions last 10 minutes).",
-                  "Please start a new registration by sending:",
-                ),
-                dataPart({
-                  expired: true,
-                  hint: "Send a new register intent to restart",
-                  example: {
-                    intent: "register",
-                    humanAddress: "0x...",
-                    network: "mainnet",
-                  },
-                }),
-              ],
-            },
-            timestamp: new Date().toISOString(),
-          },
-        };
-      }
-
-      return {
-        id: taskId,
-        status: {
-          state: "failed",
-          message: {
-            role: "agent",
-            parts: textParts(`Status check failed: ${errorMsg}`),
-          },
-          timestamp: new Date().toISOString(),
-        },
-      };
-    }
-
-    const stage = result.stage as string;
-
-    // Update stored session token (tokens rotate on each poll)
-    if (result.sessionToken && originalTaskId) {
-      taskSessionStore.set(originalTaskId, result.sessionToken as string);
-    }
-
-    if (stage === "completed") {
-      // Clean up stores
-      if (originalTaskId) {
-        taskSessionStore.delete(originalTaskId);
-        taskPushConfigStore.delete(originalTaskId);
-      }
-
-      const completedTask: Task = {
-        id: taskId,
-        status: {
-          state: "completed",
-          message: {
-            role: "agent",
-            parts: [
-              ...textParts(
-                "Registration complete! The agent is now verified on-chain.",
-                `Agent ID: ${String(result.agentId)}`,
-              ),
-              dataPart({
-                stage: "completed",
-                agentId: result.agentId,
-                agentAddress: result.agentAddress,
-                credentials: result.credentials,
-              }),
-            ],
-          },
-          timestamp: new Date().toISOString(),
-        },
-      };
-
-      // Send push notification if configured
-      const pushConfig = originalTaskId
-        ? taskPushConfigStore.get(originalTaskId)
-        : undefined;
-      if (pushConfig) {
-        await sendPushNotification(pushConfig, completedTask);
-      }
-
-      return completedTask;
-    }
-
-    if (stage === "failed") {
-      if (originalTaskId) {
-        taskSessionStore.delete(originalTaskId);
-        taskPushConfigStore.delete(originalTaskId);
-      }
-
-      const failedTask: Task = {
-        id: taskId,
-        status: {
-          state: "failed",
-          message: {
-            role: "agent",
-            parts: textParts(
-              "Registration failed. The proof was rejected or the user cancelled.",
-            ),
-          },
-          timestamp: new Date().toISOString(),
-        },
-      };
-
-      const pushConfig = originalTaskId
-        ? taskPushConfigStore.get(originalTaskId)
-        : undefined;
-      if (pushConfig) {
-        await sendPushNotification(pushConfig, failedTask);
-      }
-
-      return failedTask;
-    }
-
-    // Still in progress (qr-ready or proof-received)
-    const timeRemaining = result.timeRemainingMs as number;
-    const expiryWarning =
-      timeRemaining < 120_000
-        ? `Warning: Session expires in ${Math.round(timeRemaining / 1000)}s. If it expires, you'll need to restart registration.`
-        : "";
-
-    return {
-      id: taskId,
-      status: {
-        state: "working",
-        message: {
-          role: "agent",
-          parts: [
-            ...textParts(
-              `Registration is in progress (stage: ${stage}).`,
-              stage === "qr-ready"
-                ? "Waiting for the human to scan the QR code with the Self app."
-                : "Proof received, waiting for on-chain confirmation...",
-              ...(expiryWarning ? [expiryWarning] : []),
-              "Poll again in 3-5 seconds.",
-            ),
-            dataPart({
-              stage,
-              taskId: originalTaskId || taskId,
-              expiresAt: result.expiresAt,
-              timeRemainingMs: timeRemaining,
-              pollHint: { intent: "status", taskId: originalTaskId || taskId },
-            }),
-          ],
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
-  } catch (err) {
-    return {
-      id: taskId,
-      status: {
-        state: "failed",
-        message: {
-          role: "agent",
-          parts: textParts(
-            `Status check failed: ${err instanceof Error ? err.message : "Network error"}`,
-          ),
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
+  // Status routes report expiry only as 410 (never a stage of "expired").
+  if (result.status === 410) {
+    if (taskId) taskSessions.delete(taskId);
+    return reply(
+      "failed",
+      textParts(
+        "The session has expired. Start a new one (e.g. send the original intent again).",
+      ),
+      dataPart({ stage: "expired" }),
+    );
   }
+  if (!result.ok) {
+    return reply(
+      "failed",
+      textParts(`Status check failed: ${errorText(result.body)}`),
+    );
+  }
+
+  if (stage === "failed") {
+    if (taskId) taskSessions.delete(taskId);
+    return reply(
+      "failed",
+      textParts(
+        `The ${flow} did not complete (the agent may have been deregistered).`,
+      ),
+      dataPart({ stage: "failed" }),
+    );
+  }
+
+  const rotated = String(result.body.sessionToken);
+  if (taskId) remember(taskSessions, taskId, rotated);
+
+  if (stage === "completed") {
+    if (taskId) taskSessions.delete(taskId);
+    const { humanInstructions: _h, ...details } = result.body;
+    // Ed25519 agents bring their own key; every other mode's key was
+    // generated by the server and must be exported.
+    const exportable =
+      flow === "registration" && !normalizeMode(mode)?.startsWith("ed25519");
+    return reply(
+      "completed",
+      textParts(
+        COMPLETED_TEXT[flow],
+        ...(typeof result.body.agentId === "number"
+          ? [`Agent ID: ${result.body.agentId}`]
+          : []),
+        ...(exportable
+          ? [
+              "The server generated this agent's key: export it within 30 minutes with POST /api/agent/register/export and Authorization: Bearer <sessionToken from the data part>.",
+            ]
+          : []),
+      ),
+      dataPart(details),
+    );
+  }
+
+  return reply(
+    "working",
+    textParts(
+      `In progress (stage: ${String(stage)}).`,
+      "Waiting for the human to scan the QR code with the Self app (and for the proof to land on-chain).",
+      "Poll again in 3-5 seconds.",
+    ),
+    dataPart({
+      stage,
+      sessionToken: rotated,
+      expiresAt: result.body.expiresAt,
+      timeRemainingMs: result.body.timeRemainingMs,
+      pollHint: { intent: "status", sessionToken: rotated },
+    }),
+  );
 }
 
-async function handleLookup(
-  agentId: number,
-  chainId: number | undefined,
-  taskId: string,
-): Promise<Task> {
-  const { chainId: cid, config } = resolveChainConfig(chainId);
-  if (!config) {
-    return {
-      id: taskId,
-      status: {
-        state: "failed",
-        message: {
-          role: "agent",
-          parts: textParts(`Unsupported chain: ${cid}`),
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
-  }
+/**
+ * Reply for an agent that does not exist on the target chain.
+ *
+ * @param target - Requested agent and chain.
+ * @returns A "completed" reply carrying the not-found error.
+ */
+function notFound(target: AgentTarget): Reply {
+  const { agentId } = target;
+  return reply(
+    "completed",
+    textParts(`Agent #${agentId} not found on chain ${target.chainId}.`),
+    dataPart({
+      // JSON number when exact; ids past 2^53 (never minted) stay strings.
+      agentId:
+        agentId <= BigInt(Number.MAX_SAFE_INTEGER)
+          ? Number(agentId)
+          : agentId.toString(),
+      chainId: target.chainId,
+      error: ERRORS.agentNotFound,
+    }),
+  );
+}
 
+/**
+ * Log an RPC error and reply with a generic failure.
+ *
+ * @param err - The RPC error.
+ * @returns A "failed" reply.
+ */
+function rpcFailure(err: unknown): Reply {
+  console.error("[a2a] RPC error:", err);
+  return reply("failed", textParts("Could not read the chain (RPC error)."));
+}
+
+/**
+ * Build an agent target from a parsed intent.
+ *
+ * @param agentId - Agent ID.
+ * @param chainId - Supported chain ID (decimal string).
+ * @returns The target with its chain config.
+ */
+function toTarget(agentId: bigint, chainId: string): AgentTarget {
+  return { agentId, chainId: Number(chainId), config: CHAIN_CONFIG[chainId] };
+}
+
+/**
+ * Days left on a proof and whether that is within the 30-day warning window.
+ *
+ * @param proofExpiresAt - ISO expiry, or null when unset.
+ * @returns {daysUntilExpiry (null when unset; negative once expired),
+ *   isExpiringSoon}.
+ */
+function expiryInfo(proofExpiresAt: string | null) {
+  const days =
+    proofExpiresAt === null
+      ? null
+      : Math.floor((Date.parse(proofExpiresAt) - Date.now()) / 86_400_000);
+  return {
+    daysUntilExpiry: days,
+    isExpiringSoon: days !== null && days >= 0 && days <= 30,
+  };
+}
+
+/**
+ * Report an agent's full on-chain details (lookup intent).
+ *
+ * @param target - Agent to read.
+ * @returns "completed" with a text summary and the details as data;
+ *   not-found or "failed" (RPC error) otherwise.
+ */
+async function handleLookup(target: AgentTarget): Promise<Reply> {
   try {
-    const rpc = new ethers.JsonRpcProvider(config.rpc);
-    const registry = typedRegistry(config.registry, rpc);
-
-    const [
-      agentKey,
-      hasProof,
-      providerAddr,
-      registeredAt,
-      credentials,
-      proofExpiry,
-    ] = await Promise.all([
-      registry.agentIdToAgentKey(BigInt(agentId)),
-      registry.hasHumanProof(BigInt(agentId)),
-      registry.getProofProvider(BigInt(agentId)),
-      registry.agentRegisteredAt(BigInt(agentId)),
-      registry.getAgentCredentials(BigInt(agentId)) as Promise<{
-        nationality: string;
-        olderThan: bigint;
-        ofac: [boolean, boolean, boolean];
-      }>,
-      registry.proofExpiresAt(BigInt(agentId)).catch(() => 0n),
+    const { rpc, registry } = connectRegistry(target.chainId, target.config);
+    const [state, rawCredentials] = await Promise.all([
+      readAgentState(registry, target),
+      registry.getAgentCredentials(target.agentId),
     ]);
+    const strength = state.hasHumanProof
+      ? await readProviderStrength(rpc, state.proofProvider)
+      : { verificationStrength: 0, strengthLabel: "None" };
+    const credentials = publicCredentials(rawCredentials);
+    const network = networkOf(target);
+    const { daysUntilExpiry, isExpiringSoon } = expiryInfo(
+      state.proofExpiresAt,
+    );
 
-    if (agentKey === ethers.ZeroHash) {
-      return {
-        id: taskId,
-        status: {
-          state: "completed",
-          message: {
-            role: "agent",
-            parts: textParts(`Agent #${agentId} not found on chain ${cid}.`),
-          },
-          timestamp: new Date().toISOString(),
-        },
-      };
-    }
-
-    const agentAddress = ethers.getAddress("0x" + agentKey.slice(-40));
-    let verificationStrength = 0;
-    let strengthLabel = "None";
-    if (hasProof && providerAddr !== ethers.ZeroAddress) {
-      const provider = typedProvider(providerAddr, rpc);
-      verificationStrength = Number(await provider.verificationStrength());
-      strengthLabel = getProviderLabel(verificationStrength);
-    }
-
-    const networkLabel = cid === "42220" ? "mainnet" : "testnet";
-
-    // Compute expiry fields
-    const proofExpiresAtMs = Number(proofExpiry) * 1000;
-    const daysUntilExpiry =
-      proofExpiresAtMs > 0
-        ? Math.floor((proofExpiresAtMs - Date.now()) / (1000 * 60 * 60 * 24))
-        : null;
-    const isExpiringSoon =
-      daysUntilExpiry !== null && daysUntilExpiry >= 0 && daysUntilExpiry <= 30;
-    const proofExpiresAtISO =
-      proofExpiresAtMs > 0 ? new Date(proofExpiresAtMs).toISOString() : null;
-
-    return {
-      id: taskId,
-      status: {
-        state: "completed",
-        message: {
-          role: "agent",
-          parts: [
-            ...textParts(
-              `Agent #${agentId} on ${networkLabel}:`,
-              `- Address: ${agentAddress}`,
-              `- Verified: ${hasProof ? "Yes" : "No"}`,
-              `- Verification: ${strengthLabel} (${verificationStrength})`,
-              `- Nationality: ${credentials.nationality || "Not disclosed"}`,
-              `- Age verified: ${Number(credentials.olderThan) > 0 ? `${credentials.olderThan}+` : "No"}`,
-              `- OFAC screened: ${credentials.ofac?.[0] ? "Yes" : "No"}`,
-              `- Registered: ${new Date(Number(registeredAt) * 1000).toISOString()}`,
-              ...(proofExpiresAtISO
-                ? [
-                    `- Proof expires: ${proofExpiresAtISO}${daysUntilExpiry !== null ? ` (${daysUntilExpiry} days)` : ""}`,
-                  ]
-                : []),
-              ...(isExpiringSoon
-                ? ["- WARNING: Proof is expiring soon! Consider refreshing."]
-                : []),
-            ),
-            dataPart({
-              agentId,
-              chainId: Number(cid),
-              agentAddress,
-              isVerified: hasProof,
-              verificationStrength,
-              strengthLabel,
-              proofExpiresAt: proofExpiresAtISO,
-              daysUntilExpiry,
-              isExpiringSoon,
-              credentials: {
-                nationality: credentials.nationality,
-                olderThan: Number(credentials.olderThan),
-                ofac: [...credentials.ofac],
-              },
-              registeredAt: Number(registeredAt),
-              network: networkLabel,
-            }),
-          ],
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (
-      msg.includes("coalesce") ||
-      msg.includes("BAD_DATA") ||
-      msg.includes("ERC721")
-    ) {
-      return {
-        id: taskId,
-        status: {
-          state: "completed",
-          message: {
-            role: "agent",
-            parts: textParts(`Agent #${agentId} not found on chain ${cid}.`),
-          },
-          timestamp: new Date().toISOString(),
-        },
-      };
-    }
-    return {
-      id: taskId,
-      status: {
-        state: "failed",
-        message: {
-          role: "agent",
-          parts: textParts(`Lookup failed: ${msg}`),
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
-  }
-}
-
-async function handleVerify(
-  agentId: number,
-  chainId: number | undefined,
-  taskId: string,
-): Promise<Task> {
-  const { chainId: cid, config } = resolveChainConfig(chainId);
-  if (!config) {
-    return {
-      id: taskId,
-      status: {
-        state: "failed",
-        message: {
-          role: "agent",
-          parts: textParts(`Unsupported chain: ${cid}`),
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
-  }
-
-  try {
-    const rpc = new ethers.JsonRpcProvider(config.rpc);
-    const registry = typedRegistry(config.registry, rpc);
-
-    const [hasProof, proofExpiry] = await Promise.all([
-      registry.hasHumanProof(BigInt(agentId)),
-      registry.proofExpiresAt(BigInt(agentId)).catch(() => 0n),
-    ]);
-
-    let isFresh = true;
-    try {
-      isFresh = await registry.isProofFresh(BigInt(agentId));
-    } catch {
-      // isProofFresh may not exist on older contracts
-    }
-
-    const verified = hasProof && isFresh;
-
-    // Compute expiry fields
-    const proofExpiresAtMs = Number(proofExpiry) * 1000;
-    const daysUntilExpiry =
-      proofExpiresAtMs > 0
-        ? Math.floor((proofExpiresAtMs - Date.now()) / (1000 * 60 * 60 * 24))
-        : null;
-    const isExpiringSoon =
-      daysUntilExpiry !== null && daysUntilExpiry >= 0 && daysUntilExpiry <= 30;
-    const proofExpiresAtISO =
-      proofExpiresAtMs > 0 ? new Date(proofExpiresAtMs).toISOString() : null;
-
-    return {
-      id: taskId,
-      status: {
-        state: "completed",
-        message: {
-          role: "agent",
-          parts: [
-            ...textParts(
-              verified
-                ? `Agent #${agentId} is verified with a valid, fresh human proof.`
-                : hasProof && !isFresh
-                  ? `Agent #${agentId} has a human proof but it has expired.`
-                  : `Agent #${agentId} does not have a human proof.`,
-              ...(proofExpiresAtISO && hasProof
-                ? [
-                    `Proof expires: ${proofExpiresAtISO}${daysUntilExpiry !== null ? ` (${daysUntilExpiry} days remaining)` : ""}`,
-                  ]
-                : []),
-              ...(isExpiringSoon
-                ? ["WARNING: Proof is expiring soon! Consider refreshing."]
-                : []),
-            ),
-            dataPart({
-              agentId,
-              chainId: Number(cid),
-              hasHumanProof: hasProof,
-              isProofFresh: isFresh,
-              isVerified: verified,
-              proofExpiresAt: proofExpiresAtISO,
-              daysUntilExpiry,
-              isExpiringSoon,
-            }),
-          ],
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return {
-      id: taskId,
-      status: {
-        state: "failed",
-        message: {
-          role: "agent",
-          parts: textParts(`Verification check failed: ${msg}`),
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
-  }
-}
-
-async function handleDeregister(
-  intent: Extract<Intent, { type: "deregister" }>,
-  taskId: string,
-  req?: NextRequest,
-): Promise<Task> {
-  const appUrl = getAppBaseUrl(req);
-  const { chainId: cid, config } = resolveChainConfig(intent.chainId);
-  if (!config) {
-    return {
-      id: taskId,
-      status: {
-        state: "failed",
-        message: {
-          role: "agent",
-          parts: textParts(`Unsupported chain: ${cid}`),
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
-  }
-
-  // Map chainId to the "mainnet"/"testnet" string the deregister API expects
-  const network = cid === "42220" ? "mainnet" : "testnet";
-
-  try {
-    // Look up agent address from on-chain registry
-    const rpc = new ethers.JsonRpcProvider(config.rpc);
-    const registry = typedRegistry(config.registry, rpc);
-    const agentKey = await registry.agentIdToAgentKey(BigInt(intent.agentId));
-
-    if (agentKey === ethers.ZeroHash) {
-      return {
-        id: taskId,
-        status: {
-          state: "failed",
-          message: {
-            role: "agent",
-            parts: textParts(`Agent #${intent.agentId} not found on-chain.`),
-          },
-          timestamp: new Date().toISOString(),
-        },
-      };
-    }
-
-    const agentAddress = ethers.getAddress("0x" + agentKey.slice(-40));
-
-    const fetchHeaders: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-    if (bypassSecret) fetchHeaders["x-vercel-protection-bypass"] = bypassSecret;
-    const cookies = req?.headers.get("cookie");
-    if (cookies) fetchHeaders["cookie"] = cookies;
-
-    const res = await fetch(`${appUrl}/api/agent/deregister`, {
-      method: "POST",
-      headers: fetchHeaders,
-      body: JSON.stringify({
-        agentAddress,
+    return reply(
+      "completed",
+      textParts(
+        `Agent #${state.agentId} on ${network}:`,
+        `- Address: ${state.agentAddress}`,
+        `- Verified: ${state.isVerified ? "Yes" : state.hasHumanProof ? "No (proof expired)" : "No"}`,
+        `- Verification: ${strength.strengthLabel} (${strength.verificationStrength})`,
+        `- Nationality: ${credentials.nationality ?? "Not disclosed"}`,
+        `- Age verified: ${credentials.olderThan > 0 ? `${credentials.olderThan}+` : "No"}`,
+        `- OFAC screened: ${credentials.ofac[0] ? "Yes" : "No"}`,
+        `- Registered at block: ${state.registeredAtBlock}`,
+        ...(state.proofExpiresAt
+          ? [
+              `- Proof expires: ${state.proofExpiresAt} (${daysUntilExpiry} days)`,
+            ]
+          : []),
+        ...(isExpiringSoon
+          ? ["- WARNING: Proof is expiring soon! Consider refreshing."]
+          : []),
+      ),
+      dataPart({
+        ...state,
+        ...strength,
+        daysUntilExpiry,
+        isExpiringSoon,
+        credentials,
         network,
       }),
-    });
-
-    const result = (await res.json()) as Record<string, unknown>;
-
-    if (!res.ok) {
-      return {
-        id: taskId,
-        status: {
-          state: "failed",
-          message: {
-            role: "agent",
-            parts: textParts(
-              `Deregistration failed: ${typeof result.error === "string" ? result.error : JSON.stringify(result.error) || "Unknown error"}`,
-            ),
-          },
-          timestamp: new Date().toISOString(),
-        },
-      };
-    }
-
-    const deepLink = result.deepLink as string;
-    let qrParts: Part[] = [];
-    try {
-      const qrDataUrl = await generateQRBase64(deepLink);
-      const base64 = qrDataUrl.split(",")[1];
-      qrParts = [
-        {
-          type: "file" as const,
-          file: {
-            name: "deregister-qr.png",
-            mimeType: "image/png",
-            bytes: base64,
-          },
-        },
-      ];
-    } catch {
-      /* QR gen failed — deep link still available */
-    }
-
-    taskSessionStore.set(taskId, result.sessionToken as string);
-
-    return {
-      id: taskId,
-      status: {
-        state: "input-required",
-        message: {
-          role: "agent",
-          parts: [
-            ...textParts(
-              `Deregistration initiated for Agent #${intent.agentId}.`,
-              "",
-              "WARNING: This is permanent. The NFT will be burned and all on-chain proof data removed.",
-              "",
-              "A human must scan this QR code with the Self app to confirm deregistration.",
-              "If on mobile, open this link instead:",
-              `${deepLink}`,
-            ),
-            ...qrParts,
-            dataPart({
-              taskId,
-              sessionToken: result.sessionToken,
-              deepLink,
-              agentId: intent.agentId,
-              action: "deregister",
-            }),
-          ],
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
+    );
   } catch (err) {
-    return {
-      id: taskId,
-      status: {
-        state: "failed",
-        message: {
-          role: "agent",
-          parts: textParts(
-            `Deregistration failed: ${err instanceof Error ? err.message : "Network error"}`,
-          ),
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
+    return err instanceof AgentNotFoundError
+      ? notFound(target)
+      : rpcFailure(err);
   }
 }
 
-async function handleCheckFreshness(
-  agentId: number,
-  chainId: number | undefined,
-  taskId: string,
-): Promise<Task> {
-  const { chainId: cid, config } = resolveChainConfig(chainId);
-  if (!config) {
-    return {
-      id: taskId,
-      status: {
-        state: "failed",
-        message: {
-          role: "agent",
-          parts: textParts(`Unsupported chain: ${cid}`),
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
-  }
-
+/**
+ * Report whether an agent has a fresh human proof (verify intent).
+ *
+ * @param target - Agent to read.
+ * @returns "completed" with the proof state; not-found or "failed" (RPC
+ *   error) otherwise.
+ */
+async function handleVerify(target: AgentTarget): Promise<Reply> {
   try {
-    const rpc = new ethers.JsonRpcProvider(config.rpc);
-    const registry = typedRegistry(config.registry, rpc);
-
-    const [hasProof, expiresAt, nullifier] = await Promise.all([
-      registry.hasHumanProof(BigInt(agentId)),
-      registry.proofExpiresAt(BigInt(agentId)),
-      registry.getHumanNullifier(BigInt(agentId)).catch(() => 0n),
-    ]);
-
-    // Fetch sibling agent IDs (other agents registered by the same human)
-    let siblingAgentIds: number[] = [];
-    if (nullifier && nullifier !== 0n) {
-      try {
-        const allAgents = await registry.getAgentsForNullifier(nullifier);
-        siblingAgentIds = allAgents
-          .map((id) => Number(id))
-          .filter((id) => id !== agentId);
-      } catch {
-        // getAgentsForNullifier may not be available on older contracts
-      }
-    }
-
-    if (!hasProof) {
-      return {
-        id: taskId,
-        status: {
-          state: "completed",
-          message: {
-            role: "agent",
-            parts: [
-              ...textParts(
-                `Agent #${agentId} has no human proof. Registration required first.`,
-              ),
-              dataPart({ agentId, hasProof: false, action: "register" }),
-            ],
-          },
-          timestamp: new Date().toISOString(),
-        },
-      };
-    }
-
-    const expiresAtMs = Number(expiresAt) * 1000;
-    const now = Date.now();
-    const remainingMs = expiresAtMs - now;
-    const remainingDays = Math.floor(remainingMs / (1000 * 60 * 60 * 24));
-    const isExpired = remainingMs <= 0;
-    const isWarning = !isExpired && remainingDays <= 30;
-
-    if (isExpired) {
-      return {
-        id: taskId,
-        status: {
-          state: "completed",
-          message: {
-            role: "agent",
-            parts: [
-              ...textParts(
-                `Agent #${agentId} proof has EXPIRED (expired ${new Date(expiresAtMs).toISOString()}).`,
-                "",
-                "To get a fresh proof, the agent must re-register:",
-                `1. Deregister: { intent: "deregister", agentId: ${agentId} }`,
-                `2. Re-register: { intent: "register" }`,
-                "",
-                "The human will need to scan a new QR code with the Self app to re-verify.",
-              ),
-              dataPart({
-                agentId,
-                hasProof: true,
-                isExpired: true,
-                expiresAt: new Date(expiresAtMs).toISOString(),
-                siblingAgentIds,
-                action: "re-register",
-                steps: [
-                  { intent: "deregister", agentId },
-                  { intent: "register" },
-                ],
-              }),
-            ],
-          },
-          timestamp: new Date().toISOString(),
-        },
-      };
-    }
-
-    if (isWarning) {
-      return {
-        id: taskId,
-        status: {
-          state: "completed",
-          message: {
-            role: "agent",
-            parts: [
-              ...textParts(
-                `Agent #${agentId} proof expires in ${remainingDays} days (${new Date(expiresAtMs).toISOString()}).`,
-                "",
-                "Consider re-registering soon to maintain continuity:",
-                `1. Deregister: { intent: "deregister", agentId: ${agentId} }`,
-                `2. Re-register: { intent: "register" }`,
-              ),
-              dataPart({
-                agentId,
-                hasProof: true,
-                isExpired: false,
-                isWarning: true,
-                remainingDays,
-                expiresAt: new Date(expiresAtMs).toISOString(),
-                siblingAgentIds,
-              }),
-            ],
-          },
-          timestamp: new Date().toISOString(),
-        },
-      };
-    }
-
-    return {
-      id: taskId,
-      status: {
-        state: "completed",
-        message: {
-          role: "agent",
-          parts: [
-            ...textParts(
-              `Agent #${agentId} proof is fresh. Expires in ${remainingDays} days (${new Date(expiresAtMs).toISOString()}).`,
-            ),
-            dataPart({
-              agentId,
-              hasProof: true,
-              isExpired: false,
-              isWarning: false,
-              remainingDays,
-              expiresAt: new Date(expiresAtMs).toISOString(),
-              siblingAgentIds,
-            }),
-          ],
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
+    const { registry } = connectRegistry(target.chainId, target.config);
+    const state = await readAgentState(registry, target);
+    const { daysUntilExpiry, isExpiringSoon } = expiryInfo(
+      state.proofExpiresAt,
+    );
+    return reply(
+      "completed",
+      textParts(
+        state.isVerified
+          ? `Agent #${state.agentId} is verified with a valid, fresh human proof.`
+          : state.hasHumanProof
+            ? `Agent #${state.agentId} has a human proof but it has expired.`
+            : `Agent #${state.agentId} does not have a human proof.`,
+        ...(state.proofExpiresAt
+          ? [
+              `Proof expires: ${state.proofExpiresAt} (${daysUntilExpiry} days remaining)`,
+            ]
+          : []),
+        ...(isExpiringSoon
+          ? ["WARNING: Proof is expiring soon! Consider refreshing."]
+          : []),
+      ),
+      dataPart({
+        agentId: state.agentId,
+        chainId: state.chainId,
+        isVerified: state.isVerified,
+        hasHumanProof: state.hasHumanProof,
+        isProofFresh: state.isProofFresh,
+        proofExpiresAt: state.proofExpiresAt,
+        daysUntilExpiry,
+        isExpiringSoon,
+      }),
+    );
   } catch (err) {
-    return {
-      id: taskId,
-      status: {
-        state: "failed",
-        message: {
-          role: "agent",
-          parts: textParts(
-            `Freshness check failed: ${err instanceof Error ? err.message : "Network error"}`,
-          ),
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
+    return err instanceof AgentNotFoundError
+      ? notFound(target)
+      : rpcFailure(err);
   }
 }
 
+/**
+ * Report days until an agent's proof expires (freshness intent), suggesting
+ * refresh-proof when expired or within 30 days.
+ *
+ * @param target - Agent to read.
+ * @returns "completed" with freshness data (and `nextStep` when a refresh is
+ *   due); not-found or "failed" (RPC error) otherwise.
+ */
+async function handleCheckFreshness(target: AgentTarget): Promise<Reply> {
+  try {
+    const { registry } = connectRegistry(target.chainId, target.config);
+    const state = await readAgentState(registry, target);
+    const { daysUntilExpiry } = expiryInfo(state.proofExpiresAt);
+    const isExpired = !state.isProofFresh;
+    const isWarning =
+      !isExpired && daysUntilExpiry !== null && daysUntilExpiry <= 30;
+    const refreshStep = {
+      intent: "refresh-proof",
+      agentId: state.agentId,
+      chainId: state.chainId,
+    };
+    return reply(
+      "completed",
+      textParts(
+        isExpired
+          ? `Agent #${state.agentId} proof has EXPIRED${state.proofExpiresAt ? ` (${state.proofExpiresAt})` : ""}.`
+          : `Agent #${state.agentId} proof is fresh. Expires in ${daysUntilExpiry} days (${state.proofExpiresAt}).`,
+        ...(isExpired || isWarning
+          ? [
+              `Refresh it (the human scans a new QR): ${JSON.stringify(refreshStep)}`,
+            ]
+          : []),
+      ),
+      dataPart({
+        agentId: state.agentId,
+        chainId: state.chainId,
+        hasHumanProof: state.hasHumanProof,
+        isProofFresh: state.isProofFresh,
+        isExpired,
+        isWarning,
+        remainingDays: daysUntilExpiry,
+        proofExpiresAt: state.proofExpiresAt,
+        ...((isExpired || isWarning) && { nextStep: refreshStep }),
+      }),
+    );
+  } catch (err) {
+    return err instanceof AgentNotFoundError
+      ? notFound(target)
+      : rpcFailure(err);
+  }
+}
+
+/**
+ * Network name of a target's chain. Targets come from CHAIN_CONFIG, so the
+ * chain always maps to a network.
+ *
+ * @param target - Agent target.
+ * @returns "mainnet" or "testnet".
+ */
+function networkOf(target: AgentTarget): "mainnet" | "testnet" {
+  return networkForChainId(target.chainId)!;
+}
+
+/**
+ * Start a deregistration through POST /api/agent/deregister, after checking
+ * the agent exists.
+ *
+ * @param ctx - Current request context.
+ * @param target - Agent to deregister.
+ * @param taskId - Task to attach the session to.
+ * @returns "input-required" with the QR; not-found, or "failed" when the
+ *   read or the route fails.
+ * @throws RateLimitedError / InvalidParamsError from the route (429 / 400).
+ */
+async function handleDeregister(
+  ctx: Ctx,
+  target: AgentTarget,
+  taskId: string,
+): Promise<Reply> {
+  try {
+    const { registry } = connectRegistry(target.chainId, target.config);
+    await readAgentState(registry, target); // not-found check
+  } catch (err) {
+    return err instanceof AgentNotFoundError
+      ? notFound(target)
+      : rpcFailure(err);
+  }
+
+  const result = await callRoute(ctx, deregisterPOST, "/api/agent/deregister", {
+    body: { agentId: Number(target.agentId), network: networkOf(target) },
+  });
+  if (!result.ok) {
+    return reply(
+      "failed",
+      textParts(`Deregistration failed: ${errorText(result.body)}`),
+    );
+  }
+  return sessionStarted(
+    taskId,
+    "deregistration",
+    [
+      `Deregistration initiated for Agent #${target.agentId}.`,
+      "WARNING: This is permanent. The NFT will be burned and all on-chain proof data removed.",
+    ],
+    result.body,
+    { agentId: Number(target.agentId), action: "deregister" },
+  );
+}
+
+/**
+ * Start a proof refresh through POST /api/agent/refresh.
+ *
+ * @param ctx - Current request context.
+ * @param target - Agent to refresh.
+ * @param taskId - Task to attach the session to.
+ * @returns "input-required" with the QR; not-found on a 404, "failed" when
+ *   the route refuses.
+ * @throws RateLimitedError / InvalidParamsError from the route (429 / 400).
+ */
 async function handleRefreshProof(
-  agentId: number,
-  chainId: number | undefined,
+  ctx: Ctx,
+  target: AgentTarget,
   taskId: string,
-  req?: NextRequest,
-): Promise<Task> {
-  const { chainId: cid, config } = resolveChainConfig(chainId);
-  if (!config) {
-    return {
-      id: taskId,
-      status: {
-        state: "failed",
-        message: {
-          role: "agent",
-          parts: textParts(`Unsupported chain: ${cid}`),
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
+): Promise<Reply> {
+  const result = await callRoute(ctx, refreshPOST, "/api/agent/refresh", {
+    body: { agentId: Number(target.agentId), network: networkOf(target) },
+  });
+  if (result.status === 404) return notFound(target);
+  if (!result.ok) {
+    return reply(
+      "failed",
+      textParts(`Proof refresh failed: ${errorText(result.body)}`),
+    );
   }
+  return sessionStarted(
+    taskId,
+    "refresh",
+    [
+      `Proof refresh initiated for Agent #${target.agentId}.`,
+      "The human scans the QR with the Self app; the on-chain proof expiry is then renewed.",
+    ],
+    result.body,
+    {
+      agentId: Number(target.agentId),
+      network: networkOf(target),
+      action: "refresh-proof",
+    },
+  );
+}
 
-  const network = cid === "42220" ? "mainnet" : "testnet";
-  const appUrl = getAppBaseUrl(req);
-
-  try {
-    const fetchHeaders: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-    if (bypassSecret) fetchHeaders["x-vercel-protection-bypass"] = bypassSecret;
-    const cookies = req?.headers.get("cookie");
-    if (cookies) fetchHeaders["cookie"] = cookies;
-
-    const res = await fetch(`${appUrl}/api/agent/refresh`, {
-      method: "POST",
-      headers: fetchHeaders,
-      body: JSON.stringify({ agentId, network }),
-    });
-
-    const result = (await res.json()) as Record<string, unknown>;
-
-    if (!res.ok) {
-      return {
-        id: taskId,
-        status: {
-          state: "failed",
-          message: {
-            role: "agent",
-            parts: textParts(
-              `Proof refresh failed: ${typeof result.error === "string" ? result.error : JSON.stringify(result.error) || "Unknown error"}`,
-            ),
-          },
-          timestamp: new Date().toISOString(),
-        },
-      };
-    }
-
-    const deepLink = result.deepLink as string;
-    let qrParts: Part[] = [];
-    try {
-      const qrDataUrl = await generateQRBase64(deepLink);
-      const base64 = qrDataUrl.split(",")[1];
-      qrParts = [
-        {
-          type: "file" as const,
-          file: {
-            name: "refresh-proof-qr.png",
-            mimeType: "image/png",
-            bytes: base64,
-          },
-        },
-      ];
-    } catch {
-      /* QR gen failed — deep link still available */
-    }
-
-    taskSessionStore.set(taskId, result.sessionToken as string);
-
-    return {
-      id: taskId,
-      status: {
-        state: "input-required",
-        message: {
-          role: "agent",
-          parts: [
-            ...textParts(
-              `Proof refresh initiated for Agent #${agentId}.`,
-              "",
-              "A human must scan this QR code with the Self app to provide a fresh proof.",
-              "If on mobile, open this link instead:",
-              `${deepLink}`,
-              "",
-              "Steps for the human:",
-              "1. Scan the QR code below with your phone camera (or tap the link above if on mobile)",
-              "2. The Self app will open — follow the prompts to confirm",
-              "3. The proof will be refreshed on-chain automatically",
-              "",
-              `Session expires at: ${String(result.expiresAt)} (${Math.round((result.timeRemainingMs as number) / 1000)}s remaining)`,
-              "",
-              "To check status, send:",
-              `  { "intent": "status", "taskId": "${taskId}" }`,
-            ),
-            ...qrParts,
-            dataPart({
-              taskId,
-              sessionToken: result.sessionToken,
-              deepLink,
-              qrImageIncluded: qrParts.length > 0,
-              agentId,
-              network,
-              action: "refresh-proof",
-              expiresAt: result.expiresAt,
-              timeRemainingMs: result.timeRemainingMs,
-            }),
-          ],
-        },
-        timestamp: new Date().toISOString(),
+/** Reply to a register request with no mode: lists the modes. */
+const REGISTER_ASK = reply(
+  "input-required",
+  textParts(
+    "I can register an AI agent with proof-of-human verification on the Self protocol. Pick a mode:",
+    "",
+    '- wallet-free: no keys or wallet needed; the server generates the agent key. { "intent": "register", "mode": "wallet-free" }',
+    '- linked: the human\'s wallet owns the agent. { "intent": "register", "mode": "linked", "humanAddress": "0x..." }',
+    "- ed25519 / ed25519-linked: bring your own Ed25519 key. First POST /api/agent/register/ed25519-challenge with { pubkey, network }, sign the returned challengeHash bytes, then send ed25519Pubkey (64 hex) and ed25519Signature (128 hex).",
+    "",
+    `Add "network": "testnet" for Celo Sepolia (mock documents allowed) or "network": "mainnet" for Celo; the default is ${DEFAULT_API_NETWORK}.`,
+  ),
+  dataPart({
+    examples: [
+      { intent: "register", mode: "wallet-free", network: "testnet" },
+      {
+        intent: "register",
+        mode: "linked",
+        humanAddress: "0xYourWallet...",
+        network: "testnet",
       },
-    };
-  } catch (err) {
-    return {
-      id: taskId,
-      status: {
-        state: "failed",
-        message: {
-          role: "agent",
-          parts: textParts(
-            `Proof refresh failed: ${err instanceof Error ? err.message : "Network error"}`,
-          ),
-        },
-        timestamp: new Date().toISOString(),
+      {
+        intent: "register",
+        mode: "ed25519",
+        ed25519Pubkey: "<64-hex public key>",
+        ed25519Signature: "<128-hex signature of challengeHash>",
+        network: "testnet",
       },
-    };
+    ],
+  }),
+);
+
+/** Reply to the help intent. */
+const HELP = reply(
+  "completed",
+  textParts(
+    "Self Agent ID Registry — A2A v0.3.0 Endpoint",
+    "",
+    'Send intents as a data part, e.g. { intent: "lookup", agentId: 1 }, or in plain English.',
+    "",
+    "1. register — human-verified on-chain identity. Modes: wallet-free (default), linked (needs humanAddress), ed25519 / ed25519-linked (needs ed25519Pubkey + ed25519Signature over the challenge from POST /api/agent/register/ed25519-challenge), privy / smartwallet (like linked).",
+    `   Networks: "mainnet" (real passport in the Self app) or "testnet" (Celo Sepolia; the Self app can create mock documents). Default: ${DEFAULT_API_NETWORK}.`,
+    '2. status — poll a register / deregister / refresh-proof session with the newest sessionToken from the previous reply: { intent: "status", sessionToken }',
+    '3. lookup — full on-chain details: { intent: "lookup", agentId: 1 }',
+    '4. verify — fresh human proof? { intent: "verify", agentId: 1 }',
+    '5. freshness — days until the proof expires: { intent: "freshness", agentId: 1 }',
+    '6. refresh-proof — renew an agent\'s proof (human scans a QR): { intent: "refresh-proof", agentId: 1 }',
+    '7. deregister — permanently burn an agent (human confirms in the Self app): { intent: "deregister", agentId: 1 }',
+    "",
+    `Agent queries default to ${DEFAULT_API_NETWORK} (chainId ${DEFAULT_CHAIN_ID}); pass chainId (42220 Celo, 11142220 Celo Sepolia) or network to choose.`,
+  ),
+);
+
+/** Reply when no intent matched. */
+const UNKNOWN = reply(
+  "completed",
+  textParts(
+    "I didn't understand that request.",
+    'Send { intent: "help" } to see what I can do. Quick examples:',
+  ),
+  dataPart({
+    examples: [
+      { intent: "register", mode: "wallet-free", network: "testnet" },
+      { intent: "lookup", agentId: 1 },
+      { intent: "verify", agentId: 1 },
+      { intent: "freshness", agentId: 1 },
+      { intent: "refresh-proof", agentId: 1 },
+      { intent: "deregister", agentId: 1 },
+      { intent: "help" },
+    ],
+  }),
+);
+
+/**
+ * Dispatch a parsed intent to its handler. Agent reads spend the per-IP read
+ * budget; refresh-proof is limited by the refresh route itself.
+ *
+ * @param ctx - Current request context.
+ * @param intent - Parsed intent.
+ * @param taskId - ID of the task being created.
+ * @returns The handler's reply.
+ * @throws InvalidParamsError for an unknown taskId; RateLimitedError when
+ *   the read budget or a called route is exhausted.
+ */
+async function handleIntent(
+  ctx: Ctx,
+  intent: Intent,
+  taskId: string,
+): Promise<Reply> {
+  switch (intent.type) {
+    case "register":
+      return handleRegister(ctx, intent, taskId);
+    case "register-ask":
+      return REGISTER_ASK;
+    case "status": {
+      const token = taskSessions.get(intent.taskId);
+      if (!token) {
+        throw new InvalidParamsError(
+          'Unknown or finished taskId (task state is kept per server instance). Poll with { "intent": "status", "sessionToken": "<newest sessionToken from the task\'s data part>" } instead.',
+        );
+      }
+      return handleSessionStatus(ctx, token, intent.taskId);
+    }
+    case "session-status":
+      return handleSessionStatus(ctx, intent.sessionToken);
+    case "lookup":
+    case "verify":
+    case "check-freshness":
+    case "deregister":
+    case "refresh-proof": {
+      const target = toTarget(intent.agentId, intent.chainId);
+      // Registry ids are sequential: ids past 2^53 cannot exist (as in REST).
+      if (target.agentId > BigInt(Number.MAX_SAFE_INTEGER)) {
+        return notFound(target);
+      }
+      if (intent.type === "refresh-proof") {
+        return handleRefreshProof(ctx, target, taskId); // route limits itself
+      }
+      const rl = await checkReadLimit(getClientIp(ctx.req));
+      if (!rl.allowed) throw new RateLimitedError(rl.retryAfterMs);
+      if (intent.type === "lookup") return handleLookup(target);
+      if (intent.type === "verify") return handleVerify(target);
+      if (intent.type === "check-freshness") {
+        return handleCheckFreshness(target);
+      }
+      return handleDeregister(ctx, target, taskId);
+    }
+    case "help":
+      return HELP;
+    default:
+      return UNKNOWN;
   }
 }
 
-function handleHelp(taskId: string): Task {
+// ── Optional caller verification ────────────────────────────────────────────
+
+/**
+ * Check the X-Agent-Id caller on the default network.
+ *
+ * @param agentIdHeader - Raw X-Agent-Id header value.
+ * @returns null when the agent has a fresh human proof, else the reason
+ *   (invalid ID, not found, no proof, expired proof, RPC failure).
+ */
+async function verifyCallingAgent(
+  agentIdHeader: string,
+): Promise<string | null> {
+  const id = validateAgentId(agentIdHeader);
+  if (id === null) return ERRORS.invalidAgentId;
+  if (id > BigInt(Number.MAX_SAFE_INTEGER)) return ERRORS.agentNotFound;
+  const chainId = DEFAULT_CHAIN_ID;
+  try {
+    const { registry } = connectRegistry(
+      Number(chainId),
+      CHAIN_CONFIG[chainId],
+    );
+    const [hasProof, isFresh] = await Promise.all([
+      registry.hasHumanProof(id),
+      registry.isProofFresh(id),
+    ]);
+    if (!hasProof) {
+      // hasHumanProof is false for ids that were never minted or were burned.
+      const key = await registry.agentIdToAgentKey(id);
+      return BigInt(key) === 0n
+        ? ERRORS.agentNotFound
+        : "Agent does not have a human proof";
+    }
+    if (!isFresh) return "Agent proof has expired";
+    return null;
+  } catch (err) {
+    console.error("[a2a] X-Agent-Id check failed:", err);
+    return "Failed to verify agent on-chain";
+  }
+}
+
+// ── JSON-RPC plumbing ───────────────────────────────────────────────────────
+
+/** JSON-RPC request id (null when absent or unreadable). */
+type RpcId = string | number | null;
+
+/**
+ * Build a JSON-RPC success response.
+ *
+ * @param id - Request id to echo.
+ * @param result - Method result.
+ * @returns 200 with the result.
+ */
+function rpcResult(id: RpcId, result: unknown): NextResponse {
+  return NextResponse.json(
+    { jsonrpc: "2.0", id, result },
+    { headers: HEADERS },
+  );
+}
+
+/**
+ * Build a JSON-RPC error response.
+ *
+ * @param id - Request id to echo.
+ * @param code - JSON-RPC / A2A error code.
+ * @param message - Error message.
+ * @param httpStatus - HTTP status to send.
+ * @returns The error response.
+ */
+function rpcError(
+  id: RpcId,
+  code: number,
+  message: string,
+  httpStatus: number,
+): NextResponse {
+  return NextResponse.json(
+    { jsonrpc: "2.0", id, error: { code, message } },
+    { status: httpStatus, headers: HEADERS },
+  );
+}
+
+/**
+ * HTTP 429 + Retry-After, with the wait in error.data for JSON-RPC clients.
+ *
+ * @param id - Request id to echo.
+ * @param retryAfterMs - Time until the limit resets.
+ * @returns 429 with JSON-RPC error -32000 and data.retryAfterMs.
+ */
+function rateLimited(id: RpcId, retryAfterMs: number): NextResponse {
+  return NextResponse.json(
+    {
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code: RATE_LIMITED,
+        message: "Rate limit exceeded. Try again later.",
+        data: { retryAfterMs },
+      },
+    },
+    {
+      status: 429,
+      headers: {
+        ...HEADERS,
+        "Retry-After": String(Math.max(1, Math.ceil(retryAfterMs / 1000))),
+      },
+    },
+  );
+}
+
+/**
+ * Check for a plain (non-array, non-null) object.
+ *
+ * @param v - Value to test.
+ * @returns True for plain objects.
+ */
+function isObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Wrap a reply into an A2A task.
+ *
+ * @param taskId - New task ID.
+ * @param contextId - Conversation context ID.
+ * @param userMessage - The (normalised) incoming message.
+ * @param r - The intent handler's reply.
+ * @returns The task, with history [user message, agent message].
+ */
+function makeTask(
+  taskId: string,
+  contextId: string,
+  userMessage: Message,
+  r: Reply,
+): Task {
+  const agentMessage: Message = {
+    kind: "message",
+    messageId: randomUUID(),
+    role: "agent",
+    parts: r.parts,
+    taskId,
+    contextId,
+  };
   return {
+    kind: "task",
     id: taskId,
+    contextId,
     status: {
-      state: "completed",
+      state: r.state,
+      message: agentMessage,
+      timestamp: new Date().toISOString(),
+    },
+    history: [userMessage, agentMessage],
+  };
+}
+
+/**
+ * Handle message/send: validate the message, rate-limit, run the intent and
+ * store the resulting task.
+ *
+ * @param ctx - Current request context.
+ * @param id - JSON-RPC request id.
+ * @param params - JSON-RPC params ({message: {role, parts, contextId?,
+ *   messageId?}}).
+ * @returns 200 {result: Task}; 400 INVALID_PARAMS; 429 rate limited;
+ *   500 INTERNAL_ERROR.
+ */
+async function sendMessage(
+  ctx: Ctx,
+  id: RpcId,
+  params: unknown,
+): Promise<NextResponse> {
+  const message = isObject(params) ? params.message : undefined;
+  if (!isObject(message) || !Array.isArray(message.parts)) {
+    return rpcError(
+      id,
+      A2AErrorCodes.INVALID_PARAMS,
+      "params.message with a parts array is required",
+      400,
+    );
+  }
+  if (message.role !== "user" && message.role !== "agent") {
+    return rpcError(
+      id,
+      A2AErrorCodes.INVALID_PARAMS,
+      'message.role must be "user" or "agent"',
+      400,
+    );
+  }
+
+  const taskId = randomUUID();
+  const contextId =
+    typeof message.contextId === "string" && message.contextId
+      ? message.contextId
+      : randomUUID();
+  const userMessage = {
+    kind: "message",
+    messageId:
+      typeof message.messageId === "string" ? message.messageId : randomUUID(),
+    role: message.role,
+    parts: (message.parts as unknown[]).map((p) =>
+      isObject(p) ? { ...p, kind: partKind(p) } : p,
+    ),
+    taskId,
+    contextId,
+  } as Message;
+
+  // Bounds RPC spend and how fast one caller can churn the task store.
+  const rl = await checkRateLimit({
+    key: `a2a-send:${getClientIp(ctx.req)}`,
+    limit: SEND_LIMIT,
+    windowMs: 60_000,
+  });
+  if (!rl.allowed) return rateLimited(id, rl.retryAfterMs);
+
+  let result: Reply;
+  try {
+    result = await handleIntent(ctx, parseIntent(message.parts), taskId);
+  } catch (err) {
+    if (err instanceof InvalidParamsError) {
+      return rpcError(id, A2AErrorCodes.INVALID_PARAMS, err.message, 400);
+    }
+    if (err instanceof RateLimitedError) {
+      return rateLimited(id, err.retryAfterMs);
+    }
+    console.error("[a2a] message/send failed:", err);
+    return rpcError(id, A2AErrorCodes.INTERNAL_ERROR, "Internal error", 500);
+  }
+
+  const task = makeTask(taskId, contextId, userMessage, result);
+  remember(taskStore, taskId, task);
+  return rpcResult(id, task);
+}
+
+/**
+ * Handle tasks/get from this instance's task store.
+ *
+ * @param id - JSON-RPC request id.
+ * @param params - JSON-RPC params ({id, historyLength?}).
+ * @returns 200 {result: Task} (history trimmed to historyLength);
+ *   400 INVALID_PARAMS; 404 TASK_NOT_FOUND.
+ */
+function getTask(id: RpcId, params: unknown): NextResponse {
+  const taskId = isObject(params) ? params.id : undefined;
+  if (typeof taskId !== "string") {
+    return rpcError(
+      id,
+      A2AErrorCodes.INVALID_PARAMS,
+      "params.id is required",
+      400,
+    );
+  }
+  const task = taskStore.get(taskId);
+  if (!task) {
+    return rpcError(id, A2AErrorCodes.TASK_NOT_FOUND, "Task not found", 404);
+  }
+  const historyLength = isObject(params) ? params.historyLength : undefined;
+  if (
+    typeof historyLength === "number" &&
+    Number.isInteger(historyLength) &&
+    historyLength >= 0
+  ) {
+    return rpcResult(id, {
+      ...task,
+      history: historyLength === 0 ? [] : task.history.slice(-historyLength),
+    });
+  }
+  return rpcResult(id, task);
+}
+
+/**
+ * Handle tasks/cancel: mark an unfinished task canceled and forget its
+ * session (the session token itself stays pollable).
+ *
+ * @param id - JSON-RPC request id.
+ * @param params - JSON-RPC params ({id}).
+ * @returns 200 {result: Task}; 400 INVALID_PARAMS; 404 TASK_NOT_FOUND;
+ *   409 TASK_NOT_CANCELABLE.
+ */
+function cancelTask(id: RpcId, params: unknown): NextResponse {
+  const taskId = isObject(params) ? params.id : undefined;
+  if (typeof taskId !== "string") {
+    return rpcError(
+      id,
+      A2AErrorCodes.INVALID_PARAMS,
+      "params.id is required",
+      400,
+    );
+  }
+  const task = taskStore.get(taskId);
+  if (!task) {
+    return rpcError(id, A2AErrorCodes.TASK_NOT_FOUND, "Task not found", 404);
+  }
+  if (["completed", "canceled", "failed"].includes(task.status.state)) {
+    return rpcError(
+      id,
+      A2AErrorCodes.TASK_NOT_CANCELABLE,
+      `Task not cancelable: already ${task.status.state}`,
+      409,
+    );
+  }
+  taskSessions.delete(taskId);
+  const canceled: Task = {
+    ...task,
+    status: {
+      state: "canceled",
       message: {
+        kind: "message",
+        messageId: randomUUID(),
         role: "agent",
-        parts: [
-          ...textParts(
-            "Self Agent ID Registry — A2A v0.3.0 Endpoint",
-            "",
-            "I can help with:",
-            "",
-            "1. Register an agent — Get human-verified on-chain identity",
-            '   Say: "Register a new agent" or send { intent: "register" }',
-            "",
-            "   IMPORTANT — Networks:",
-            "   • mainnet (default): Celo Mainnet. The human must have already scanned a REAL passport in the Self app during initial setup.",
-            "   • testnet: Celo Sepolia. For testing only — the Self app can generate MOCK documents instead of requiring a real passport.",
-            '     Use network: "testnet" for development.',
-            "",
-            "   Registration modes:",
-            "",
-            "   - wallet-free (default): No wallet needed. Server generates everything.",
-            "     The human just scans a QR code with the Self app. Simplest option.",
-            '     Example: { intent: "register" }',
-            "",
-            "   - ed25519: For agents using Ed25519 keys (OpenClaw, Eliza, IronClaw).",
-            "     No human wallet needed — derives address from pubkey. Bring your own",
-            "     public key and a pre-signed challenge to prove key ownership.",
-            '     Example: { intent: "register", ed25519Pubkey: "...", ed25519Signature: "..." }',
-            "",
-            "   - linked: Separate agent EVM keys, linked to a human wallet. For agents",
-            "     that want their own keypair tied to a specific human wallet address.",
-            '     Requires: { humanAddress: "0x...", mode: "linked" }',
-            "",
-            "   - ed25519-linked: Agent's Ed25519 keys, linked to a human wallet.",
-            "     Like ed25519 but requires an explicit human wallet binding.",
-            '     Requires: { humanAddress: "0x...", ed25519Pubkey: "...", ed25519Signature: "..." }',
-            "",
-            "   Quick decision guide:",
-            "   ┌─ Do you have Ed25519 keys? (OpenClaw, Eliza, IronClaw)",
-            "   │  ├─ YES + want to link a human wallet? → ed25519-linked",
-            "   │  └─ YES + no human wallet needed?      → ed25519 (default for Ed25519 agents)",
-            "   └─ No Ed25519 keys?",
-            "      ├─ Want to link a human wallet?       → linked (recommended)",
-            "      └─ No human wallet needed?            → wallet-free (default)",
-            "",
-            "2. Check registration status — Poll an in-progress registration",
-            '   Send: { intent: "status", taskId: "<taskId>" }',
-            "",
-            "3. Look up an agent — Get full on-chain details",
-            '   Say: "Look up agent #1" or send { intent: "lookup", agentId: 1 }',
-            "",
-            "4. Verify an agent — Check if an agent has a valid human proof",
-            '   Say: "Verify agent #1" or send { intent: "verify", agentId: 1 }',
-            "",
-            "5. Deregister an agent — Permanently remove an agent (burns NFT, clears proof)",
-            '   Say: "Deregister agent #5" or send { intent: "deregister", agentId: 5 }',
-            "   WARNING: This is irreversible. The human must confirm via Self app scan.",
-            "",
-            "6. Check proof freshness — See if an agent's proof is still valid or expiring soon",
-            '   Say: "Is agent #5 still fresh?" or send { intent: "freshness", agentId: 5 }',
-            "   Returns: days remaining, expiry date, and re-registration steps if expired.",
-            "",
-            "7. Refresh proof — Initiate a proof refresh for an existing agent (re-verify without deregistering)",
-            '   Say: "Refresh proof for agent #5" or send { intent: "refresh-proof", agentId: 5 }',
-            "   The human scans a new QR code with the Self app; the on-chain proof expiry is updated.",
-            "",
-            'All queries default to mainnet (Celo). Add chainId: 11142220 or network: "testnet" for Celo Sepolia (mock documents via the Self app, no real passport needed).',
-          ),
-        ],
+        parts: textParts("Task canceled by request."),
+        taskId,
+        contextId: task.contextId,
       },
       timestamp: new Date().toISOString(),
     },
   };
+  remember(taskStore, taskId, canceled);
+  return rpcResult(id, canceled);
 }
 
-// ── Helper: verify agent on-chain (optional auth) ───────────────────────────
-
-async function verifyAgentOnChain(
-  agentId: string,
-): Promise<{ valid: boolean; reason?: string }> {
-  const defaultNet = NETWORKS[DEFAULT_NETWORK];
-  const chainId = String(defaultNet.chainId);
-  const config = CHAIN_CONFIG[chainId];
-  if (!config) {
-    return { valid: false, reason: "No chain config available" };
-  }
-
-  try {
-    const id = BigInt(agentId);
-    if (id <= 0n) return { valid: false, reason: "Invalid agent ID" };
-
-    const provider = new ethers.JsonRpcProvider(config.rpc);
-    const registry = typedRegistry(config.registry, provider);
-    const hasProof: boolean = await registry.hasHumanProof(id);
-    if (!hasProof) {
-      return { valid: false, reason: "Agent does not have a human proof" };
-    }
-
-    try {
-      const isFresh: boolean = await registry.isProofFresh(id);
-      if (!isFresh) {
-        return { valid: false, reason: "Agent proof has expired" };
-      }
-    } catch {
-      // isProofFresh may not be available on older contracts — allow
-    }
-
-    return { valid: true };
-  } catch {
-    return { valid: false, reason: "Failed to verify agent on-chain" };
-  }
-}
-
-// ── Task Handler ────────────────────────────────────────────────────────────
-
-const registryTaskHandler: TaskHandler = {
-  async onMessage(
-    message: Message,
-    metadata?: Record<string, unknown>,
-  ): Promise<Task> {
-    const taskId = generateTaskId();
-    const intent = parseIntent(message);
-
-    let task: Task;
-
-    switch (intent.type) {
-      case "register-ask":
-        task = {
-          id: taskId,
-          status: {
-            state: "input-required",
-            message: {
-              role: "agent",
-              parts: [
-                ...textParts(
-                  "I can register an AI agent with proof-of-human verification on the Self protocol.",
-                  "",
-                  "Since you're an agent, you'll use **Ed25519 mode** — this is the standard for agent-to-agent registration. Two quick questions:",
-                  "",
-                  "1. **Guardian wallet**: Do you (or your operator) have an Ethereum address to link as this agent's guardian? A guardian wallet lets a human manage the agent on-chain later. If not, we'll skip it (ed25519 mode without a linked wallet).",
-                  "",
-                  "2. **Network**: Mainnet (Celo) or testnet (Celo Sepolia)?",
-                  "",
-                  "You'll need your Ed25519 public key and a signed challenge to prove key ownership.",
-                  "",
-                  "You can reply conversationally, or send a structured request:",
-                ),
-                dataPart({
-                  hint: "Pick the mode that fits your setup — agents use Ed25519",
-                  modes: [
-                    {
-                      mode: "ed25519",
-                      description:
-                        "Standard agent registration. Ed25519 key verified on-chain, no guardian wallet needed.",
-                      example: {
-                        intent: "register",
-                        mode: "ed25519",
-                        ed25519Pubkey: "0x...",
-                        network: "mainnet",
-                      },
-                    },
-                    {
-                      mode: "ed25519-linked",
-                      description:
-                        "Ed25519 key + guardian wallet — links agent to a human wallet for on-chain management.",
-                      example: {
-                        intent: "register",
-                        mode: "ed25519-linked",
-                        ed25519Pubkey: "0x...",
-                        humanAddress: "0xYourWallet...",
-                        network: "mainnet",
-                      },
-                    },
-                  ],
-                }),
-              ],
-            },
-            timestamp: new Date().toISOString(),
-          },
-        };
-        break;
-      case "register":
-        task = await handleRegister(intent, taskId, currentRequest);
-        break;
-      case "register-status":
-        task = await handleRegisterStatus(
-          intent.sessionToken,
-          taskId,
-          undefined,
-          currentRequest,
-        );
-        break;
-      case "register-poll": {
-        const storedToken = taskSessionStore.get(intent.taskId);
-        if (!storedToken) {
-          task = {
-            id: taskId,
-            status: {
-              state: "failed",
-              message: {
-                role: "agent",
-                parts: textParts(
-                  "No active registration found for that task ID. The session may have expired.",
-                  "Start a new registration with: { intent: 'register' }",
-                ),
-              },
-              timestamp: new Date().toISOString(),
-            },
-          };
-        } else {
-          task = await handleRegisterStatus(
-            storedToken,
-            taskId,
-            intent.taskId,
-            currentRequest,
-          );
-        }
-        break;
-      }
-      case "lookup":
-        task = await handleLookup(intent.agentId, intent.chainId, taskId);
-        break;
-      case "verify":
-        task = await handleVerify(intent.agentId, intent.chainId, taskId);
-        break;
-      case "deregister":
-        task = await handleDeregister(intent, taskId, currentRequest);
-        break;
-      case "check-freshness":
-        task = await handleCheckFreshness(
-          intent.agentId,
-          intent.chainId,
-          taskId,
-        );
-        break;
-      case "refresh-proof":
-        task = await handleRefreshProof(
-          intent.agentId,
-          intent.chainId,
-          taskId,
-          currentRequest,
-        );
-        break;
-      case "help":
-        task = handleHelp(taskId);
-        break;
-      default:
-        task = {
-          id: taskId,
-          status: {
-            state: "completed",
-            message: {
-              role: "agent",
-              parts: [
-                ...textParts(
-                  "I didn't understand that request.",
-                  'Send { intent: "help" } to see what I can do. Quick examples:',
-                ),
-                dataPart({
-                  examples: [
-                    { intent: "register" },
-                    { intent: "lookup", agentId: 1 },
-                    { intent: "verify", agentId: 1 },
-                    { intent: "deregister", agentId: 1 },
-                    { intent: "freshness", agentId: 1 },
-                    { intent: "refresh-proof", agentId: 1 },
-                    { intent: "help" },
-                  ],
-                }),
-              ],
-            },
-            timestamp: new Date().toISOString(),
-          },
-        };
-    }
-
-    // Attach session and history
-    task.sessionId = (metadata?.sessionId as string) || undefined;
-    task.history = [
-      message,
-      ...(task.status.message ? [task.status.message] : []),
-    ];
-
-    taskStore.set(taskId, task);
-    return task;
-  },
-
-  // eslint-disable-next-line @typescript-eslint/require-await
-  async onGetTask(taskId: string, historyLength?: number): Promise<Task> {
-    const task = taskStore.get(taskId);
-    if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
-
-    if (historyLength !== undefined && task.history) {
-      return { ...task, history: task.history.slice(-historyLength) };
-    }
-    return task;
-  },
-
-  // eslint-disable-next-line @typescript-eslint/require-await
-  async onCancelTask(taskId: string): Promise<Task> {
-    const task = taskStore.get(taskId);
-    if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
-
-    const terminalStates = new Set(["completed", "canceled", "failed"]);
-    if (terminalStates.has(task.status.state)) {
-      throw new Error(
-        `Task not cancelable: already in state "${task.status.state}"`,
-      );
-    }
-
-    const canceledTask: Task = {
-      ...task,
-      status: {
-        state: "canceled",
-        message: {
-          role: "agent",
-          parts: textParts("Task canceled by request."),
-        },
-        timestamp: new Date().toISOString(),
-      },
-    };
-
-    taskStore.set(taskId, canceledTask);
-    return canceledTask;
-  },
-};
-
-// ── Request-scoped context ───────────────────────────────────────────────────
-// The TaskHandler interface doesn't carry the HTTP request, so we store it
-// in a module-scoped variable for the duration of each request.
-let currentRequest: NextRequest | undefined;
-
-// ── A2A Server instance ─────────────────────────────────────────────────────
-
-const a2aServer = new A2AServer(registryTaskHandler);
-
-// ── Route handler ───────────────────────────────────────────────────────────
+// ── Route handlers ───────────────────────────────────────────────────────────
 
 /**
- * POST /api/a2a
+ * Validate the JSON-RPC request (Content-Type, optional X-Agent-Id, body) and
+ * dispatch the method.
  *
- * A2A v0.3.0 JSON-RPC 2.0 endpoint.
- *
- * Accepts JSON-RPC requests for:
- *   - message/send: Send a message to the Self Agent ID Registry
- *   - tasks/get: Retrieve a task by ID
- *   - tasks/cancel: Cancel a task
- *
- * Supported intents (via natural language or structured data parts):
- *   - register: Initiate agent registration (returns QR + deep link)
- *   - register-status: Poll registration progress
- *   - lookup: Get full on-chain agent details
- *   - verify: Check human proof status
- *   - deregister: Permanently remove an agent (burns NFT)
- *   - check-freshness: Check if an agent's proof is still valid or expiring
- *   - refresh-proof: Initiate a proof refresh for an existing agent
- *   - help: List capabilities
- *
- * Optional agent verification: If the request includes an `X-Agent-Id` header,
- * the endpoint verifies that the agent is registered and has a valid human proof
- * on-chain before processing the request.
+ * @param req - JSON-RPC 2.0 request ({jsonrpc: "2.0", id?, method, params}).
+ * @returns The method's response; 400 PARSE_ERROR / INVALID_REQUEST /
+ *   UNSUPPORTED_OPERATION (message/stream); 403 X-Agent-Id not verified;
+ *   404 METHOD_NOT_FOUND; 413 body over 64 KB; 415 not application/json;
+ *   429 rate limited.
  */
 export async function POST(req: NextRequest) {
-  const contentType = req.headers.get("content-type") || "";
+  const contentType = (req.headers.get("content-type") || "").toLowerCase();
   if (!contentType.includes("application/json")) {
-    const errorResp: JSONRPCResponse = {
-      jsonrpc: "2.0",
-      id: 0,
-      error: {
-        code: A2AErrorCodes.CONTENT_TYPE_NOT_SUPPORTED,
-        message: "Content-Type must be application/json",
-      },
-    };
-    return NextResponse.json(errorResp, {
-      status: 415,
-      headers: CORS_HEADERS,
-    });
+    return rpcError(
+      null,
+      A2AErrorCodes.CONTENT_TYPE_NOT_SUPPORTED,
+      "Content-Type must be application/json",
+      415,
+    );
   }
 
-  // Optional: verify requesting agent
-  const requestingAgentId = req.headers.get("x-agent-id");
-  if (requestingAgentId) {
-    const verification = await verifyAgentOnChain(requestingAgentId);
-    if (!verification.valid) {
-      const errorResp: JSONRPCResponse = {
-        jsonrpc: "2.0",
-        id: 0,
-        error: {
-          code: A2AErrorCodes.INVALID_REQUEST,
-          message: `Agent verification failed: ${verification.reason}`,
-        },
-      };
-      return NextResponse.json(errorResp, {
-        status: 403,
-        headers: CORS_HEADERS,
-      });
+  const callerAgentId = req.headers.get("x-agent-id");
+  if (callerAgentId) {
+    // The check costs on-chain reads, so it spends the caller's read budget.
+    const rl = await checkReadLimit(getClientIp(req));
+    if (!rl.allowed) return rateLimited(null, rl.retryAfterMs);
+    const failure = await verifyCallingAgent(callerAgentId);
+    if (failure) {
+      return rpcError(
+        null,
+        A2AErrorCodes.INVALID_REQUEST,
+        `Agent verification failed: ${failure}`,
+        403,
+      );
     }
   }
 
-  // Store request for handlers to derive base URL
-  currentRequest = req;
-
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    const errorResp: JSONRPCResponse = {
-      jsonrpc: "2.0",
-      id: 0,
-      error: {
-        code: A2AErrorCodes.PARSE_ERROR,
-        message: "Invalid JSON in request body",
-      },
-    };
-    return NextResponse.json(errorResp, {
-      status: 400,
-      headers: CORS_HEADERS,
-    });
+  const parsed = await readJsonObjectBody(req, MAX_BODY_BYTES);
+  if (!parsed.ok) {
+    return parsed.response.status === 413
+      ? rpcError(
+          null,
+          A2AErrorCodes.INVALID_REQUEST,
+          "Request body too large",
+          413,
+        )
+      : rpcError(
+          null,
+          A2AErrorCodes.PARSE_ERROR,
+          "Request body must be a JSON-RPC 2.0 request object",
+          400,
+        );
+  }
+  const body = parsed.body;
+  const id: RpcId =
+    typeof body.id === "string" || typeof body.id === "number" ? body.id : null;
+  if (body.jsonrpc !== "2.0" || typeof body.method !== "string") {
+    return rpcError(
+      id,
+      A2AErrorCodes.INVALID_REQUEST,
+      'Expected { "jsonrpc": "2.0", "method": ..., "params": ... }',
+      400,
+    );
   }
 
-  const response = await a2aServer.handleRequest(body);
-
-  let httpStatus = 200;
-  if (response.error) {
-    switch (response.error.code) {
-      case A2AErrorCodes.PARSE_ERROR:
-      case A2AErrorCodes.INVALID_REQUEST:
-      case A2AErrorCodes.INVALID_PARAMS:
-        httpStatus = 400;
-        break;
-      case A2AErrorCodes.METHOD_NOT_FOUND:
-      case A2AErrorCodes.TASK_NOT_FOUND:
-        httpStatus = 404;
-        break;
-      case A2AErrorCodes.TASK_NOT_CANCELABLE:
-        httpStatus = 409;
-        break;
-      case A2AErrorCodes.INTERNAL_ERROR:
-        httpStatus = 500;
-        break;
-      default:
-        httpStatus = 400;
-    }
+  const ctx: Ctx = { req, baseUrl: getAppBaseUrl(req) };
+  switch (body.method) {
+    case "message/send":
+      return sendMessage(ctx, id, body.params);
+    case "tasks/get":
+      return getTask(id, body.params);
+    case "tasks/cancel":
+      return cancelTask(id, body.params);
+    case "message/stream":
+      return rpcError(
+        id,
+        A2AErrorCodes.UNSUPPORTED_OPERATION,
+        "Streaming is not supported; use message/send",
+        400,
+      );
+    default:
+      return rpcError(
+        id,
+        A2AErrorCodes.METHOD_NOT_FOUND,
+        "Method not found",
+        404,
+      );
   }
-
-  return NextResponse.json(response, {
-    status: httpStatus,
-    headers: CORS_HEADERS,
-  });
 }
 
+/**
+ * Answer the CORS preflight, also allowing the X-Agent-Id header.
+ *
+ * @returns 204 with CORS headers.
+ */
 export function OPTIONS() {
-  return new NextResponse(null, {
-    status: 204,
-    headers: CORS_HEADERS,
-  });
+  const res = corsResponse();
+  res.headers.set(
+    "Access-Control-Allow-Headers",
+    HEADERS["Access-Control-Allow-Headers"],
+  );
+  return res;
 }

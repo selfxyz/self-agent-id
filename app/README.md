@@ -1,183 +1,101 @@
 # Self Agent ID API
 
-API-only service for Self Agent ID. It exposes the registry over HTTP (REST, A2A JSON-RPC, MCP, agent-card discovery) plus the registration and visa flows. There is no web interface. Registration minting and verification happen on-chain; this service renders the QR, tracks sessions, proxies gasless ops, and serves on-chain reads as JSON.
-
-Most reads are thin wrappers over registry contract calls, so you can also reproduce them directly with the SDK or a plain RPC call. The recommended way to integrate is the SDK.
-
-## Networks
-
-| Network                | Chain ID   | Registry                                     |
-| ---------------------- | ---------- | -------------------------------------------- |
-| Celo Mainnet           | `42220`    | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` |
-| Celo Sepolia (testnet) | `11142220` | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` |
-
-Endpoints that take a `chainId` accept either. Use `?network=celo-sepolia` (or `testnet`) where a query param is supported.
-
-## Run locally
+API-only Next.js service behind [agent-api.self.xyz](https://agent-api.self.xyz): REST, A2A, MCP and discovery over the on-chain registry. It renders registration QR codes, tracks sessions, relays signed visa writes and serves chain reads as JSON. There is no UI: `/` and old UI pages redirect (308) to [docs.self.xyz](https://docs.self.xyz).
 
 ```bash
-cp .env.example .env.local   # see Environment below
-npm install
-npm run dev                  # http://localhost:3000
-npm run build && npm start   # production
+cp .env.example .env.local   # set SESSION_SECRET (openssl rand -hex 32)
+npm install && npm run dev   # http://localhost:3000
 npm test                     # vitest
+npm run build && npm start   # production
 ```
 
-Feature endpoints degrade gracefully if their secret is unset (for example visa claim returns "relayer not configured" without `RELAYER_PRIVATE_KEY`). Read and discovery endpoints work with no secrets.
+Only `SESSION_SECRET` is required (session routes return 500 without it). Reads and discovery need no secrets; visa writes return 503 without `RELAYER_PRIVATE_KEY`. Full request/response reference: [docs/api-docs.md](../docs/api-docs.md) and [openapi.yaml](../openapi.yaml).
 
-## How to consume
+## Conventions
 
-### Option 1: SDK (recommended)
+- Path params take a chain ID (`42220` mainnet, `11142220` testnet; others are 400). Bodies take `"network": "mainnet" | "testnet"`.
+- Errors are `{ "error": "..." }`. 404 for never-minted or burned agents, 429 with `Retry-After`, 500 `Failed to render QR code` whenever a QR image can't be rendered, 502 `RPC error` when the chain can't be read.
+- Every response carries CORS headers (`Access-Control-Allow-Origin: *`), including the `GET /api/agent/refresh` 302 and the MCP route's own errors; `/api/mcp` also allows the MCP transport headers (`Mcp-Protocol-Version`, `Mcp-Session-Id`, `Last-Event-ID`) and answers `OPTIONS`.
+- Routes and A2A intents with no network/chain use `NEXT_PUBLIC_DEFAULT_NETWORK` (mainnet by default).
+- **Verified** always means `hasHumanProof && isProofFresh`.
+- Contract addresses are hardcoded in [`lib/network.ts`](lib/network.ts) (listed in [contracts/README.md](../contracts/README.md#deployed-addresses)).
 
-```ts
-import { SelfAgent, SelfAgentVerifier } from "@selfxyz/agent-sdk";
+## Auth
 
-// Sign outbound requests as a registered agent
-const agent = new SelfAgent({ privateKey, registryAddress, rpcUrl });
-await agent.fetch("https://service.example.com/api/protected", {
-  method: "POST",
-});
+| Kind           | Used by                                 | How                                                                                                                                                  |
+| -------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| None           | Discovery, reads, A2A, public MCP tools | —                                                                                                                                                    |
+| Session token  | Register, deregister, refresh, identify | Issued by the opening POST; 30 min, AES-256-GCM, rotated on every poll. `Authorization: Bearer` only (`export` also takes `{ "token" }` in the body) |
+| QR token       | `/api/qr/:qrToken` (the `scanUrl`)      | Renders the QR only; unlocks nothing else                                                                                                            |
+| Signed request | Visa writes                             | EIP-191 signature by the NFT owner / agent key, `timestamp` ±5 min, single use ([format](../docs/api-docs.md#writes))                                |
+| MCP key        | Privileged MCP tools                    | `Authorization: Bearer <key>` from `MCP_PRIVILEGED_API_KEY(S)`                                                                                       |
 
-// Verify inbound agent requests in your service (100% on-chain, no API needed)
-const verifier = new SelfAgentVerifier({ registryAddress, rpcUrl });
-app.use("/api", verifier.auth());
-```
-
-To register, render the QR in your own frontend with `@selfxyz/qrcode`, or drive the REST flow below. See the docs for the full registration walkthrough.
-
-### Option 2: Raw HTTP
-
-```bash
-BASE=http://localhost:3000   # or your deployed host
-
-# Read an agent (no auth)
-curl -s "$BASE/api/agent/info/11142220/1"
-
-# Service discovery (machine-readable)
-curl -s -H "Accept: application/json" "$BASE/"        # -> /api/agent-discovery
-curl -s "$BASE/.well-known/self-agent-id.json"
-
-# Start a registration session, then render the returned QR
-curl -s -X POST "$BASE/api/agent/register" \
-  -H "Content-Type: application/json" \
-  -d '{"mode":"linked","network":"testnet","humanAddress":"0xYourWallet","disclosures":{"minimumAge":18}}'
-# take the sessionToken from the response:
-curl -s "$BASE/api/qr/<sessionToken>" --output qr.png
-# poll until complete:
-curl -s "$BASE/api/agent/register/status?token=<sessionToken>"
-```
+Rate limits are per IP and shared across instances only when Upstash Redis is set.
 
 ## Routes
 
-`:param` is a path segment. All paths are relative to the base URL.
+| Method | Path                                                      | Purpose                                                                             | Limit/min |
+| ------ | --------------------------------------------------------- | ----------------------------------------------------------------------------------- | :-------: |
+| GET    | `/`                                                       | `Accept: application/json` → discovery; `text/plain` → `llms.txt`; else 308 to docs |     —     |
+| GET    | `/api/health`                                             | Health check                                                                        |     —     |
+| GET    | `/api/agent-discovery`, `/.well-known/self-agent-id.json` | Service descriptor (modes, aliases, networks, endpoints)                            |     —     |
+| GET    | `/api/agent/bootstrap`                                    | OpenAPI 3.1 subset for registration (`/.well-known/agent-registration` 307s here)   |     —     |
+| GET    | `/.well-known/agent-card.json`                            | Registry A2A card; `?agentId=&chainId=` → that agent's card                         |    120    |
+| GET    | `/.well-known/a2a/:agentId`                               | 307 to `/api/cards/:chainId/:agentId` (`?chain=`, default 42220)                    |     —     |
+| GET    | `/agents.json`, `/llms.txt`                               | Entry-point index; LLM-readable guide                                               |     —     |
+| GET    | `/api/agent/info/:chainId/:agentId`                       | Key, address, verification, expiry, strength, credentials                           |    120    |
+| GET    | `/api/agent/verify/:chainId/:agentId`                     | Proof status, provider, nullifier, agent count                                      |    120    |
+| GET    | `/api/agent/agents/:chainId/:address`                     | Agents a wallet owns or keys (`complete` flag)                                      |    20     |
+| GET    | `/api/agent/agents-by-nullifier/:chainId/:nullifier`      | Active agents of one human                                                          |    20     |
+| GET    | `/api/cards/:chainId/:agentId`                            | ERC-8004 card with a live `selfProtocol` block                                      |    120    |
+| GET    | `/api/reputation/:chainId/:agentId`                       | Verification-strength score (0–100)                                                 |    120    |
+| GET    | `/api/verify-status/:chainId/:agentId`                    | Compact proof status and freshness                                                  |    120    |
+| POST   | `/api/agent/register`                                     | Start registration → `sessionToken`, `scanUrl`, `deepLink`, `agentAddress`          |    10     |
+| GET    | `/api/agent/register/status`                              | Poll `qr-ready` → `completed` (410 once expired)                                    |    120    |
+| GET    | `/api/agent/register/qr`                                  | Re-fetch `deepLink`, `qrData`, `scanUrl`                                            |    120    |
+| POST   | `/api/agent/register/export`                              | Generated private key, after completion (not Ed25519); always `no-store`            |    120    |
+| POST   | `/api/agent/register/ed25519-challenge`                   | `{ pubkey, network }` → `challengeHash` to sign                                     |    10     |
+| GET    | `/api/agent/register/ed25519-check`                       | Is this pubkey registered? (`?pubkey=&network=`)                                    |    120    |
+| POST   | `/api/agent/deregister`                                   | Start deregistration (`agentAddress` or `agentId`; not Ed25519)                     |    10     |
+| POST   | `/api/agent/refresh`                                      | Start a proof refresh (`agentId`, `network`, `disclosures?`)                        |    10     |
+| GET    | `/api/agent/refresh`                                      | Shareable refresh link: 302 to the Self app (`?agentId=&network=`)                  |    20     |
+| POST   | `/api/agent/identify`                                     | Start identify (find a human's nullifier)                                           |    10     |
+| GET    | `/api/agent/{deregister,refresh,identify}/status`         | Poll the session                                                                    |    120    |
+| GET    | `/api/qr/:qrToken`                                        | QR PNG behind `scanUrl`                                                             |    60     |
+| GET    | `/cli/register?payload=`                                  | QR PNG for the CLI handoff                                                          |    60     |
+| GET    | `/api/visa/:chainId/:agentId`                             | Visa tier, metrics, eligibility                                                     |    120    |
+| GET    | `/api/visa/:chainId/batch?agents=`                        | Tiers for up to 100 agents (duplicates collapsed)                                   |    60     |
+| GET    | `/api/visa/agents?wallet=&chainId=`                       | Visa agent IDs of a wallet                                                          |    20     |
+| POST   | `/api/visa/{claim,migrate,request-review}`                | Signed, relayed visa writes (server pays gas)                                       | per hour  |
+| POST   | `/api/a2a`                                                | A2A v0.3.0 JSON-RPC (`message/send`, `tasks/get`, `tasks/cancel`)                   |    60     |
+| POST   | `/api/mcp`                                                | Stateless MCP over Streamable HTTP (GET/DELETE → 405; OPTIONS → 204)                |    120    |
+| any    | `/api/*`, `/.well-known/*` (unknown)                      | JSON 404 with links to discovery                                                    |     —     |
 
-### Discovery and metadata — no auth
+Session lifecycle: the status poll that first observes completion resets the session's expiry to 30 min from then, for `export` (only that poll returns `credentials`); a pending EVM-mode session can still be polled for 24 h after expiry to catch a late scan. Identify polls only scan blocks added since the previous poll (the rotated token records the last block scanned).
 
-| Method    | Path                              | Purpose                                                                                                 |
-| --------- | --------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| GET       | `/`                               | Content-negotiated root. `Accept: application/json` returns discovery; `text/plain` returns `llms.txt`. |
-| GET       | `/api/health`                     | Health check.                                                                                           |
-| GET       | `/api/agent-discovery`            | Full machine-readable service descriptor (networks, modes, endpoints).                                  |
-| GET, POST | `/api/agent/bootstrap`            | Agent bootstrap descriptor for autonomous clients.                                                      |
-| GET       | `/.well-known/self-agent-id.json` | Service discovery document.                                                                             |
-| GET       | `/.well-known/agent-card.json`    | A2A agent card.                                                                                         |
-| GET       | `/.well-known/agent-registration` | ERC-8004 registration descriptor.                                                                       |
-| GET       | `/.well-known/a2a/:agentId`       | A2A discovery; resolves to the agent card.                                                              |
-| GET       | `/agents.json`                    | Index of registered agents.                                                                             |
-| GET       | `/llms.txt`                       | LLM-readable usage guide.                                                                               |
+Visa writes: 20 attempts/h per IP (counted before the signature is checked); relayed transactions 5/h per IP, 2/h per signer, 50/h global. A signature is single-use once it verifies, so re-sign after any later error, including a 5xx. A 502 with `txHash` means the relayer broadcast that transaction but could not confirm it; it may still mine.
 
-### Reads / queries — no auth (on-chain wrappers)
+A2A: `message/send` 60/min per IP; `lookup`, `verify`, `freshness`, `deregister` and the `X-Agent-Id` check also spend the 120/min read budget. `message/stream` → 400 `UNSUPPORTED_OPERATION`.
 
-| Method | Path                                                 | Purpose                                                       |
-| ------ | ---------------------------------------------------- | ------------------------------------------------------------- |
-| GET    | `/api/agent/info/:chainId/:agentId`                  | Agent registration details, verification status, credentials. |
-| GET    | `/api/agent/agents/:chainId/:address`                | Agent IDs owned by a wallet.                                  |
-| GET    | `/api/agent/agents-by-nullifier/:chainId/:nullifier` | Agents for a human nullifier (sybil view).                    |
-| GET    | `/api/agent/verify/:chainId/:agentId`                | Proof-of-human status, provider, strength, sybil metrics.     |
-| GET    | `/api/cards/:chainId/:agentId`                       | A2A-compatible agent card.                                    |
-| GET    | `/api/reputation/:chainId/:agentId`                  | Verification strength score.                                  |
-| GET    | `/api/verify-status/:chainId/:agentId`               | Real-time proof status and freshness.                         |
-| GET    | `/api/visa/:chainId/:agentId`                        | Visa tier, metrics, eligibility.                              |
-| GET    | `/api/visa/:chainId/batch`                           | Visa status for many agents at once.                          |
-| GET    | `/api/visa/agents`                                   | Visa-holding agents for a wallet (`?wallet=&chainId=`).       |
-
-### A2A — no auth
-
-| Method | Path       | Purpose                                                                                                 |
-| ------ | ---------- | ------------------------------------------------------------------------------------------------------- |
-| POST   | `/api/a2a` | A2A JSON-RPC 2.0. Intents: `register`, `status`, `lookup`, `verify`, `deregister`, `freshness`, `help`. |
-
-### Registration and lifecycle — session-token auth
-
-Each flow starts with a POST that returns an encrypted `sessionToken` (30 min TTL); subsequent calls pass it as `?token=` (or in the body for `export`). The mint itself happens on-chain via the Self app.
-
-| Method | Path                                    | Purpose                                                                                     |
-| ------ | --------------------------------------- | ------------------------------------------------------------------------------------------- |
-| POST   | `/api/agent/register`                   | Start a registration session; returns `sessionToken`, `deepLink`, `qrData`, `agentAddress`. |
-| GET    | `/api/agent/register/status`            | Poll registration (`qr-ready` → `proof-received` → `completed`).                            |
-| GET    | `/api/agent/register/qr`                | QR payload / deep link for the session.                                                     |
-| POST   | `/api/agent/register/callback`          | Self-app webhook after passport scan (updates session stage).                               |
-| POST   | `/api/agent/register/export`            | Export the generated agent key (token in body).                                             |
-| POST   | `/api/agent/register/ed25519-challenge` | Get the Ed25519 registration challenge.                                                     |
-| GET    | `/api/agent/register/ed25519-check`     | Check an Ed25519 signature/key.                                                             |
-| GET    | `/api/agent/register/ed25519-poll`      | Poll an Ed25519 registration.                                                               |
-| POST   | `/api/agent/deregister`                 | Start deregistration (burns the NFT after re-proof).                                        |
-| GET    | `/api/agent/deregister/status`          | Poll deregistration.                                                                        |
-| POST   | `/api/agent/deregister/callback`        | Self-app webhook for deregistration.                                                        |
-| POST   | `/api/agent/identify`                   | Start an identify session (find agents for a human).                                        |
-| GET    | `/api/agent/identify/status`            | Poll identify; returns nullifier and agent count.                                           |
-| POST   | `/api/agent/refresh`                    | Start a proof refresh for an existing agent.                                                |
-| GET    | `/api/agent/refresh/status`             | Poll refresh.                                                                               |
-| GET    | `/api/qr/:sessionToken`                 | Server-rendered QR PNG for a session (no SDK needed).                                       |
-
-### Account-abstraction proxy — origin + proxy-token auth
-
-Backs the gasless smart-wallet mode. Origin-restricted (`AA_PROXY_ALLOWED_ORIGINS`); bundler/paymaster require the `x-aa-proxy-token` header from `/api/aa/token`.
-
-| Method | Path                | Purpose                                           |
-| ------ | ------------------- | ------------------------------------------------- |
-| POST   | `/api/aa/token`     | Issue a short-lived proxy token (origin-checked). |
-| POST   | `/api/aa/bundler`   | Proxy ERC-4337 bundler JSON-RPC to Pimlico.       |
-| POST   | `/api/aa/paymaster` | Proxy ERC-4337 paymaster JSON-RPC to Pimlico.     |
-
-### Visa writes — relayer-backed, rate-limited
-
-The server signs and submits with `RELAYER_PRIVATE_KEY` so the user pays no gas.
-
-| Method | Path                       | Purpose                         |
-| ------ | -------------------------- | ------------------------------- |
-| POST   | `/api/visa/claim`          | Gasless mint/upgrade of a visa. |
-| POST   | `/api/visa/migrate`        | Migrate a visa.                 |
-| POST   | `/api/visa/request-review` | Request manual tier review.     |
-
-### MCP — signed agent headers (optional)
-
-| Method                 | Path       | Purpose                                                                                               |
-| ---------------------- | ---------- | ----------------------------------------------------------------------------------------------------- |
-| GET, POST, PUT, DELETE | `/api/mcp` | MCP server. Accepts `x-self-agent-*` signed headers for authenticated tools; query-only without them. |
-
-### Fallback
-
-| Method | Path     | Purpose                                           |
-| ------ | -------- | ------------------------------------------------- |
-| any    | `/api/*` | Unknown API paths return a structured JSON error. |
-
-## Authentication
-
-- **No auth** — discovery, metadata, all reads, and A2A. Open to anyone.
-- **Session token** — registration/deregistration/identify/refresh flows and `/api/qr/:sessionToken`. The token is an encrypted, 30-minute, single-flow credential issued by the opening POST. Not an API key.
-- **Origin + proxy token** — the `/api/aa/*` proxy. Requires an allowlisted `Origin` and the `x-aa-proxy-token` from `/api/aa/token`.
-- **Relayer** — the visa write endpoints submit on-chain using a server-held key; rate-limited per human.
-- **Signed agent headers** — `/api/mcp` accepts `x-self-agent-*` headers (produced by `SelfAgent`) for authenticated tools.
-
-Verification of agent requests in your own service is fully on-chain via `SelfAgentVerifier` and needs none of this.
+MCP tools are listed in [plugin/README.md](../plugin/README.md#mcp-tools); they call these handlers in-process, so they count against the same limits. `self_verify_request` handles ECDSA (secp256k1) signed requests only; use the SDK's `SelfAgentVerifier` for Ed25519.
 
 ## Environment
 
-Use `.env.example` as the source of truth. Common variables:
+Source of truth: [`.env.example`](.env.example).
 
-- `NEXT_PUBLIC_APP_URL` — public base URL of this deployment.
-- `RPC_URL` — Celo RPC (defaults to public Forno endpoints per network).
-- `RELAYER_PRIVATE_KEY` — funds gasless visa writes (required for `/api/visa/claim|migrate|request-review`).
-- `PIMLICO_API_KEY` — required for the AA proxy (`/api/aa/*`).
-- `AA_PROXY_ALLOWED_ORIGINS` — comma-separated origins allowed to call the AA proxy.
+| Variable                                                   | Purpose                                                                                    |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `SESSION_SECRET`                                           | **Required.** Encrypts session tokens. `openssl rand -hex 32`                              |
+| `NEXT_PUBLIC_APP_URL`                                      | Public base URL in every link (`scanUrl`, discovery). Default `https://agent-api.self.xyz` |
+| `NEXT_PUBLIC_DEFAULT_NETWORK`                              | `celo-mainnet` (default) or `celo-sepolia`, for routes without a network                   |
+| `NEXT_PUBLIC_SELF_APP_NAME`, `NEXT_PUBLIC_SELF_SCOPE_SEED` | Must match the registry config (`Self Agent ID` / `self-agent-id`)                         |
+| `NEXT_PUBLIC_RPC_CELO`, `NEXT_PUBLIC_RPC_CELO_SEPOLIA`     | Private RPCs (default: Forno)                                                              |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`       | Shared rate-limit and visa replay store. Recommended in production                         |
+| `RELAYER_PRIVATE_KEY`                                      | Visa relayer (MINTER_ROLE / METRICS_UPDATER_ROLE). Unset → visa writes 503                 |
+| `MCP_PRIVILEGED_API_KEYS`, `MCP_PRIVILEGED_API_KEY`        | Bearer key(s) for privileged MCP tools (comma list or one key)                             |
+| `SELF_AGENT_PRIVATE_KEY`                                   | Agent key for privileged MCP tools. Leave unset on shared deployments                      |
+| `SELF_AGENT_NETWORK`, `SELF_RPC_URL`                       | That agent's network (`testnet`, else mainnet) and RPC override                            |
+| `SELF_AGENT_API_BASE`                                      | Point MCP tools at another deployment over HTTP (default: in-process)                      |
+| `MCP_AUTH_FETCH_ALLOWED_HOSTS`                             | Host allowlist for `self_authenticated_fetch` (supports `*.example.com`)                   |
+| `MCP_AUTH_FETCH_ALLOW_PRIVATE_NETWORKS`                    | `true` allows private targets (dev only; default `false`)                                  |
+| `MCP_VERIFY_REQUEST_REPLAY_PROTECTION`                     | Replay protection for `self_verify_request` (default `true`)                               |

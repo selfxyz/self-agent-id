@@ -2,64 +2,77 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { type NextRequest, NextResponse } from "next/server";
-import { ethers } from "ethers";
-import { getProviderLabel } from "@selfxyz/agent-sdk";
-import { CHAIN_CONFIG } from "@/lib/chain-config";
-import {
-  CORS_HEADERS,
-  corsResponse,
-  errorResponse,
-  validateAgentId,
-} from "@/lib/api-helpers";
+/**
+ * GET /api/reputation/{chainId}/{agentId} — verification strength score.
+ *
+ * Auth: none. Rate limit: 120/min per IP (shared read budget).
+ * Returns the provider's 0-100 strength as `score` plus proof state.
+ */
 
-import { typedProvider, typedRegistry } from "@/lib/contract-types";
+import type { NextRequest } from "next/server";
+import { ethers } from "ethers";
+import { corsResponse, jsonResponse } from "@/lib/agent-api-helpers";
+import { typedProvider } from "@/lib/contract-types";
+import {
+  connectRegistry,
+  parseAgentTarget,
+  readAgentState,
+  readErrorResponse,
+  readProviderStrength,
+  readRateLimited,
+} from "@/lib/agent-read";
+
+/**
+ * Read an agent's proof state and its provider's strength and name.
+ *
+ * @param req - Incoming request (counted against the per-IP read budget).
+ * @param context.params - Path params: `chainId`, `agentId`.
+ * @returns 200 {score, hasProof, isVerified, isProofFresh, proofExpiresAt,
+ *   providerName (null without a provider), proofType}; 400 {error} bad chain
+ *   or agent ID; 404 {error} agent not found;
+ *   429 {error, retryAfterMs}; 502 {error} RPC failure.
+ */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ chainId: string; agentId: string }> },
 ) {
+  const limited = await readRateLimited(req);
+  if (limited) return limited;
   const { chainId, agentId } = await params;
-  const config = CHAIN_CONFIG[chainId];
-  if (!config) return errorResponse(`Unsupported chain: ${chainId}`, 400);
-
-  const id = validateAgentId(agentId);
-  if (id === null) return errorResponse("Invalid agent ID", 400);
+  const parsed = parseAgentTarget(chainId, agentId);
+  if (!parsed.ok) return parsed.response;
+  const { target } = parsed;
 
   try {
-    const rpc = new ethers.JsonRpcProvider(config.rpc);
-    const registry = typedRegistry(config.registry, rpc);
-
-    const hasProof: boolean = await registry.hasHumanProof(id);
-    if (!hasProof) {
-      return NextResponse.json(
-        { score: 0, hasProof: false },
-        { headers: CORS_HEADERS },
-      );
-    }
-
-    const providerAddr: string = await registry.getProofProvider(id);
-    const provider = typedProvider(providerAddr, rpc);
-
+    const { rpc, registry } = connectRegistry(target.chainId, target.config);
+    const state = await readAgentState(registry, target);
+    const hasProvider = state.proofProvider !== ethers.ZeroAddress;
     const [strength, providerName] = await Promise.all([
-      provider.verificationStrength(),
-      provider.providerName(),
+      readProviderStrength(rpc, state.proofProvider),
+      hasProvider
+        ? typedProvider(state.proofProvider, rpc).providerName()
+        : null,
     ]);
 
-    const score = Number(strength);
-    return NextResponse.json(
-      {
-        score,
-        hasProof: true,
-        providerName,
-        proofType: getProviderLabel(score),
-      },
-      { headers: CORS_HEADERS },
-    );
-  } catch {
-    return errorResponse("Agent not found", 404);
+    return jsonResponse({
+      score: strength.verificationStrength,
+      hasProof: state.hasHumanProof,
+      isVerified: state.isVerified,
+      isProofFresh: state.isProofFresh,
+      proofExpiresAt: state.proofExpiresAt,
+      providerName,
+      proofType: strength.strengthLabel,
+    });
+  } catch (err) {
+    return readErrorResponse(err, "reputation");
   }
 }
 
+/**
+ * Answer the CORS preflight.
+ *
+ * @returns 204 with CORS headers.
+ */
 export function OPTIONS() {
   return corsResponse();
 }

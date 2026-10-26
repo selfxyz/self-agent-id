@@ -2,251 +2,216 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-// POST /api/visa/claim — gasless visa claim via server-side relayer
-//
-// claimTierUpgrade is permissionless (no role required), but we relay it
-// so users never need to pay gas. The relayer wallet pays the gas cost.
+/**
+ * POST /api/visa/claim — gasless visa mint or tier upgrade via the relayer.
+ *
+ * Auth: EIP-191 signature (action "claim") by a wallet that owns the agent,
+ * is its EVM key, or is the wallet behind a wallet-based ID (see
+ * lib/visa-auth.ts). Rate limit: 20 write attempts/h per IP; relayed
+ * transactions 5/h per IP, 2/h per signer, 50/h global.
+ * The attempt limit is counted before the signature is checked, so a 429 there
+ * leaves the signature unused. A signature is single-use once it verifies:
+ * after any later error, including a 5xx, sign a fresh timestamp to retry.
+ * A 502 that carries `txHash` means a relayer transaction was broadcast but
+ * its confirmation failed; it may still mine, so look it up before retrying.
+ * Eligibility is decided from reads (metrics from the visa's stored wallet,
+ * or the signer when minting) before the relayer sends anything.
+ */
 
-import { type NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { ethers } from "ethers";
 import { CHAIN_CONFIG } from "@/lib/chain-config";
-import { VISA_ABI } from "@/lib/constants";
-import { CORS_HEADERS, corsResponse, errorResponse } from "@/lib/api-helpers";
-import { checkRateLimit, recordRelayerTx } from "@/lib/rate-limit";
+import { typedRegistry, typedVisa } from "@/lib/contract-types";
+import {
+  ERRORS,
+  parseAddress,
+  corsResponse,
+  errorResponse,
+  getClientIp,
+  jsonResponse,
+  readJsonObjectBody,
+} from "@/lib/agent-api-helpers";
+import {
+  checkAgentSigner,
+  limitVisaWriteAttempts,
+  notEligibleResponse,
+  parseChainId,
+  parseTier,
+  parseVisaAgentId,
+  planMetrics,
+  recoverVisaSigner,
+  reserveRelayerTx,
+} from "@/lib/visa-auth";
 
+/** Vercel function timeout (s): covers up to two mined relayer transactions. */
 export const maxDuration = 60;
 
-const RELAYER_PK = process.env.RELAYER_PRIVATE_KEY;
-
-interface ClaimRequest {
-  chainId: string;
-  agentId: string;
-  targetTier: number;
-  agentWallet?: string;
-}
-
+/**
+ * Verify the signed claim, check eligibility, then mint (tier 0) or upgrade
+ * the visa, sending updateMetrics first when the stored metrics fall short.
+ *
+ * @param req - JSON body: {chainId, agentId, targetTier (1-3), agentWallet?
+ *   (must be the signer), signature, timestamp (unix ms)}.
+ * @returns 200 {success, agentId, previousTier, newTier, wallet, txHash,
+ *   blockNumber}; 400 {error} validation; 401 {error} bad, expired or reused
+ *   signature; 403 {error} signer not authorized; 404 {error} unknown agent;
+ *   409 {error} already at or above targetTier; 413 {error} body too large;
+ *   422 {error, code?} REVIEW_REQUIRED, NOT_ELIGIBLE, not a registry agent or
+ *   stale proof (tiers 2-3); 429 {error, retryAfterMs}; 502 {error, txHash?}
+ *   RPC or transaction failure (txHash: last relayer tx broadcast, which may
+ *   still mine); 503 {error} relayer not configured.
+ */
 export async function POST(req: NextRequest) {
-  if (!RELAYER_PK) {
-    return errorResponse(
-      "Visa claim relayer not configured (RELAYER_PRIVATE_KEY)",
-      503,
-    );
-  }
+  const parsed = await readJsonObjectBody(req);
+  if (!parsed.ok) return parsed.response;
+  const { body } = parsed;
 
-  // Rate limit to prevent relayer drain
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  const rateLimitError = checkRateLimit(ip);
-  if (rateLimitError) {
-    return errorResponse(rateLimitError, 429);
-  }
-
-  let body: ClaimRequest;
-  try {
-    const parsed = (await req.json()) as unknown;
-    if (!parsed || typeof parsed !== "object") {
-      return errorResponse("Invalid JSON body", 400);
-    }
-    body = parsed as ClaimRequest;
-  } catch {
-    return errorResponse("Invalid JSON body", 400);
-  }
-
-  const { chainId, agentId, targetTier, agentWallet } = body;
-
-  if (!chainId || !agentId) {
-    return errorResponse("chainId and agentId are required", 400);
-  }
-
-  if (!targetTier || targetTier < 1 || targetTier > 3) {
+  const chainId = parseChainId(body.chainId);
+  const config = chainId ? CHAIN_CONFIG[chainId] : undefined;
+  if (!chainId || !config?.visa)
+    return errorResponse(ERRORS.unsupportedChain, 400);
+  const agentId = parseVisaAgentId(body.agentId);
+  if (agentId === null) return errorResponse(ERRORS.invalidAgentId, 400);
+  const targetTier = parseTier(body.targetTier);
+  if (targetTier === null)
     return errorResponse("targetTier must be 1, 2, or 3", 400);
+  const agentWallet =
+    body.agentWallet === undefined ? undefined : parseAddress(body.agentWallet);
+  if (agentWallet === null) {
+    return errorResponse(`${ERRORS.invalidAddress} (agentWallet)`, 400);
   }
 
-  const config = CHAIN_CONFIG[chainId];
-  if (!config) return errorResponse(`Unsupported chain: ${chainId}`, 400);
-  if (!config.visa)
-    return errorResponse("Visa contract not deployed on this network", 404);
+  const ip = getClientIp(req);
+  const limited = await limitVisaWriteAttempts(ip);
+  if (limited) return limited;
 
+  const auth = await recoverVisaSigner(
+    { action: "claim", chainId, agentId, targetTier },
+    body,
+  );
+  if (!auth.ok) return auth.response;
+  const { signer } = auth;
+  if (agentWallet && agentWallet !== signer) {
+    return errorResponse("agentWallet must be the signing wallet", 403);
+  }
+
+  // Last relayer tx broadcast; reported with a 502 so the caller can check it.
+  let sentTxHash: string | undefined;
   try {
     const provider = new ethers.JsonRpcProvider(config.rpc);
-    const relayer = new ethers.NonceManager(
-      new ethers.Wallet(RELAYER_PK, provider),
-    );
-    const visa = new ethers.Contract(config.visa, VISA_ABI, relayer);
+    const registry = typedRegistry(config.registry, provider);
+    const visa = typedVisa(config.visa, provider);
+    const access = await checkAgentSigner(registry, agentId, signer);
+    if (!access.authorized) {
+      // Like migrate / request-review: an id that is neither a registry agent
+      // nor a visa holder is unknown, not forbidden.
+      const exists =
+        access.inRegistry || Number(await visa.getTier(agentId)) > 0;
+      return exists
+        ? errorResponse("Signer is not authorized for this agent", 403)
+        : errorResponse(ERRORS.agentNotFound, 404);
+    }
 
-    // Check current tier first
-    const currentTier = Number(await visa.getTier(BigInt(agentId)));
+    const relayerKey = process.env.RELAYER_PRIVATE_KEY;
+    if (!relayerKey) return errorResponse("Visa relayer not configured", 503);
+
+    const [tier, storedWallet, thresholds, manualApproved, reviewTier, stored] =
+      await Promise.all([
+        visa.getTier(agentId),
+        visa.getVisaWallet(agentId),
+        visa.getTierThresholds(targetTier),
+        visa.manualReviewApproved(agentId),
+        visa.reviewRequestedTier(agentId),
+        visa.getMetrics(agentId),
+      ]);
+    const currentTier = Number(tier);
+
     if (currentTier >= targetTier) {
       return errorResponse(
         `Agent already at tier ${currentTier} (requested ${targetTier})`,
         409,
       );
     }
-
-    // Check if tier requires manual review (read from on-chain thresholds)
-    const thresholds = (await visa.getTierThresholds(targetTier)) as {
-      requiresManualReview: boolean;
-    };
-    if (thresholds.requiresManualReview) {
-      const [manualApproved, reviewTier] = (await Promise.all([
-        visa.manualReviewApproved(BigInt(agentId)),
-        visa.reviewRequestedTier(BigInt(agentId)),
-      ])) as [boolean, bigint];
-
-      if (!manualApproved) {
-        return NextResponse.json(
-          {
-            error: "Manual review required for this tier",
-            code: "REVIEW_REQUIRED",
-            reviewRequested: Number(reviewTier) > 0,
-          },
-          { status: 422, headers: CORS_HEADERS },
+    if (thresholds.requiresManualReview && !manualApproved) {
+      return jsonResponse(
+        {
+          error: "Manual review required for this tier",
+          code: "REVIEW_REQUIRED",
+          reviewRequested: Number(reviewTier) > 0,
+        },
+        422,
+      );
+    }
+    if (targetTier > 1) {
+      if (!access.inRegistry) {
+        return errorResponse(
+          "Work and Citizenship visas require an agent registered with a human proof in the Self app",
+          422,
+        );
+      }
+      if (!(await registry.isProofFresh(agentId))) {
+        return errorResponse(
+          "Agent proof has expired — refresh your Self verification first",
+          422,
         );
       }
     }
 
-    // Seed on-chain metrics from the agent wallet's real activity.
-    // This resolves the chicken-and-egg problem where the scoring daemon
-    // hasn't discovered this agent yet (no visa = no discovery = no metrics).
-    // Priority: 1) visa contract stored wallet, 2) request body, 3) derive from agentId
-    let walletForMetrics = agentWallet || "";
-    if (currentTier > 0) {
-      try {
-        const stored = (await visa.getVisaWallet(BigInt(agentId))) as string;
-        if (stored && stored !== ethers.ZeroAddress) walletForMetrics = stored;
-      } catch {
-        // fall through
-      }
+    const wallet =
+      storedWallet && storedWallet !== ethers.ZeroAddress
+        ? storedWallet
+        : signer;
+    const liveTx = BigInt(await provider.getTransactionCount(wallet));
+    const plan = planMetrics(stored, liveTx, thresholds, manualApproved);
+    if (!plan.eligible) {
+      return notEligibleResponse(targetTier, plan.metrics, thresholds);
     }
-    if (!walletForMetrics) {
-      walletForMetrics = ethers.getAddress(
-        "0x" + BigInt(agentId).toString(16).padStart(40, "0"),
+
+    const reserved = await reserveRelayerTx(ip, signer);
+    if (reserved) return reserved;
+
+    const relayer = new ethers.NonceManager(
+      new ethers.Wallet(relayerKey, provider),
+    );
+    const writable = typedVisa(config.visa, relayer);
+    if (plan.update) {
+      const metricsTx = await writable.updateMetrics(
+        agentId,
+        plan.metrics.transactionCount,
+        plan.metrics.volumeUsd,
       );
-    }
-    const txCount = await provider.getTransactionCount(walletForMetrics);
-    if (txCount > 0) {
-      // Preserve existing on-chain volume — only update tx count
-      let existingVolume = 0n;
-      try {
-        const m = (await visa.getMetrics(BigInt(agentId))) as {
-          volumeUsd: bigint;
-        };
-        existingVolume = m.volumeUsd;
-      } catch {
-        // No existing metrics yet
-      }
-      const metricsTx = (await visa.updateMetrics(
-        BigInt(agentId),
-        BigInt(txCount),
-        existingVolume,
-      )) as ethers.ContractTransactionResponse;
+      sentTxHash = metricsTx.hash;
       await metricsTx.wait();
     }
-
-    // Check eligibility — if not eligible, return detailed diagnostics
-    const eligible = (await visa.checkTierEligibility(
-      BigInt(agentId),
-      targetTier,
-    )) as boolean;
-    if (!eligible) {
-      const [metrics, tierThresholds] = (await Promise.all([
-        visa.getMetrics(BigInt(agentId)),
-        visa.getTierThresholds(targetTier),
-      ])) as [
-        { transactionCount: bigint; volumeUsd: bigint; lastUpdated: bigint },
-        {
-          minTransactions: bigint;
-          minVolumeUsd: bigint;
-          requiresBoth: boolean;
-          requiresManualReview: boolean;
-        },
-      ];
-      return NextResponse.json(
-        {
-          error: `Agent does not meet requirements for tier ${targetTier}`,
-          code: "NOT_ELIGIBLE",
-          metrics: {
-            transactionCount: Number(metrics.transactionCount),
-            volumeUsd: Number(metrics.volumeUsd) / 1e6,
-          },
-          required: {
-            minTransactions: Number(tierThresholds.minTransactions),
-            minVolumeUsd: Number(tierThresholds.minVolumeUsd) / 1e6,
-            requiresBoth: tierThresholds.requiresBoth,
-          },
-        },
-        { status: 422, headers: CORS_HEADERS },
-      );
-    }
-
-    // If agent has no visa yet (tier 0), mint instead of claim upgrade
-    let tx: ethers.ContractTransactionResponse;
-    if (currentTier === 0) {
-      // Wallet is required for minting — use provided wallet or derive from agentId
-      const wallet =
-        agentWallet ||
-        ethers.getAddress(
-          "0x" + BigInt(agentId).toString(16).padStart(40, "0"),
-        );
-      tx = (await visa.mintVisa(
-        BigInt(agentId),
-        targetTier,
-        wallet,
-      )) as ethers.ContractTransactionResponse;
-    } else {
-      tx = (await visa.claimTierUpgrade(
-        BigInt(agentId),
-        targetTier,
-      )) as ethers.ContractTransactionResponse;
-    }
-
+    const tx =
+      currentTier === 0
+        ? await writable.mintVisa(agentId, targetTier, wallet)
+        : await writable.claimTierUpgrade(agentId, targetTier);
+    sentTxHash = tx.hash;
     const receipt = await tx.wait();
-    recordRelayerTx(ip);
 
-    return NextResponse.json(
-      {
-        success: true,
-        agentId,
-        previousTier: currentTier,
-        newTier: targetTier,
-        txHash: receipt?.hash,
-        blockNumber: receipt?.blockNumber,
-      },
-      { headers: CORS_HEADERS },
-    );
+    return jsonResponse({
+      success: true,
+      agentId: agentId.toString(),
+      previousTier: currentTier,
+      newTier: targetTier,
+      wallet,
+      txHash: receipt?.hash ?? tx.hash,
+      blockNumber: receipt?.blockNumber ?? null,
+    });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes("AgentNotRegistered")) {
-      return errorResponse(
-        "Work and Citizenship visas require Self app verification. Register your agent with a human proof in the Self app first.",
-        422,
-      );
-    }
-    if (message.includes("ProofNotFresh")) {
-      return errorResponse(
-        "Agent proof has expired — refresh your Self verification first",
-        422,
-      );
-    }
-    if (message.includes("NoVisaExists")) {
-      return errorResponse(
-        "Agent has no visa — mint a Tourist visa first",
-        422,
-      );
-    }
-    if (message.includes("TierNotHigher")) {
-      return errorResponse("Target tier must be higher than current tier", 409);
-    }
-    if (message.includes("NotEligibleForTier")) {
-      return errorResponse(
-        "Agent does not meet metric requirements for this tier",
-        422,
-      );
-    }
-    return errorResponse(`Claim failed: ${message}`, 500);
+    console.error("[visa/claim] failed:", err);
+    return sentTxHash
+      ? jsonResponse({ error: ERRORS.rpc, txHash: sentTxHash }, 502)
+      : errorResponse(ERRORS.rpc, 502);
   }
 }
 
+/**
+ * Answer the CORS preflight.
+ *
+ * @returns 204 with CORS headers.
+ */
 export function OPTIONS() {
   return corsResponse();
 }

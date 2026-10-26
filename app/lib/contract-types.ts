@@ -2,15 +2,13 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
+/**
+ * Typed ethers contract interfaces and factories for the registry, proof
+ * provider and visa contracts (ABIs from constants.ts).
+ */
+
 import { ethers } from "ethers";
-import {
-  REGISTRY_ABI,
-  PROVIDER_ABI,
-  AGENT_DEMO_VERIFIER_ABI,
-  AGENT_DEMO_VERIFIER_ED25519_ABI,
-  AGENT_GATE_ABI,
-  VISA_ABI,
-} from "./constants";
+import { REGISTRY_ABI, PROVIDER_ABI, VISA_ABI } from "./constants";
 
 // ─── Return types ────────────────────────────────────────────────────────────
 
@@ -25,13 +23,6 @@ export interface AgentCredentials {
   expiryDate: string;
   olderThan: bigint;
   ofac: [boolean, boolean, boolean];
-}
-
-/** Decoded result from AgentGate.checkAccess(). */
-export interface GateAccessResult {
-  agentId: bigint;
-  olderThan: bigint;
-  nationality: string;
 }
 
 // ─── Typed contract interfaces ───────────────────────────────────────────────
@@ -77,62 +68,17 @@ export interface TypedRegistryContract extends ethers.BaseContract {
   isProofFresh(agentId: bigint): Promise<boolean>;
   agentConfigId(agentId: bigint): Promise<string>;
   configIds(index: bigint): Promise<string>;
-  getAgentsForNullifier(nullifier: bigint): Promise<bigint[]>;
+  getAgentsForNullifier(
+    nullifier: bigint,
+    offset: bigint,
+    limit: bigint,
+  ): Promise<bigint[]>;
 }
 
 /** Typed view of the IHumanProofProvider contract. */
 export interface TypedProviderContract extends ethers.BaseContract {
   providerName(): Promise<string>;
   verificationStrength(): Promise<number>;
-}
-
-/** Typed view of the AgentDemoVerifier contract. */
-export interface TypedDemoVerifierContract extends ethers.BaseContract {
-  metaVerifyAgent: ethers.BaseContractMethod<
-    [string, bigint, bigint, string],
-    bigint,
-    ethers.ContractTransactionResponse
-  >;
-  checkAccess(agentKey: string): Promise<bigint>;
-  hasVerified(agentKey: string): Promise<boolean>;
-  verificationCount(agentKey: string): Promise<bigint>;
-  nonces(agentKey: string): Promise<bigint>;
-  totalVerifications(): Promise<bigint>;
-  DOMAIN_SEPARATOR(): Promise<string>;
-  registry(): Promise<string>;
-}
-
-/** Typed view of the AgentDemoVerifierEd25519 contract. */
-export interface TypedDemoVerifierEd25519Contract extends ethers.BaseContract {
-  metaVerifyAgent: ethers.BaseContractMethod<
-    [
-      string,
-      bigint,
-      bigint,
-      [bigint, bigint, bigint, bigint, bigint],
-      bigint,
-      bigint,
-    ],
-    bigint,
-    ethers.ContractTransactionResponse
-  >;
-  checkAccess(agentKey: string): Promise<bigint>;
-  hasVerified(agentKey: string): Promise<boolean>;
-  verificationCount(agentKey: string): Promise<bigint>;
-  nonces(agentKey: string): Promise<bigint>;
-  totalVerifications(): Promise<bigint>;
-  registry(): Promise<string>;
-}
-
-/** Typed view of the AgentGate demo contract. */
-export interface TypedGateContract extends ethers.BaseContract {
-  checkAccess(agentKey: string): Promise<GateAccessResult>;
-  gatedAction: ethers.BaseContractMethod<
-    [string],
-    void,
-    ethers.ContractTransactionResponse
-  >;
-  registry(): Promise<string>;
 }
 
 /** Typed view of the CeloAgentVisa contract. */
@@ -171,6 +117,11 @@ export interface TypedVisaContract extends ethers.BaseContract {
     void,
     ethers.ContractTransactionResponse
   >;
+  updateMetrics: ethers.BaseContractMethod<
+    [bigint, bigint, bigint],
+    void,
+    ethers.ContractTransactionResponse
+  >;
   mintVisa: ethers.BaseContractMethod<
     [bigint, number, string],
     void,
@@ -186,7 +137,13 @@ export interface TypedVisaContract extends ethers.BaseContract {
 
 // ─── Constructor helpers ─────────────────────────────────────────────────────
 
-/** Create a typed registry contract instance. */
+/**
+ * Create a typed SelfAgentRegistry contract.
+ *
+ * @param address - Registry address.
+ * @param runner - Provider (reads) or signer (writes).
+ * @returns The contract, typed as TypedRegistryContract.
+ */
 export function typedRegistry(
   address: string,
   runner: ethers.ContractRunner,
@@ -198,7 +155,13 @@ export function typedRegistry(
   ) as unknown as TypedRegistryContract;
 }
 
-/** Create a typed provider contract instance. */
+/**
+ * Create a typed IHumanProofProvider contract.
+ *
+ * @param address - Proof provider address.
+ * @param runner - Provider (reads) or signer (writes).
+ * @returns The contract, typed as TypedProviderContract.
+ */
 export function typedProvider(
   address: string,
   runner: ethers.ContractRunner,
@@ -210,43 +173,13 @@ export function typedProvider(
   ) as unknown as TypedProviderContract;
 }
 
-/** Create a typed demo verifier contract instance. */
-export function typedDemoVerifier(
-  address: string,
-  runner: ethers.ContractRunner,
-): TypedDemoVerifierContract {
-  return new ethers.Contract(
-    address,
-    AGENT_DEMO_VERIFIER_ABI,
-    runner,
-  ) as unknown as TypedDemoVerifierContract;
-}
-
-/** Create a typed Ed25519 demo verifier contract instance. */
-export function typedDemoVerifierEd25519(
-  address: string,
-  runner: ethers.ContractRunner,
-): TypedDemoVerifierEd25519Contract {
-  return new ethers.Contract(
-    address,
-    AGENT_DEMO_VERIFIER_ED25519_ABI,
-    runner,
-  ) as unknown as TypedDemoVerifierEd25519Contract;
-}
-
-/** Create a typed gate contract instance. */
-export function typedGate(
-  address: string,
-  runner: ethers.ContractRunner,
-): TypedGateContract {
-  return new ethers.Contract(
-    address,
-    AGENT_GATE_ABI,
-    runner,
-  ) as unknown as TypedGateContract;
-}
-
-/** Create a typed visa contract instance. */
+/**
+ * Create a typed CeloAgentVisa contract.
+ *
+ * @param address - Visa contract address.
+ * @param runner - Provider (reads) or signer (writes).
+ * @returns The contract, typed as TypedVisaContract.
+ */
 export function typedVisa(
   address: string,
   runner: ethers.ContractRunner,

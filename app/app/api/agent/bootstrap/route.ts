@@ -2,32 +2,61 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-// GET /api/agent/bootstrap — Agent bootstrap / discovery endpoint
-//
-// Returns a minimal OpenAPI 3.1.0 spec (JSON) containing only the
-// registration-relevant endpoints. Agents can curl this to discover
-// the registration API and auto-load it as tools.
-// Stateless, no auth, cacheable.
+/**
+ * GET /api/agent/bootstrap — registration tool spec for agents.
+ *
+ * Auth: none. Rate limit: none.
+ * Returns a minimal OpenAPI 3.1.0 document (JSON) of the registration
+ * endpoints only, so agents can load them as tools. Cacheable for 1 h.
+ */
 
 import { NextResponse } from "next/server";
-import { CORS_HEADERS, corsResponse } from "@/lib/api-helpers";
+import { AGENT_CORS_HEADERS, corsResponse } from "@/lib/agent-api-helpers";
+import { REGISTRATION_MODES } from "@/lib/registration-modes";
 
+/** Security requirement for routes that take the session token as a bearer. */
+const sessionTokenAuth = [{ sessionToken: [] }];
+
+/** Error responses shared by the session-token routes. */
+const sessionErrors = {
+  "400": {
+    description:
+      "Missing Authorization header, or the token is not for a registration session.",
+  },
+  "401": { description: "Invalid session token." },
+  "410": { description: "Session expired. Start a new registration." },
+  "500": {
+    description: "Server configuration error (SESSION_SECRET is not set).",
+  },
+};
+
+/** The served OpenAPI document. */
 const spec = {
   openapi: "3.1.0",
   info: {
     title: "Self Agent ID - Registration API",
     version: "1.0.0",
     description:
-      "Minimal OpenAPI spec exposing only the registration-relevant endpoints for agent bootstrap and tool discovery.",
+      "Minimal OpenAPI spec exposing only the registration-relevant endpoints for agent bootstrap and tool discovery. Flow: POST /api/agent/register → show the human the QR (open scanUrl, or render deepLink) → poll GET /api/agent/register/status with Authorization: Bearer <sessionToken> (use the rotated sessionToken from each response) until stage is 'completed' → for server-generated keys, POST /api/agent/register/export within 30 minutes of completion.",
   },
   servers: [{ url: "https://agent-api.self.xyz" }],
+  components: {
+    securitySchemes: {
+      sessionToken: {
+        type: "http",
+        scheme: "bearer",
+        description:
+          "The sessionToken returned by POST /api/agent/register (or the rotated one from the latest status response). Session tokens are never accepted in the query string.",
+      },
+    },
+  },
   paths: {
     "/api/agent/register": {
       post: {
         operationId: "startRegistration",
         summary: "Start a new agent registration session",
         description:
-          "Creates a registration session, generates or accepts a keypair, builds Self app QR data, and returns a session token plus QR/deep-link for the human to scan with the Self app.",
+          "Creates a registration session, generates a keypair (linked, wallet-free, privy, smartwallet) or verifies the agent's Ed25519 challenge signature (ed25519, ed25519-linked), and returns a session token plus the QR/deep link for the human to scan with the Self app. privy and smartwallet currently behave exactly like linked: the server generates the agent key and no passkey or Privy login is involved.",
         requestBody: {
           required: true,
           content: {
@@ -38,14 +67,7 @@ const spec = {
                 properties: {
                   mode: {
                     type: "string",
-                    enum: [
-                      "linked",
-                      "wallet-free",
-                      "ed25519",
-                      "ed25519-linked",
-                      "privy",
-                      "smartwallet",
-                    ],
+                    enum: REGISTRATION_MODES,
                     description:
                       "Registration mode. 'wallet-free' and 'ed25519' do not require a human wallet address. 'linked', 'ed25519-linked', 'privy', and 'smartwallet' require humanAddress.",
                   },
@@ -57,7 +79,7 @@ const spec = {
                   humanAddress: {
                     type: "string",
                     description:
-                      "Ethereum address of the human owner. Required for linked, ed25519-linked, privy, and smartwallet modes.",
+                      "0x-prefixed, non-zero Ethereum address of the human owner. Required for linked, ed25519-linked, privy, and smartwallet modes.",
                     pattern: "^0x[0-9a-fA-F]{40}$",
                   },
                   ed25519Pubkey: {
@@ -75,7 +97,7 @@ const spec = {
                   disclosures: {
                     type: "object",
                     description:
-                      "Optional disclosure requirements the human must satisfy during passport verification.",
+                      "Optional disclosure requirements the human must satisfy during passport verification. Boolean fields must be JSON booleans.",
                     properties: {
                       minimumAge: {
                         type: "integer",
@@ -116,10 +138,16 @@ const spec = {
         responses: {
           "200": {
             description:
-              "Session created. Returns session token, QR data, deep link, and scan URL.",
+              "Session created (stage 'qr-ready'). Returns sessionToken, stage, deepLink, qrImageBase64 (PNG, base64), scanUrl (public URL serving the QR as a PNG; it cannot be used as a session token), qrData, agentAddress, network, mode, configIndex, expiresAt, timeRemainingMs, humanInstructions.",
           },
           "400": { description: "Validation error." },
-          "429": { description: "Rate limited." },
+          "413": { description: "Request body too large." },
+          "429": { description: "Rate limited (see Retry-After)." },
+          "500": {
+            description:
+              "Server configuration error (SESSION_SECRET is not set), 'Failed to render QR code', or registration init failure.",
+          },
+          "502": { description: "RPC error." },
         },
       },
     },
@@ -129,22 +157,16 @@ const spec = {
         operationId: "pollRegistrationStatus",
         summary: "Poll registration status",
         description:
-          "Check the current status of a registration session. Polls on-chain state and returns whether the agent is verified. Call this repeatedly until the stage reaches 'registered'.",
-        parameters: [
-          {
-            name: "token",
-            in: "query",
-            required: true,
-            schema: { type: "string" },
-            description: "Session token returned by POST /api/agent/register.",
-          },
-        ],
+          "Checks on-chain whether the agent is registered. Stages: 'qr-ready' (waiting for the human) → 'completed'. Each response carries a rotated sessionToken; use it for the next call. When 'completed' is first observed, expiresAt is reset to 30 minutes from that poll so the key can be exported.",
+        security: sessionTokenAuth,
         responses: {
           "200": {
             description:
-              "Current registration status including stage, on-chain state, and time remaining.",
+              "sessionToken, stage, expiresAt, timeRemainingMs, humanInstructions, agentAddress; when completed also agentId (number). credentials are included only on the poll that first observes completion (and only if they could be read).",
           },
-          "400": { description: "Missing or invalid token." },
+          ...sessionErrors,
+          "429": { description: "Rate limited (see Retry-After)." },
+          "502": { description: "RPC error." },
         },
       },
     },
@@ -154,19 +176,19 @@ const spec = {
         operationId: "exportPrivateKey",
         summary: "Export the agent private key",
         description:
-          "After successful registration, export the server-generated agent private key. Only available for modes where the server generated the keypair (linked, wallet-free). The token is sent in the body (not query string) to avoid leaking via logs.",
+          "After the session reaches 'completed', export the server-generated agent private key (linked, wallet-free, privy, smartwallet). ed25519 modes have no server-held key. Send the session token as Authorization: Bearer (preferred) or as { token } in the JSON body. Every response is sent with Cache-Control: no-store.",
+        security: sessionTokenAuth,
         requestBody: {
-          required: true,
+          required: false,
           content: {
             "application/json": {
               schema: {
                 type: "object",
-                required: ["token"],
                 properties: {
                   token: {
                     type: "string",
                     description:
-                      "Session token returned by POST /api/agent/register.",
+                      "Session token, if not sent in the Authorization header.",
                   },
                 },
               },
@@ -175,11 +197,11 @@ const spec = {
         },
         responses: {
           "200": {
-            description: "Returns the agent private key and address.",
+            description:
+              "privateKey, agentAddress, agentId (number), network, mode.",
           },
-          "400": {
-            description: "Invalid token or key not available for this mode.",
-          },
+          ...sessionErrors,
+          "409": { description: "Registration is not completed yet." },
         },
       },
     },
@@ -223,10 +245,11 @@ const spec = {
         responses: {
           "200": {
             description:
-              "Returns challengeHash (bytes32 hex) and nonce for the agent to sign with their Ed25519 private key.",
+              "Returns challengeHash (bytes32 hex) and nonce (decimal string) for the agent to sign with their Ed25519 private key.",
           },
           "400": { description: "Validation error." },
-          "429": { description: "Rate limited." },
+          "429": { description: "Rate limited (see Retry-After)." },
+          "502": { description: "RPC error." },
         },
       },
     },
@@ -234,38 +257,42 @@ const spec = {
     "/api/agent/register/qr": {
       get: {
         operationId: "regenerateQr",
-        summary: "Regenerate QR code for registration",
+        summary: "Get the QR for a pending registration",
         description:
-          "Returns QR code data and the deep link for the current registration session so the human can re-scan if the original QR expired or was lost.",
-        parameters: [
-          {
-            name: "token",
-            in: "query",
-            required: true,
-            schema: { type: "string" },
-            description: "Session token returned by POST /api/agent/register.",
-          },
-        ],
+          "Returns the Self app request for a session still at stage 'qr-ready', so the human can re-scan.",
+        security: sessionTokenAuth,
         responses: {
           "200": {
-            description: "Returns deep link URL and a public QR image URL.",
+            description:
+              "deepLink, qrData (Self app request object), scanUrl (public URL serving the QR as a PNG).",
           },
-          "400": { description: "Missing or invalid token." },
+          ...sessionErrors,
+          "409": { description: "Session is no longer at stage 'qr-ready'." },
         },
       },
     },
   },
 } as const;
 
+/**
+ * Serve the registration OpenAPI document.
+ *
+ * @returns 200 OpenAPI 3.1.0 JSON.
+ */
 export function GET() {
   return NextResponse.json(spec, {
     headers: {
-      ...CORS_HEADERS,
+      ...AGENT_CORS_HEADERS,
       "Cache-Control": "public, max-age=3600",
     },
   });
 }
 
+/**
+ * Answer the CORS preflight.
+ *
+ * @returns 204 with CORS headers.
+ */
 export function OPTIONS() {
   return corsResponse();
 }

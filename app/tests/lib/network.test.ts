@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
-import {
-  NETWORKS,
-  getNetwork,
-  isNetworkReady,
-  type NetworkConfig,
-} from "@/lib/network";
+// SPDX-FileCopyrightText: 2025-2026 Social Connect Labs, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+// NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
+
+/** Tests for NETWORKS and DEFAULT_NETWORK (lib/network) and the CHAIN_CONFIG derived from them. */
+
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { NETWORKS } from "@/lib/network";
 import { CHAIN_CONFIG } from "@/lib/chain-config";
 
 describe("NETWORKS", () => {
@@ -19,52 +20,48 @@ describe("NETWORKS", () => {
   });
 });
 
-describe("getNetwork", () => {
-  it("returns correct chainId for celo-mainnet", () => {
-    const net = getNetwork("celo-mainnet");
-    expect(net.chainId).toBe(42220);
-    expect(net.isTestnet).toBe(false);
+describe("DEFAULT_NETWORK", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
   });
 
-  it("returns correct chainId for celo-sepolia", () => {
-    const net = getNetwork("celo-sepolia");
-    expect(net.chainId).toBe(11142220);
-    expect(net.isTestnet).toBe(true);
-  });
-});
+  /**
+   * Re-import lib/network with NEXT_PUBLIC_DEFAULT_NETWORK set.
+   *
+   * @param value - Env value to stub.
+   * @returns The freshly evaluated DEFAULT_NETWORK.
+   */
+  async function defaultFor(value: string) {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_DEFAULT_NETWORK", value);
+    return (await import("@/lib/network")).DEFAULT_NETWORK;
+  }
 
-describe("isNetworkReady", () => {
-  it("returns true when registryAddress is present", () => {
-    expect(isNetworkReady(NETWORKS["celo-mainnet"])).toBe(true);
-    expect(isNetworkReady(NETWORKS["celo-sepolia"])).toBe(true);
+  it("uses NEXT_PUBLIC_DEFAULT_NETWORK when it names a known network", async () => {
+    expect(await defaultFor("celo-sepolia")).toBe("celo-sepolia");
   });
 
-  it("returns false when registryAddress is empty", () => {
-    const config = {
-      ...NETWORKS["celo-mainnet"],
-      registryAddress: "",
-    } as NetworkConfig;
-    expect(isNetworkReady(config)).toBe(false);
-  });
+  it.each(["celo-mainnet-typo", "testnet", "", "__proto__", "toString"])(
+    "falls back to celo-mainnet for %j",
+    async (value) => {
+      expect(await defaultFor(value)).toBe("celo-mainnet");
+    },
+  );
 });
 
 describe("CHAIN_CONFIG", () => {
-  it("maps string chainIds to rpc and registry", () => {
-    const mainnet = CHAIN_CONFIG["42220"];
-    expect(mainnet.rpc).toBe(NETWORKS["celo-mainnet"].rpcUrl);
-    expect(mainnet.registry).toBe(NETWORKS["celo-mainnet"].registryAddress);
-    expect(mainnet.visa).toBe(NETWORKS["celo-mainnet"].visaAddress);
-    expect(mainnet.blockExplorer).toBe(NETWORKS["celo-mainnet"].blockExplorer);
-    expect(mainnet.registryDeployBlock).toBe(
-      NETWORKS["celo-mainnet"].registryDeployBlock,
-    );
-    expect(mainnet.visaDeployBlock).toBe(
-      NETWORKS["celo-mainnet"].visaDeployBlock,
-    );
-
-    const sepolia = CHAIN_CONFIG["11142220"];
-    expect(sepolia.rpc).toBe(NETWORKS["celo-sepolia"].rpcUrl);
-    expect(sepolia.registry).toBe(NETWORKS["celo-sepolia"].registryAddress);
+  it("maps string chainIds to rpc, registry and visa", () => {
+    expect(CHAIN_CONFIG["42220"]).toEqual({
+      rpc: NETWORKS["celo-mainnet"].rpcUrl,
+      registry: NETWORKS["celo-mainnet"].registryAddress,
+      visa: NETWORKS["celo-mainnet"].visaAddress,
+    });
+    expect(CHAIN_CONFIG["11142220"]).toEqual({
+      rpc: NETWORKS["celo-sepolia"].rpcUrl,
+      registry: NETWORKS["celo-sepolia"].registryAddress,
+      visa: NETWORKS["celo-sepolia"].visaAddress,
+    });
   });
 
   it("does not contain unknown chain IDs", () => {

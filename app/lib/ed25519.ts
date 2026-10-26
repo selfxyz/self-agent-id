@@ -1,18 +1,19 @@
+// SPDX-FileCopyrightText: 2025-2026 Social Connect Labs, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+// NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
+
 /**
- * Ed25519 registration utilities for Self Agent ID.
+ * Ed25519 agent registration helpers.
  *
- * Provides challenge hash computation, extKpub (Edwards-to-Weierstrass) conversion,
- * and userData builder for the Hub V2 callback.
+ * Challenge hash, signature and pubkey checks, address derivation, extKpub
+ * (Edwards-to-Weierstrass, matching the on-chain SCL verifier) and the "E"
+ * userData the registry decodes from the Self proof.
  */
 
 import { ethers } from "ethers";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — noble/curves v2 export map uses .js suffix
 import { ed25519 } from "@noble/curves/ed25519.js";
 
-// ============================================================
-// Field constants from SCL_wei25519.sol
-// ============================================================
+// ── Field constants from SCL_wei25519.sol ────────────────────────────────────
 
 const p = 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffedn;
 const a =
@@ -22,27 +23,62 @@ const delta =
 const c_const =
   0x70d9120b9f5ff9442d84f723fc03b0813a5e2c2eb482e57d3391fb5500ba81e7n;
 
-// ============================================================
-// Modular arithmetic helpers
-// ============================================================
+// ── Modular arithmetic helpers ───────────────────────────────────────────────
 
+/**
+ * Reduce x into [0, m).
+ *
+ * @param x - Value (may be negative).
+ * @param m - Modulus.
+ * @returns x mod m, non-negative.
+ */
 function mod(x: bigint, m: bigint): bigint {
   return ((x % m) + m) % m;
 }
 
+/**
+ * Add modulo m.
+ *
+ * @param a - First addend.
+ * @param b - Second addend.
+ * @param m - Modulus.
+ * @returns (a + b) mod m.
+ */
 function modAdd(a: bigint, b: bigint, m: bigint): bigint {
   return mod(a + b, m);
 }
 
+/**
+ * Multiply modulo m.
+ *
+ * @param a - First factor.
+ * @param b - Second factor.
+ * @param m - Modulus.
+ * @returns (a * b) mod m.
+ */
 function modMul(a: bigint, b: bigint, m: bigint): bigint {
   return mod(a * b, m);
 }
 
-/** Modular inverse using Fermat's little theorem: a^(p-2) mod p */
+/**
+ * Invert modulo a prime using Fermat's little theorem: a^(m-2) mod m.
+ *
+ * @param a - Value to invert (0 has no inverse and yields 0).
+ * @param m - Prime modulus.
+ * @returns a^-1 mod m.
+ */
 function modInverse(a: bigint, m: bigint): bigint {
   return modPow(mod(a, m), m - 2n, m);
 }
 
+/**
+ * Raise to a power modulo m (square-and-multiply).
+ *
+ * @param base - Base.
+ * @param exp - Non-negative exponent.
+ * @param m - Modulus.
+ * @returns base^exp mod m.
+ */
 function modPow(base: bigint, exp: bigint, m: bigint): bigint {
   let result = 1n;
   base = mod(base, m);
@@ -54,11 +90,15 @@ function modPow(base: bigint, exp: bigint, m: bigint): bigint {
   return result;
 }
 
-// ============================================================
-// Weierstrass curve operations
-// ============================================================
+// ── Weierstrass curve operations ─────────────────────────────────────────────
 
-/** Point doubling on short Weierstrass curve y^2 = x^3 + ax + b */
+/**
+ * Double a point on the short Weierstrass curve y^2 = x^3 + ax + b.
+ *
+ * @param x - Point x.
+ * @param y - Point y.
+ * @returns 2P as [x, y].
+ */
 function weierstrassDouble(x: bigint, y: bigint): [bigint, bigint] {
   // lambda = (3*x^2 + a) / (2*y)
   const num = modAdd(modMul(3n, modMul(x, x, p), p), a, p);
@@ -71,7 +111,13 @@ function weierstrassDouble(x: bigint, y: bigint): [bigint, bigint] {
   return [x3, y3];
 }
 
-/** Compute Q * 2^128 via 128 sequential point doublings */
+/**
+ * Compute Q * 2^128 via 128 sequential point doublings.
+ *
+ * @param wx - Weierstrass x of Q.
+ * @param wy - Weierstrass y of Q.
+ * @returns Q * 2^128 as [x, y].
+ */
 function ecPow128(wx: bigint, wy: bigint): [bigint, bigint] {
   let x = wx;
   let y = wy;
@@ -81,15 +127,17 @@ function ecPow128(wx: bigint, wy: bigint): [bigint, bigint] {
   return [x, y];
 }
 
-// ============================================================
-// Edwards <-> Weierstrass conversion (matching SCL)
-// ============================================================
+// ── Edwards <-> Weierstrass conversion (matching SCL) ────────────────────────
 
 /**
- * Convert Edwards point (ex, ey) to Weierstrass (Wx, Wy).
- * Matches SCL's Edwards2WeierStrass:
+ * Convert an affine Edwards point to Weierstrass, matching SCL's
+ * Edwards2WeierStrass:
  *   Wx = ((1 + ey) / (1 - ey)) + delta
  *   Wy = (c * (1 + ey)) / ((1 - ey) * ex)
+ *
+ * @param ex - Edwards x.
+ * @param ey - Edwards y.
+ * @returns [Wx, Wy].
  */
 function edwards2Weierstrass(ex: bigint, ey: bigint): [bigint, bigint] {
   const oneMinusEy = mod(1n - ey, p);
@@ -105,11 +153,14 @@ function edwards2Weierstrass(ex: bigint, ey: bigint): [bigint, bigint] {
   return [wx, wy];
 }
 
-// ============================================================
-// Byte manipulation
-// ============================================================
+// ── Byte manipulation ────────────────────────────────────────────────────────
 
-/** Reverse bytes of a 256-bit number (matching SCL's Swap256) */
+/**
+ * Reverse the bytes of a 256-bit number (matching SCL's Swap256).
+ *
+ * @param val - 256-bit value.
+ * @returns The byte-reversed value.
+ */
 function swap256(val: bigint): bigint {
   const bytes = new Uint8Array(32);
   let v = val;
@@ -125,6 +176,12 @@ function swap256(val: bigint): bigint {
   return result;
 }
 
+/**
+ * Decode a hex string (optional 0x) to bytes. Does not validate input.
+ *
+ * @param hex - Even-length hex string.
+ * @returns The bytes.
+ */
 function hexToBytes(hex: string): Uint8Array {
   const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
   const bytes = new Uint8Array(clean.length / 2);
@@ -134,21 +191,20 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
-function _bytesToBigInt(bytes: Uint8Array): bigint {
-  let result = 0n;
-  for (const b of bytes) {
-    result = (result << 8n) | BigInt(b);
-  }
-  return result;
-}
-
-// ============================================================
-// Public API
-// ============================================================
+// ── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Compute the registration challenge hash for Ed25519 agents.
- * Must match the contract's _verifyEd25519Signature message format.
+ * Compute the registration challenge hash an Ed25519 agent signs.
+ *
+ * Must match the registry's _verifyEd25519Signature message format.
+ *
+ * @param params.humanAddress - Human identifier: the human's wallet
+ *   (ed25519-linked) or the key's derived address (ed25519).
+ * @param params.chainId - Chain ID of the registry.
+ * @param params.registryAddress - Registry address.
+ * @param params.nonce - The pubkey's current ed25519Nonce on the registry.
+ * @returns 0x-prefixed keccak256 hash.
+ * @throws If an address is malformed.
  */
 export function computeEd25519ChallengeHash(params: {
   humanAddress: string;
@@ -172,14 +228,14 @@ export function computeEd25519ChallengeHash(params: {
 
 /**
  * Compute extKpub[5] from a 32-byte Ed25519 public key.
- * Performs Edwards-to-Weierstrass conversion matching SCL's SetKey output.
  *
- * @param pubkeyHex 64-char hex string of the compressed Ed25519 public key
- * @returns [Wx, Wy, Wx128, Wy128, compressedLE] as bigint array
+ * Edwards-to-Weierstrass conversion matching SCL's SetKey output.
+ *
+ * @param pubkeyHex - 64-char hex of the compressed Ed25519 public key.
+ * @returns [Wx, Wy, Wx128, Wy128, compressedLE].
+ * @throws If the key does not decode to a curve point.
  */
 export function computeExtKpub(pubkeyHex: string): bigint[] {
-  const _pubkeyBytes = hexToBytes(pubkeyHex);
-
   // 1. Decompress Ed25519 point using @noble/curves
   const rawPoint = ed25519.Point.fromHex(pubkeyHex);
   // noble/curves v2: runtime point has X, Y, Z, T as bigint properties
@@ -210,8 +266,19 @@ export function computeExtKpub(pubkeyHex: string): bigint[] {
 }
 
 /**
- * Build the Ed25519 userData string for the Hub V2 callback.
- * Format: "E" + config(1) + pubkey(64) + sig(128) + extKpub[0..4](320) + guardian(40) = 554 chars
+ * Build the Ed25519 userData string carried in the Self app request.
+ *
+ * The registry decodes it when Hub V2 delivers the proof.
+ * Format: "E" + config(1) + pubkey(64) + sig(128) + extKpub[0..4](320) +
+ * guardian(40) = 554 chars.
+ *
+ * @param params.configIndex - Verification config index (single digit).
+ * @param params.ed25519Pubkey - 64 hex chars, no 0x.
+ * @param params.signature - 128 hex chars (r+s), no 0x.
+ * @param params.extKpub - The 5 values from computeExtKpub.
+ * @param params.guardian - Guardian address as 40 hex chars, no 0x (default
+ *   zero, i.e. no guardian).
+ * @returns The userData string.
  */
 export function buildEd25519UserData(params: {
   configIndex: number;
@@ -230,29 +297,60 @@ export function buildEd25519UserData(params: {
   );
 }
 
-/** Validate a hex string as a 32-byte Ed25519 public key */
-export function isValidEd25519PubkeyHex(hex: string): boolean {
-  if (!/^[0-9a-fA-F]{64}$/.test(hex)) return false;
+/**
+ * Validate a hex string as a 32-byte Ed25519 public key.
+ *
+ * Rejects small-order points (incl. the identity), for which trivial
+ * signatures verify under every message.
+ *
+ * @param hex - Candidate key (any type), 64 hex chars without 0x.
+ * @returns True for a valid, non-small-order curve point.
+ */
+export function isValidEd25519PubkeyHex(hex: unknown): hex is string {
+  if (typeof hex !== "string" || !/^[0-9a-fA-F]{64}$/.test(hex)) return false;
   try {
-    ed25519.Point.fromHex(hex);
-    return true;
+    return !ed25519.Point.fromHex(hex).isSmallOrder();
   } catch {
     return false;
   }
 }
 
-/** Convert base64-encoded Ed25519 public key to hex */
-export function base64ToHex(b64: string): string {
-  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-  if (bytes.length !== 32) throw new Error("Invalid Ed25519 key length");
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+/**
+ * Verify an Ed25519 signature strictly (non-ZIP-215).
+ *
+ * @param signatureHex - 128 hex chars, no 0x.
+ * @param messageHash - 0x-prefixed 32-byte hash that was signed.
+ * @param pubkeyHex - 64 hex chars, no 0x.
+ * @returns True if valid; false on a bad signature or any malformed input.
+ */
+export function verifyEd25519Signature(
+  signatureHex: string,
+  messageHash: string,
+  pubkeyHex: string,
+): boolean {
+  if (!/^[0-9a-fA-F]{128}$/.test(signatureHex)) return false;
+  if (!isValidEd25519PubkeyHex(pubkeyHex)) return false;
+  try {
+    return ed25519.verify(
+      hexToBytes(signatureHex),
+      ethers.getBytes(messageHash),
+      hexToBytes(pubkeyHex),
+      { zip215: false },
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Derive the Ethereum address from an Ed25519 public key.
- * Matches the contract's Ed25519Verifier.deriveAddress.
+ * Derive the agent's EVM address from an Ed25519 public key.
+ *
+ * Matches the contract's Ed25519Verifier.deriveAddress: last 20 bytes of
+ * keccak256(pubkey).
+ *
+ * @param pubkeyHex - 64 hex chars, no 0x.
+ * @returns The checksummed address.
+ * @throws If pubkeyHex is not valid hex.
  */
 export function deriveEd25519Address(pubkeyHex: string): string {
   return ethers.getAddress(

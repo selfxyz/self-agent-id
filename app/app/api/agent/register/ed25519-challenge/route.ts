@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-// POST /api/agent/register/ed25519-challenge
-//
-// Step 1 of the two-step Ed25519 registration flow.
-// Agent sends their pubkey and humanAddress; this endpoint fetches the nonce
-// from the contract and returns the challenge hash for signing.
+/**
+ * POST /api/agent/register/ed25519-challenge — get the Ed25519 registration
+ * challenge (step 1 of the Ed25519 flow).
+ *
+ * Auth: none. Rate limit: 10/min per IP.
+ * Returns the challenge hash (built from the key's on-chain nonce) that the
+ * agent signs and sends as ed25519Signature to POST /api/agent/register.
+ */
 
 import type { NextRequest } from "next/server";
 import { ethers } from "ethers";
@@ -16,81 +19,90 @@ import {
   isValidEd25519PubkeyHex,
 } from "@/lib/ed25519";
 import {
+  ERRORS,
   getNetworkConfig,
   isValidNetwork,
-  isValidAddress,
+  parseAddress,
   jsonResponse,
   errorResponse,
   corsResponse,
+  getClientIp,
+  rateLimitResponse,
+  readJsonObjectBody,
 } from "@/lib/agent-api-helpers";
 import { typedRegistry } from "@/lib/contract-types";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { checkRateLimit } from "@/lib/rate-limit";
 
+/**
+ * Fetch the key's registry nonce and compute the challenge hash to sign.
+ *
+ * @param req - JSON body: {pubkey (64 hex, no 0x), network, humanAddress?
+ *   (guardian for ed25519-linked; defaults to the pubkey's derived address)}.
+ * @returns 200 {challengeHash, nonce (decimal string)}; 400 {error} validation;
+ *   413 {error} body too large; 429 {error, retryAfterMs}; 502 {error} nonce
+ *   lookup failed.
+ */
 export async function POST(req: NextRequest) {
-  // Rate limit: 10 challenge requests per minute per IP
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const rl = await checkRateLimit({
-    key: `ed25519-challenge:${ip}`,
+    key: `ed25519-challenge:${getClientIp(req)}`,
     limit: 10,
     windowMs: 60_000,
   });
   if (!rl.allowed) {
-    return errorResponse("Too many requests", 429);
+    return rateLimitResponse(rl.retryAfterMs);
   }
 
-  let body: { pubkey?: string; network?: string; humanAddress?: string };
-  try {
-    const parsed = (await req.json()) as unknown;
-    if (!parsed || typeof parsed !== "object") {
-      return errorResponse("Invalid JSON body", 400);
-    }
-    body = parsed as typeof body;
-  } catch {
-    return errorResponse("Invalid JSON body", 400);
-  }
+  const parsed = await readJsonObjectBody(req);
+  if (!parsed.ok) return parsed.response;
+  const { pubkey, network, humanAddress: rawHumanAddress } = parsed.body;
 
-  const { pubkey, network } = body;
-  let { humanAddress } = body;
-
-  if (!pubkey || !isValidEd25519PubkeyHex(pubkey)) {
+  if (!isValidEd25519PubkeyHex(pubkey)) {
     return errorResponse(
       "Invalid Ed25519 public key (must be 64-char hex, no 0x prefix)",
       400,
     );
   }
-  if (!network || !isValidNetwork(network)) {
+  if (typeof network !== "string" || !isValidNetwork(network)) {
+    return errorResponse(ERRORS.invalidNetwork, 400);
+  }
+
+  const humanAddress =
+    rawHumanAddress === undefined
+      ? deriveEd25519Address(pubkey)
+      : parseAddress(rawHumanAddress);
+  if (!humanAddress) {
     return errorResponse(
-      `Invalid network: "${network}". Valid: mainnet, testnet`,
+      "humanAddress must be a non-zero 0x-prefixed Ethereum address",
       400,
     );
   }
-  if (!humanAddress) {
-    humanAddress = deriveEd25519Address(pubkey);
-  } else if (!isValidAddress(humanAddress)) {
-    return errorResponse("humanAddress must be a valid Ethereum address", 400);
-  }
 
+  const networkConfig = getNetworkConfig(network);
+  let nonce: bigint;
   try {
-    const networkConfig = getNetworkConfig(network);
     const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
     const registry = typedRegistry(networkConfig.registryAddress, provider);
-    const nonce = await registry.ed25519Nonce("0x" + pubkey);
-
-    const challengeHash = computeEd25519ChallengeHash({
-      humanAddress: ethers.getAddress(humanAddress),
-      chainId: BigInt(networkConfig.chainId),
-      registryAddress: networkConfig.registryAddress,
-      nonce,
-    });
-
-    return jsonResponse({ challengeHash, nonce: nonce.toString() });
+    nonce = await registry.ed25519Nonce("0x" + pubkey.toLowerCase());
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return errorResponse(`Challenge generation failed: ${message}`, 500);
+    console.error("ed25519-challenge: nonce lookup failed", err);
+    return errorResponse(ERRORS.rpc, 502);
   }
+
+  const challengeHash = computeEd25519ChallengeHash({
+    humanAddress,
+    chainId: BigInt(networkConfig.chainId),
+    registryAddress: networkConfig.registryAddress,
+    nonce,
+  });
+
+  return jsonResponse({ challengeHash, nonce: nonce.toString() });
 }
 
+/**
+ * Answer the CORS preflight.
+ *
+ * @returns 204 with CORS headers.
+ */
 export function OPTIONS() {
   return corsResponse();
 }

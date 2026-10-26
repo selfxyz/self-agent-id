@@ -2,99 +2,83 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { type NextRequest, NextResponse } from "next/server";
-import { ethers } from "ethers";
-import { getProviderLabel } from "@selfxyz/agent-sdk";
-import { CHAIN_CONFIG } from "@/lib/chain-config";
-import {
-  CORS_HEADERS,
-  corsResponse,
-  errorResponse,
-  validateAgentId,
-} from "@/lib/api-helpers";
+/**
+ * GET /api/agent/verify/{chainId}/{agentId} — proof-of-human and sybil view.
+ *
+ * Auth: none. Rate limit: 120/min per IP (shared read budget).
+ * Returns proof state, provider strength, the human nullifier and how many
+ * agents that human holds.
+ */
 
-import { typedProvider, typedRegistry } from "@/lib/contract-types";
+import type { NextRequest } from "next/server";
+import { corsResponse, jsonResponse } from "@/lib/agent-api-helpers";
+import {
+  connectRegistry,
+  parseAgentTarget,
+  readAgentState,
+  readErrorResponse,
+  readProviderStrength,
+  readRateLimited,
+} from "@/lib/agent-read";
+
+/**
+ * Read an agent's proof state plus its human's nullifier and agent count.
+ *
+ * @param req - Incoming request (counted against the per-IP read budget).
+ * @param context.params - Path params: `chainId`, `agentId`.
+ * @returns 200 {agentId, chainId, isVerified, hasHumanProof, isProofFresh,
+ *   proofExpiresAt, proofProvider, isSelfProvider, verificationStrength,
+ *   strengthLabel, humanNullifier, agentCountForHuman}; 400 {error} bad chain
+ *   or agent ID; 404 {error} agent not found;
+ *   429 {error, retryAfterMs}; 502 {error} RPC failure.
+ */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ chainId: string; agentId: string }> },
 ) {
+  const limited = await readRateLimited(req);
+  if (limited) return limited;
   const { chainId, agentId } = await params;
-  const config = CHAIN_CONFIG[chainId];
-  if (!config) return errorResponse(`Unsupported chain: ${chainId}`, 400);
-
-  const id = validateAgentId(agentId);
-  if (id === null) return errorResponse("Invalid agent ID", 400);
+  const parsed = parseAgentTarget(chainId, agentId);
+  if (!parsed.ok) return parsed.response;
+  const { target } = parsed;
 
   try {
-    const rpc = new ethers.JsonRpcProvider(config.rpc);
-    const registry = typedRegistry(config.registry, rpc);
-
-    // Fetch verification data in parallel
-    const [hasProof, providerAddr, nullifier, selfProvider] = await Promise.all(
-      [
-        registry.hasHumanProof(id),
-        registry.getProofProvider(id),
-        registry.getHumanNullifier(id),
-        registry.selfProofProvider(),
-      ],
-    );
-
-    if (!hasProof) {
-      return NextResponse.json(
-        {
-          agentId: Number(id),
-          chainId: Number(chainId),
-          isVerified: false,
-          proofProvider: ethers.ZeroAddress,
-          isSelfProvider: false,
-          verificationStrength: 0,
-          strengthLabel: "None",
-          humanNullifier: "0",
-          agentCountForHuman: 0,
-        },
-        { headers: CORS_HEADERS },
-      );
-    }
-
-    // Fetch provider strength and agent count in parallel
-    const provider = typedProvider(providerAddr, rpc);
+    const { rpc, registry } = connectRegistry(target.chainId, target.config);
+    const [state, nullifier, selfProvider] = await Promise.all([
+      readAgentState(registry, target),
+      registry.getHumanNullifier(target.agentId),
+      registry.selfProofProvider(),
+    ]);
     const [strength, agentCount] = await Promise.all([
-      provider.verificationStrength(),
-      nullifier !== 0n
-        ? registry.getAgentCountForHuman(nullifier)
-        : Promise.resolve(0n),
+      readProviderStrength(rpc, state.proofProvider),
+      nullifier !== 0n ? registry.getAgentCountForHuman(nullifier) : 0n,
     ]);
 
-    const verificationStrength = Number(strength);
-    const isSelfProvider =
-      providerAddr.toLowerCase() === selfProvider.toLowerCase();
-
-    return NextResponse.json(
-      {
-        agentId: Number(id),
-        chainId: Number(chainId),
-        isVerified: true,
-        proofProvider: providerAddr,
-        isSelfProvider,
-        verificationStrength,
-        strengthLabel: getProviderLabel(verificationStrength),
-        humanNullifier: nullifier.toString(),
-        agentCountForHuman: Number(agentCount),
-      },
-      { headers: CORS_HEADERS },
-    );
+    return jsonResponse({
+      agentId: state.agentId,
+      chainId: state.chainId,
+      isVerified: state.isVerified,
+      hasHumanProof: state.hasHumanProof,
+      isProofFresh: state.isProofFresh,
+      proofExpiresAt: state.proofExpiresAt,
+      proofProvider: state.proofProvider,
+      isSelfProvider:
+        state.proofProvider.toLowerCase() === selfProvider.toLowerCase(),
+      ...strength,
+      humanNullifier: nullifier.toString(),
+      agentCountForHuman: Number(agentCount),
+    });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (
-      message.includes("could not coalesce") ||
-      message.includes("BAD_DATA")
-    ) {
-      return errorResponse("Agent not found", 404);
-    }
-    return errorResponse("RPC error", 502);
+    return readErrorResponse(err, "agent/verify");
   }
 }
 
+/**
+ * Answer the CORS preflight.
+ *
+ * @returns 204 with CORS headers.
+ */
 export function OPTIONS() {
   return corsResponse();
 }

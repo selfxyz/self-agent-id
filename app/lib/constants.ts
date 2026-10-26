@@ -2,23 +2,15 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-// ── ABI Definitions ─────────────────────────────────────────────────────────
-//
-// Two ABI sources exist in this project:
-//
-// 1. THIS FILE (local ABI) — full contract surface including auto-generated
-//    public mapping getters (agentProofProvider, agentGuardian, agentHasHumanProof,
-//    agentIdToAgentKey, agentNonces, etc.) plus management functions (guardianRevoke, selfDeregister).
-//    Used by dApp pages that need direct contract interaction beyond the standard interface.
-//
-// 2. @selfxyz/agent-sdk REGISTRY_ABI — the canonical cross-language interface.
-//    Contains only the standard ERC-8004 + extension functions (hasHumanProof,
-//    getProofProvider, isVerifiedAgent, etc.). Used by API routes and external integrators.
-//
-// Both ABIs point to the same on-chain contract. The local ABI is a superset.
-// ────────────────────────────────────────────────────────────────────────────
+/**
+ * Human-readable ethers ABIs for the registry, proof provider and visa contracts.
+ *
+ * The registry ABI here is a superset of the SDK's REGISTRY_ABI: it adds the
+ * public mapping getters (agentGuardian, agentNonces, ...), management calls
+ * and events. API routes use these via the typed wrappers in contract-types.ts.
+ */
 
-// Minimal ABI for reading SelfAgentRegistry state
+/** SelfAgentRegistry functions and events the API reads or calls. */
 export const REGISTRY_ABI = [
   "function isVerifiedAgent(bytes32 agentPubKey) view returns (bool)",
   "function getAgentId(bytes32 agentPubKey) view returns (uint256)",
@@ -60,64 +52,17 @@ export const REGISTRY_ABI = [
   "function getAgentWallet(uint256 agentId) external view returns (address)",
   "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
   // Proof refresh event
-  "event HumanProofRefreshed(uint256 indexed agentId, uint256 newExpiry, uint256 nullifier, bytes32 configId)",
+  "event HumanProofRefreshed(uint256 indexed agentId, uint256 nullifier, uint256 newExpiresAt, bytes32 configId)",
   "event NullifierIdentified(uint256 indexed nullifier, uint256 agentCount)",
 ] as const;
 
-// Provider ABI — used to query provider metadata
+/** IHumanProofProvider metadata getters. */
 export const PROVIDER_ABI = [
   "function providerName() view returns (string)",
   "function verificationStrength() view returns (uint8)",
 ] as const;
 
-// AgentDemoVerifier V2 — EIP-712 meta-tx contract
-export const AGENT_DEMO_VERIFIER_ABI = [
-  "function metaVerifyAgent(bytes32 agentKey, uint256 nonce, uint256 deadline, bytes signature) returns (uint256 agentId)",
-  "function checkAccess(bytes32 agentKey) view returns (uint256 agentId)",
-  "function hasVerified(bytes32 agentKey) view returns (bool)",
-  "function verificationCount(bytes32 agentKey) view returns (uint256)",
-  "function nonces(bytes32 agentKey) view returns (uint256)",
-  "function totalVerifications() view returns (uint256)",
-  "function DOMAIN_SEPARATOR() view returns (bytes32)",
-  "function registry() view returns (address)",
-  "error NotVerifiedAgent()",
-  "error MetaTxExpired()",
-  "error MetaTxInvalidNonce()",
-  "error MetaTxInvalidSignature()",
-  "event AgentChainVerified(bytes32 indexed agentKey, uint256 indexed agentId)",
-  "event VerificationCompleted(bytes32 indexed agentKey, uint256 agentCount, uint256 totalCount)",
-  "event GasSponsored(address indexed relayer, bytes32 indexed agentKey)",
-] as const;
-
-// AgentDemoVerifierEd25519 — Ed25519 meta-tx contract (parallel to ECDSA version)
-export const AGENT_DEMO_VERIFIER_ED25519_ABI = [
-  "function metaVerifyAgent(bytes32 agentKey, uint256 nonce, uint256 deadline, uint256[5] extKpub, uint256 sigR, uint256 sigS) returns (uint256 agentId)",
-  "function checkAccess(bytes32 agentKey) view returns (uint256 agentId)",
-  "function hasVerified(bytes32 agentKey) view returns (bool)",
-  "function verificationCount(bytes32 agentKey) view returns (uint256)",
-  "function nonces(bytes32 agentKey) view returns (uint256)",
-  "function totalVerifications() view returns (uint256)",
-  "function registry() view returns (address)",
-  "error NotVerifiedAgent()",
-  "error MetaTxExpired()",
-  "error MetaTxInvalidNonce()",
-  "error MetaTxInvalidSignature()",
-  "event AgentChainVerified(bytes32 indexed agentKey, uint256 indexed agentId)",
-  "event VerificationCompleted(bytes32 indexed agentKey, uint256 agentCount, uint256 totalCount)",
-  "event GasSponsored(address indexed relayer, bytes32 indexed agentKey)",
-] as const;
-
-// AgentGate demo contract
-export const AGENT_GATE_ABI = [
-  "function checkAccess(bytes32 agentKey) view returns (uint256 agentId, uint256 olderThan, string nationality)",
-  "function gatedAction(bytes32 agentKey)",
-  "function registry() view returns (address)",
-  "error NotVerifiedAgent()",
-  "error AgeRequirementNotMet(uint256 actual, uint256 required)",
-  "event AccessGranted(bytes32 indexed agentKey, uint256 agentId, uint256 olderThan)",
-] as const;
-
-// CeloAgentVisa — on-chain visa / reputation tiers
+/** CeloAgentVisa: on-chain visa / reputation tiers. */
 export const VISA_ABI = [
   "function getTier(uint256 agentId) external view returns (uint8)",
   "function getMetrics(uint256 agentId) external view returns (uint256 transactionCount, uint256 volumeUsd, uint64 lastUpdated)",
@@ -138,6 +83,3 @@ export const VISA_ABI = [
   "function updateMetrics(uint256 agentId, uint256 transactionCount, uint256 volumeUsd) external",
   "event ReviewRequested(uint256 indexed agentId, uint8 targetTier)",
 ] as const;
-
-// Account Abstraction
-export const ENTRYPOINT_ADDRESS = "0x0000000071727De22E5E9d8BAf0edAc6f37da032";
