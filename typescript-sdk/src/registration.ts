@@ -2,77 +2,73 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
+/**
+ * Low-level registration helpers: config index, challenge signing and Self `userData` encoders.
+ *
+ * Each encoder has an ASCII form (what the Self app QR carries) and a binary form
+ * (compact bytes); both must match what SelfAgentRegistry decodes on-chain.
+ */
+
 import { ethers } from "ethers";
 
 /**
- * The supported registration modes for the SelfAgentRegistry.
+ * The registration modes accepted by the Self Agent ID API (`POST /api/agent/register`).
  *
- * - `"self-custody"` -- human address equals agent address (simple register).
- * - `"linked"` -- human delegates to a separate agent address (advanced register).
- * - `"wallet-free"` -- agent key is generated; no prior wallet required.
- * - `"ed25519"` -- like wallet-free but uses Ed25519 key instead of secp256k1.
- * - `"ed25519-linked"` -- Ed25519 agent key linked to a human's wallet.
- * - `"smartwallet"` -- like wallet-free but intended for smart-wallet deployment.
+ * - `"linked"` -- a generated agent key linked to the human's wallet (`humanAddress` required).
+ * - `"wallet-free"` -- a generated agent key; no human wallet required.
+ * - `"ed25519"` -- the agent's own Ed25519 key; no human wallet required.
+ * - `"ed25519-linked"` -- the agent's own Ed25519 key linked to the human's wallet.
+ * - `"privy"` -- like `linked`, for a Privy-managed human wallet.
+ * - `"smartwallet"` -- like `linked`, for a smart-wallet human account.
  */
 export type RegistrationMode =
+  | "linked"
   | "wallet-free"
   | "ed25519"
-  | "self-custody"
-  | "linked"
   | "ed25519-linked"
+  | "privy"
   | "smartwallet";
 
 /**
  * Disclosure requirements that map to a verification config index (0..5)
  * on the SelfAgentRegistry contract.
- *
- * @param minimumAge - Minimum age gate: 0 (none), 18, or 21.
- * @param ofac - Whether OFAC screening is required.
  */
 export interface RegistrationDisclosures {
+  /** Minimum age gate: 0 (none, default), 18, or 21 */
   minimumAge?: 0 | 18 | 21;
+  /** Require OFAC screening (default false) */
   ofac?: boolean;
 }
 
-/**
- * Input for computing or signing a registration challenge hash.
- *
- * @param humanIdentifier - The human's on-chain address (checksummed or not).
- * @param chainId - Target chain ID (e.g. 42220 for Celo mainnet).
- * @param registryAddress - Deployed SelfAgentRegistry contract address.
- * @param nonce - The agent's current registration nonce from `agentNonces(agent)`. Use 0 for first-time registrations.
- */
+/** Input for computing or signing a registration challenge hash. */
 export interface RegistrationChallengeInput {
+  /** The human's on-chain address (checksummed or not) */
   humanIdentifier: string;
+  /** Target chain ID (e.g. 42220 for Celo mainnet) */
   chainId: number | bigint | string;
+  /** Deployed SelfAgentRegistry contract address */
   registryAddress: string;
+  /** The agent's current nonce from `agentNonces(agent)`; 0 for a first registration */
   nonce: number | bigint | string;
 }
 
-/**
- * The r, s, v components of an ECDSA signature.
- *
- * @param r - The r component (32-byte hex string with 0x prefix).
- * @param s - The s component (32-byte hex string with 0x prefix).
- * @param v - Recovery parameter (27 or 28).
- */
+/** The r, s, v components of an ECDSA signature. */
 export interface RegistrationSignatureParts {
+  /** 32-byte hex string with 0x prefix */
   r: string;
+  /** 32-byte hex string with 0x prefix */
   s: string;
+  /** Recovery parameter (27 or 28; 0/1 are accepted and normalized) */
   v: number;
 }
 
-/**
- * Result of signing a registration challenge, including the full signature
- * and its decomposed r/s/v parts.
- *
- * @param messageHash - The keccak256 challenge hash that was signed.
- * @param signature - The full 65-byte hex-encoded signature.
- * @param agentAddress - The checksummed agent address derived from the signing key.
- */
+/** Result of signing a registration challenge: full signature plus r/s/v parts. */
 export interface SignedRegistrationChallenge extends RegistrationSignatureParts {
+  /** The keccak256 challenge hash that was signed */
   messageHash: string;
+  /** The full 65-byte hex-encoded signature */
   signature: string;
+  /** Checksummed agent address derived from the signing key */
   agentAddress: string;
 }
 
@@ -95,7 +91,8 @@ const ASCII_ACTION = {
 } as const;
 
 /**
- * Checksums an Ethereum address using EIP-55.
+ * Checksum an Ethereum address using EIP-55.
+ *
  * @param address - Raw or checksummed address string.
  * @returns The checksummed address.
  * @throws If the address is invalid.
@@ -105,9 +102,9 @@ function normalizeAddress(address: string): string {
 }
 
 /**
- * Maps disclosure requirements to a verification config index (0..5).
+ * Map disclosure requirements to a verification config index (0..5).
  *
- * Index mapping:
+ * Only 0, 18 and 21 are valid `minimumAge` values (on-chain configs). Index mapping:
  * - 0: no age gate, no OFAC
  * - 1: age >= 18, no OFAC
  * - 2: age >= 21, no OFAC
@@ -117,10 +114,17 @@ function normalizeAddress(address: string): string {
  *
  * @param disclosures - The disclosure requirements.
  * @returns The config index (0..5).
+ * @throws If `minimumAge` is not 0, 18 or 21 (instead of silently dropping the age gate).
  */
 function toConfigIndex(disclosures: RegistrationDisclosures): number {
-  const minimumAge = disclosures.minimumAge ?? 0;
+  const minimumAge: number = disclosures.minimumAge ?? 0;
   const ofac = disclosures.ofac ?? false;
+
+  if (minimumAge !== 0 && minimumAge !== 18 && minimumAge !== 21) {
+    throw new Error(
+      `Unsupported minimumAge: ${String(minimumAge)}. Expected 0 (no age gate), 18 or 21.`,
+    );
+  }
 
   if (minimumAge === 18 && ofac) return 4;
   if (minimumAge === 21 && ofac) return 5;
@@ -131,7 +135,8 @@ function toConfigIndex(disclosures: RegistrationDisclosures): number {
 }
 
 /**
- * Validates that a config index is an integer in the range 0..5.
+ * Validate that a config index is an integer in the range 0..5.
+ *
  * @param idx - The config index to validate.
  * @throws If the index is out of range.
  */
@@ -142,7 +147,8 @@ function assertConfigIndex(idx: number): void {
 }
 
 /**
- * Normalizes an ECDSA recovery parameter to the canonical 27/28 form.
+ * Normalize an ECDSA recovery parameter to the canonical 27/28 form.
+ *
  * @param v - Recovery parameter (0, 1, 27, or 28).
  * @returns Normalized v (27 or 28).
  * @throws If v is not a recognized recovery value.
@@ -154,10 +160,11 @@ function normalizeV(v: number): number {
 }
 
 /**
- * Extracts or normalizes r/s/v signature parts from a full hex signature string
- * or an existing parts object.
+ * Split a full hex signature into r/s/v, or normalize an existing parts object.
+ *
  * @param signature - Full hex signature or pre-split parts.
  * @returns Normalized signature parts with canonical v.
+ * @throws If the signature is malformed or v is not 0/1/27/28.
  */
 function signatureParts(
   signature: string | RegistrationSignatureParts,
@@ -175,16 +182,19 @@ function signatureParts(
 }
 
 /**
- * Returns the lowercase hex representation of an address without the 0x prefix.
+ * Return the lowercase hex of an address without the 0x prefix.
+ *
  * @param address - Ethereum address.
  * @returns 40-character lowercase hex string.
+ * @throws If the address is invalid.
  */
 function addressHex(address: string): string {
   return normalizeAddress(address).slice(2).toLowerCase();
 }
 
 /**
- * Converts a config index to its single-digit ASCII representation after validation.
+ * Convert a config index to its single-digit ASCII form after validation.
+ *
  * @param configIndex - Config index (0..5).
  * @returns Single-character string ("0".."5").
  * @throws If the config index is invalid.
@@ -195,7 +205,8 @@ function configDigit(configIndex: number): string {
 }
 
 /**
- * Encodes a single integer (0..255) as a one-byte Uint8Array.
+ * Encode a single integer (0..255) as a one-byte Uint8Array.
+ *
  * @param value - Integer in the range 0..255.
  * @returns Single-element Uint8Array.
  * @throws If the value is not a valid unsigned byte.
@@ -208,7 +219,8 @@ function numberToOneByte(value: number): Uint8Array {
 }
 
 /**
- * Decodes a hex string into a Uint8Array, asserting exactly 32 bytes.
+ * Decode a hex string into a Uint8Array, asserting exactly 32 bytes.
+ *
  * @param value - Hex-encoded 32-byte value (with or without 0x prefix).
  * @returns 32-byte Uint8Array.
  * @throws If the decoded length is not exactly 32.
@@ -222,9 +234,11 @@ function bytes32(value: string): Uint8Array {
 }
 
 /**
- * Returns the on-chain verification config index for the given disclosure requirements.
+ * Return the on-chain verification config index for the given disclosure requirements.
+ *
  * @param disclosures - Disclosure requirements (defaults to no age gate, no OFAC).
  * @returns Config index in range 0..5.
+ * @throws If `minimumAge` is not 0, 18 or 21.
  */
 export function getRegistrationConfigIndex(
   disclosures: RegistrationDisclosures = {},
@@ -233,13 +247,14 @@ export function getRegistrationConfigIndex(
 }
 
 /**
- * Computes the keccak256 challenge hash that an agent must sign to prove
+ * Compute the keccak256 challenge hash that an agent must sign to prove
  * ownership of its private key during advanced/wallet-free registration.
  *
  * The hash is `keccak256(abi.encodePacked("self-agent-id:register:", human, chainId, registry, nonce))`.
  *
  * @param input - Human address, chain ID, registry address, and agent nonce.
  * @returns The 32-byte keccak256 hash as a hex string.
+ * @throws If either address is invalid.
  */
 export function computeRegistrationChallengeHash(
   input: RegistrationChallengeInput,
@@ -258,11 +273,12 @@ export function computeRegistrationChallengeHash(
 }
 
 /**
- * Signs the registration challenge hash with the given agent private key.
+ * Sign the registration challenge hash (EIP-191 personal sign) with the agent's private key.
  *
  * @param agentPrivateKey - Hex-encoded private key of the agent wallet.
- * @param input - Challenge input containing human address, chain ID, and registry address.
- * @returns The signed challenge including message hash, full signature, r/s/v parts, and agent address.
+ * @param input - Human address, chain ID, registry address and agent nonce.
+ * @returns The signed challenge: message hash, full signature, r/s/v parts and agent address.
+ * @throws If the private key or an address is invalid.
  */
 export async function signRegistrationChallenge(
   agentPrivateKey: string,
@@ -284,11 +300,12 @@ export async function signRegistrationChallenge(
 }
 
 /**
- * Builds ASCII-encoded userData for a simple (self-custody) registration.
+ * Build ASCII userData for a simple registration (agent key = human wallet address).
  * Format: `"R" + configDigit`.
  *
  * @param disclosures - Disclosure requirements (defaults to none).
  * @returns Two-character ASCII userData string.
+ * @throws If `minimumAge` is not 0, 18 or 21.
  */
 export function buildSimpleRegisterUserDataAscii(
   disclosures: RegistrationDisclosures = {},
@@ -298,11 +315,12 @@ export function buildSimpleRegisterUserDataAscii(
 }
 
 /**
- * Builds ASCII-encoded userData for a simple (self-custody) deregistration.
+ * Build ASCII userData for a simple deregistration (also used to deregister wallet-free agents).
  * Format: `"D" + configDigit`.
  *
  * @param disclosures - Disclosure requirements (defaults to none).
  * @returns Two-character ASCII userData string.
+ * @throws If `minimumAge` is not 0, 18 or 21.
  */
 export function buildSimpleDeregisterUserDataAscii(
   disclosures: RegistrationDisclosures = {},
@@ -312,13 +330,15 @@ export function buildSimpleDeregisterUserDataAscii(
 }
 
 /**
- * Builds ASCII-encoded userData for an advanced (linked) registration.
+ * Build ASCII userData for an advanced (linked) registration.
  * Format: `"K" + configDigit + agentAddressHex(40) + r(64) + s(64) + v(2)`.
  *
+ * @param params - Encoder input.
  * @param params.agentAddress - The delegated agent's Ethereum address.
- * @param params.signature - Full hex signature or pre-split r/s/v parts.
+ * @param params.signature - Agent's signature over the registration challenge (hex or r/s/v parts).
  * @param params.disclosures - Disclosure requirements (defaults to none).
  * @returns ASCII userData string (172 characters).
+ * @throws If the address or signature is invalid, or `minimumAge` is not 0, 18 or 21.
  */
 export function buildAdvancedRegisterUserDataAscii(params: {
   agentAddress: string;
@@ -338,6 +358,16 @@ export function buildAdvancedRegisterUserDataAscii(params: {
   );
 }
 
+/**
+ * Build ASCII userData for an advanced (linked) deregistration.
+ * Format: `"X" + configDigit + agentAddressHex(40)`.
+ *
+ * @param params - Encoder input.
+ * @param params.agentAddress - The agent's Ethereum address.
+ * @param params.disclosures - Disclosure requirements (defaults to none).
+ * @returns ASCII userData string (42 characters).
+ * @throws If the address is invalid, or `minimumAge` is not 0, 18 or 21.
+ */
 export function buildAdvancedDeregisterUserDataAscii(params: {
   agentAddress: string;
   disclosures?: RegistrationDisclosures;
@@ -348,6 +378,18 @@ export function buildAdvancedDeregisterUserDataAscii(params: {
   );
 }
 
+/**
+ * Build ASCII userData for a wallet-free registration (the agent owns its own NFT).
+ * Format: `"W" + configDigit + agentAddressHex(40) + guardianHex(40) + r(64) + s(64) + v(2)`.
+ *
+ * @param params - Encoder input.
+ * @param params.agentAddress - The agent's Ethereum address.
+ * @param params.guardianAddress - Optional guardian address (zero address when omitted).
+ * @param params.signature - Agent's signature over the registration challenge (hex or r/s/v parts).
+ * @param params.disclosures - Disclosure requirements (defaults to none).
+ * @returns ASCII userData string (212 characters).
+ * @throws If an address or the signature is invalid, or `minimumAge` is not 0, 18 or 21.
+ */
 export function buildWalletFreeRegisterUserDataAscii(params: {
   agentAddress: string;
   guardianAddress?: string;
@@ -371,6 +413,13 @@ export function buildWalletFreeRegisterUserDataAscii(params: {
   );
 }
 
+/**
+ * Build binary userData for a simple registration: `0x01 + configIndex`.
+ *
+ * @param disclosures - Disclosure requirements (defaults to none).
+ * @returns 2-byte hex string.
+ * @throws If `minimumAge` is not 0, 18 or 21.
+ */
 export function buildSimpleRegisterUserDataBinary(
   disclosures: RegistrationDisclosures = {},
 ): string {
@@ -382,6 +431,13 @@ export function buildSimpleRegisterUserDataBinary(
   ]);
 }
 
+/**
+ * Build binary userData for a simple deregistration: `0x02 + configIndex`.
+ *
+ * @param disclosures - Disclosure requirements (defaults to none).
+ * @returns 2-byte hex string.
+ * @throws If `minimumAge` is not 0, 18 or 21.
+ */
 export function buildSimpleDeregisterUserDataBinary(
   disclosures: RegistrationDisclosures = {},
 ): string {
@@ -393,6 +449,17 @@ export function buildSimpleDeregisterUserDataBinary(
   ]);
 }
 
+/**
+ * Build binary userData for an advanced (linked) registration:
+ * `0x03 + configIndex + agentAddress(20) + r(32) + s(32) + v(1)`.
+ *
+ * @param params - Encoder input.
+ * @param params.agentAddress - The delegated agent's Ethereum address.
+ * @param params.signature - Agent's signature over the registration challenge (hex or r/s/v parts).
+ * @param params.disclosures - Disclosure requirements (defaults to none).
+ * @returns 87-byte hex string.
+ * @throws If the address or signature is invalid, or `minimumAge` is not 0, 18 or 21.
+ */
 export function buildAdvancedRegisterUserDataBinary(params: {
   agentAddress: string;
   signature: string | RegistrationSignatureParts;
@@ -412,6 +479,16 @@ export function buildAdvancedRegisterUserDataBinary(params: {
   ]);
 }
 
+/**
+ * Build binary userData for an advanced (linked) deregistration:
+ * `0x04 + configIndex + agentAddress(20)`.
+ *
+ * @param params - Encoder input.
+ * @param params.agentAddress - The agent's Ethereum address.
+ * @param params.disclosures - Disclosure requirements (defaults to none).
+ * @returns 22-byte hex string.
+ * @throws If the address is invalid, or `minimumAge` is not 0, 18 or 21.
+ */
 export function buildAdvancedDeregisterUserDataBinary(params: {
   agentAddress: string;
   disclosures?: RegistrationDisclosures;
@@ -426,6 +503,18 @@ export function buildAdvancedDeregisterUserDataBinary(params: {
   ]);
 }
 
+/**
+ * Build binary userData for a wallet-free registration:
+ * `0x05 + configIndex + agentAddress(20) + guardian(20) + r(32) + s(32) + v(1)`.
+ *
+ * @param params - Encoder input.
+ * @param params.agentAddress - The agent's Ethereum address.
+ * @param params.guardianAddress - Optional guardian address (zero address when omitted).
+ * @param params.signature - Agent's signature over the registration challenge (hex or r/s/v parts).
+ * @param params.disclosures - Disclosure requirements (defaults to none).
+ * @returns 107-byte hex string.
+ * @throws If an address or the signature is invalid, or `minimumAge` is not 0, 18 or 21.
+ */
 export function buildWalletFreeRegisterUserDataBinary(params: {
   agentAddress: string;
   guardianAddress?: string;

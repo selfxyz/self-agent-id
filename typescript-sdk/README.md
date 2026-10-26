@@ -1,327 +1,162 @@
 # @selfxyz/agent-sdk
 
-TypeScript SDK for [Self Agent ID](https://agent-api.self.xyz) — on-chain AI agent identity with proof-of-human verification.
-
-Sign requests in TypeScript, verify in Python or Rust, or vice versa. The signing protocol is language-agnostic — all SDKs produce identical signatures.
-
-## Install
+TypeScript SDK for [Self Agent ID](https://agent-api.self.xyz): give an AI agent a human-backed on-chain identity, sign its HTTP requests, and verify those requests in your service. Includes the `self-agent` CLI.
 
 ```bash
 npm install @selfxyz/agent-sdk
 ```
 
-## Agent Side — Sign Requests
+Version 0.3.0 (breaking changes: [CHANGELOG.md](CHANGELOG.md)). Default network is `mainnet` (Celo, 42220); pass `network: "testnet"` for Celo Sepolia (11142220).
 
-```typescript
-import { SelfAgent } from "@selfxyz/agent-sdk";
+## Agent side: sign requests
 
-const agent = new SelfAgent({ privateKey: "0x..." });
+```ts
+import { SelfAgent, Ed25519Agent } from "@selfxyz/agent-sdk";
 
-// Sign a request (returns auth headers)
-const headers = await agent.signRequest(
-  "POST",
-  "https://api.example.com/data",
-  '{"query":"test"}',
-);
+const agent = new SelfAgent({ privateKey: "0x...", network: "testnet" });
+// or: new Ed25519Agent({ privateKey: "<64 hex chars>", network: "testnet" })
 
-// Or use the built-in HTTP client (auto-signs)
-const response = await agent.fetch("https://api.example.com/data", {
+const res = await agent.fetch("https://api.example.com/data", {
   method: "POST",
-  body: JSON.stringify({ query: "test" }),
+  body: JSON.stringify({ q: "test" }), // string bodies default to application/json
 });
+const headers = await agent.signRequest("GET", "https://api.example.com/x"); // just the headers
 
-// Check on-chain status
-console.log(await agent.isRegistered()); // true/false
-console.log(await agent.getInfo()); // { agentId, isVerified, ... }
+const info = await agent.getInfo();
+// info.isVerified === info.hasHumanProof && info.isProofFresh
 ```
 
-### Agent Properties
+| Method (`SelfAgent`)                                               | Returns                                                                                                                                                       |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `address`, `agentKey`                                              | EVM address; bytes32 registry key (`zeroPad(address, 32)`)                                                                                                    |
+| `fetch(url, init?)` / `signRequest(method, url, body?)`            | Signed `Response` / the `x-self-agent-*` headers                                                                                                              |
+| `isRegistered()`                                                   | A human proof was recorded (stays `true` after it expires)                                                                                                    |
+| `getInfo()`                                                        | `agentId`, `isVerified`, `hasHumanProof`, `isProofFresh`, `proofExpiresAt`, `daysUntilExpiry`, `isExpiringSoon`, `nullifier`, `agentCount`, `siblingAgentIds` |
+| `getCredentials()` / `getCredentialsFromApi()`                     | ZK-attested credentials (nationality, `olderThan`, `ofac`, …), on-chain / via the API                                                                         |
+| `getVerificationStrength()`                                        | 0–100 (100 = passport)                                                                                                                                        |
+| `getAgentCard()` / `setAgentCard(fields)` / `toAgentCardDataURI()` | Read / write (tx, NFT owner only, needs CELO) / data URI of the A2A card                                                                                      |
+| `requestDeregistration({ disclosures? })`                          | Deregistration session for this agent                                                                                                                         |
 
-```typescript
-agent.address; // Ethereum address (e.g. "0xf39F...")
-agent.agentKey; // bytes32 zero-padded address for on-chain lookups
-```
+`Ed25519Agent` has `address`, `agentKey` (the raw pubkey), `fetch`, `signRequest`, `isRegistered`, `getInfo` and `Ed25519Agent.deriveAddress(pubkey)`. `setAgentCard` throws unless the agent key owns its NFT (wallet-free agents); for linked agents the human's wallet calls `updateAgentMetadata`.
 
-### Credentials
+## Service side: verify requests
 
-```typescript
-// Fetch ZK-attested credentials (nationality, age, OFAC, etc.)
-const creds = await agent.getCredentials();
-// { issuingState, name, nationality, dateOfBirth, olderThan, ofac, ... }
-
-const strength = await agent.getVerificationStrength();
-// 0 = unverified, 1 = basic, 2 = standard, 3 = enhanced
-```
-
-## Service Side — Verify Requests
-
-```typescript
+```ts
+import express from "express";
 import { SelfAgentVerifier } from "@selfxyz/agent-sdk";
 
-const verifier = new SelfAgentVerifier(); // mainnet by default
-
-const result = await verifier.verify({
-  signature: req.headers["x-self-agent-signature"],
-  timestamp: req.headers["x-self-agent-timestamp"],
-  method: req.method,
-  url: req.path,
-  body: req.body,
-});
-
-if (result.valid) {
-  console.log(`Verified agent: ${result.agentAddress}`);
-  console.log(`Agent ID: ${result.agentId}`);
-}
-```
-
-### VerifierBuilder
-
-Chainable API for configuring verification requirements:
-
-```typescript
-import { VerifierBuilder } from "@selfxyz/agent-sdk";
-
-const verifier = VerifierBuilder.create()
-  .network("mainnet")
+const verifier = SelfAgentVerifier.create()
+  .network("testnet")
   .requireAge(18)
   .requireOFAC()
-  .requireNationality("US", "GB", "DE")
-  .requireSelfProvider()
-  .sybilLimit(1)
-  .rateLimit({ perMinute: 60, perHour: 1000 })
-  .replayProtection()
-  .includeCredentials()
-  .maxAge(300_000) // 5 min timestamp window
-  .cacheTtl(60_000) // 1 min cache
+  .sybilLimit(3)
   .build();
-```
 
-### Express Middleware
-
-```typescript
-const verifier = SelfAgentVerifier.create().requireAge(18).build();
-
+const app = express();
+// Signatures cover the exact body bytes: keep them as req.rawBody.
+// A request with a body but no raw body gets a 500; an RPC failure gets a 503.
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as { rawBody?: Buffer }).rawBody = buf;
+    },
+  }),
+);
 app.post("/api/data", verifier.auth(), (req, res) => {
-  const agent = req.verifiedAgent; // VerificationResult
-  res.json({ agentId: agent.agentId.toString() });
+  res.json({ agentId: req.agent!.agentId.toString() }); // req.agent: VerifiedAgent
 });
 ```
 
-### Static Factory
+Without Express, call `verifier.verify({ signature, timestamp, method, url, body, keytype?, agentKey? })` with the raw header values, `url` as path + query and `body` as the raw string. It returns `{ valid, agentAddress, agentId, error?, credentials?, … }`.
 
-```typescript
-// From a flat config object (useful for env-driven config)
-const verifier = SelfAgentVerifier.fromConfig({
-  network: "mainnet",
-  requireAge: 18,
-  requireOFAC: true,
-  sybilLimit: 1,
-});
-```
+| Builder method                                     | Effect                                                | Default       |
+| -------------------------------------------------- | ----------------------------------------------------- | ------------- |
+| `.network(name)` / `.registry(addr)` / `.rpc(url)` | Chain to read                                         | `mainnet`     |
+| `.requireAge(n)` / `.requireOFAC()`                | Credential policy (auto-fetches credentials)          | off           |
+| `.requireNationality(...codes)`                    | ISO alpha-3 as on the passport, e.g. `"USA"`, `"GBR"` | off           |
+| `.requireSelfProvider(enabled?)`                   | Proof must come from Self's provider                  | on            |
+| `.sybilLimit(n)`                                   | Max agents per human (`0` = unlimited)                | `1`           |
+| `.rateLimit({ perMinute?, perHour? })`             | Per-agent in-memory sliding window                    | off           |
+| `.replayProtection(enabled?)`                      | Reject reused signatures (10k-entry cache)            | on            |
+| `.includeCredentials()`                            | Attach credentials to the result                      | off           |
+| `.maxAge(ms)` / `.cacheTtl(ms)`                    | Timestamp window / on-chain cache TTL                 | 5 min / 1 min |
 
-## Proof Expiry & Refresh
+Same options as a flat object: `SelfAgentVerifier.fromConfig({ network, requireAge, requireOFAC, requireNationality, sybilLimit, rateLimit, … })`, or `new SelfAgentVerifier(config)`.
 
-Human proofs expire after `maxProofAge` (default: 365 days) or at passport document expiry, whichever is sooner. The expiry timestamp is set on-chain at registration.
+Check order: timestamp → signature → replay → on-chain `isVerifiedAgent` + `isProofFresh` → provider → sybil → credentials (age, OFAC, nationality) → rate limit. Typical errors: `Timestamp expired or invalid`, `Invalid signature`, `Agent not verified on-chain`, `Agent's human proof has expired`.
 
-```typescript
-// Check proof freshness
-const info = await agent.getInfo();
-console.log(info.proofExpiresAt); // unix seconds, 0 if unregistered
+`verifyAgent(agentKey, { network })` (or `{ chainId, registryAddress }` for a custom deployment) is a signature-free on-chain check returning `{ verified, agentId, expiresAt }` or `{ verified: false, reason: "NOT_REGISTERED" | "NO_HUMAN_PROOF" | "PROOF_EXPIRED", reauthUrl? }`. Like everywhere else, verified = `hasHumanProof && isProofFresh` (the registry's view, not the local clock).
 
-// Built-in 30-day warning
-import { isProofExpiringSoon } from "@selfxyz/agent-sdk";
-if (isProofExpiringSoon(info.proofExpiresAt)) {
-  console.warn("Proof expiring soon — prompt human to re-verify");
-}
-```
+## Registration, refresh, deregistration (REST)
 
-**Verifier-side:** The verifier returns `reason: "PROOF_EXPIRED"` when an agent's proof has lapsed. Services should return a clear error guiding the agent to re-register.
+```ts
+import { requestRegistration, requestProofRefresh } from "@selfxyz/agent-sdk";
 
-**Refreshing:** There is no in-place refresh. Deregister (burn NFT) → re-register (new passport scan, new agentId, fresh expiry):
-
-```typescript
-await agent.requestDeregistration(); // human confirms via Self app
-// ... after completion:
-const session = await agent.requestRegistration({ minimumAge: 18, ofac: true });
-```
-
-## A2A Agent Card
-
-Publish machine-readable identity metadata for agent-to-agent discovery:
-
-```typescript
-// Read the on-chain agent card
-const card = await agent.getAgentCard();
-// { name, description, selfProtocol: { agentId, verificationStrength, trustModel, ... } }
-
-// Set or update the agent card (writes on-chain)
-const txHash = await agent.setAgentCard({
-  name: "My Agent",
-  description: "An AI assistant with verified identity",
-  url: "https://myagent.example.com",
-  skills: [{ name: "search", description: "Web search" }],
-});
-
-// Generate a data URI for embedding
-const dataUri = await agent.toAgentCardDataURI();
-```
-
-## Registration Helpers
-
-Build the `userDefinedData` strings that Self Protocol expects during registration:
-
-```typescript
-import {
-  getRegistrationConfigIndex,
-  computeRegistrationChallengeHash,
-  signRegistrationChallenge,
-  buildSimpleRegisterUserDataAscii,
-  buildSimpleDeregisterUserDataAscii,
-  buildAdvancedRegisterUserDataAscii,
-  buildAdvancedDeregisterUserDataAscii,
-  buildWalletFreeRegisterUserDataAscii,
-} from "@selfxyz/agent-sdk";
-
-// Config index maps disclosure flags to one of 6 on-chain configs
-getRegistrationConfigIndex({ minimumAge: 18, ofac: true }); // 4
-
-// Simple mode (self-custody) — human IS the agent
-buildSimpleRegisterUserDataAscii({ minimumAge: 18 }); // "R1"
-buildSimpleDeregisterUserDataAscii({ minimumAge: 18 }); // "D1"
-
-// Advanced mode (linked) — agent has own keypair
-const signed = await signRegistrationChallenge("0xagentPrivKey", {
-  humanIdentifier: "0xhumanAddr",
-  chainId: 11142220,
-  registryAddress: "0x29d94...",
-});
-
-buildAdvancedRegisterUserDataAscii({
-  agentAddress: signed.agentAddress,
-  signature: signed, // or { r, s, v }
-  disclosures: { minimumAge: 18, ofac: true },
-}); // "K4{addr}{r}{s}{v}"
-
-// Wallet-free mode — agent acts as guardian
-buildWalletFreeRegisterUserDataAscii({
-  agentAddress: "0xagent",
-  guardianAddress: "0xguardian",
-  signature: signed,
-  disclosures: { minimumAge: 18 },
-}); // "W1{agent}{guardian}{r}{s}{v}"
-```
-
-## REST Registration API
-
-Programmatic registration without the CLI:
-
-Set `SELF_AGENT_API_BASE` to override the default hosted API base.
-
-```typescript
-import { requestRegistration, requestDeregistration } from "@selfxyz/agent-sdk";
-
-// Start a registration session
 const session = await requestRegistration({
-  mode: "linked",
-  network: "mainnet",
+  mode: "wallet-free", // see modes below
+  network: "testnet",
   disclosures: { minimumAge: 18, ofac: true },
-  agentName: "My Agent",
 });
+console.log(session.scanUrl, session.humanInstructions); // show to the human
+const { agentId, agentAddress } = await session.waitForCompletion(); // { timeoutMs?, pollIntervalMs? }
+const privateKey = await session.exportKey(); // EVM modes only
 
-console.log(session.deepLink); // URL for the human to open
-console.log(session.humanInstructions); // Steps for the human
-
-// Wait for completion (polls on-chain)
-const result = await session.waitForCompletion({ timeoutMs: 300_000 });
-console.log(result.agentId); // On-chain agent ID
-console.log(result.agentAddress); // Agent's address
-
-// Export the generated private key
-const privateKey = await session.exportKey();
-
-// Deregister
-const deregSession = await requestDeregistration({
-  network: "mainnet",
-  agentAddress: "0x...",
-  agentPrivateKey: "0x...",
-});
-await deregSession.waitForCompletion();
+const refresh = await requestProofRefresh({ agentId, network: "testnet" }); // same disclosures as registration
+const { proofExpiresAt } = await refresh.waitForCompletion();
 ```
+
+- **Modes** (`RegistrationMode`): `linked`, `wallet-free`, `privy`, `smartwallet` (server generates an exportable key; all but `wallet-free` need `humanAddress`) and `ed25519`, `ed25519-linked` (your own key: pass `ed25519Pubkey` + `ed25519Signature` over the challenge; nothing to export). Details: [mode table](../README.md#registration-modes).
+- **Deregister**: `agent.requestDeregistration()` or `requestDeregistration({ network, agentAddress, disclosures? })`, then `waitForCompletion()`.
+- **Lookups**: `getAgentInfo(agentId, { network })`, `getAgentsForHuman(address, { network })` (also static on `SelfAgent`).
+- **Sessions**: tokens go in `Authorization: Bearer` and rotate on each poll; the SDK tracks the latest. Defaults: 30 min timeout, 5 s polling.
+- **Errors**: failed calls throw `RegistrationError` (with HTTP `status`, e.g. 404); an expired session throws `ExpiredSessionError`.
 
 ## CLI
 
-Interactive registration via the command line:
+Supports `linked` and `wallet-free`; the agent key is generated locally and completion is read from the chain. Spec: [docs/CLI_REGISTRATION.md](../docs/CLI_REGISTRATION.md).
+
+**The CLI defaults to `--network testnet`** (Celo Sepolia), while the SDK classes default to `mainnet`. Pass `--network mainnet` for production agents.
 
 ```bash
-# Register an agent (linked mode)
-npx self-agent register init --mode linked --human-address 0x... --network testnet
-npx self-agent register open --session .self/session.json
-npx self-agent register wait --session .self/session.json
-
-# Deregister
-npx self-agent deregister init --mode linked --human-address 0x... --agent-address 0x... --network testnet
-npx self-agent deregister open --session .self/session.json
-npx self-agent deregister wait --session .self/session.json
-
-# Export private key (requires --unsafe flag)
-npx self-agent register export --session .self/session.json --unsafe --print-private-key
+npx self-agent register init --mode linked --human-address 0x... --network testnet --out .self/session.json
+npx self-agent register open   --session .self/session.json   # prints the QR URL
+npx self-agent register wait   --session .self/session.json   # --timeout-seconds 1800
+npx self-agent register export --session .self/session.json --unsafe --print-private-key   # or --out-key FILE
+npx self-agent deregister init --mode linked --human-address 0x... --agent-address 0x... --out .self/dereg.json
 ```
 
-**Registration modes:**
+`register status` / `deregister open|wait|status` work the same way. Init flags include `--minimum-age 0|18|21`, `--ofac`, `--ttl-minutes` (30), `--chain`/`--registry`/`--rpc` for custom chains. Session files are written with mode 0600.
 
-| Mode             | Description                               | `userDefinedData`                 |
-| ---------------- | ----------------------------------------- | --------------------------------- |
-| `self-custody`   | Human address = agent address             | `R{cfg}`                          |
-| `linked`         | Agent has own keypair, signed challenge   | `K{cfg}{addr}{r}{s}{v}`           |
-| `wallet-free`    | Agent as guardian, no human wallet needed | `W{cfg}{addr}{guardian}{r}{s}{v}` |
-| `ed25519`        | Ed25519 wallet-free agent                 | `W{cfg}{addr}{guardian}{r}{s}{v}` |
-| `ed25519-linked` | Ed25519 agent linked to human wallet      | `K{cfg}{addr}{r}{s}{v}`           |
-| `smartwallet`    | ZeroDev Kernel + passkeys                 | Smart wallet template             |
+`wait` exits `0` on success, `2` when `--timeout-seconds` elapses (the session is not marked expired; run `wait` again until its `expiresAt`), and `1` on other errors, including an expired session.
+
+## Public API
+
+| Area              | Exports                                                                                                                                                                                                             |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agents            | `SelfAgent`, `Ed25519Agent`                                                                                                                                                                                         |
+| Verification      | `SelfAgentVerifier`, `VerifierBuilder`, `verifyAgent`, `isProofExpiringSoon`, `EXPIRY_WARNING_THRESHOLD_SECS`, `computeSigningMessage`                                                                              |
+| REST flows        | `requestRegistration`, `requestDeregistration`, `requestProofRefresh`, `getAgentInfo`, `getAgentsForHuman`, `RegistrationError`, `ExpiredSessionError`                                                              |
+| `userDefinedData` | `getRegistrationConfigIndex`, `computeRegistrationChallengeHash`, `signRegistrationChallenge`, `build{Simple,Advanced}{Register,Deregister}UserData{Ascii,Binary}`, `buildWalletFreeRegisterUserData{Ascii,Binary}` |
+| Agent cards       | `buildAgentCard`, `generateRegistrationJSON`, `getProviderLabel`, `getStrengthColor`, `PROVIDER_LABELS`, `A2A_PROTOCOL_VERSION`                                                                                     |
+| A2A (v0.3)        | `A2AClient`, `A2AServer` (`{ maxStoredTasks }`, default 1000, oldest evicted), `A2AError`, `A2AErrorCodes`                                                                                                          |
+| Constants         | `HEADERS`, `NETWORKS`, `DEFAULT_NETWORK`, `DEFAULT_REGISTRY_ADDRESS`, `DEFAULT_RPC_URL`, `REGISTRY_ABI`, `PROVIDER_ABI`, `typedRegistry`, `typedProvider`                                                           |
+
+Types are exported alongside (`AgentInfo`, `VerificationResult`, `VerifiedAgent`, `RegistrationRequest`, `RegistrationSession`, `NetworkName`, …).
 
 ## Configuration
 
-```typescript
-// Testnet
-const agent = new SelfAgent({ privateKey: "0x...", network: "testnet" });
-const verifier = new SelfAgentVerifier({ network: "testnet" });
+| Variable                                  | Default                          | Used by                                                    |
+| ----------------------------------------- | -------------------------------- | ---------------------------------------------------------- |
+| `SELF_AGENT_API_BASE`                     | `https://agent-api.self.xyz`     | REST flows (or pass `apiBase`)                             |
+| `SELF_AGENT_APP_URL`                      | `https://agent-api.self.xyz`     | CLI: API that renders the `/cli/register` QR (`--app-url`) |
+| `SELF_AGENT_APP_NAME`, `SELF_AGENT_SCOPE` | `Self Agent ID`, `self-agent-id` | CLI overrides (`--app-name`, `--scope`)                    |
 
-// Custom overrides
-const verifier = new SelfAgentVerifier({
-  registryAddress: "0x...",
-  rpcUrl: "https://...",
-  maxAgentsPerHuman: 5,
-  requireSelfProvider: true,
-  includeCredentials: true,
-});
-```
+Explicit option > env var > default. `registryAddress` / `rpcUrl` options override the network on agents and verifiers.
 
-## Security Chain
+## Other languages
 
-The verifier implements an 11-step security chain:
-
-1. **Timestamp freshness** — reject stale requests (default: 5 min window)
-2. **Signature recovery** — derive agent address from ECDSA signature
-3. **Agent key derivation** — `zeroPad(address, 32)` for on-chain lookup
-4. **On-chain verification** — `isVerifiedAgent(agentKey)` confirms human backing
-5. **Provider check** — ensures proof came from Self Protocol, not a third party
-6. **Sybil resistance** — limits agents per human (default: 1)
-7. **Replay protection** — reject duplicate `(signature, timestamp)` pairs
-8. **Credential validation** — verify ZK-attested credentials if configured
-9. **Age verification** — enforce minimum age from passport proof
-10. **OFAC screening** — verify agent passed sanctions screening
-11. **Rate limiting** — per-agent request throttling
-
-## Cross-Language Compatibility
-
-This SDK is 100% compatible with the Rust SDK (`self-agent-sdk`) and Python SDK (`selfxyz-agent-sdk`). All three produce byte-identical signatures and `userDefinedData` payloads for the same inputs.
-
-## Networks
-
-| Network                | Registry                                     | Chain ID |
-| ---------------------- | -------------------------------------------- | -------- |
-| Mainnet (Celo)         | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` | 42220    |
-| Testnet (Celo Sepolia) | `0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379` | 11142220 |
+There is only this SDK. To verify without it: recompute `keccak256(timestamp + METHOD + pathWithQuery + keccak256(body))` (`keccak256("")` for no body), recover the EIP-191 signer of that 32-byte digest from `x-self-agent-signature`, reject timestamps older than 5 min, then require `isVerifiedAgent(zeroPad(signer, 32))` and `isProofFresh(getAgentId(...))` on the registry. To register, call the [REST API](../docs/api-docs.md).
 
 ## License
 
-Business Source License 1.1 (`BUSL-1.1`). See [../LICENSE](../LICENSE).
+[BUSL-1.1](../LICENSE).

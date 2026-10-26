@@ -1,3 +1,11 @@
+// SPDX-FileCopyrightText: 2025-2026 Social Connect Labs, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+// NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
+
+/**
+ * Result type for the standalone `verifyAgent()` helper, plus proof-expiry helpers.
+ */
+
 /**
  * Discriminated union result type for standalone `verifyAgent()`.
  *
@@ -17,11 +25,16 @@ export type VerifyResult =
     };
 
 /** Seconds before expiry at which the proof is considered "expiring soon" (30 days). */
-export const EXPIRY_WARNING_THRESHOLD_SECS = 30 * 24 * 60 * 60; // 30 days
+export const EXPIRY_WARNING_THRESHOLD_SECS = 30 * 24 * 60 * 60;
 
 /**
- * Returns true if the proof expires within the warning threshold and has not
- * yet expired. Use this to prompt users to re-authenticate proactively.
+ * Check whether a proof is still valid but expires within the warning threshold.
+ *
+ * Use this to prompt users to re-authenticate before the proof lapses.
+ *
+ * @param expiresAt - When the human proof expires.
+ * @param thresholdSecs - Warning window in seconds (default 30 days).
+ * @returns True if `expiresAt` is in the future and less than `thresholdSecs` away.
  */
 export function isProofExpiringSoon(
   expiresAt: Date,

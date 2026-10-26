@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
+/** Tests for constructing SelfAgent from an ethers Signer. */
+
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { ethers } from "ethers";

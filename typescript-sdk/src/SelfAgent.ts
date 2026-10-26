@@ -2,14 +2,22 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
+/**
+ * `SelfAgent`: agent-side SDK for secp256k1 (Ethereum key) agents.
+ *
+ * Signs outgoing HTTP requests, reads on-chain status and manages the A2A
+ * Agent Card. Ed25519 agents use `Ed25519Agent` instead.
+ */
+
 import { ethers } from "ethers";
 import { HEADERS, NETWORKS, DEFAULT_NETWORK } from "./constants";
 import type { NetworkName } from "./constants";
 import type { A2AAgentCard, AgentSkill } from "./agentCard";
 import { buildAgentCard } from "./agentCard";
-import { computeSigningMessage } from "./signing";
+import { computeSigningMessage, withAgentHeaders } from "./signing";
 import type {
   RegistrationRequest,
+  RegistrationDisclosureRequest,
   RegistrationSession,
   DeregistrationSession,
   ApiAgentInfo,
@@ -27,6 +35,9 @@ import {
   typedRegistry,
   type TypedRegistryContract,
 } from "./contract-types";
+import { readAgentInfo, type AgentInfo } from "./agent-info";
+
+/** Constructor options for `SelfAgent`. Provide `privateKey` or `signer`. */
 export interface SelfAgentConfig {
   /** Agent's private key (hex, with or without 0x). Required unless signer is provided. */
   privateKey?: string;
@@ -40,20 +51,6 @@ export interface SelfAgentConfig {
   rpcUrl?: string;
 }
 
-export interface AgentInfo {
-  address: string;
-  agentKey: string;
-  agentId: bigint;
-  isVerified: boolean;
-  nullifier: bigint;
-  agentCount: bigint;
-  proofExpiresAt: bigint;
-  isProofFresh: boolean;
-  daysUntilExpiry: number;
-  isExpiringSoon: boolean;
-  siblingAgentIds: bigint[];
-}
-
 /**
  * Agent-side SDK for Self Agent ID.
  *
@@ -63,16 +60,14 @@ export interface AgentInfo {
  * For off-chain authentication, the agent signs each request with its private key.
  * Services verify the signature, recover the signer address, and check on-chain status.
  *
- * Usage:
+ * @example
  * ```ts
- * // Mainnet (default)
- * const agent = new SelfAgent({ privateKey: "0x..." });
- *
- * // Testnet
  * const agent = new SelfAgent({ privateKey: "0x...", network: "testnet" });
- *
- * const registered = await agent.isRegistered();
- * const response = await agent.fetch("https://api.example.com/data");
+ * const { isVerified } = await agent.getInfo();
+ * const res = await agent.fetch("https://api.example.com/data", {
+ *   method: "POST",
+ *   body: JSON.stringify({ q: "hello" }),
+ * });
  * ```
  */
 export class SelfAgent {
@@ -80,6 +75,12 @@ export class SelfAgent {
   private registry: TypedRegistryContract;
   private _agentKey: string;
 
+  /**
+   * Create an agent bound to a registry and RPC endpoint.
+   *
+   * @param config - Key (`privateKey` or `signer`) plus optional network / registry / RPC overrides.
+   * @throws If neither `privateKey` nor `signer` is given, or the private key is invalid.
+   */
   constructor(config: SelfAgentConfig) {
     if (!config.privateKey && !config.signer) {
       throw new Error("Either privateKey or signer must be provided");
@@ -98,75 +99,39 @@ export class SelfAgent {
       config.registryAddress ?? net.registryAddress,
       provider,
     );
-    // Agent key = address zero-padded to 32 bytes (matches on-chain derivation)
     this._agentKey = ethers.zeroPadValue(this.wallet.address, 32);
   }
 
-  /** The agent's on-chain key (bytes32) — zero-padded address */
+  /** The agent's on-chain key (bytes32): its address zero-padded to 32 bytes. */
   get agentKey(): string {
     return this._agentKey;
   }
 
-  /** The agent's Ethereum address */
+  /** The agent's Ethereum address. */
   get address(): string {
     return this.wallet.address;
   }
 
-  /** Check if this agent is registered and verified on-chain */
+  /**
+   * Check whether this agent is registered with a human proof.
+   *
+   * The proof may have expired; use `getInfo().isVerified` to also require a fresh proof.
+   *
+   * @returns The registry's `isVerifiedAgent` result.
+   * @throws If the RPC call fails.
+   */
   async isRegistered(): Promise<boolean> {
     return this.registry.isVerifiedAgent(this._agentKey);
   }
 
-  /** Get full agent info from the registry */
+  /**
+   * Read this agent's full on-chain status.
+   *
+   * @returns Agent ID, verification state, proof expiry and sibling agents.
+   * @throws If an RPC call fails.
+   */
   async getInfo(): Promise<AgentInfo> {
-    const agentId: bigint = await this.registry.getAgentId(this._agentKey);
-    if (agentId === 0n) {
-      return {
-        address: this.wallet.address,
-        agentKey: this._agentKey,
-        agentId: 0n,
-        isVerified: false,
-        nullifier: 0n,
-        agentCount: 0n,
-        proofExpiresAt: 0n,
-        isProofFresh: false,
-        daysUntilExpiry: -1,
-        isExpiringSoon: false,
-        siblingAgentIds: [],
-      };
-    }
-
-    const [isVerified, nullifier] = await Promise.all([
-      this.registry.hasHumanProof(agentId),
-      this.registry.getHumanNullifier(agentId),
-    ]);
-
-    const [agentCount, proofExpiresAt, isProofFresh, siblingAgentIds] =
-      await Promise.all([
-        this.registry.getAgentCountForHuman(nullifier),
-        this.registry.proofExpiresAt(agentId),
-        this.registry.isProofFresh(agentId),
-        this.registry.getAgentsForNullifier(nullifier),
-      ]);
-
-    const now = BigInt(Math.floor(Date.now() / 1000));
-    const daysUntilExpiry =
-      proofExpiresAt > 0n ? Number((proofExpiresAt - now) / 86400n) : -1;
-    const isExpiringSoon = daysUntilExpiry >= 0 && daysUntilExpiry <= 30;
-
-    return {
-      address: this.wallet.address,
-      agentKey: this._agentKey,
-      agentId,
-      isVerified,
-      nullifier,
-      agentCount,
-      proofExpiresAt,
-      isProofFresh,
-      daysUntilExpiry,
-      isExpiringSoon,
-      siblingAgentIds,
-    };
+    return readAgentInfo(this.registry, this.wallet.address, this._agentKey);
   }
 
   /**
@@ -174,8 +139,12 @@ export class SelfAgent {
    *
    * The service recovers the signer address from the signature,
    * converts it to a bytes32 agent key, and checks on-chain status.
+   * Signature covers: keccak256(timestamp + method + canonicalPathAndQuery + bodyHash).
    *
-   * Signature covers: keccak256(timestamp + method + canonicalPathAndQuery + bodyHash)
+   * @param method - HTTP method.
+   * @param url - Request URL (absolute or path; only path + query are signed).
+   * @param body - Request body exactly as it will be sent, if any.
+   * @returns The address, signature and timestamp headers.
    */
   async signRequest(
     method: string,
@@ -195,7 +164,14 @@ export class SelfAgent {
   }
 
   /**
-   * Wrapper around global fetch that automatically adds agent signature headers.
+   * Call global `fetch` with agent signature headers added.
+   *
+   * String bodies are signed and sent as `application/json` unless you set a
+   * Content-Type; non-string bodies are not covered by the signature.
+   *
+   * @param url - Request URL.
+   * @param options - Standard fetch options.
+   * @returns The fetch response.
    */
   async fetch(url: string, options: RequestInit = {}): Promise<Response> {
     const method = (options.method || "GET").toUpperCase();
@@ -205,16 +181,18 @@ export class SelfAgent {
     return globalThis.fetch(url, {
       ...options,
       method,
-      headers: {
-        ...Object.fromEntries(Object.entries(options.headers || {})),
-        ...headers,
-      },
+      headers: withAgentHeaders(options, headers),
     });
   }
 
   // ─── A2A Agent Card Methods ──────────────────────────────────────────────
 
-  /** Read the A2A Agent Card from on-chain metadata (if set) */
+  /**
+   * Read the A2A Agent Card from this agent's on-chain metadata.
+   *
+   * @returns The parsed card, or undefined if unregistered, unset or not a card.
+   * @throws If an RPC call fails.
+   */
   async getAgentCard(): Promise<A2AAgentCard | undefined> {
     const agentId: bigint = await this.registry.getAgentId(this._agentKey);
     if (agentId === 0n) return undefined;
@@ -240,9 +218,19 @@ export class SelfAgent {
   }
 
   /**
-   * Build and write an A2A Agent Card to on-chain metadata.
+   * Build an A2A Agent Card and write it to on-chain metadata.
    * Auto-populates selfProtocol fields from on-chain data.
-   * Returns the transaction hash.
+   *
+   * The registry only accepts metadata updates from the agent NFT's owner,
+   * which is the agent key only for wallet-free agents. For linked, privy and
+   * smartwallet agents the human's wallet owns the NFT, so this throws before
+   * sending a transaction; build the card with `buildAgentCard()` and submit
+   * `updateAgentMetadata` from the owner wallet instead.
+   *
+   * @param fields - Card name plus optional description, url and skills.
+   * @returns The transaction hash, after the transaction is mined.
+   * @throws If the agent is unregistered, is not the NFT owner, has no proof
+   *   provider, or the transaction fails.
    */
   async setAgentCard(fields: {
     name: string;
@@ -252,6 +240,15 @@ export class SelfAgent {
   }): Promise<string> {
     const agentId: bigint = await this.registry.getAgentId(this._agentKey);
     if (agentId === 0n) throw new Error("Agent not registered");
+
+    const owner: string = await this.registry.ownerOf(agentId);
+    if (owner.toLowerCase() !== this.wallet.address.toLowerCase()) {
+      throw new Error(
+        `setAgentCard must be sent by the agent NFT owner (${owner}), not the agent key. ` +
+          "For linked, privy and smartwallet agents the owner is the human's wallet: " +
+          "build the card with buildAgentCard() and call updateAgentMetadata from that wallet.",
+      );
+    }
 
     const providerAddr: string = await this.registry.getProofProvider(agentId);
     if (!providerAddr || providerAddr === ethers.ZeroAddress) {
@@ -277,16 +274,29 @@ export class SelfAgent {
     return tx.hash;
   }
 
-  /** Returns a data: URI containing the base64-encoded Agent Card JSON */
+  /**
+   * Encode the on-chain Agent Card as a base64 `data:` URI.
+   *
+   * The JSON is UTF-8 encoded first, so any Unicode (e.g. names, emoji) works.
+   *
+   * @returns `data:application/json;base64,...`.
+   * @throws If no card is set, or the registry RPC call fails.
+   */
   async toAgentCardDataURI(): Promise<string> {
     const card = await this.getAgentCard();
     if (!card) throw new Error("No A2A Agent Card set");
     const json = JSON.stringify(card);
-    const encoded = btoa(json);
+    // ethers' helpers work in Node and browsers, unlike btoa (Latin-1 only)
+    // or Buffer (Node only).
+    const encoded = ethers.encodeBase64(ethers.toUtf8Bytes(json));
     return `data:application/json;base64,${encoded}`;
   }
 
-  /** Read ZK-attested credentials for this agent from on-chain */
+  /**
+   * Read this agent's ZK-attested credentials from the registry.
+   *
+   * @returns The raw credentials struct, or undefined if unregistered or the call reverts.
+   */
   async getCredentials(): Promise<Record<string, unknown> | undefined> {
     const agentId: bigint = await this.registry.getAgentId(this._agentKey);
     if (agentId === 0n) return undefined;
@@ -300,7 +310,12 @@ export class SelfAgent {
     }
   }
 
-  /** Read the verification strength score from the provider that verified this agent */
+  /**
+   * Read the verification strength score from the provider that verified this agent.
+   *
+   * @returns The provider's strength (0-100), or 0 if unregistered or no provider.
+   * @throws If an RPC call fails.
+   */
   async getVerificationStrength(): Promise<number> {
     const agentId: bigint = await this.registry.getAgentId(this._agentKey);
     if (agentId === 0n) return 0;
@@ -318,21 +333,20 @@ export class SelfAgent {
   /**
    * Request agent registration through the Self Agent ID REST API.
    *
-   * Returns a session with a QR code / deep link for the human to scan,
-   * plus a `waitForCompletion()` method that polls until on-chain verification.
+   * Same as the standalone `requestRegistration()`.
    *
+   * @param opts - Mode, network, disclosures and mode-specific fields.
+   * @returns A session with a deep link / QR URL, `waitForCompletion()` and `exportKey()`.
+   * @throws RegistrationError if the API rejects the request.
+   *
+   * @example
    * ```ts
    * const session = await SelfAgent.requestRegistration({
    *   mode: "linked",
-   *   network: "mainnet",
    *   disclosures: { minimumAge: 18, ofac: true },
    *   humanAddress: "0x...",
    * });
-   *
-   * console.log(session.deepLink);       // open in Self app
-   * console.log(session.humanInstructions); // tell human what to do
-   *
-   * const result = await session.waitForCompletion();
+   * await session.waitForCompletion();
    * const agent = new SelfAgent({ privateKey: await session.exportKey() });
    * ```
    */
@@ -344,6 +358,11 @@ export class SelfAgent {
 
   /**
    * Get agent info from the public REST API (no private key needed).
+   *
+   * @param agentId - On-chain agent ID.
+   * @param opts - Optional `network` and `apiBase`.
+   * @returns The agent record.
+   * @throws RegistrationError (status 404 if the agent does not exist).
    */
   static async getAgentInfo(
     agentId: number,
@@ -354,6 +373,11 @@ export class SelfAgent {
 
   /**
    * Get all agents registered for a human address from the public REST API.
+   *
+   * @param address - The human's wallet address.
+   * @param opts - Optional `network` and `apiBase`.
+   * @returns The agents list (empty when none).
+   * @throws RegistrationError on API errors.
    */
   static async getAgentsForHuman(
     address: string,
@@ -365,29 +389,32 @@ export class SelfAgent {
   /**
    * Request deregistration for this agent through the Self Agent ID REST API.
    *
-   * Returns a session with a QR code / deep link for the human to scan,
-   * plus a `waitForCompletion()` method that polls until on-chain removal.
+   * The network is inferred from the registry address (custom registries fall back to mainnet).
    *
-   * ```ts
-   * const session = await agent.requestDeregistration();
-   * console.log(session.deepLink);
-   * await session.waitForCompletion();
-   * ```
+   * @param opts.disclosures - Disclosures used at registration.
+   * @param opts.apiBase - API base URL override.
+   * @returns A session with a deep link / QR URL and `waitForCompletion()`.
+   * @throws RegistrationError if the API rejects the request.
    */
   async requestDeregistration(opts?: {
+    /** Credential disclosures (should match the original registration) */
+    disclosures?: RegistrationDisclosureRequest;
     apiBase?: string;
   }): Promise<DeregistrationSession> {
     const network = this.networkName();
     return _requestDeregistration({
       network,
       agentAddress: this.wallet.address,
+      disclosures: opts?.disclosures,
       apiBase: opts?.apiBase,
     });
   }
 
   /**
    * Fetch this agent's credentials from the public REST API.
-   * Returns null if the agent is not registered or has no credentials.
+   *
+   * @param opts.apiBase - API base URL override.
+   * @returns The credentials, or null if unregistered, absent, or on any error.
    */
   async getCredentialsFromApi(opts?: {
     apiBase?: string;
@@ -407,7 +434,11 @@ export class SelfAgent {
     }
   }
 
-  /** Resolve the network name from the registry address */
+  /**
+   * Resolve the network name from the registry address.
+   *
+   * @returns The matching network, or the default (mainnet) for a custom registry.
+   */
   private networkName(): NetworkName {
     const registryAddr = (this.registry.target as string).toLowerCase();
     for (const [name, config] of Object.entries(NETWORKS)) {

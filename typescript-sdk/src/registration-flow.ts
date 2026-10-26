@@ -7,73 +7,72 @@
  *
  * These functions call the hosted API at agent-api.self.xyz by default
  * (or SELF_AGENT_API_BASE / a custom base URL) and return session objects
- * with polling capabilities.
+ * with polling capabilities. The session token rotates on every status poll;
+ * each session object tracks the latest one internally.
  */
 
-import type { NetworkName } from "./constants";
+import { CHAIN_IDS, type NetworkName } from "./constants";
+import type { RegistrationMode } from "./registration";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const DEFAULT_API_BASE = "https://agent-api.self.xyz";
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
-const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-
-const CHAIN_IDS: Record<NetworkName, number> = {
-  mainnet: 42220,
-  testnet: 11142220,
-};
+const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 
 // ── Public Types ─────────────────────────────────────────────────────────────
 
+/** Credential disclosures to request from the human's passport/ID. */
+export interface RegistrationDisclosureRequest {
+  /** Minimum age gate: 0 (none), 18, or 21 */
+  minimumAge?: number;
+  /** Require OFAC screening */
+  ofac?: boolean;
+  /** The remaining flags ask the human to disclose that passport field */
+  nationality?: boolean;
+  name?: boolean;
+  date_of_birth?: boolean;
+  gender?: boolean;
+  issuing_state?: boolean;
+}
+
+/** Options for `requestRegistration()`. */
 export interface RegistrationRequest {
   /** Registration mode */
-  mode:
-    | "self-custody"
-    | "linked"
-    | "wallet-free"
-    | "ed25519"
-    | "ed25519-linked"
-    | "smartwallet";
+  mode: RegistrationMode;
   /** Network: "mainnet" (default) or "testnet" */
   network?: NetworkName;
   /** Credential disclosures to request */
-  disclosures?: {
-    minimumAge?: number;
-    ofac?: boolean;
-    nationality?: boolean;
-    name?: boolean;
-    date_of_birth?: boolean;
-    gender?: boolean;
-    issuing_state?: boolean;
-  };
+  disclosures?: RegistrationDisclosureRequest;
   /** Ed25519 public key, 64-char hex, no 0x prefix (required for ed25519 and ed25519-linked modes) */
   ed25519Pubkey?: string;
   /** Ed25519 signature of challenge hash, 128-char hex (required for ed25519 and ed25519-linked modes) */
   ed25519Signature?: string;
-  /** Human's wallet address (required for self-custody and linked) */
+  /** Human's wallet address (required for linked, ed25519-linked, privy and smartwallet) */
   humanAddress?: string;
-  /** Agent display name */
-  agentName?: string;
-  /** Agent description */
-  agentDescription?: string;
   /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://agent-api.self.xyz) */
   apiBase?: string;
 }
 
+/** Outcome of a completed registration. */
 export interface RegistrationResult {
+  /** On-chain agent ID (NFT token ID) */
   agentId: number;
   agentAddress: string;
+  /** Disclosed credentials, when the API returned them */
   credentials?: Record<string, unknown>;
-  txHash?: string;
 }
 
+/** Live registration session returned by `requestRegistration()`. */
 export interface RegistrationSession {
-  /** Encrypted session token (pass to subsequent calls) */
+  /** Initial encrypted session token (rotates on each poll; the session tracks the latest) */
   sessionToken: string;
   /** Current stage */
   stage: string;
   /** Deep link for Self app */
   deepLink: string;
+  /** URL of a PNG QR code encoding the deep link (safe to show to the human) */
+  scanUrl: string;
   /** Agent's Ethereum address */
   agentAddress: string;
   /** When the session expires */
@@ -83,42 +82,52 @@ export interface RegistrationSession {
   /** Human-readable instructions */
   humanInstructions: string[];
 
-  /** Poll until registration completes or times out */
+  /**
+   * Poll the status endpoint until registration completes.
+   *
+   * @param opts.timeoutMs - Give up after this long (default 30 minutes).
+   * @param opts.pollIntervalMs - Delay between polls (default 5 seconds).
+   * @returns The agent ID, address and any credentials.
+   * @throws ExpiredSessionError if the session expired (HTTP 410 or stage "expired").
+   * @throws RegistrationError on failure, other API errors, or timeout (polling can be resumed).
+   */
   waitForCompletion(opts?: {
     timeoutMs?: number;
     pollIntervalMs?: number;
   }): Promise<RegistrationResult>;
 
-  /** Export the agent's private key (only for modes that generated one) */
+  /**
+   * Export the generated agent private key. Call after `waitForCompletion()`
+   * so the latest session token is used.
+   *
+   * @returns The agent's hex private key.
+   * @throws RegistrationError in ed25519 / ed25519-linked modes (the agent holds its own key) or on API errors.
+   */
   exportKey(): Promise<string>;
 }
 
+/** Options for `requestProofRefresh()`. */
 export interface ProofRefreshRequest {
   /** Agent ID (token ID) to refresh the proof for */
   agentId: number;
   /** Network: "mainnet" (default) or "testnet" */
   network?: NetworkName;
   /** Credential disclosures to request (should match original registration) */
-  disclosures?: {
-    minimumAge?: number;
-    ofac?: boolean;
-    nationality?: boolean;
-    name?: boolean;
-    date_of_birth?: boolean;
-    gender?: boolean;
-    issuing_state?: boolean;
-  };
+  disclosures?: RegistrationDisclosureRequest;
   /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://agent-api.self.xyz) */
   apiBase?: string;
 }
 
+/** Live proof-refresh session returned by `requestProofRefresh()`. */
 export interface RefreshSession {
-  /** Encrypted session token */
+  /** Initial encrypted session token (rotates on each poll; the session tracks the latest) */
   sessionToken: string;
   /** Current stage */
   stage: string;
   /** Deep link for Self app */
   deepLink: string;
+  /** URL of a PNG QR code encoding the deep link (safe to show to the human) */
+  scanUrl: string;
   /** When the session expires */
   expiresAt: string;
   /** Milliseconds until expiry */
@@ -126,39 +135,43 @@ export interface RefreshSession {
   /** Human-readable instructions */
   humanInstructions: string[];
 
-  /** Poll until proof refresh completes or times out */
+  /**
+   * Poll the status endpoint until the refreshed proof is recorded on-chain.
+   *
+   * @param opts.timeoutMs - Give up after this long (default 30 minutes).
+   * @param opts.pollIntervalMs - Delay between polls (default 5 seconds).
+   * @returns The new proof expiry, when the API reports it.
+   * @throws ExpiredSessionError if the session expired.
+   * @throws RegistrationError on failure, other API errors, or timeout (polling can be resumed).
+   */
   waitForCompletion(opts?: {
     timeoutMs?: number;
     pollIntervalMs?: number;
-  }): Promise<{ proofExpiresAt: Date }>;
+  }): Promise<{ proofExpiresAt?: Date }>;
 }
 
+/** Options for `requestDeregistration()`. */
 export interface DeregistrationRequest {
   /** Network: "mainnet" (default) or "testnet" */
   network?: NetworkName;
   /** Agent's Ethereum address */
   agentAddress: string;
   /** Credential disclosures (should match original registration) */
-  disclosures?: {
-    minimumAge?: number;
-    ofac?: boolean;
-    nationality?: boolean;
-    name?: boolean;
-    date_of_birth?: boolean;
-    gender?: boolean;
-    issuing_state?: boolean;
-  };
+  disclosures?: RegistrationDisclosureRequest;
   /** Base URL of the Self Agent ID API (default: SELF_AGENT_API_BASE or https://agent-api.self.xyz) */
   apiBase?: string;
 }
 
+/** Live deregistration session returned by `requestDeregistration()`. */
 export interface DeregistrationSession {
-  /** Encrypted session token */
+  /** Initial encrypted session token (rotates on each poll; the session tracks the latest) */
   sessionToken: string;
   /** Current stage */
   stage: string;
   /** Deep link for Self app */
   deepLink: string;
+  /** URL of a PNG QR code encoding the deep link (safe to show to the human) */
+  scanUrl: string;
   /** When the session expires */
   expiresAt: string;
   /** Milliseconds until expiry */
@@ -166,31 +179,46 @@ export interface DeregistrationSession {
   /** Human-readable instructions */
   humanInstructions: string[];
 
-  /** Poll until deregistration completes or times out */
+  /**
+   * Poll the status endpoint until the agent is removed on-chain.
+   *
+   * @param opts.timeoutMs - Give up after this long (default 30 minutes).
+   * @param opts.pollIntervalMs - Delay between polls (default 5 seconds).
+   * @throws ExpiredSessionError if the session expired.
+   * @throws RegistrationError on failure, other API errors, or timeout (polling can be resumed).
+   */
   waitForCompletion(opts?: {
     timeoutMs?: number;
     pollIntervalMs?: number;
   }): Promise<void>;
 }
 
+/** Agent record from `GET /api/agent/info/{chainId}/{agentId}`. */
 export interface ApiAgentInfo {
   agentId: number;
   chainId: number;
   agentKey: string;
   agentAddress: string;
+  /** `hasHumanProof && isProofFresh` */
   isVerified: boolean;
+  hasHumanProof: boolean;
+  isProofFresh: boolean;
+  /** ISO-8601 proof expiry, or null if the agent has no proof */
+  proofExpiresAt: string | null;
   proofProvider: string;
   verificationStrength: number;
   strengthLabel: string;
   credentials: {
-    nationality?: string;
-    olderThan?: number;
-    ofac?: boolean[];
+    nationality: string | null;
+    olderThan: number;
+    ofac: boolean[];
   };
-  registeredAt: number;
+  /** Block number (not a timestamp) at which the agent was registered */
+  registeredAtBlock: number;
   network: string;
 }
 
+/** Agent list from `GET /api/agent/agents/{chainId}/{address}`. */
 export interface ApiAgentsForHuman {
   humanAddress: string;
   chainId: number;
@@ -198,14 +226,29 @@ export interface ApiAgentsForHuman {
     agentId: number;
     agentKey: string;
     agentAddress: string;
+    /** The human owns this agent's NFT */
+    isOwner: boolean;
+    /** The human's own address is this agent's key */
+    isAgentKey: boolean;
+    /** `hasHumanProof && isProofFresh` */
     isVerified: boolean;
+    hasHumanProof: boolean;
+    isProofFresh: boolean;
+    proofExpiresAt: string | null;
   }>;
   totalCount: number;
+  ownedCount: number;
+  /** False if not every owned agent could be enumerated */
+  complete: boolean;
 }
 
 // ── Errors ───────────────────────────────────────────────────────────────────
 
+/** Thrown when a registration, refresh or deregistration session has expired. */
 export class ExpiredSessionError extends Error {
+  /**
+   * @param message - Error message (defaults to a registration-specific hint).
+   */
   constructor(
     message = "Registration session expired. Call requestRegistration() again to start a new session.",
   ) {
@@ -214,10 +257,19 @@ export class ExpiredSessionError extends Error {
   }
 }
 
+/** Thrown when a Self Agent ID API call fails or a session ends in failure. */
 export class RegistrationError extends Error {
-  constructor(message: string) {
+  /** HTTP status of the failed API call (e.g. 404 "Agent not found"), if any */
+  readonly status?: number;
+
+  /**
+   * @param message - Error message (the API's `error` field when available).
+   * @param status - HTTP status of the failed call, if any.
+   */
+  constructor(message: string, status?: number) {
     super(message);
     this.name = "RegistrationError";
+    this.status = status;
   }
 }
 
@@ -246,31 +298,80 @@ function resolveApiBase(apiBase?: string): string {
   return (apiBase ?? defaultApiBaseFromEnv()).replace(/\/+$/, "");
 }
 
+/**
+ * Map a network name to its Celo chain ID.
+ *
+ * @param network - "mainnet" or "testnet".
+ * @returns The chain ID.
+ */
 function chainIdForNetwork(network: NetworkName): number {
   return CHAIN_IDS[network];
 }
 
+/**
+ * Fetch JSON from the API, turning non-2xx responses into `RegistrationError`.
+ *
+ * @param url - Full request URL.
+ * @param init - Optional fetch options.
+ * @returns The parsed JSON body (null if the body was not JSON).
+ * @throws RegistrationError with the API's `error` message (or `HTTP <status>`) and status.
+ */
 async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await globalThis.fetch(url, init);
-  const body = await res.json();
+  const body: unknown = await res.json().catch(() => null);
 
   if (!res.ok) {
     const errorMsg =
-      typeof body === "object" && body !== null && "error" in body
-        ? (body as { error: string }).error
+      typeof body === "object" &&
+      body !== null &&
+      "error" in body &&
+      typeof body.error === "string"
+        ? body.error
         : `HTTP ${res.status}`;
-    throw new RegistrationError(errorMsg);
+    throw new RegistrationError(errorMsg, res.status);
   }
 
   return body as T;
 }
 
+/**
+ * Poll a session status endpoint, sending the session token as a Bearer token.
+ *
+ * @param url - Status endpoint URL.
+ * @param token - Latest session token.
+ * @param expiredMessage - Message for the `ExpiredSessionError` thrown on HTTP 410.
+ * @returns The status response (including the rotated session token).
+ * @throws ExpiredSessionError on HTTP 410; RegistrationError on other API errors.
+ */
+async function fetchStatus(
+  url: string,
+  token: string,
+  expiredMessage?: string,
+): Promise<StatusResponse> {
+  try {
+    return await apiFetch<StatusResponse>(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch (err) {
+    if (err instanceof RegistrationError && err.status === 410) {
+      throw new ExpiredSessionError(expiredMessage);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Resolve after a delay.
+ *
+ * @param ms - Delay in milliseconds.
+ */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ── Registration Status Response Shape ──────────────────────────────────────
 
+/** Body of the register/refresh/deregister status endpoints. */
 interface StatusResponse {
   sessionToken: string;
   stage: string;
@@ -279,16 +380,18 @@ interface StatusResponse {
   agentAddress?: string;
   agentId?: number;
   credentials?: Record<string, unknown>;
-  txHash?: string;
+  proofExpiresAt?: string;
   humanInstructions?: string[];
 }
 
 // ── Registration Init Response Shape ────────────────────────────────────────
 
+/** Body of `POST /api/agent/register`. */
 interface RegisterInitResponse {
   sessionToken: string;
   stage: string;
   deepLink: string;
+  scanUrl: string;
   agentAddress: string;
   expiresAt: string;
   timeRemainingMs: number;
@@ -299,10 +402,12 @@ interface RegisterInitResponse {
 
 // ── Refresh Init Response Shape ─────────────────────────────────────────────
 
+/** Body of `POST /api/agent/refresh`. */
 interface RefreshInitResponse {
   sessionToken: string;
   stage: string;
   deepLink: string;
+  scanUrl: string;
   agentId: number;
   expiresAt: string;
   timeRemainingMs: number;
@@ -312,10 +417,12 @@ interface RefreshInitResponse {
 
 // ── Deregistration Init Response Shape ──────────────────────────────────────
 
+/** Body of `POST /api/agent/deregister`. */
 interface DeregisterInitResponse {
   sessionToken: string;
   stage: string;
   deepLink: string;
+  scanUrl: string;
   agentAddress: string;
   agentId: number;
   expiresAt: string;
@@ -327,9 +434,24 @@ interface DeregisterInitResponse {
 // ── Core Functions ───────────────────────────────────────────────────────────
 
 /**
- * Initiate agent registration through the Self Agent ID REST API.
+ * Start an agent registration session through the Self Agent ID REST API.
  *
- * Returns a session object with polling and key export methods.
+ * Show `deepLink` or `scanUrl` to the human; they scan it with the Self app.
+ *
+ * @param opts - Mode, network, disclosures and mode-specific fields (see `RegistrationRequest`).
+ * @returns A session with `waitForCompletion()` and `exportKey()`.
+ * @throws RegistrationError if the API rejects the request.
+ *
+ * @example
+ * ```ts
+ * const session = await requestRegistration({
+ *   mode: "wallet-free",
+ *   disclosures: { minimumAge: 18 },
+ * });
+ * console.log(session.scanUrl); // show this QR to the human
+ * const { agentId } = await session.waitForCompletion();
+ * const privateKey = await session.exportKey();
+ * ```
  */
 export async function requestRegistration(
   opts: RegistrationRequest,
@@ -342,8 +464,6 @@ export async function requestRegistration(
     network,
     disclosures: opts.disclosures,
     humanAddress: opts.humanAddress,
-    agentName: opts.agentName,
-    agentDescription: opts.agentDescription,
     ed25519Pubkey: opts.ed25519Pubkey,
     ed25519Signature: opts.ed25519Signature,
   };
@@ -361,7 +481,11 @@ export async function requestRegistration(
 }
 
 /**
- * Initiate agent deregistration through the Self Agent ID REST API.
+ * Start an agent deregistration session through the Self Agent ID REST API.
+ *
+ * @param opts - Agent address, network and the disclosures used at registration.
+ * @returns A session with `waitForCompletion()`.
+ * @throws RegistrationError if the API rejects the request.
  */
 export async function requestDeregistration(
   opts: DeregistrationRequest,
@@ -390,8 +514,9 @@ export async function requestDeregistration(
 /**
  * Initiate a proof refresh for an existing agent through the Self Agent ID REST API.
  *
- * Returns a session object with a deep link for the human to scan in the Self app,
- * and a polling method to wait for the new proof to be recorded on-chain.
+ * @param opts - Agent ID, network and the disclosures used at registration.
+ * @returns A session with a deep link for the human and `waitForCompletion()`.
+ * @throws RegistrationError if the API rejects the request.
  */
 export async function requestProofRefresh(
   opts: ProofRefreshRequest,
@@ -419,6 +544,12 @@ export async function requestProofRefresh(
 
 /**
  * Fetch agent info from the public query API.
+ *
+ * @param agentId - On-chain agent ID.
+ * @param opts.network - "mainnet" (default) or "testnet".
+ * @param opts.apiBase - API base URL override.
+ * @returns The agent's status, proof and credential summary.
+ * @throws RegistrationError with `status === 404` if the agent does not exist (never minted or burned).
  */
 export async function getAgentInfo(
   agentId: number,
@@ -433,6 +564,12 @@ export async function getAgentInfo(
 
 /**
  * Fetch all agents for a human address from the public query API.
+ *
+ * @param address - The human's wallet address.
+ * @param opts.network - "mainnet" (default) or "testnet".
+ * @param opts.apiBase - API base URL override.
+ * @returns The agents list (empty when the address has none).
+ * @throws RegistrationError on API errors.
  */
 export async function getAgentsForHuman(
   address: string,
@@ -449,6 +586,13 @@ export async function getAgentsForHuman(
 
 // ── Session Builders ─────────────────────────────────────────────────────────
 
+/**
+ * Wrap a register-init response in a session object that tracks the rotating token.
+ *
+ * @param data - Response from `POST /api/agent/register`.
+ * @param apiBase - Resolved API base URL.
+ * @returns The registration session.
+ */
 function buildRegistrationSession(
   data: RegisterInitResponse,
   apiBase: string,
@@ -459,11 +603,13 @@ function buildRegistrationSession(
     sessionToken: data.sessionToken,
     stage: data.stage,
     deepLink: data.deepLink,
+    scanUrl: data.scanUrl,
     agentAddress: data.agentAddress,
     expiresAt: data.expiresAt,
     timeRemainingMs: data.timeRemainingMs,
     humanInstructions: data.humanInstructions,
 
+    /** See {@link RegistrationSession.waitForCompletion}. */
     async waitForCompletion(opts) {
       const timeout = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
       const interval = opts?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
@@ -472,22 +618,11 @@ function buildRegistrationSession(
       while (Date.now() < deadline) {
         await sleep(interval);
 
-        let status: StatusResponse;
-        try {
-          status = await apiFetch<StatusResponse>(
-            `${apiBase}/api/agent/register/status?token=${encodeURIComponent(currentToken)}`,
-          );
-        } catch (err) {
-          if (
-            err instanceof RegistrationError &&
-            err.message.toLowerCase().includes("expired")
-          ) {
-            throw new ExpiredSessionError();
-          }
-          throw err;
-        }
+        const status = await fetchStatus(
+          `${apiBase}/api/agent/register/status`,
+          currentToken,
+        );
 
-        // Update the rolling token
         currentToken = status.sessionToken;
 
         if (status.stage === "completed") {
@@ -495,7 +630,6 @@ function buildRegistrationSession(
             agentId: status.agentId!,
             agentAddress: status.agentAddress ?? data.agentAddress,
             credentials: status.credentials ?? undefined,
-            txHash: status.txHash ?? undefined,
           };
         }
 
@@ -513,12 +647,18 @@ function buildRegistrationSession(
       );
     },
 
+    /** See {@link RegistrationSession.exportKey}. */
     async exportKey() {
+      // The token rotates on every status poll; only the latest one (from the
+      // poll that observed "completed") can export the key.
       const status = await apiFetch<{ privateKey: string }>(
         `${apiBase}/api/agent/register/export`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${currentToken}`,
+          },
           body: JSON.stringify({ token: currentToken }),
         },
       );
@@ -527,6 +667,13 @@ function buildRegistrationSession(
   };
 }
 
+/**
+ * Wrap a refresh-init response in a session object that tracks the rotating token.
+ *
+ * @param data - Response from `POST /api/agent/refresh`.
+ * @param apiBase - Resolved API base URL.
+ * @returns The refresh session.
+ */
 function buildRefreshSession(
   data: RefreshInitResponse,
   apiBase: string,
@@ -537,10 +684,12 @@ function buildRefreshSession(
     sessionToken: data.sessionToken,
     stage: data.stage,
     deepLink: data.deepLink,
+    scanUrl: data.scanUrl,
     expiresAt: data.expiresAt,
     timeRemainingMs: data.timeRemainingMs,
     humanInstructions: data.humanInstructions,
 
+    /** See {@link RefreshSession.waitForCompletion}. */
     async waitForCompletion(opts) {
       const timeout = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
       const interval = opts?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
@@ -549,34 +698,20 @@ function buildRefreshSession(
       while (Date.now() < deadline) {
         await sleep(interval);
 
-        let status: StatusResponse;
-        try {
-          status = await apiFetch<StatusResponse>(
-            `${apiBase}/api/agent/refresh/status?token=${encodeURIComponent(currentToken)}`,
-          );
-        } catch (err) {
-          if (
-            err instanceof RegistrationError &&
-            err.message.toLowerCase().includes("expired")
-          ) {
-            throw new ExpiredSessionError(
-              "Proof refresh session expired. Call requestProofRefresh() again to start a new session.",
-            );
-          }
-          throw err;
-        }
+        const status = await fetchStatus(
+          `${apiBase}/api/agent/refresh/status`,
+          currentToken,
+          "Proof refresh session expired. Call requestProofRefresh() again to start a new session.",
+        );
 
         currentToken = status.sessionToken;
 
         if (status.stage === "completed") {
-          // The status response includes the new proof expiry timestamp
-          const expiresAtRaw = (
-            status as StatusResponse & { proofExpiresAt?: string }
-          ).proofExpiresAt;
-          const proofExpiresAt = expiresAtRaw
-            ? new Date(expiresAtRaw)
-            : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // fallback: 1 year from now
-          return { proofExpiresAt };
+          return {
+            proofExpiresAt: status.proofExpiresAt
+              ? new Date(status.proofExpiresAt)
+              : undefined,
+          };
         }
 
         if (status.stage === "failed") {
@@ -597,6 +732,13 @@ function buildRefreshSession(
   };
 }
 
+/**
+ * Wrap a deregister-init response in a session object that tracks the rotating token.
+ *
+ * @param data - Response from `POST /api/agent/deregister`.
+ * @param apiBase - Resolved API base URL.
+ * @returns The deregistration session.
+ */
 function buildDeregistrationSession(
   data: DeregisterInitResponse,
   apiBase: string,
@@ -607,10 +749,12 @@ function buildDeregistrationSession(
     sessionToken: data.sessionToken,
     stage: data.stage,
     deepLink: data.deepLink,
+    scanUrl: data.scanUrl,
     expiresAt: data.expiresAt,
     timeRemainingMs: data.timeRemainingMs,
     humanInstructions: data.humanInstructions,
 
+    /** See {@link DeregistrationSession.waitForCompletion}. */
     async waitForCompletion(opts) {
       const timeout = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
       const interval = opts?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
@@ -619,22 +763,11 @@ function buildDeregistrationSession(
       while (Date.now() < deadline) {
         await sleep(interval);
 
-        let status: StatusResponse;
-        try {
-          status = await apiFetch<StatusResponse>(
-            `${apiBase}/api/agent/deregister/status?token=${encodeURIComponent(currentToken)}`,
-          );
-        } catch (err) {
-          if (
-            err instanceof RegistrationError &&
-            err.message.toLowerCase().includes("expired")
-          ) {
-            throw new ExpiredSessionError(
-              "Deregistration session expired. Call requestDeregistration() again to start a new session.",
-            );
-          }
-          throw err;
-        }
+        const status = await fetchStatus(
+          `${apiBase}/api/agent/deregister/status`,
+          currentToken,
+          "Deregistration session expired. Call requestDeregistration() again to start a new session.",
+        );
 
         currentToken = status.sessionToken;
 

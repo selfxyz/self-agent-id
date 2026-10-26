@@ -2,6 +2,13 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
+/**
+ * ERC-8004 agent document / A2A Agent Card types and builders.
+ *
+ * `buildAgentCard` reads proof data from chain; `generateRegistrationJSON`
+ * builds a document from plain options with no chain access.
+ */
+
 import type { ethers } from "ethers";
 import type {
   TypedRegistryContract,
@@ -14,6 +21,7 @@ import type {
 export interface AgentSkill {
   /** Unique identifier for this skill (required per A2A v0.3.0). */
   id: string;
+  /** Human-readable skill name. */
   name: string;
   description?: string;
   /** Freeform tags for categorization. */
@@ -28,32 +36,42 @@ export interface AgentSkill {
 
 /** Trust characteristics derived from the on-chain proof provider. */
 export interface TrustModel {
-  proofType: string; // "passport", "kyc", "govt_id", "liveness"
+  /** Provider label: "passport", "kyc", "govt_id", "liveness" or "unknown". */
+  proofType: string;
+  /** The agent has an on-chain human proof (`hasHumanProof`), i.e. a nullifier-bound human behind it. */
   sybilResistant: boolean;
   ofacScreened: boolean;
-  minimumAgeVerified: number; // 0, 18, or 21
+  /** Verified minimum age (`olderThan` from chain): 0, 18 or 21. */
+  minimumAgeVerified: number;
 }
 
 /** Optional credential disclosures extracted from on-chain agent registration data. */
 export interface CardCredentials {
   nationality?: string;
+  /** Issuing state of the identity document. */
   issuingState?: string;
   olderThan?: number;
   ofacClean?: boolean;
+  /** The has* flags say a field was disclosed without revealing its value. */
   hasName?: boolean;
   hasDateOfBirth?: boolean;
   hasGender?: boolean;
+  /** Identity document expiry date, as stored on-chain. */
   documentExpiry?: string;
 }
 
 /** On-chain proof metadata attached to an agent document via the Self Protocol. */
 export interface SelfProtocolExtension {
   agentId: number;
+  /** Registry contract address. */
   registry: string;
+  /** Chain ID, or 0 if the runner had no provider to ask. */
   chainId: number;
+  /** Proof provider contract address. */
   proofProvider: string;
   providerName: string;
-  verificationStrength: number; // 0-100, from provider contract
+  /** 0-100, from the provider contract. */
+  verificationStrength: number;
   trustModel: TrustModel;
   credentials?: CardCredentials;
 }
@@ -72,7 +90,9 @@ export interface AgentInterface {
 
 /** Feature flags describing what the A2A agent endpoint supports. */
 export interface A2ACapabilities {
+  /** Supports `message/stream` (SSE). */
   streaming: boolean;
+  /** Supports push notification configs. */
   pushNotifications: boolean;
   /** Whether the agent exposes full task state transition history. */
   stateTransitionHistory?: boolean;
@@ -100,7 +120,8 @@ export interface APIKeySecurityScheme {
 /** HTTP authentication scheme (e.g. Bearer). */
 export interface HTTPAuthSecurityScheme {
   type: "http";
-  scheme: string; // e.g. "bearer"
+  /** HTTP auth scheme name, e.g. "bearer". */
+  scheme: string;
   bearerFormat?: string;
   description?: string;
 }
@@ -162,6 +183,7 @@ export interface AgentExtension {
 
 /** A service endpoint entry in the ERC-8004 agent document. */
 export interface ERC8004Service {
+  /** Service kind; well-known values listed, any string allowed. */
   name:
     | "web"
     | "A2A"
@@ -180,7 +202,8 @@ export interface ERC8004Service {
 /** Cross-chain registration reference using CAIP-10 addressing. */
 export interface ERC8004Registration {
   agentId: number;
-  agentRegistry: string; // CAIP-10: eip155:<chainId>:<address>
+  /** CAIP-10 registry reference: `eip155:<chainId>:<address>`. */
+  agentRegistry: string;
 }
 
 // ─── The combined ERC-8004 + A2A document ────────────────────────────────────
@@ -203,8 +226,10 @@ export interface ERC8004AgentDocument {
   supportedTrust?: ("reputation" | "crypto-economic" | "tee-attestation")[];
 
   // ── A2A optional (when present, makes this a valid A2A Agent Card) ──
-  version?: string; // agent software version, e.g. "0.1.0"
-  url?: string; // A2A primary endpoint — MUST equal services[name="A2A"].endpoint
+  /** Agent software version, e.g. "0.1.0". */
+  version?: string;
+  /** A2A primary endpoint; MUST equal `services[name="A2A"].endpoint`. */
+  url?: string;
   provider?: A2AProvider;
   capabilities?: A2ACapabilities;
 
@@ -220,8 +245,10 @@ export interface ERC8004AgentDocument {
    */
   security?: SecurityRequirement[];
 
-  defaultInputModes?: string[]; // MIME types, e.g. ["text/plain", "application/json"]
-  defaultOutputModes?: string[]; // MIME types
+  /** Accepted input MIME types, e.g. ["text/plain", "application/json"]. */
+  defaultInputModes?: string[];
+  /** Produced output MIME types. */
+  defaultOutputModes?: string[];
 
   /** A2A v0.3.0 structured interface declarations. */
   supportedInterfaces?: AgentInterface[];
@@ -245,11 +272,15 @@ export interface ERC8004AgentDocument {
   skills?: AgentSkill[];
 }
 
-// Backward-compat alias
+/** Backward-compatible alias for `ERC8004AgentDocument`. */
 export type A2AAgentCard = ERC8004AgentDocument;
+
+/** A2A protocol version this SDK implements; used for auto-added A2A services and interfaces. */
+export const A2A_PROTOCOL_VERSION = "0.3.0";
 
 // ─── Provider Scoring ────────────────────────────────────────────────────────
 
+/** Provider label for each verification strength threshold. */
 export const PROVIDER_LABELS: Record<number, string> = {
   100: "passport",
   80: "kyc",
@@ -291,12 +322,28 @@ export function getStrengthColor(
 /**
  * Slugify a string into a URL/ID-safe lowercase-hyphenated form.
  * Used to auto-generate skill `id` values when not explicitly provided.
+ *
+ * @param s - Input text.
+ * @returns Lowercase string of `[a-z0-9-]` with no leading/trailing hyphen.
  */
 function slugify(s: string): string {
   return s
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+/**
+ * Fill in missing skill IDs from the skill name (shared by both builders).
+ *
+ * @param skills - Caller-supplied skills, possibly without `id`.
+ * @returns New skill objects, each with an `id`; undefined when `skills` is.
+ */
+function withSkillIds(skills?: AgentSkill[]): AgentSkill[] | undefined {
+  return skills?.map((skill) => ({
+    ...skill,
+    id: skill.id || slugify(skill.name),
+  }));
 }
 
 // ─── Build Card from On-Chain Data ───────────────────────────────────────────
@@ -306,12 +353,19 @@ function slugify(s: string): string {
  *
  * Fetches the provider name, verification strength, and credential disclosures from
  * the contracts and merges them with the caller-supplied display fields.
+ * If `services` is omitted and `url` is set, a single A2A service entry is added
+ * (its `version` is the A2A protocol version, {@link A2A_PROTOCOL_VERSION}).
+ * Skills without an `id` get one generated from the name, and
+ * `trustModel.sybilResistant` is the agent's on-chain `hasHumanProof` (as in
+ * the cards served by the Self Agent ID API).
  *
- * @param agentId - On-chain agent token ID.
- * @param registry - Ethers contract instance for the SelfAgentRegistry.
- * @param provider - Ethers contract instance for the SelfHumanProofProvider.
- * @param userFields - Display and service fields supplied by the caller.
+ * @param agentId - On-chain agent ID.
+ * @param registry - Typed SelfAgentRegistry contract.
+ * @param provider - Typed IHumanProofProvider contract for the agent's proof provider.
+ * @param userFields - Display and service fields supplied by the caller (`name` required).
  * @returns A fully populated {@link ERC8004AgentDocument}.
+ * @throws If reading the provider name, strength, `hasHumanProof` or either
+ *   contract address fails (credential and chain ID lookups fall back silently).
  */
 export async function buildAgentCard(
   agentId: number,
@@ -343,6 +397,7 @@ export async function buildAgentCard(
     registryAddress,
     chainId,
     proofProviderAddress,
+    hasHumanProof,
   ] = await Promise.all([
     provider.providerName(),
     provider.verificationStrength(),
@@ -354,6 +409,7 @@ export async function buildAgentCard(
         .then((n: ethers.Network) => Number(n.chainId)) ?? Promise.resolve(0)
     ).catch(() => 0),
     provider.getAddress(),
+    registry.hasHumanProof(BigInt(agentId)),
   ]);
 
   const proofType = getProviderLabel(Number(verificationStrength));
@@ -361,7 +417,7 @@ export async function buildAgentCard(
 
   const trustModel: TrustModel = {
     proofType,
-    sybilResistant: true,
+    sybilResistant: hasHumanProof,
     ofacScreened: false,
     minimumAgeVerified: 0,
   };
@@ -396,7 +452,13 @@ export async function buildAgentCard(
     services:
       userFields.services ??
       (userFields.url
-        ? [{ name: "A2A", endpoint: userFields.url, version: "1.0" }]
+        ? [
+            {
+              name: "A2A",
+              endpoint: userFields.url,
+              version: A2A_PROTOCOL_VERSION,
+            },
+          ]
         : []),
     url: userFields.url,
     version: userFields.version,
@@ -409,7 +471,7 @@ export async function buildAgentCard(
     documentationUrl: userFields.documentationUrl,
     signatures: userFields.signatures,
     extensions: userFields.extensions,
-    skills: userFields.skills,
+    skills: withSkillIds(userFields.skills),
     selfProtocol: {
       agentId,
       registry: registryAddress,
@@ -430,21 +492,23 @@ export async function buildAgentCard(
  * Include the optional `a2a` field to make the document double as a valid A2A Agent Card.
  */
 export interface GenerateRegistrationJSONOptions {
-  // ERC-8004 required
+  // ── ERC-8004 required ──
   name: string;
   description: string;
   image: string;
   services: ERC8004Service[];
 
-  // ERC-8004 optional
+  // ── ERC-8004 optional ──
   active?: boolean;
   registrations?: ERC8004Registration[];
   supportedTrust?: ERC8004AgentDocument["supportedTrust"];
 
-  // A2A optional — include to make the document also a valid A2A Agent Card
+  /** A2A fields; include to make the document also a valid A2A Agent Card. */
   a2a?: {
+    /** The agent's own software version (card `version`), not the A2A protocol version. */
     version: string;
-    url: string; // MUST match services[name="A2A"].endpoint
+    /** MUST match `services[name="A2A"].endpoint` (an A2A service is added if missing). */
+    url: string;
     provider: A2AProvider;
     capabilities?: A2ACapabilities;
 
@@ -481,6 +545,9 @@ export interface GenerateRegistrationJSONOptions {
  * Unlike {@link buildAgentCard}, this does not read from on-chain contracts.
  * When `options.a2a` is provided, the returned document is also a valid A2A Agent Card.
  * Skills without an explicit `id` will have one auto-generated from the skill name.
+ * An auto-added A2A service and the default `supportedInterfaces` entry use the
+ * A2A protocol version ({@link A2A_PROTOCOL_VERSION}), not `a2a.version` (the
+ * agent's own software version). It sets no `selfProtocol` block (no chain access).
  *
  * @param options - Document fields and optional A2A configuration.
  * @returns A populated {@link ERC8004AgentDocument}.
@@ -490,11 +557,7 @@ export function generateRegistrationJSON(
 ): ERC8004AgentDocument {
   const a2a = options.a2a;
 
-  // Auto-generate skill IDs if missing
-  const skills = a2a?.skills?.map((skill) => ({
-    ...skill,
-    id: skill.id || slugify(skill.name),
-  }));
+  const skills = withSkillIds(a2a?.skills);
 
   // Auto-generate supportedInterfaces from url if not explicitly provided
   const supportedInterfaces: AgentInterface[] | undefined = a2a
@@ -502,7 +565,7 @@ export function generateRegistrationJSON(
         {
           url: a2a.url,
           protocolBinding: "JSONRPC" as const,
-          protocolVersion: "0.3.0",
+          protocolVersion: A2A_PROTOCOL_VERSION,
         },
       ])
     : undefined;
@@ -512,7 +575,7 @@ export function generateRegistrationJSON(
   if (a2a && !services.some((s) => s.name === "A2A")) {
     services = [
       ...services,
-      { name: "A2A", endpoint: a2a.url, version: a2a.version },
+      { name: "A2A", endpoint: a2a.url, version: A2A_PROTOCOL_VERSION },
     ];
   }
 
@@ -535,11 +598,9 @@ export function generateRegistrationJSON(
         stateTransitionHistory: false,
         extendedAgentCard: false,
       },
-      // Include A2A v0.3.0 security scheme map
       ...(a2a.securitySchemes && {
         securitySchemes: a2a.securitySchemes,
       }),
-      // Include security requirements
       ...(a2a.security && { security: a2a.security }),
       defaultInputModes: a2a.defaultInputModes,
       defaultOutputModes: a2a.defaultOutputModes,

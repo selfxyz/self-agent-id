@@ -1,19 +1,19 @@
 // SPDX-FileCopyrightText: 2025-2026 Social Connect Labs, Inc.
 // SPDX-License-Identifier: BUSL-1.1
+// NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
+
+/** Tests for Ed25519Agent signing and the SelfAgentVerifier Ed25519 path. */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import * as ed from "@noble/ed25519";
 import { ethers } from "ethers";
-import { Ed25519Agent } from "./Ed25519Agent";
-import { computeSigningMessage } from "./signing";
-import { HEADERS } from "./constants";
-import { SelfAgentVerifier } from "./SelfAgentVerifier";
+import { Ed25519Agent } from "../Ed25519Agent";
+import { computeSigningMessage } from "../signing";
+import { HEADERS } from "../constants";
+import { SelfAgentVerifier } from "../SelfAgentVerifier";
 
 // A deterministic test private key (32 bytes hex)
-const _TEST_PRIVATE_KEY =
-  "0x4cdb08e75df7b2cc tried9c3e5f8dc91a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8";
-// Use a simpler deterministic key
 const TEST_KEY_HEX =
   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
@@ -140,6 +140,18 @@ describe("Ed25519Agent", () => {
     );
   });
 
+  it("should reject a 64-char private key containing non-hex characters", () => {
+    assert.throws(
+      () =>
+        new Ed25519Agent({
+          privateKey: "zz" + TEST_KEY_HEX.slice(2),
+          rpcUrl: "http://localhost:1",
+          registryAddress: ethers.ZeroAddress,
+        }),
+      /Invalid hex string/,
+    );
+  });
+
   it("deriveAddress static method should match instance address", () => {
     const privBytes = hexToBytes(TEST_KEY_HEX);
     const pubkeyBytes = ed.getPublicKey(privBytes);
@@ -177,36 +189,32 @@ describe("SelfAgentVerifier Ed25519 path", () => {
 
     const headers = await agent.signRequest("GET", "/api/test");
 
-    // We can't test on-chain checks without a real provider, but we can verify
-    // the signature verification path runs correctly up to the on-chain check.
-    // Create a verifier with replay protection disabled and a short maxAge.
     const verifier = new SelfAgentVerifier({
       rpcUrl: "http://localhost:1",
       registryAddress: ethers.ZeroAddress,
       enableReplayProtection: false,
       requireSelfProvider: false,
     });
+    // Stub the on-chain reads so the test never touches the (unreachable) RPC.
+    (verifier as unknown as { registry: unknown }).registry = {
+      isVerifiedAgent: async () => true,
+      getAgentId: async () => 1n,
+      isProofFresh: async () => true,
+      proofExpiresAt: async () => 0n,
+      getHumanNullifier: async () => 1n,
+      getAgentCountForHuman: async () => 1n,
+    };
 
-    // Directly test verify — it will fail at the on-chain check (RPC error),
-    // but we can at least verify the Ed25519 signature validation path works
-    // by checking it doesn't fail with "Invalid Ed25519 signature"
-    try {
-      await verifier.verify({
-        signature: headers[HEADERS.SIGNATURE],
-        timestamp: headers[HEADERS.TIMESTAMP],
-        method: "GET",
-        url: "/api/test",
-        keytype: "ed25519",
-        agentKey: headers[HEADERS.KEY],
-      });
-    } catch (err: unknown) {
-      // RPC errors are expected — but signature errors mean our code is wrong
-      const msg = err instanceof Error ? err.message : String(err);
-      assert.ok(
-        !msg.includes("Invalid Ed25519 signature"),
-        "Should not fail on Ed25519 signature validation: " + msg,
-      );
-    }
+    const result = await verifier.verify({
+      signature: headers[HEADERS.SIGNATURE],
+      timestamp: headers[HEADERS.TIMESTAMP],
+      method: "GET",
+      url: "/api/test",
+      keytype: "ed25519",
+      agentKey: headers[HEADERS.KEY],
+    });
+    assert.equal(result.valid, true, result.error);
+    assert.equal(result.agentKey, agent.agentKey);
   });
 
   it("should reject Ed25519 request without agentKey", async () => {
@@ -256,10 +264,9 @@ describe("SelfAgentVerifier Ed25519 path", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Hex utility helpers (matching Ed25519Agent's internal helpers)
-// ---------------------------------------------------------------------------
+// ── Hex helpers (same as Ed25519Agent's internal ones) ──────────────────────
 
+/** Decode hex (no 0x) into bytes. */
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i++) {
@@ -268,6 +275,7 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
+/** Encode bytes as hex (no 0x). */
 function bytesToHex(bytes: Uint8Array): string {
   let hex = "";
   for (let i = 0; i < bytes.length; i++) {

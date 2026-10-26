@@ -2,12 +2,20 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { describe, it } from "node:test";
+/** Tests for SelfAgentVerifier.verify(), its caches, `auth()` middleware, `buildReauthUrl` and `verifyAgent`. */
+
+import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { ethers } from "ethers";
-import { SelfAgentVerifier, buildReauthUrl } from "../SelfAgentVerifier";
+import {
+  SelfAgentVerifier,
+  buildReauthUrl,
+  verifyAgent,
+} from "../SelfAgentVerifier";
 import { SelfAgent } from "../SelfAgent";
-import { HEADERS, REAUTH_BASE_URL } from "../constants";
+import { HEADERS, REAUTH_BASE_URL, REGISTRY_ABI } from "../constants";
 
 // ---------------------------------------------------------------------------
 // Test constants
@@ -27,6 +35,7 @@ const TEST_AGENT_KEY = ethers.zeroPadValue(TEST_ADDRESS, 32);
 // Mock helpers
 // ---------------------------------------------------------------------------
 
+/** Mock registry: a verified, fresh, Self-provided agent 1 by default; override any call. */
 function createMockRegistry(
   overrides: Partial<{
     isVerifiedAgent: (key: string) => Promise<boolean>;
@@ -66,6 +75,7 @@ function createMockRegistry(
   };
 }
 
+/** Verifier with the mock registry swapped in (requireSelfProvider on). */
 function createVerifierWithMock(
   config: Record<string, any> = {},
   registryOverrides: Record<string, any> = {},
@@ -80,6 +90,7 @@ function createVerifierWithMock(
   return verifier;
 }
 
+/** SelfAgent for TEST_KEY against the fake registry. */
 function createAgent(): SelfAgent {
   return new SelfAgent({
     privateKey: TEST_KEY,
@@ -88,6 +99,7 @@ function createAgent(): SelfAgent {
   });
 }
 
+/** Sign a request with the test agent and verify it; overrides tamper with any field. */
 async function signAndVerify(
   verifier: SelfAgentVerifier,
   overrides: Partial<{
@@ -620,6 +632,7 @@ describe("SelfAgentVerifier", () => {
         },
         method: "POST",
         originalUrl: "/api/test",
+        rawBody: Buffer.from('{"data":true}'),
         body: { data: true },
       };
 
@@ -689,6 +702,135 @@ describe("SelfAgentVerifier", () => {
       assert.match(jsonBody.error, /Missing agent authentication headers/);
     });
 
+    it("treats a body-parser placeholder `{}` as no body", async () => {
+      const verifier = createVerifierWithMock();
+      const middleware = verifier.auth();
+      const headers = await createAgent().signRequest("GET", "/api/test");
+
+      // Express 4's body-parser sets req.body = {} even for bodyless requests.
+      const req: any = {
+        headers: {
+          [HEADERS.SIGNATURE]: headers[HEADERS.SIGNATURE],
+          [HEADERS.TIMESTAMP]: headers[HEADERS.TIMESTAMP],
+        },
+        method: "GET",
+        originalUrl: "/api/test",
+        body: {},
+      };
+      let nextCalled = false;
+      const res: any = {
+        status() {
+          return this;
+        },
+        json() {},
+      };
+      await middleware(req, res, () => {
+        nextCalled = true;
+      });
+      assert.equal(nextCalled, true);
+    });
+
+    it("refuses to re-serialise a parsed body when the raw body is missing", async () => {
+      const verifier = createVerifierWithMock();
+      const middleware = verifier.auth();
+      const headers = await createAgent().signRequest(
+        "POST",
+        "/api/test",
+        '{"data":true}',
+      );
+
+      const req: any = {
+        headers: {
+          [HEADERS.SIGNATURE]: headers[HEADERS.SIGNATURE],
+          [HEADERS.TIMESTAMP]: headers[HEADERS.TIMESTAMP],
+          "content-length": "13",
+        },
+        method: "POST",
+        originalUrl: "/api/test",
+        body: { data: true },
+      };
+      let statusCode: number | undefined;
+      let jsonBody: any;
+      let nextCalled = false;
+      const res: any = {
+        status(code: number) {
+          statusCode = code;
+          return this;
+        },
+        json(body: any) {
+          jsonBody = body;
+        },
+      };
+      const realError = console.error;
+      let logged = "";
+      console.error = (msg: string) => {
+        logged = msg;
+      };
+      try {
+        await middleware(req, res, () => {
+          nextCalled = true;
+        });
+      } finally {
+        console.error = realError;
+      }
+      assert.equal(nextCalled, false);
+      assert.equal(statusCode, 500);
+      assert.match(jsonBody.error, /Raw request body unavailable/);
+      assert.match(logged, /rawBody/);
+    });
+
+    it("responds 503 (and logs) instead of hanging when verify() throws", async () => {
+      const verifier = createVerifierWithMock(
+        {},
+        {
+          isVerifiedAgent: async () => {
+            throw new Error("RPC down");
+          },
+        },
+      );
+      const middleware = verifier.auth();
+      const headers = await createAgent().signRequest("GET", "/api/test");
+      const req: any = {
+        headers: {
+          [HEADERS.SIGNATURE]: headers[HEADERS.SIGNATURE],
+          [HEADERS.TIMESTAMP]: headers[HEADERS.TIMESTAMP],
+        },
+        method: "GET",
+        originalUrl: "/api/test",
+      };
+      let statusCode: number | undefined;
+      let jsonBody: any;
+      let nextCalled = false;
+      const res: any = {
+        status(code: number) {
+          statusCode = code;
+          return this;
+        },
+        json(body: any) {
+          jsonBody = body;
+        },
+      };
+      const realError = console.error;
+      let logged: unknown[] = [];
+      console.error = (...args: unknown[]) => {
+        logged = args;
+      };
+      try {
+        // Must resolve (not reject) so Express 4 never leaves the request hanging.
+        await middleware(req, res, () => {
+          nextCalled = true;
+        });
+      } finally {
+        console.error = realError;
+      }
+      assert.equal(nextCalled, false);
+      assert.equal(statusCode, 503);
+      assert.equal(typeof jsonBody.error, "string");
+      assert.ok(
+        logged.some((a) => a instanceof Error && a.message === "RPC down"),
+      );
+    });
+
     // ── 24. Middleware rate limited ────────────────────────────────────
 
     it("returns 429 with retryAfterMs when rate limited", async () => {
@@ -714,6 +856,7 @@ describe("SelfAgentVerifier", () => {
           },
           method: "POST",
           originalUrl: "/api/test",
+          rawBody: '{"data":true}',
           body: { data: true },
         } as any;
       }
@@ -809,5 +952,127 @@ describe("buildReauthUrl", () => {
     const big = 90071992547409910n; // > Number.MAX_SAFE_INTEGER
     const params = new URL(buildReauthUrl(big, OPTIONS)).searchParams;
     assert.equal(params.get("agentId"), "90071992547409910");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// verifyAgent — standalone check against a local fake JSON-RPC node
+// ---------------------------------------------------------------------------
+
+describe("verifyAgent", () => {
+  const iface = new ethers.Interface(REGISTRY_ABI);
+  const REGISTRY = "0xaC3DF9ABf80d0F5c020C06B04Cced27763355944";
+  const KEY = "0x" + "11".repeat(32);
+  const nowSecs = () => BigInt(Math.floor(Date.now() / 1000));
+
+  /** Values the fake registry returns for agent 7. */
+  let chain: { hasProof: boolean; fresh: boolean; expiresAt: bigint };
+  let server: Server;
+  let rpcUrl: string;
+
+  /**
+   * Answer one JSON-RPC call: chain ID, or an eth_call decoded against the registry ABI.
+   *
+   * @param call - The JSON-RPC request.
+   * @returns The JSON-RPC response.
+   */
+  function answer(call: { id: number; method: string; params: any[] }) {
+    if (call.method === "eth_chainId") {
+      return { jsonrpc: "2.0", id: call.id, result: "0xa4ec" };
+    }
+    if (call.method !== "eth_call") {
+      return {
+        jsonrpc: "2.0",
+        id: call.id,
+        error: { code: -32601, message: "unsupported" },
+      };
+    }
+    const fn = iface.parseTransaction({ data: call.params[0].data })!;
+    const values: Record<string, unknown[]> = {
+      getAgentId: [7n],
+      hasHumanProof: [chain.hasProof],
+      isProofFresh: [chain.fresh],
+      proofExpiresAt: [chain.expiresAt],
+    };
+    return {
+      jsonrpc: "2.0",
+      id: call.id,
+      result: iface.encodeFunctionResult(fn.name, values[fn.name]),
+    };
+  }
+
+  before(async () => {
+    server = createServer((req, res) => {
+      let raw = "";
+      req.on("data", (c) => (raw += c));
+      req.on("end", () => {
+        const body = JSON.parse(raw);
+        const out = Array.isArray(body) ? body.map(answer) : answer(body);
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify(out));
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    rpcUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+
+  after(() => {
+    server.close();
+  });
+
+  const run = () =>
+    verifyAgent(KEY, { chainId: 42220, registryAddress: REGISTRY }, rpcUrl);
+
+  it("uses the registry's isProofFresh, not the local clock", async () => {
+    // The local clock says the proof is valid for a year; the registry says stale.
+    chain = {
+      hasProof: true,
+      fresh: false,
+      expiresAt: nowSecs() + 31_536_000n,
+    };
+    const stale = await run();
+    assert.equal(stale.verified, false);
+    assert.equal(stale.verified === false && stale.reason, "PROOF_EXPIRED");
+
+    // The local clock says expired; the registry (block time) says fresh.
+    chain = { hasProof: true, fresh: true, expiresAt: nowSecs() - 60n };
+    const fresh = await run();
+    assert.equal(fresh.verified, true);
+    assert.equal(fresh.verified && fresh.agentId, 7n);
+  });
+
+  it("treats an unset expiry (0) as not verified, matching the registry", async () => {
+    chain = { hasProof: true, fresh: false, expiresAt: 0n };
+    const result = await run();
+    assert.equal(result.verified, false);
+    if (!result.verified && result.reason === "PROOF_EXPIRED") {
+      assert.equal(result.expiredAt.getTime(), 0);
+      assert.match(result.reauthUrl, /agentId=7/);
+    } else {
+      assert.fail("expected PROOF_EXPIRED");
+    }
+  });
+
+  it("accepts { network } and derives the registry and chain ID", async () => {
+    chain = { hasProof: true, fresh: false, expiresAt: 0n };
+    const result = await verifyAgent(KEY, { network: "testnet" }, rpcUrl);
+    assert.equal(result.verified, false);
+    if (!result.verified && result.reason === "PROOF_EXPIRED") {
+      assert.match(result.reauthUrl, /chainId=11142220/);
+      assert.match(
+        result.reauthUrl,
+        /registry=0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379/,
+      );
+    } else {
+      assert.fail("expected PROOF_EXPIRED");
+    }
+  });
+
+  it("reports NO_HUMAN_PROOF before checking freshness", async () => {
+    chain = { hasProof: false, fresh: false, expiresAt: 0n };
+    assert.deepEqual(await run(), {
+      verified: false,
+      reason: "NO_HUMAN_PROOF",
+    });
   });
 });

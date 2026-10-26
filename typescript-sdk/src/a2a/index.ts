@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
+/**
+ * Barrel for the A2A (Agent-to-Agent) JSON-RPC task protocol: types, client and server.
+ */
+
 export type {
   TextPart,
   FilePart,
@@ -35,4 +39,4 @@ export { A2AClient, A2AError } from "./client";
 export type { A2AClientOptions } from "./client";
 
 export { A2AServer } from "./server";
-export type { TaskHandler } from "./server";
+export type { TaskHandler, A2AServerOptions } from "./server";

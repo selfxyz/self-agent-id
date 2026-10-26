@@ -2,6 +2,13 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
+/**
+ * Service-side verification of signed agent requests (`SelfAgentVerifier`),
+ * its builder, the Express `auth()` middleware and the standalone `verifyAgent()`.
+ *
+ * Caches (on-chain status, replay, rate limits) are in-memory and per process.
+ */
+
 import * as ed from "@noble/ed25519";
 import { createHash } from "node:crypto";
 import { ethers } from "ethers";
@@ -18,12 +25,16 @@ import {
   NETWORKS,
   DEFAULT_NETWORK,
   REAUTH_BASE_URL,
+  CHAIN_IDS,
 } from "./constants";
 import type { NetworkName } from "./constants";
 import { canonicalizeSigningUrl, computeSigningMessage } from "./signing";
 import type { VerifyResult } from "./types";
+import { isProofExpiringSoon } from "./types";
 
 import { typedRegistry, type TypedRegistryContract } from "./contract-types";
+
+/** Constructor options for `SelfAgentVerifier`. Every field is optional. */
 export interface VerifierConfig {
   /** Network to use: "mainnet" (default) or "testnet" */
   network?: NetworkName;
@@ -33,7 +44,7 @@ export interface VerifierConfig {
   rpcUrl?: string;
   /** Max age for signed timestamps (default: 5 min) */
   maxAgeMs?: number;
-  /** TTL for on-chain status cache (default: 5 min) */
+  /** TTL for on-chain status cache (default: 1 min) */
   cacheTtlMs?: number;
   /** Max agents allowed per human (default: 1 = sybil resistant). Set to 0 to disable. */
   maxAgentsPerHuman?: number;
@@ -57,11 +68,11 @@ export interface VerifierConfig {
   enableReplayProtection?: boolean;
   /** Max replay cache entries before pruning (default: 10k) */
   replayCacheMaxEntries?: number;
-  /** Minimum age for agent's human (credential check, default: disabled) */
+  /** Minimum age for agent's human (credential check, default: disabled). Requires `includeCredentials`. */
   minimumAge?: number;
-  /** Require OFAC screening passed (credential check, default: false) */
+  /** Require OFAC screening passed (credential check, default: false). Requires `includeCredentials`. */
   requireOFACPassed?: boolean;
-  /** Require nationality in list (credential check, default: disabled) */
+  /** Require nationality in list (credential check, default: disabled). Requires `includeCredentials`. */
   allowedNationalities?: string[];
   /** In-memory per-agent rate limiting */
   rateLimitConfig?: RateLimitConfig;
@@ -75,23 +86,31 @@ export interface RateLimitConfig {
   perHour?: number;
 }
 
-/** Config object for the `fromConfig` static factory */
+/**
+ * Flat config for `SelfAgentVerifier.fromConfig()`. Field names mirror the
+ * builder methods; any credential requirement turns on credential fetching.
+ */
 export interface VerifierFromConfig {
   network?: NetworkName;
   registryAddress?: string;
   rpcUrl?: string;
+  /** Minimum age (maps to `minimumAge`) */
   requireAge?: number;
+  /** Require OFAC screening passed */
   requireOFAC?: boolean;
+  /** Allowed nationality codes */
   requireNationality?: string[];
   requireSelfProvider?: boolean;
+  /** Max agents per human (default 1; 0 disables) */
   sybilLimit?: number;
   rateLimit?: RateLimitConfig;
+  /** Replay protection (default true) */
   replayProtection?: boolean;
   maxAgeMs?: number;
   cacheTtlMs?: number;
 }
 
-/** ZK-attested credential claims stored on-chain for an agent */
+/** ZK-attested credential claims stored on-chain for an agent (empty strings when not disclosed). */
 export interface AgentCredentials {
   issuingState: string;
   name: string[];
@@ -104,19 +123,23 @@ export interface AgentCredentials {
   ofac: boolean[];
 }
 
+/** Outcome of `SelfAgentVerifier.verify()`. Identity fields are zero when the signature check failed. */
 export interface VerificationResult {
+  /** True only if every check passed */
   valid: boolean;
   /** The agent's Ethereum address (recovered from signature) */
   agentAddress: string;
   /** The agent's on-chain key (bytes32) */
   agentKey: string;
+  /** On-chain agent ID; 0n if not registered */
   agentId: bigint;
-  /** Number of agents registered by the same human */
+  /** Number of agents registered by the same human (0n when the sybil check is disabled) */
   agentCount: bigint;
-  /** Human's nullifier (for rate limiting by human identity) */
+  /** Human's nullifier, for rate limiting by human (0n when the sybil check is disabled) */
   nullifier: bigint;
   /** ZK-attested credentials (only populated when includeCredentials is true) */
   credentials?: AgentCredentials;
+  /** Why verification failed (unset when valid) */
   error?: string;
   /** Milliseconds until the rate limit resets (only set when rate limited) */
   retryAfterMs?: number;
@@ -124,10 +147,33 @@ export interface VerificationResult {
   proofExpiresAt?: Date;
   /** Number of days until the proof expires (undefined if no expiry set, negative if already expired) */
   daysUntilExpiry?: number;
-  /** Whether the proof is expiring within 30 days */
+  /** Whether the proof has not expired yet but expires within 30 days */
   isExpiringSoon?: boolean;
 }
 
+/** The verified agent that {@link SelfAgentVerifier.auth} attaches as `req.agent`. */
+export interface VerifiedAgent {
+  /** Agent address (recovered from the signature, or derived from the Ed25519 key) */
+  address: string;
+  agentKey: string;
+  agentId: bigint;
+  agentCount: bigint;
+  nullifier: bigint;
+  credentials?: AgentCredentials;
+}
+
+declare global {
+  // Types `req.agent` for Express users (merges with @types/express).
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      /** Set by `SelfAgentVerifier.auth()` once the request is verified. */
+      agent?: VerifiedAgent;
+    }
+  }
+}
+
+/** Cached on-chain status for one agent key. */
 interface CacheEntry {
   isVerified: boolean;
   isProofFresh: boolean;
@@ -136,32 +182,42 @@ interface CacheEntry {
   nullifier: bigint;
   providerAddress: string;
   proofExpiresAtTimestamp: bigint;
+  /** Cache entry expiry (ms since epoch) */
   expiresAt: number;
 }
 
+/** Replay-cache entry; `expiresAt` is the signed timestamp + maxAgeMs. */
 interface ReplayEntry {
   expiresAt: number;
 }
 
-// ---------------------------------------------------------------------------
-// Rate limiter — sliding window, keyed by agent address
-// ---------------------------------------------------------------------------
+// ── Rate limiter: sliding window, keyed by agent address ────────────────────
 
+/** Request timestamps (ms) for one agent within the last hour. */
 interface RateBucket {
   timestamps: number[];
 }
 
+/** In-memory sliding-window rate limiter (per minute and/or per hour). */
 class RateLimiter {
   private perMinute: number;
   private perHour: number;
   private buckets = new Map<string, RateBucket>();
 
+  /**
+   * @param config - Limits; an unset or 0 limit is not enforced.
+   */
   constructor(config: RateLimitConfig) {
     this.perMinute = config.perMinute ?? 0;
     this.perHour = config.perHour ?? 0;
   }
 
-  /** Returns null if allowed, or { error, retryAfterMs } if rate limited. */
+  /**
+   * Check the limits for an agent and record the request if allowed.
+   *
+   * @param agentAddress - Agent address (case-insensitive key).
+   * @returns null if allowed, or `{ error, retryAfterMs }` if rate limited.
+   */
   check(agentAddress: string): { error: string; retryAfterMs: number } | null {
     const now = Date.now();
     const key = agentAddress.toLowerCase();
@@ -171,11 +227,10 @@ class RateLimiter {
       this.buckets.set(key, bucket);
     }
 
-    // Prune timestamps older than 1 hour (longest window we care about)
+    // Prune timestamps older than 1 hour (the longest window).
     const oneHourAgo = now - 60 * 60 * 1000;
     bucket.timestamps = bucket.timestamps.filter((t) => t > oneHourAgo);
 
-    // Check per-minute limit
     if (this.perMinute > 0) {
       const oneMinuteAgo = now - 60 * 1000;
       const recentMinute = bucket.timestamps.filter((t) => t > oneMinuteAgo);
@@ -189,7 +244,6 @@ class RateLimiter {
       }
     }
 
-    // Check per-hour limit
     if (this.perHour > 0) {
       if (bucket.timestamps.length >= this.perHour) {
         const oldest = bucket.timestamps[0];
@@ -201,16 +255,17 @@ class RateLimiter {
       }
     }
 
-    // Record this request
     bucket.timestamps.push(now);
     return null;
   }
 }
 
-// ---------------------------------------------------------------------------
-// VerifierBuilder — chainable builder API
-// ---------------------------------------------------------------------------
+// ── VerifierBuilder: chainable builder API ──────────────────────────────────
 
+/**
+ * Chainable builder for `SelfAgentVerifier` (get one from `SelfAgentVerifier.create()`).
+ * Every setter returns the builder; unset options keep the verifier defaults.
+ */
 export class VerifierBuilder {
   private _network?: NetworkName;
   private _registryAddress?: string;
@@ -226,87 +281,154 @@ export class VerifierBuilder {
   private _allowedNationalities?: string[];
   private _rateLimitConfig?: RateLimitConfig;
 
-  /** Set the network: "mainnet" or "testnet" */
+  /**
+   * Set the network.
+   *
+   * @param name - "mainnet" or "testnet".
+   * @returns This builder.
+   */
   network(name: NetworkName): this {
     this._network = name;
     return this;
   }
 
-  /** Set a custom registry address */
+  /**
+   * Set a custom registry address (overrides the network's).
+   *
+   * @param addr - Registry contract address.
+   * @returns This builder.
+   */
   registry(addr: string): this {
     this._registryAddress = addr;
     return this;
   }
 
-  /** Set a custom RPC URL */
+  /**
+   * Set a custom RPC URL (overrides the network's).
+   *
+   * @param url - JSON-RPC endpoint.
+   * @returns This builder.
+   */
   rpc(url: string): this {
     this._rpcUrl = url;
     return this;
   }
 
-  /** Require the agent's human to be at least `n` years old */
+  /**
+   * Require the agent's human to be at least `n` years old (enables credential fetching).
+   *
+   * @param n - Minimum age, compared with the on-chain `olderThan`.
+   * @returns This builder.
+   */
   requireAge(n: number): this {
     this._minimumAge = n;
     return this;
   }
 
-  /** Require OFAC screening passed */
+  /**
+   * Require OFAC screening passed (enables credential fetching).
+   *
+   * @returns This builder.
+   */
   requireOFAC(): this {
     this._requireOFACPassed = true;
     return this;
   }
 
-  /** Require nationality in the given list */
+  /**
+   * Require the human's nationality to be one of `codes` (enables credential fetching).
+   *
+   * @param codes - Allowed nationality codes, as stored on-chain.
+   * @returns This builder.
+   */
   requireNationality(...codes: string[]): this {
     this._allowedNationalities = codes;
     return this;
   }
 
-  /** Require Self Protocol as proof provider (default: on) */
-  requireSelfProvider(): this {
-    this._requireSelfProvider = true;
+  /**
+   * Require (or stop requiring) Self Protocol as proof provider. Required by default.
+   *
+   * @param enabled - Pass `false` to accept any proof provider (default true).
+   * @returns This builder.
+   */
+  requireSelfProvider(enabled = true): this {
+    this._requireSelfProvider = enabled;
     return this;
   }
 
-  /** Max agents per human (default: 1) */
+  /**
+   * Set the max agents per human.
+   *
+   * @param n - Limit (default 1; 0 disables the check).
+   * @returns This builder.
+   */
   sybilLimit(n: number): this {
     this._maxAgentsPerHuman = n;
     return this;
   }
 
-  /** Enable in-memory per-agent rate limiting */
+  /**
+   * Enable in-memory per-agent rate limiting.
+   *
+   * @param config - Per-minute and/or per-hour limits.
+   * @returns This builder.
+   */
   rateLimit(config: RateLimitConfig): this {
     this._rateLimitConfig = config;
     return this;
   }
 
-  /** Enable replay protection (default: on) */
+  /**
+   * Enable or disable replay protection (default: on).
+   *
+   * @param enabled - False to accept repeated signatures.
+   * @returns This builder.
+   */
   replayProtection(enabled = true): this {
     this._enableReplayProtection = enabled;
     return this;
   }
 
-  /** Include ZK credentials in verification result */
+  /**
+   * Include ZK credentials in the verification result.
+   *
+   * @returns This builder.
+   */
   includeCredentials(): this {
     this._includeCredentials = true;
     return this;
   }
 
-  /** Max signed timestamp age in milliseconds */
+  /**
+   * Set the max signed-timestamp age.
+   *
+   * @param ms - Window in milliseconds (default 5 minutes).
+   * @returns This builder.
+   */
   maxAge(ms: number): this {
     this._maxAgeMs = ms;
     return this;
   }
 
-  /** On-chain cache TTL in milliseconds */
+  /**
+   * Set the on-chain status cache TTL.
+   *
+   * @param ms - TTL in milliseconds (default 1 minute).
+   * @returns This builder.
+   */
   cacheTtl(ms: number): this {
     this._cacheTtlMs = ms;
     return this;
   }
 
-  /** Build the SelfAgentVerifier instance */
+  /**
+   * Build the verifier. Credential fetching is enabled automatically when any
+   * credential requirement is set.
+   *
+   * @returns A configured `SelfAgentVerifier`.
+   */
   build(): SelfAgentVerifier {
-    // Auto-enable credentials if any credential requirement is set
     const needsCredentials =
       this._minimumAge != null ||
       this._requireOFACPassed ||
@@ -331,58 +453,25 @@ export class VerifierBuilder {
   }
 }
 
-// ---------------------------------------------------------------------------
-// SelfAgentVerifier
-// ---------------------------------------------------------------------------
+// ── SelfAgentVerifier ───────────────────────────────────────────────────────
 
 /**
  * Service-side verifier for Self Agent ID requests.
  *
- * Security chain:
- * 1. Recover signer address from ECDSA signature (cryptographic proof of key ownership)
- * 2. Derive agent key: zeroPadValue(recoveredAddress, 32)
- * 3. Check on-chain: isVerifiedAgent(agentKey) (proof that a human registered this address)
- * 4. Check proof provider: getProofProvider(agentId) matches selfProofProvider()
- * 5. Check timestamp freshness (replay protection)
+ * Checks, in order: timestamp freshness, signature (ECDSA recovery or Ed25519),
+ * replay, on-chain registration, proof freshness, Self proof provider, sybil
+ * limit, credential requirements, rate limit.
  *
- * The signer address is RECOVERED from the signature, never trusted from headers.
- * This closes the off-chain verification gap — you can't claim to be an agent
- * without holding its private key.
+ * The signer address is RECOVERED from the signature, never trusted from headers,
+ * so you can't claim to be an agent without holding its private key.
+ * Configure with `new SelfAgentVerifier(config)`, `create()` (builder) or `fromConfig()`.
  *
- * Usage:
+ * @example
  * ```ts
- * // Mainnet (default — no config needed)
- * const verifier = new SelfAgentVerifier();
- *
- * // Testnet
- * const verifier = new SelfAgentVerifier({ network: "testnet" });
- *
- * // Chainable builder
- * const verifier = SelfAgentVerifier.create()
- *   .network("testnet")
- *   .requireAge(18)
- *   .requireOFAC()
- *   .rateLimit({ perMinute: 10 })
- *   .build();
- *
- * // From config object
- * const verifier = SelfAgentVerifier.fromConfig({
- *   network: "testnet",
- *   requireAge: 18,
- *   requireOFAC: true,
- * });
- *
- * const result = await verifier.verify({
- *   signature: req.headers["x-self-agent-signature"],
- *   timestamp: req.headers["x-self-agent-timestamp"],
- *   method: req.method,
- *   url: req.originalUrl,
- *   body: req.body ? JSON.stringify(req.body) : undefined,
- * });
- *
- * if (result.valid) {
- *   console.log("Verified agent:", result.agentAddress);
- * }
+ * const verifier = SelfAgentVerifier.create().network("testnet").requireAge(18).build();
+ * // auth() needs the exact body bytes: keep them while parsing JSON.
+ * app.use(express.json({ verify: (req, _res, buf) => { (req as { rawBody?: Buffer }).rawBody = buf; } }));
+ * app.use("/api", verifier.auth()); // sets req.agent on success
  * ```
  */
 export class SelfAgentVerifier {
@@ -403,6 +492,12 @@ export class SelfAgentVerifier {
   private selfProviderCache: { address: string; expiresAt: number } | null =
     null;
 
+  /**
+   * Create a verifier. With no config it verifies against mainnet with
+   * sybil limit 1, replay protection and the Self provider check on.
+   *
+   * @param config - Optional overrides (see `VerifierConfig`).
+   */
   constructor(config: VerifierConfig = {}) {
     const net = NETWORKS[config.network ?? DEFAULT_NETWORK];
     const provider = new ethers.JsonRpcProvider(config.rpcUrl ?? net.rpcUrl);
@@ -425,14 +520,23 @@ export class SelfAgentVerifier {
       : null;
   }
 
-  /** Create a chainable builder for configuring a verifier */
+  /**
+   * Start a chainable builder.
+   *
+   * @returns A new `VerifierBuilder`.
+   */
   static create(): VerifierBuilder {
     return new VerifierBuilder();
   }
 
-  /** Create a verifier from a flat config object */
+  /**
+   * Create a verifier from a flat config object. Credential fetching is
+   * enabled automatically when any credential requirement is set.
+   *
+   * @param cfg - Flat options (see `VerifierFromConfig`).
+   * @returns A configured verifier.
+   */
   static fromConfig(cfg: VerifierFromConfig): SelfAgentVerifier {
-    // Auto-enable credentials if any credential requirement is set
     const needsCredentials =
       cfg.requireAge != null ||
       cfg.requireOFAC ||
@@ -460,6 +564,17 @@ export class SelfAgentVerifier {
    *
    * The agent's identity is derived from the signature itself — not from
    * any header that could be spoofed. This is the key security property.
+   *
+   * @param params - Values taken from the request and its `x-self-agent-*` headers.
+   * @param params.signature - `x-self-agent-signature`.
+   * @param params.timestamp - `x-self-agent-timestamp` (Unix ms).
+   * @param params.method - HTTP method.
+   * @param params.url - Request URL or path (only path + query are compared).
+   * @param params.body - The exact raw body received; never a re-serialised parsed body.
+   * @param params.keytype - `x-self-agent-keytype`; "ed25519" selects Ed25519 verification.
+   * @param params.agentKey - `x-self-agent-key`; required for Ed25519.
+   * @returns A result with `valid` and, on failure, `error` (plus `retryAfterMs` when rate limited).
+   * @throws If an on-chain status RPC call fails.
    */
   async verify(params: {
     signature: string;
@@ -482,7 +597,7 @@ export class SelfAgentVerifier {
       nullifier: 0n,
     };
 
-    // 1. Check timestamp freshness (replay protection)
+    // 1. Timestamp freshness
     const ts = parseInt(timestamp, 10);
     if (isNaN(ts) || Math.abs(Date.now() - ts) > this.maxAgeMs) {
       return { ...empty, error: "Timestamp expired or invalid" };
@@ -501,7 +616,7 @@ export class SelfAgentVerifier {
     let agentKey: string;
 
     if (keytype === "ed25519") {
-      // ── Ed25519 verification path ──
+      // 3a. Ed25519: verify against the supplied public key.
       if (!params.agentKey) {
         return {
           ...empty,
@@ -509,7 +624,6 @@ export class SelfAgentVerifier {
         };
       }
 
-      // Verify Ed25519 signature directly against the provided pubkey
       try {
         const msgBytes = ethers.getBytes(message); // 32-byte keccak256 hash
         const sigBytes = ethers.getBytes(signature); // 64-byte Ed25519 signature
@@ -523,14 +637,12 @@ export class SelfAgentVerifier {
       }
 
       agentKey = params.agentKey;
-      // Derive deterministic address from keccak256(pubkey) — matches Ed25519Verifier.deriveAddress on-chain
+      // Matches Ed25519Verifier.deriveAddress on-chain.
       const pubkeyBytes = ethers.getBytes(params.agentKey);
       const hash = ethers.keccak256(pubkeyBytes);
       signerAddress = ethers.getAddress("0x" + hash.slice(-40));
     } else {
-      // ── secp256k1 ECDSA verification path (unchanged) ──
-
-      // 3. Recover signer address from signature (cryptographic — can't be faked)
+      // 3b. secp256k1: recover the signer address from the signature.
       try {
         signerAddress = ethers.verifyMessage(
           ethers.getBytes(message),
@@ -540,7 +652,6 @@ export class SelfAgentVerifier {
         return { ...empty, error: "Invalid signature" };
       }
 
-      // 5. Derive the on-chain agent key from the recovered address
       agentKey = ethers.zeroPadValue(signerAddress, 32);
     }
 
@@ -557,7 +668,7 @@ export class SelfAgentVerifier {
       }
     }
 
-    // 6. Check on-chain status (with cache)
+    // 5. On-chain status (cached)
     const {
       isVerified,
       isProofFresh,
@@ -568,7 +679,6 @@ export class SelfAgentVerifier {
       proofExpiresAtTimestamp,
     } = await this.checkOnChain(agentKey);
 
-    // Compute expiry fields from on-chain timestamp
     const proofExpiresAt =
       proofExpiresAtTimestamp > 0n
         ? new Date(Number(proofExpiresAtTimestamp) * 1000)
@@ -579,9 +689,7 @@ export class SelfAgentVerifier {
         ? Math.floor((Number(proofExpiresAtTimestamp) - now) / 86400)
         : undefined;
     const isExpiringSoon =
-      daysUntilExpiry !== undefined &&
-      daysUntilExpiry >= 0 &&
-      daysUntilExpiry <= 30;
+      proofExpiresAt !== undefined && isProofExpiringSoon(proofExpiresAt);
 
     if (!isVerified) {
       return {
@@ -598,7 +706,7 @@ export class SelfAgentVerifier {
       };
     }
 
-    // 6b. Check proof freshness (expired proofs should not pass verification)
+    // 6. Proof freshness: an expired proof does not verify.
     if (!isProofFresh) {
       return {
         valid: false,
@@ -614,7 +722,7 @@ export class SelfAgentVerifier {
       };
     }
 
-    // 7. Provider check: ensure agent was verified by Self Protocol
+    // 7. Proof provider must be Self Protocol's
     if (this.requireSelfProvider && agentId > 0n) {
       let selfProvider: string;
       try {
@@ -668,13 +776,13 @@ export class SelfAgentVerifier {
       };
     }
 
-    // 9. Fetch credentials if requested
+    // 9. Credentials (if requested)
     let credentials: AgentCredentials | undefined;
     if (this.includeCredentials && agentId > 0n) {
       credentials = await this.fetchCredentials(agentId);
     }
 
-    // 10. Credential checks (post-verify — only if credentials were fetched)
+    // 10. Credential requirements (skipped if credentials could not be read)
     if (credentials) {
       if (
         this.minimumAge != null &&
@@ -766,7 +874,12 @@ export class SelfAgentVerifier {
   }
 
   /**
-   * Check on-chain agent status with caching.
+   * Read on-chain agent status, cached per agent key for `cacheTtlMs`.
+   * Sybil and provider fields are only fetched when those checks are enabled.
+   *
+   * @param agentKey - bytes32 agent key.
+   * @returns Registration, freshness, sybil, provider and expiry data.
+   * @throws If an RPC call fails.
    */
   private async checkOnChain(agentKey: string): Promise<{
     isVerified: boolean;
@@ -795,7 +908,6 @@ export class SelfAgentVerifier {
       this.registry.getAgentId(agentKey),
     ]);
 
-    // Fetch sybil data, provider address, proof freshness, and expiry if agent exists
     let agentCount = 0n;
     let nullifier = 0n;
     let providerAddress = "";
@@ -804,14 +916,12 @@ export class SelfAgentVerifier {
     if (agentId > 0n) {
       const promises: Promise<unknown>[] = [];
 
-      // Always check proof freshness
       promises.push(
         this.registry.isProofFresh(agentId).then((fresh) => {
           isProofFresh = fresh;
         }),
       );
 
-      // Always fetch proof expiry timestamp
       promises.push(
         this.registry.proofExpiresAt(agentId).then((ts) => {
           proofExpiresAtTimestamp = ts;
@@ -862,7 +972,10 @@ export class SelfAgentVerifier {
 
   /**
    * Get Self Protocol's own proof provider address from the registry.
-   * Cached separately since it rarely changes.
+   * Cached for 12x `cacheTtlMs` since it rarely changes.
+   *
+   * @returns The provider address.
+   * @throws If the RPC call fails (callers fail closed).
    */
   private async getSelfProviderAddress(): Promise<string> {
     if (
@@ -876,13 +989,16 @@ export class SelfAgentVerifier {
     const address: string = await this.registry.selfProofProvider();
     this.selfProviderCache = {
       address,
-      expiresAt: Date.now() + this.cacheTtlMs * 12, // Cache for longer (1 hour at default TTL)
+      expiresAt: Date.now() + this.cacheTtlMs * 12,
     };
     return address;
   }
 
   /**
-   * Fetch ZK-attested credentials for an agent.
+   * Fetch ZK-attested credentials for an agent, filling missing fields with empty values.
+   *
+   * @param agentId - On-chain agent ID.
+   * @returns The credentials, or undefined if the call fails.
    */
   private async fetchCredentials(
     agentId: bigint,
@@ -905,13 +1021,24 @@ export class SelfAgentVerifier {
     }
   }
 
-  /** Clear the on-chain status cache */
+  /**
+   * Clear the on-chain status, Self provider and replay caches.
+   * Clearing the replay cache lets already-seen signatures through again until they age out.
+   */
   clearCache(): void {
     this.cache.clear();
     this.selfProviderCache = null;
     this.replayCache.clear();
   }
 
+  /**
+   * Reject a signature seen before within its validity window, else record it.
+   *
+   * @param signature - Request signature.
+   * @param message - Signed message hash.
+   * @param ts - Signed timestamp (ms); the entry lives until `ts + maxAgeMs`.
+   * @returns "Replay detected", or null if new.
+   */
   private checkAndRecordReplay(
     signature: string,
     message: string,
@@ -931,6 +1058,11 @@ export class SelfAgentVerifier {
     return null;
   }
 
+  /**
+   * Drop expired replay entries, then the soonest-expiring ones if still over the size cap.
+   *
+   * @param now - Current time in ms.
+   */
   private pruneReplayCache(now: number): void {
     for (const [key, entry] of this.replayCache) {
       if (entry.expiresAt <= now) {
@@ -953,13 +1085,20 @@ export class SelfAgentVerifier {
   /**
    * Express/Connect middleware that verifies agent requests.
    *
-   * Adds `req.agent` with `{ address, agentKey, agentId, agentCount, nullifier, credentials? }` on success.
-   * Returns 401 on failure.
+   * Adds `req.agent` ({@link VerifiedAgent}) on success. Returns 401 on
+   * failure, 429 when rate limited, 503 when the on-chain lookup fails.
    *
-   * Usage:
-   * ```ts
-   * app.use("/api", verifier.auth());
-   * ```
+   * The signature covers the exact request body bytes, so the middleware needs
+   * the raw body: set `req.rawBody` (string or Buffer), or leave `req.body` as
+   * a string/Buffer (e.g. `express.text()` / `express.raw()`). A parsed JSON
+   * body is never re-serialised; requests that have a body but no raw body get
+   * a 500 and a console error explaining the fix. See the class example for
+   * the `express.json({ verify })` setup.
+   *
+   * @returns An `(req, res, next)` middleware. Responds 401 `{error}` for missing
+   *   headers or failed verification, 429 `{error, retryAfterMs}` when rate
+   *   limited, 500 `{error}` when the raw body is unavailable, 503 `{error}`
+   *   (and logs) when verification itself fails (e.g. an RPC error).
    */
   auth() {
     type MiddlewareReq = {
@@ -969,14 +1108,7 @@ export class SelfAgentVerifier {
       url?: string;
       rawBody?: unknown;
       body?: unknown;
-      agent?: {
-        address: string;
-        agentKey: string;
-        agentId: bigint;
-        agentCount: bigint;
-        nullifier: bigint;
-        credentials?: AgentCredentials;
-      };
+      agent?: VerifiedAgent;
     };
     type MiddlewareRes = {
       status: (code: number) => {
@@ -1014,26 +1146,46 @@ export class SelfAgentVerifier {
           : typeof req.url === "string"
             ? req.url
             : "/";
-      const body =
-        typeof req.rawBody === "string"
-          ? req.rawBody
-          : Buffer.isBuffer(req.rawBody)
-            ? req.rawBody.toString("utf8")
-            : typeof req.body === "string"
-              ? req.body
-              : req.body
-                ? JSON.stringify(req.body)
-                : undefined;
+      const raw = req.rawBody ?? req.body;
+      let body: string | undefined;
+      if (typeof raw === "string") {
+        body = raw;
+      } else if (Buffer.isBuffer(raw)) {
+        body = raw.toString("utf8");
+      } else if (hasRequestBody(req.headers)) {
+        // Re-serialising a parsed body (JSON.stringify(req.body)) rarely
+        // reproduces the signed bytes, so refuse instead of failing obscurely.
+        console.error(
+          "[SelfAgentVerifier] auth() needs the raw request body to verify the " +
+            "signature. Keep it with express.json({ verify: (req, _res, buf) => " +
+            "{ req.rawBody = buf; } }), or use express.text() / express.raw().",
+        );
+        res.status(500).json({
+          error: "Raw request body unavailable for signature verification",
+        });
+        return;
+      }
 
-      const result = await this.verify({
-        signature,
-        timestamp,
-        method,
-        url,
-        body,
-        keytype,
-        agentKey,
-      });
+      let result: VerificationResult;
+      try {
+        result = await this.verify({
+          signature,
+          timestamp,
+          method,
+          url,
+          body,
+          keytype,
+          agentKey,
+        });
+      } catch (err) {
+        // verify() throws on RPC failures; answer instead of leaving the
+        // request hanging (Express 4 does not catch async rejections).
+        console.error("[SelfAgentVerifier] auth() verification failed:", err);
+        res.status(503).json({
+          error: "Agent verification unavailable, try again later",
+        });
+        return;
+      }
 
       if (!result.valid) {
         const status = result.retryAfterMs ? 429 : 401;
@@ -1058,16 +1210,33 @@ export class SelfAgentVerifier {
   }
 
   /**
+   * Alias of `auth()`.
+   *
    * @deprecated Use `auth()` instead.
+   * @returns The same middleware as `auth()`.
    */
   expressMiddleware() {
     return this.auth();
   }
 }
 
-// ---------------------------------------------------------------------------
-// Standalone verifyAgent() — lightweight proof-expiry-aware check
-// ---------------------------------------------------------------------------
+/**
+ * Check whether the request headers announce a body.
+ *
+ * Needed because body parsers set `req.body = {}` even when there is none.
+ *
+ * @param headers - Lower-cased request headers.
+ * @returns True if `transfer-encoding` is set or `content-length` is non-zero.
+ */
+function hasRequestBody(headers: Record<string, unknown> | undefined): boolean {
+  const length = headers?.["content-length"];
+  return (
+    headers?.["transfer-encoding"] !== undefined ||
+    (length !== undefined && length !== "0")
+  );
+}
+
+// ── Standalone verifyAgent(): lightweight proof-expiry-aware check ──────────
 
 /**
  * Build a re-authentication URL for renewing an expired (or soon-to-expire)
@@ -1083,6 +1252,10 @@ export class SelfAgentVerifier {
  *
  * Exported for unit testing the URL contract; not re-exported from the package
  * entry point, so it stays out of the public API surface.
+ *
+ * @param agentId - On-chain agent ID.
+ * @param options - `chainId`, `registryAddress` and optional `reauthBaseUrl` host override.
+ * @returns `<base>/api/agent/refresh?agentId=..&chainId=..&registry=..`.
  */
 export function buildReauthUrl(
   agentId: bigint,
@@ -1095,44 +1268,38 @@ export function buildReauthUrl(
 /**
  * Standalone proof-expiry-aware agent verification.
  *
- * Unlike `SelfAgentVerifier.verify()` (which validates ECDSA request
- * signatures), this function performs a direct on-chain lookup to answer
- * the question: "does this agent currently hold a valid, non-expired
- * human proof?"
+ * Unlike `SelfAgentVerifier.verify()` (which validates request signatures),
+ * this function performs a direct on-chain lookup to answer the question:
+ * "does this agent currently hold a valid, non-expired human proof?"
+ * Freshness comes from the registry's `isProofFresh` (not the local clock),
+ * so verified = hasHumanProof && isProofFresh, as everywhere else.
  *
  * It is the recommended entry point for ERC-8004 compliance checks when
  * you already trust the agent's identity (e.g., during off-chain enrollment
  * or administrative tooling).
  *
- * @param agentKey - The agent's bytes32 on-chain key (zero-padded address)
- * @param options  - `chainId` (used in reauth URL) and `registryAddress`
- * @param rpcUrl   - RPC endpoint to use (default: Celo mainnet)
+ * @param agentKey - The agent's bytes32 on-chain key (zero-padded address, or Ed25519 public key).
+ * @param options.network - "mainnet" (default) or "testnet"; sets the registry, chain ID and RPC.
+ * @param options.registryAddress - Override the network's registry (custom deployments).
+ * @param options.chainId - Override the chain ID used in the reauth URL.
+ * @param options.reauthBaseUrl - Override the host of the reauth URL.
+ * @param rpcUrl - RPC endpoint (default: the RPC of the network whose registry matches, else the network's).
  *
  * @returns A {@link VerifyResult} discriminated union:
  *   - `{ verified: true, agentId, expiresAt }` — active proof
  *   - `{ verified: false, reason: 'NOT_REGISTERED' }` — unknown key
  *   - `{ verified: false, reason: 'NO_HUMAN_PROOF' }` — key registered but no proof
  *   - `{ verified: false, reason: 'PROOF_EXPIRED', expiredAt, reauthUrl }` — proof lapsed
- *
- * @example
- * ```ts
- * import { verifyAgent, isProofExpiringSoon } from "@selfxyz/agent-sdk";
- *
- * const result = await verifyAgent(agentKey, { chainId: 42220, registryAddress: "0x..." });
- * if (!result.verified) {
- *   if (result.reason === "PROOF_EXPIRED") {
- *     console.warn("Re-auth at:", result.reauthUrl);
- *   }
- *   return;
- * }
- * if (isProofExpiringSoon(result.expiresAt)) {
- *   console.warn("Proof expiring in < 30 days — prompt for renewal");
- * }
- * ```
+ * @throws TypeError if `agentKey` is not 0x + 64 hex chars; any RPC error.
  */
 export async function verifyAgent(
   agentKey: string,
-  options: { chainId: number; registryAddress: string; reauthBaseUrl?: string },
+  options: {
+    network?: NetworkName;
+    chainId?: number;
+    registryAddress?: string;
+    reauthBaseUrl?: string;
+  } = {},
   rpcUrl?: string,
 ): Promise<VerifyResult> {
   if (!/^0x[0-9a-fA-F]{64}$/.test(agentKey)) {
@@ -1141,41 +1308,48 @@ export async function verifyAgent(
     );
   }
 
-  // Resolve the RPC URL: use the provided override, or fall back to the
-  // network whose registry address matches, or finally to Celo mainnet.
+  const network = options.network ?? DEFAULT_NETWORK;
+  const target = {
+    chainId: options.chainId ?? CHAIN_IDS[network],
+    registryAddress:
+      options.registryAddress ?? NETWORKS[network].registryAddress,
+    reauthBaseUrl: options.reauthBaseUrl,
+  };
   const resolvedRpcUrl =
     rpcUrl ??
     Object.values(NETWORKS).find(
       (n) =>
         n.registryAddress.toLowerCase() ===
-        options.registryAddress.toLowerCase(),
+        target.registryAddress.toLowerCase(),
     )?.rpcUrl ??
-    NETWORKS[DEFAULT_NETWORK].rpcUrl;
+    NETWORKS[network].rpcUrl;
 
   const provider = new ethers.JsonRpcProvider(resolvedRpcUrl);
-  const registry = typedRegistry(options.registryAddress, provider);
+  const registry = typedRegistry(target.registryAddress, provider);
 
-  // Step 1: resolve agent key → agentId
   const agentId = await registry.getAgentId(agentKey);
   if (agentId === 0n) {
     return { verified: false, reason: "NOT_REGISTERED" };
   }
 
-  // Step 2: check whether the agent has a human proof at all
   const hasProof = await registry.hasHumanProof(agentId);
   if (!hasProof) {
     return { verified: false, reason: "NO_HUMAN_PROOF" };
   }
 
-  // Step 3: check expiry (proofExpiresAt returns 0 if the proof never expires)
-  const expiresAtSecs = await registry.proofExpiresAt(agentId);
-  const nowSecs = BigInt(Math.floor(Date.now() / 1000));
-  if (expiresAtSecs > 0n && nowSecs >= expiresAtSecs) {
+  // The registry's isProofFresh is authoritative (verified = hasHumanProof &&
+  // isProofFresh); proofExpiresAt is only reported. An unset (0) expiry is
+  // not fresh on-chain, so it surfaces as PROOF_EXPIRED with the Unix epoch.
+  const [fresh, expiresAtSecs] = await Promise.all([
+    registry.isProofFresh(agentId),
+    registry.proofExpiresAt(agentId),
+  ]);
+  if (!fresh) {
     return {
       verified: false,
       reason: "PROOF_EXPIRED",
       expiredAt: new Date(Number(expiresAtSecs) * 1000),
-      reauthUrl: buildReauthUrl(agentId, options),
+      reauthUrl: buildReauthUrl(agentId, target),
     };
   }
 

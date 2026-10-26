@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
+/** Tests for registration helpers: config index, challenge signing and userData encoders. */
+
 import { describe, it } from "node:test";
 import assert from "node:assert";
 import { ethers } from "ethers";
@@ -53,6 +55,24 @@ describe("registration helpers", () => {
       getRegistrationConfigIndex({ minimumAge: 21, ofac: true }),
       5,
     );
+  });
+
+  it("throws on an unsupported minimumAge instead of dropping the age gate", () => {
+    for (const minimumAge of [16, 19, 65, -1, NaN]) {
+      const disclosures = { minimumAge, ofac: true } as unknown as Parameters<
+        typeof getRegistrationConfigIndex
+      >[0];
+      assert.throws(
+        () => getRegistrationConfigIndex(disclosures),
+        /Unsupported minimumAge/,
+      );
+      assert.throws(
+        () => buildSimpleRegisterUserDataAscii(disclosures),
+        /Unsupported minimumAge/,
+      );
+    }
+    // Omitted minimumAge still means no age gate.
+    assert.strictEqual(getRegistrationConfigIndex({ ofac: true }), 3);
   });
 
   it("computes chain+registry-bound challenge hash with nonce", () => {

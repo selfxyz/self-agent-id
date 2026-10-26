@@ -2,21 +2,30 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
+/**
+ * `Ed25519Agent`: agent-side SDK for agents identified by an Ed25519 key.
+ *
+ * Same request-signing scheme as `SelfAgent`, but signed with Ed25519 and
+ * sent with `x-self-agent-key` / `x-self-agent-keytype: ed25519`. Node-only
+ * (uses `node:crypto` for SHA-512).
+ */
+
 import * as ed from "@noble/ed25519";
 import { createHash } from "node:crypto";
 import { ethers } from "ethers";
 import { HEADERS, NETWORKS, DEFAULT_NETWORK } from "./constants";
 import type { NetworkName } from "./constants";
-import { computeSigningMessage } from "./signing";
+import { computeSigningMessage, withAgentHeaders } from "./signing";
 import { typedRegistry, type TypedRegistryContract } from "./contract-types";
+import { readAgentInfo, type AgentInfo } from "./agent-info";
 
-// @noble/ed25519 v3 requires a SHA-512 implementation for sync methods (getPublicKey, sign, verify).
-// Use Node's built-in crypto module.
+// @noble/ed25519 v3 needs a SHA-512 implementation for its sync methods (getPublicKey, sign, verify).
 if (!ed.hashes.sha512) {
   ed.hashes.sha512 = (message: Uint8Array) =>
     new Uint8Array(createHash("sha512").update(message).digest());
 }
 
+/** Constructor options for `Ed25519Agent`. */
 export interface Ed25519AgentConfig {
   /** Ed25519 private key (hex, with or without 0x prefix). 32 bytes. */
   privateKey: string;
@@ -37,12 +46,12 @@ export interface Ed25519AgentConfig {
  * For off-chain authentication, the agent signs each request with Ed25519.
  * Services verify the signature using the public key and check on-chain status.
  *
- * Usage:
+ * @example
  * ```ts
- * const agent = new Ed25519Agent({ privateKey: "0x..." });
- *
- * const registered = await agent.isRegistered();
- * const response = await agent.fetch("https://api.example.com/data");
+ * const agent = new Ed25519Agent({ privateKey: "<64 hex chars>" });
+ * console.log(agent.agentKey); // 0x + 32-byte public key
+ * const { isVerified } = await agent.getInfo();
+ * const res = await agent.fetch("https://api.example.com/data");
  * ```
  */
 export class Ed25519Agent {
@@ -52,8 +61,14 @@ export class Ed25519Agent {
   private _agentKey: string;
   private _address: string;
 
+  /**
+   * Create an agent from an Ed25519 private key.
+   *
+   * @param config - 32-byte hex private key plus optional network / registry / RPC overrides.
+   * @throws If the private key is not 64 hex characters (after an optional 0x),
+   *   including any non-hex character.
+   */
   constructor(config: Ed25519AgentConfig) {
-    // Parse private key (strip 0x prefix if present)
     const privHex = config.privateKey.startsWith("0x")
       ? config.privateKey.slice(2)
       : config.privateKey;
@@ -75,15 +90,11 @@ export class Ed25519Agent {
       provider,
     );
 
-    // Agent key = raw 32-byte public key as 0x-prefixed hex (already 32 bytes)
     this._agentKey = "0x" + bytesToHex(this.publicKeyBytes);
-
-    // Derive a deterministic Ethereum-style address from pubkey:
-    // address = address(uint160(uint256(keccak256(pubkey))))
     this._address = Ed25519Agent.deriveAddress(this.publicKeyBytes);
   }
 
-  /** The agent's on-chain key (bytes32) — raw Ed25519 public key */
+  /** The agent's on-chain key (bytes32): the raw Ed25519 public key. */
   get agentKey(): string {
     return this._agentKey;
   }
@@ -96,55 +107,38 @@ export class Ed25519Agent {
     return this._address;
   }
 
-  /** Check if this agent is registered and verified on-chain */
+  /**
+   * Check whether this agent is registered with a human proof.
+   *
+   * The proof may have expired; use `getInfo().isVerified` to also require a fresh proof.
+   *
+   * @returns The registry's `isVerifiedAgent` result.
+   * @throws If the RPC call fails.
+   */
   async isRegistered(): Promise<boolean> {
     return this.registry.isVerifiedAgent(this._agentKey);
   }
 
-  /** Get full agent info from the registry */
-  async getInfo(): Promise<{
-    address: string;
-    agentKey: string;
-    agentId: bigint;
-    isVerified: boolean;
-    nullifier: bigint;
-    agentCount: bigint;
-  }> {
-    const agentId: bigint = await this.registry.getAgentId(this._agentKey);
-    if (agentId === 0n) {
-      return {
-        address: this._address,
-        agentKey: this._agentKey,
-        agentId: 0n,
-        isVerified: false,
-        nullifier: 0n,
-        agentCount: 0n,
-      };
-    }
-
-    const [isVerified, nullifier] = await Promise.all([
-      this.registry.hasHumanProof(agentId),
-      this.registry.getHumanNullifier(agentId),
-    ]);
-
-    const agentCount: bigint =
-      await this.registry.getAgentCountForHuman(nullifier);
-
-    return {
-      address: this._address,
-      agentKey: this._agentKey,
-      agentId,
-      isVerified,
-      nullifier,
-      agentCount,
-    };
+  /**
+   * Read this agent's full on-chain status.
+   *
+   * @returns Agent ID, verification state, proof expiry and sibling agents.
+   * @throws If an RPC call fails.
+   */
+  async getInfo(): Promise<AgentInfo> {
+    return readAgentInfo(this.registry, this._address, this._agentKey);
   }
 
   /**
    * Generate authentication headers for a request.
    *
-   * Signature covers: keccak256(timestamp + method + canonicalPathAndQuery + bodyHash)
-   * Signed with Ed25519 instead of ECDSA.
+   * Ed25519 signature over the raw 32-byte
+   * keccak256(timestamp + method + canonicalPathAndQuery + bodyHash).
+   *
+   * @param method - HTTP method.
+   * @param url - Request URL (absolute or path; only path + query are signed).
+   * @param body - Request body exactly as it will be sent, if any.
+   * @returns The key, key type, signature and timestamp headers.
    */
   async signRequest(
     method: string,
@@ -154,7 +148,6 @@ export class Ed25519Agent {
     const timestamp = Date.now().toString();
     const message = computeSigningMessage(timestamp, method, url, body);
 
-    // Sign the raw 32-byte keccak256 hash with Ed25519
     const msgBytes = ethers.getBytes(message);
     const sigBytes = await ed.signAsync(msgBytes, this.privateKeyBytes);
 
@@ -167,7 +160,14 @@ export class Ed25519Agent {
   }
 
   /**
-   * Wrapper around global fetch that automatically adds agent signature headers.
+   * Call global `fetch` with agent signature headers added.
+   *
+   * String bodies are signed and sent as `application/json` unless you set a
+   * Content-Type; non-string bodies are not covered by the signature.
+   *
+   * @param url - Request URL.
+   * @param options - Standard fetch options.
+   * @returns The fetch response.
    */
   async fetch(url: string, options: RequestInit = {}): Promise<Response> {
     const method = (options.method || "GET").toUpperCase();
@@ -177,10 +177,7 @@ export class Ed25519Agent {
     return globalThis.fetch(url, {
       ...options,
       method,
-      headers: {
-        ...Object.fromEntries(Object.entries(options.headers || {})),
-        ...headers,
-      },
+      headers: withAgentHeaders(options, headers),
     });
   }
 
@@ -189,21 +186,35 @@ export class Ed25519Agent {
    *
    * Matches the on-chain Ed25519Verifier.deriveAddress():
    *   address(uint160(uint256(keccak256(pubkey))))
+   *
+   * @param pubkey - 32-byte public key as bytes or 0x-prefixed hex.
+   * @returns The checksummed address (last 20 bytes of the hash).
+   * @throws If `pubkey` is not valid hex.
    */
   static deriveAddress(pubkey: Uint8Array | string): string {
     const pubkeyBytes =
       typeof pubkey === "string" ? ethers.getBytes(pubkey) : pubkey;
     const hash = ethers.keccak256(pubkeyBytes);
-    // Take the last 20 bytes of the 32-byte keccak256 hash
     return ethers.getAddress("0x" + hash.slice(-40));
   }
 }
 
-// ---------------------------------------------------------------------------
-// Hex utility helpers (avoids Buffer dependency for browser compatibility)
-// ---------------------------------------------------------------------------
+// ── Hex helpers (no Buffer dependency) ──────────────────────────────────────
 
+/**
+ * Decode a hex string (no 0x) into bytes.
+ *
+ * @param hex - Hex string without prefix.
+ * @returns The decoded bytes.
+ * @throws If the length is odd or any character is not 0-9, a-f or A-F
+ *   (otherwise `parseInt` would silently decode it as a zero byte).
+ */
 function hexToBytes(hex: string): Uint8Array {
+  if (hex.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(hex)) {
+    throw new Error(
+      "Invalid hex string: expected an even number of characters 0-9, a-f, A-F",
+    );
+  }
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i++) {
     bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
@@ -211,6 +222,12 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
+/**
+ * Encode bytes as lowercase hex without a 0x prefix.
+ *
+ * @param bytes - Bytes to encode.
+ * @returns The hex string.
+ */
 function bytesToHex(bytes: Uint8Array): string {
   let hex = "";
   for (let i = 0; i < bytes.length; i++) {

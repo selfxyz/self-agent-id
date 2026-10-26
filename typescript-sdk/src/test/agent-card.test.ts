@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
+/** Tests for agent card builders, provider labels, expiry helper and `SelfAgent` card methods. */
+
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -9,8 +11,10 @@ import {
   getStrengthColor,
   generateRegistrationJSON,
   buildAgentCard,
+  A2A_PROTOCOL_VERSION,
 } from "../agentCard";
 import { isProofExpiringSoon, EXPIRY_WARNING_THRESHOLD_SECS } from "../types";
+import { SelfAgent } from "../SelfAgent";
 
 // ─── getProviderLabel ────────────────────────────────────────────────────────
 
@@ -229,6 +233,25 @@ describe("generateRegistrationJSON", () => {
     assert.equal(a2aService.endpoint, a2aEndpoint);
     assert.equal(doc.url, a2aEndpoint);
   });
+
+  it("auto-added A2A service uses the A2A protocol version, not the agent version", () => {
+    const doc = generateRegistrationJSON({
+      name: "VersionAgent",
+      description: "",
+      image: "",
+      services: [],
+      a2a: {
+        version: "2.4.1",
+        url: "https://agent.example.com/a2a",
+        provider: { name: "TestCo" },
+      },
+    });
+    const a2aService = doc.services.find((s) => s.name === "A2A");
+    assert.equal(a2aService?.version, A2A_PROTOCOL_VERSION);
+    assert.equal(A2A_PROTOCOL_VERSION, "0.3.0");
+    assert.equal(doc.supportedInterfaces?.[0].protocolVersion, "0.3.0");
+    assert.equal(doc.version, "2.4.1");
+  });
 });
 
 // ─── buildAgentCard ──────────────────────────────────────────────────────────
@@ -237,8 +260,13 @@ describe("buildAgentCard", () => {
   const REGISTRY_ADDRESS = "0xaC3DF9ABf80d0F5c020C06B04Cced27763355944";
   const PROVIDER_ADDRESS = "0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d";
 
-  function createMockRegistry(options?: { throwOnCredentials?: boolean }) {
+  /** Mock registry with fixed credentials (or one whose credential read throws). */
+  function createMockRegistry(options?: {
+    throwOnCredentials?: boolean;
+    hasHumanProof?: boolean;
+  }) {
     return {
+      hasHumanProof: async () => options?.hasHumanProof ?? true,
       getAgentCredentials: options?.throwOnCredentials
         ? async () => {
             throw new Error("No credentials");
@@ -263,6 +291,7 @@ describe("buildAgentCard", () => {
     } as any;
   }
 
+  /** Mock proof provider: "Self Protocol", strength 100. */
   function createMockProvider() {
     return {
       providerName: async () => "Self Protocol",
@@ -344,8 +373,49 @@ describe("buildAgentCard", () => {
     assert.equal(card.services.length, 1);
     assert.equal(card.services[0].name, "A2A");
     assert.equal(card.services[0].endpoint, "https://agent.example.com/a2a");
-    assert.equal(card.services[0].version, "1.0");
+    // The A2A protocol version, same as generateRegistrationJSON.
+    assert.equal(card.services[0].version, A2A_PROTOCOL_VERSION);
     assert.equal(card.url, "https://agent.example.com/a2a");
+  });
+
+  it("derives sybilResistant from hasHumanProof", async () => {
+    const card = await buildAgentCard(
+      5,
+      createMockRegistry({ hasHumanProof: false }),
+      createMockProvider(),
+      { name: "NoProofAgent" },
+    );
+    assert.equal(card.selfProtocol?.trustModel.sybilResistant, false);
+  });
+
+  it("auto-generates missing skill IDs like generateRegistrationJSON", async () => {
+    const skills = [
+      { id: "", name: "Translate Text!" },
+      { id: "keep-me", name: "Other" },
+    ];
+    const card = await buildAgentCard(
+      6,
+      createMockRegistry(),
+      createMockProvider(),
+      { name: "SkillAgent", skills },
+    );
+    const doc = generateRegistrationJSON({
+      name: "SkillAgent",
+      description: "",
+      image: "",
+      services: [],
+      a2a: {
+        version: "2.0.0",
+        url: "https://a/a2a",
+        provider: { name: "x" },
+        skills,
+      },
+    });
+    assert.deepEqual(
+      card.skills?.map((s) => s.id),
+      ["translate-text", "keep-me"],
+    );
+    assert.deepEqual(card.skills, doc.skills);
   });
 
   it("uses explicit services when provided instead of auto-populating", async () => {
@@ -473,5 +543,61 @@ describe("ERC-8004 Agent Card schema validation", () => {
     const a2aService = doc.services.find((s) => s.name === "A2A");
     assert.ok(a2aService);
     assert.equal(doc.url, a2aService.endpoint);
+  });
+});
+
+// ─── SelfAgent.setAgentCard ──────────────────────────────────────────────────
+
+describe("SelfAgent.setAgentCard", () => {
+  it("fails fast when the agent key does not own the agent NFT", async () => {
+    const agent = new SelfAgent({
+      privateKey:
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      registryAddress: "0x0000000000000000000000000000000000000001",
+      rpcUrl: "http://localhost:8545",
+    });
+    const human = "0x2222222222222222222222222222222222222222";
+    let wrote = false;
+    (agent as unknown as { registry: unknown }).registry = {
+      getAgentId: async () => 7n,
+      ownerOf: async () => human,
+      getProofProvider: async () => {
+        wrote = true; // must not get this far
+        return human;
+      },
+    };
+
+    await assert.rejects(
+      agent.setAgentCard({ name: "Linked agent" }),
+      /must be sent by the agent NFT owner \(0x2222/,
+    );
+    assert.equal(wrote, false);
+  });
+});
+
+describe("SelfAgent.toAgentCardDataURI", () => {
+  it("encodes non-Latin-1 card JSON as UTF-8 base64", async () => {
+    const agent = new SelfAgent({
+      privateKey:
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      registryAddress: "0x0000000000000000000000000000000000000001",
+      rpcUrl: "http://localhost:8545",
+    });
+    const card = {
+      type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+      name: "Agent \u00e9\u4e16\u754c \ud83e\udd16",
+    };
+    (agent as unknown as { registry: unknown }).registry = {
+      getAgentId: async () => 7n,
+      getAgentMetadata: async () => JSON.stringify(card),
+    };
+
+    const uri = await agent.toAgentCardDataURI();
+    const prefix = "data:application/json;base64,";
+    assert.ok(uri.startsWith(prefix));
+    const decoded = Buffer.from(uri.slice(prefix.length), "base64").toString(
+      "utf8",
+    );
+    assert.equal(JSON.parse(decoded).name, card.name);
   });
 });
