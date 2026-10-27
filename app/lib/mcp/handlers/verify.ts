@@ -14,8 +14,8 @@ import {
   SelfAgentVerifier,
   NETWORKS,
   isProofExpiringSoon,
+  computeSigningMessage,
 } from "@selfxyz/agent-sdk";
-import { computeSigningMessage } from "@selfxyz/agent-sdk/dist/signing";
 import { rpcUrlFor, type McpConfig } from "../config";
 import { INVALID_AGENT_ADDRESS_ERROR, toolError, toolSuccess } from "../utils";
 import { disclosed } from "@/lib/agent-read";

@@ -12,7 +12,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@noble/curves": "^2.0.1",
-    "@selfxyz/agent-sdk": "0.2.1",
+    "@selfxyz/agent-sdk": "^0.3.0",
     "@selfxyz/sdk-common": "^1.0.1",
     "ethers": "^6.16.0",
     "mcp-handler": "^1.0.7",

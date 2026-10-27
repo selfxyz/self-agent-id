@@ -4,9 +4,9 @@
 
 /** Tests for the MCP verify tool handlers (lib/mcp/handlers/verify): self_verify_request and self_verify_agent. */
 
+import { computeSigningMessage } from "@selfxyz/agent-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ethers } from "ethers";
-import { computeSigningMessage } from "@selfxyz/agent-sdk/dist/signing";
 import type { McpConfig } from "@/lib/mcp/config";
 
 const verifyMock = vi.fn();
@@ -82,7 +82,13 @@ function signedArgs(path = "/v1/data", timestamp = String(Date.now())) {
  */
 async function loadModule() {
   vi.resetModules();
-  vi.doMock("@selfxyz/agent-sdk", () => ({
+  vi.doMock("@selfxyz/agent-sdk", async () => ({
+    // Real signing-message helper; only the verifier and networks are faked.
+    computeSigningMessage: (
+      await vi.importActual<typeof import("@selfxyz/agent-sdk")>(
+        "@selfxyz/agent-sdk",
+      )
+    ).computeSigningMessage,
     SelfAgentVerifier: verifierCtorMock,
     NETWORKS: {
       mainnet: {
