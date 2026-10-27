@@ -1,0 +1,178 @@
+// SPDX-License-Identifier: MIT
+
+/**
+ * Request-signing tools, which act as your agent (SELF_AGENT_PRIVATE_KEY).
+ *
+ * Authenticated fetch is limited by the egress policy (see egress.ts).
+ */
+
+import { SelfAgent } from "@selfxyz/agent-sdk";
+import type { ServerConfig } from "../config.js";
+import { validateAuthenticatedFetchUrl } from "../egress.js";
+import {
+  NO_AGENT_KEY_ERROR,
+  OUTBOUND_TIMEOUT_MS,
+  readTextCapped,
+  safeErrorDescription,
+  toolError,
+  toolSuccess,
+} from "../utils.js";
+
+/** Arguments of the sign-request tool. */
+export interface SignRequestArgs {
+  method: "GET" | "POST" | "PUT" | "DELETE";
+  url: string;
+  body?: string;
+}
+
+/** Arguments of the authenticated-fetch tool. */
+export interface AuthenticatedFetchArgs {
+  method: "GET" | "POST" | "PUT" | "DELETE";
+  url: string;
+  body?: string;
+  content_type: string;
+}
+
+const MAX_REDIRECTS = 3;
+const MAX_RESPONSE_BYTES = 10 * 1024;
+
+/**
+ * Sign an HTTP request as your agent without sending it.
+ *
+ * @param args.method - HTTP method.
+ * @param args.url - Full request URL.
+ * @param args.body - Request body, if any.
+ * @param config - Server config (needs privateKey).
+ * @returns Tool success `{ headers, instructions }` with the x-self-agent-*
+ *   headers; tool error when no key is configured or signing fails.
+ */
+export async function handleSignRequest(
+  args: SignRequestArgs,
+  config: ServerConfig,
+) {
+  if (!config.privateKey) return toolError(NO_AGENT_KEY_ERROR);
+
+  try {
+    const agent = new SelfAgent({
+      privateKey: config.privateKey,
+      network: config.network,
+      rpcUrl: config.rpcUrl,
+    });
+
+    const headers = await agent.signRequest(args.method, args.url, args.body);
+
+    return toolSuccess({
+      headers,
+      instructions:
+        "Add these three headers to your HTTP request. " +
+        "The receiving service can verify them to confirm this agent is backed by a real human.",
+    });
+  } catch (err) {
+    console.error(
+      "[self-agent-mcp] sign request failed:",
+      safeErrorDescription(err),
+    );
+    return toolError("Failed to sign request");
+  }
+}
+
+/**
+ * Send a signed HTTP request as your agent and return the response.
+ *
+ * Follows up to 3 redirects by hand, re-checking the egress policy and
+ * re-signing on every hop. A redirect that turns the request into a GET
+ * (303, or 301/302 after POST) drops the body and Content-Type, and the next
+ * hop is signed without a body. Each hop times out after 15 s; the response
+ * body is capped at 10 KiB.
+ *
+ * @param args.method - HTTP method.
+ * @param args.url - Target URL (must pass the egress policy).
+ * @param args.body - Request body, if any.
+ * @param args.content_type - Content-Type header to send with the body.
+ * @param config - Server config (needs privateKey).
+ * @returns Tool success `{ status, url, body, truncated }`; tool error when no
+ *   key is configured, the key is malformed, egress is blocked, there are too
+ *   many redirects, or on timeout / network error (details never echoed).
+ */
+export async function handleAuthenticatedFetch(
+  args: AuthenticatedFetchArgs,
+  config: ServerConfig,
+) {
+  if (!config.privateKey) return toolError(NO_AGENT_KEY_ERROR);
+
+  let agent: SelfAgent;
+  try {
+    agent = new SelfAgent({
+      privateKey: config.privateKey,
+      network: config.network,
+      rpcUrl: config.rpcUrl,
+    });
+  } catch (err) {
+    console.error(
+      "[self-agent-mcp] authenticated fetch: agent setup failed:",
+      safeErrorDescription(err),
+    );
+    return toolError("Authenticated fetch failed: invalid agent key");
+  }
+
+  let url = args.url;
+  let method: string = args.method;
+  let body = args.body;
+  let headers: Record<string, string> = { "Content-Type": args.content_type };
+
+  try {
+    // Redirects are followed by hand so every hop passes the egress policy
+    // before it receives freshly signed headers.
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      const egressCheck = await validateAuthenticatedFetchUrl(url);
+      if (!egressCheck.ok) {
+        return toolError(`Authenticated fetch blocked: ${egressCheck.error}`);
+      }
+
+      const response = await agent.fetch(url, {
+        method,
+        body,
+        headers,
+        redirect: "manual",
+        signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
+      });
+
+      const location = response.headers.get("location");
+      if (response.status >= 300 && response.status < 400 && location) {
+        await response.body?.cancel();
+        url = new URL(location, url).href;
+        // Same method rewrite as fetch: 303 (and 301/302 for POST) become a
+        // body-less GET, so the body's Content-Type goes too.
+        if (
+          response.status === 303 ||
+          ((response.status === 301 || response.status === 302) &&
+            method === "POST")
+        ) {
+          method = "GET";
+          body = undefined;
+          headers = {};
+        }
+        continue;
+      }
+
+      const { text, truncated } = await readTextCapped(
+        response,
+        MAX_RESPONSE_BYTES,
+      );
+      return toolSuccess({
+        status: response.status,
+        url,
+        body: text,
+        truncated,
+      });
+    }
+    return toolError(
+      `Authenticated fetch failed: more than ${MAX_REDIRECTS} redirects`,
+    );
+  } catch (err) {
+    if (err instanceof Error && err.name === "TimeoutError") {
+      return toolError("Authenticated fetch failed: request timed out");
+    }
+    return toolError("Authenticated fetch failed: network error");
+  }
+}

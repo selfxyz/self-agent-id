@@ -1,0 +1,63 @@
+{
+  "name": "@selfxyz/mcp-server",
+  "version": "0.3.0",
+  "description": "MCP server for Self Agent ID: proof-of-human identity for AI agents",
+  "type": "module",
+  "main": "dist/server.js",
+  "types": "dist/server.d.ts",
+  "bin": {
+    "self-agent-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "@selfxyz/agent-sdk": "^0.3.0",
+    "ethers": "^6.16.0",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.12"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/selfxyz/self-agent-id.git",
+    "directory": "mcp"
+  },
+  "homepage": "https://github.com/selfxyz/self-agent-id/tree/main/mcp#readme",
+  "bugs": {
+    "url": "https://github.com/selfxyz/self-agent-id/issues"
+  },
+  "author": "Self Protocol",
+  "keywords": [
+    "mcp",
+    "self-protocol",
+    "agent-identity",
+    "proof-of-human",
+    "erc-8004",
+    "model-context-protocol",
+    "claude",
+    "cursor",
+    "ai-agent",
+    "blockchain",
+    "celo"
+  ]
+}

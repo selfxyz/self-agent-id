@@ -50,4 +50,4 @@ Resources: `self://networks` (public), `self://identity` (privileged). Prompt: `
 }
 ```
 
-To sign with your own agent key, use the SDK (`SelfAgent` / `Ed25519Agent`) instead. More: [project README](../README.md).
+To sign with your own agent key, run the local stdio server [`@selfxyz/mcp-server`](../mcp/README.md) (same tools, key stays on your machine) or use the SDK (`SelfAgent` / `Ed25519Agent`). More: [project README](../README.md).

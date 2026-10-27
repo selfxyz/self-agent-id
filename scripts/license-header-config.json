@@ -18,13 +18,17 @@
     {
       "prefix": "examples/",
       "template": "mit"
+    },
+    {
+      "prefix": "mcp/",
+      "template": "mit"
     }
   ],
   "include_dirs": [
     "app",
     "contracts",
-    "functions",
     "typescript-sdk",
+    "mcp",
     "examples",
     "scripts"
   ],
