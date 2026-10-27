@@ -1,488 +1,648 @@
 # REST API
 
-> Archived from the former /api-docs web page.
-
 ## Overview
 
-The Self Agent ID REST API lets you programmatically register, deregister, and query AI agents with on-chain proof-of-human verification. No API keys required — sessions use encrypted tokens with a 30-minute TTL.
+The Self Agent ID REST API registers, deregisters, refreshes and queries AI agents with on-chain proof-of-human verification. There are no API keys: every human-in-the-loop flow returns an encrypted session token (30-minute TTL) that you send back as `Authorization: Bearer <sessionToken>`. Read endpoints need no auth.
 
-**Base URL:** `https://agent-api.self.xyz/api/agent`
+**Base URL:** `https://agent-api.self.xyz` (all paths below are absolute)
 
-**Discovery:** `GET /.well-known/self-agent-id.json`
+**Machine-readable spec:** [`openapi.yaml`](../openapi.yaml) covers every endpoint. Discovery: `GET /api/agent-discovery` (also served at `/.well-known/self-agent-id.json`), `GET /llms.txt`.
+
+**Networks:** `mainnet` = Celo (chain ID `42220`), `testnet` = Celo Sepolia (`11142220`). Request bodies take `network`; path parameters take `chainId`.
 
 Session lifecycle:
 
 ```
-POST /register → session token
-↳ User scans QR with Self app → proof submitted on-chain
-GET /register/status (+ Authorization: Bearer) → poll until completed
-POST /register/export → retrieve agent private key
+POST /api/agent/register             → sessionToken, scanUrl, deepLink
+↳ the human scans the QR with the Self app → the registry mints the agent on-chain
+GET  /api/agent/register/status      (Authorization: Bearer <latest token>) → poll until "completed"
+POST /api/agent/register/export      (Authorization: Bearer <token from the completing poll>) → private key
 ```
 
 ## Using an AI coding assistant?
 
-The [MCP server](https://www.npmjs.com/package/@selfxyz/mcp-server) wraps these REST APIs into 10 tools — no manual HTTP needed. [Set up MCP →](/integration#mcp)
+This service also hosts an MCP server at `/api/mcp` (Streamable HTTP) whose public tools wrap these endpoints: no manual HTTP needed. See [MCP](#post-apimcp) below and the [integration guide](integration.md).
 
 ## Quick Start
 
-Register an agent in 3 steps using curl:
+Register a wallet-free agent on testnet with curl and [jq](https://jqlang.org):
 
 ```bash
-# 1. Initiate registration
-curl -X POST https://agent-api.self.xyz/api/agent/register \
+BASE=https://agent-api.self.xyz
+
+# 1. Start a registration (wallet-free: the server generates the agent key)
+RES=$(curl -s -X POST "$BASE/api/agent/register" \
   -H "Content-Type: application/json" \
-  -d '{
-    "mode": "linked",
-    "network": "testnet",
-    "humanAddress": "0xYourWalletAddress"
-  }'
-# → { sessionToken, deepLink, agentAddress, ... }
+  -d '{"mode":"wallet-free","network":"testnet","disclosures":{"minimumAge":18}}')
+TOKEN=$(echo "$RES" | jq -r .sessionToken)
 
-# 2. Show deepLink to user (or render QR)
-#    User scans QR with Self app → passport proof submitted
+# 2. Show the human this QR image (or the deepLink); they scan it with the Self app
+echo "$RES" | jq -r .scanUrl
 
-# 3. Poll for completion
-curl "https://agent-api.self.xyz/api/agent/register/status" \
-  -H "Authorization: Bearer SESSION_TOKEN"
-# → { stage: "completed", agentId: 42, ... }
+# 3. Poll until the agent is minted. Every response rotates the token: use the latest.
+while true; do
+  RES=$(curl -s "$BASE/api/agent/register/status" -H "Authorization: Bearer $TOKEN")
+  [ "$(echo "$RES" | jq -r .stage)" = qr-ready ] || break
+  TOKEN=$(echo "$RES" | jq -r .sessionToken)
+  sleep 5
+done
+echo "$RES" | jq '{stage, agentId, agentAddress, error}'
+TOKEN=$(echo "$RES" | jq -r .sessionToken)
 
-# 4. (Optional) Export agent private key
-curl -X POST https://agent-api.self.xyz/api/agent/register/export \
-  -H "Content-Type: application/json" \
-  -d '{"token":"SESSION_TOKEN"}'
-# → { privateKey, agentAddress, agentId }
+# 4. Export the generated key (within 30 minutes of completion)
+curl -s -X POST "$BASE/api/agent/register/export" -H "Authorization: Bearer $TOKEN"
+# → { "privateKey": "0x...", "agentAddress": "0x...", "agentId": 42, "network": "testnet", "mode": "wallet-free" }
 ```
+
+The token you started with still says `qr-ready`, so exporting with it returns `409`. Only the rotated token from the poll that observed `completed` can export.
+
+## Authentication
+
+- **Session tokens** are returned by `POST /api/agent/register`, `/deregister`, `/identify` and `/refresh`, and are accepted **only** as `Authorization: Bearer <sessionToken>` (never in the query string). `POST /api/agent/register/export` also accepts `{ "token": "..." }` in the JSON body.
+- Tokens expire after **30 minutes**. When a registration status poll first sees `completed`, the rotated token gets a fresh 30-minute window for export.
+- Every status response returns a rotated `sessionToken`. Always send the latest one.
+- Each token belongs to one flow. A registration token on `/deregister/status` gets `400`.
+- `scanUrl` (`/api/qr/<qrToken>`) carries a separate QR-only token. It renders the QR image and unlocks nothing else, so it is safe to show to the human or embed as `<img src>` on any origin.
+- Query, discovery, A2A and public MCP tools need no auth. Visa writes are authorized by a wallet signature ([Visa](#visa)).
 
 ## Endpoints
 
 ### Registration
 
-Create and manage agent registration sessions. Returns session tokens, QR data, and deep links for the Self app.
-
 #### POST /api/agent/register
 
-Initiate agent registration
+Start a registration session. Rate limit: 10/min per IP.
 
-Creates a new registration session. Returns session token, QR code data, deep link, and the generated agent address. The user must scan the QR with the Self app to submit a passport proof.
+| Mode             | Agent key                                            | `humanAddress` |
+| ---------------- | ---------------------------------------------------- | -------------- |
+| `linked`         | Generated by the server; the human's wallet owns NFT | required       |
+| `wallet-free`    | Generated by the server; the agent owns its own NFT  | -              |
+| `privy`          | Same as `linked` (the human's Privy wallet)          | required       |
+| `smartwallet`    | Same as `linked` (the human's smart wallet)          | required       |
+| `ed25519`        | The agent's own Ed25519 key (signed challenge)       | -              |
+| `ed25519-linked` | The agent's Ed25519 key; the human's wallet guards   | required       |
+
+The aliases `walletfree` and `smart-wallet` are accepted and normalized.
 
 **Request Body**
-
-Modes: "self-custody", "linked", "wallet-free", "ed25519", "ed25519-linked". Networks: "mainnet", "testnet".
 
 ```json
 {
   "mode": "linked",
   "network": "testnet",
-  "humanAddress": "0x...",
+  "humanAddress": "0x83fa4380903fecb801F4e123835664973001ff00",
   "disclosures": {
     "minimumAge": 18,
     "ofac": true,
-    "nationality": false,
-    "name": false
+    "nationality": true
   }
 }
 ```
 
+- `humanAddress`: a non-zero `0x` address (a mixed-case address must have a valid checksum). It is validated in every mode, so drop it rather than sending an empty or placeholder value in `wallet-free` or `ed25519` mode.
+- `disclosures` (optional): `minimumAge` is `0`, `18` or `21`. `ofac`, `nationality`, `name`, `date_of_birth`, `gender` and `issuing_state` must be JSON booleans. `minimumAge` and `ofac` select the on-chain verification config (`configIndex`); the other flags only ask the Self app to disclose the field.
+- `ed25519Pubkey` (64 hex chars) and `ed25519Signature` (128 hex chars) are required for the Ed25519 modes. See [Ed25519 registration](#ed25519-registration).
+
 **Responses**
 
-`200` — Session created successfully
+`200`: session created
 
 ```json
 {
-  "sessionToken": "enc_...",
-  "deepLink": "selfapp://verify?scope=...",
-  "qrData": "selfapp://verify?scope=...",
-  "agentAddress": "0x83fa...ff00",
+  "sessionToken": "h_TNCKZAO1xJJSct...",
+  "stage": "qr-ready",
+  "qrData": {
+    "version": 2,
+    "appName": "Self Agent ID",
+    "scope": "self-agent-id",
+    "endpoint": "0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379",
+    "endpointType": "staging_celo",
+    "chainID": 11142220,
+    "userId": "83fa4380903fecb801f4e123835664973001ff00",
+    "userIdType": "hex",
+    "userDefinedData": "K4...",
+    "disclosures": { "minimumAge": 18, "ofac": true, "nationality": true }
+  },
+  "deepLink": "https://redirect.self.xyz?selfApp=...",
+  "qrImageBase64": "iVBORw0KGgoAAAANSUhEUgAA...",
+  "scanUrl": "https://agent-api.self.xyz/api/qr/LlKiI_bUg1aV...",
+  "agentAddress": "0x3468f735c58871aF1D2f5d6EeBad83c99E0F03b4",
+  "network": "testnet",
   "mode": "linked",
-  "network": "testnet"
+  "configIndex": 4,
+  "expiresAt": "2026-10-26T12:46:45.883Z",
+  "timeRemainingMs": 1800000,
+  "humanInstructions": [
+    "Open the Self app on your phone.",
+    "Scan the QR code displayed below or open the deep link.",
+    "Follow the prompts to scan your passport.",
+    "Wait for the proof to be submitted on-chain."
+  ]
 }
 ```
 
-`400` — Invalid parameters or missing fields
+`qrData` is the Self app request object (render it yourself with `@selfxyz/qrcode`). `qrImageBase64` is the same PNG as bare base64 (no `data:` prefix): embed it as `data:image/png;base64,${qrImageBase64}`. `scanUrl` serves it as an image.
 
-```json
-{ "error": "humanAddress is required for linked mode" }
-```
+`400` invalid input · `413` body over 16 KB · `429` rate limited · `500` server error (no `SESSION_SECRET`, or `Failed to render QR code`) · `502` RPC error (Ed25519 nonce lookup)
 
 #### GET /api/agent/register/status
 
-Poll registration status
+Poll a registration. Send `Authorization: Bearer <sessionToken>`. Rate limit: 120/min per IP.
 
-Returns current registration stage: "qr-ready", "proof-received", "completed", or "failed". Send the session token as Authorization: Bearer <sessionToken>.
+```bash
+curl -s "$BASE/api/agent/register/status" -H "Authorization: Bearer $TOKEN"
+```
 
-**Responses**
-
-`200` — Current session status
+`200` while waiting:
 
 ```json
 {
-  "stage": "completed",
-  "agentId": 42,
-  "agentAddress": "0x83fa...ff00",
-  "txHash": "0xabc...",
-  "sessionToken": "enc_..."
+  "sessionToken": "CBQtpRKgC2yx...",
+  "stage": "qr-ready",
+  "expiresAt": "2026-10-26T12:46:45.883Z",
+  "timeRemainingMs": 1792832,
+  "agentAddress": "0x3468f735c58871aF1D2f5d6EeBad83c99E0F03b4",
+  "humanInstructions": ["Open the Self app on your phone.", "..."]
 }
 ```
 
-`410` — Session expired (30-minute TTL)
+`200` once minted (`stage: "completed"`, plus `agentId` and, on the first completed poll, `credentials`; undisclosed fields are `null` and `olderThan` is `0` when no age was proven, and `credentials` is omitted if they could not be read):
 
-#### POST /api/agent/register/callback
+```json
+{
+  "sessionToken": "Xk2p...",
+  "stage": "completed",
+  "expiresAt": "2026-10-26T13:20:02.114Z",
+  "timeRemainingMs": 1800000,
+  "agentAddress": "0x3468f735c58871aF1D2f5d6EeBad83c99E0F03b4",
+  "agentId": 42,
+  "credentials": {
+    "nationality": null,
+    "olderThan": 18,
+    "ofac": [false, false, false],
+    "issuingState": null,
+    "dateOfBirth": null,
+    "gender": null,
+    "expiryDate": null
+  },
+  "humanInstructions": [
+    "Registration complete. Your agent is now verified on-chain."
+  ]
+}
+```
 
-Receive Self app callback
+If the human scans after the session expired (the Self deep link itself never expires), a session holding a server-generated key can still be polled for up to 24 hours: if the agent was minted it answers `completed` with a fresh 30-minute export window, otherwise `410`.
 
-Webhook endpoint called by the Self app after the user scans the QR and submits a passport proof. Updates session stage to proof-received and triggers on-chain registration.
-
-**Parameters**
-
-| Name  | In    | Type   | Required | Description             |
-| ----- | ----- | ------ | -------- | ----------------------- |
-| token | query | string | required | Encrypted session token |
-
-**Responses**
-
-`200` — Callback processed
-
-`401` — Invalid or tampered token
+`400` missing `Authorization` header or not a registration token · `401` invalid token · `410` session expired · `429` rate limited · `500` server misconfigured (no `SESSION_SECRET`) · `502` RPC error
 
 #### GET /api/agent/register/qr
 
-Get QR code and deep link
+Re-fetch the QR of a registration session that is still `qr-ready`. Send `Authorization: Bearer <sessionToken>`. Rate limit: 120/min per IP.
 
-Returns the QR code payload and deep link for the current session. Send the session token as Authorization: Bearer <sessionToken>.
-
-**Responses**
-
-`200` — QR data returned
+`200`:
 
 ```json
 {
-  "qrData": "selfapp://verify?scope=...",
-  "deepLink": "selfapp://verify?scope=..."
+  "deepLink": "https://redirect.self.xyz?selfApp=...",
+  "qrData": { "version": 2, "appName": "Self Agent ID", "...": "..." },
+  "scanUrl": "https://agent-api.self.xyz/api/qr/..."
 }
 ```
+
+`400` missing token or not a registration token · `401` invalid token · `409` session no longer `qr-ready` · `410` session expired · `429` rate limited
 
 #### POST /api/agent/register/export
 
-Export agent private key
+Export the server-generated private key (`linked`, `wallet-free`, `privy`, `smartwallet`) once the session is `completed`. Send the token from the completing status poll as `Authorization: Bearer <sessionToken>` (preferred) or as `{ "token": "..." }`. Every response, errors included, is `Cache-Control: no-store`. Rate limit: 120/min per IP.
 
-After registration completes, export the agent's private key. Only available for "linked", "wallet-free", "ed25519", and "ed25519-linked" modes.
+```bash
+curl -s -X POST "$BASE/api/agent/register/export" -H "Authorization: Bearer $TOKEN"
+```
 
-**Request Body**
-
-Provide the encrypted session token in the request body.
+`200`:
 
 ```json
 {
-  "token": "enc_..."
+  "privateKey": "0x4c0883a69102937d6231471b5dbb6204fe512961708279f2e3e8a5d4b8e3e0a1",
+  "agentAddress": "0x3468f735c58871aF1D2f5d6EeBad83c99E0F03b4",
+  "agentId": 42,
+  "network": "testnet",
+  "mode": "wallet-free"
 }
 ```
 
-**Responses**
+`400` no token, not a registration token, or an `ed25519` / `ed25519-linked` session (the agent already holds its own key) · `401` invalid token · `409` registration not completed for this token · `410` session expired · `413` body too large
 
-`200` — Private key exported
+#### Ed25519 registration
+
+Ed25519 agents (OpenClaw, ElizaOS, ...) register their existing key in two steps:
+
+1. `POST /api/agent/register/ed25519-challenge` with `{ "pubkey": "<64 hex>", "network": "testnet" }` returns `{ "challengeHash": "0x...", "nonce": "0" }`. For `ed25519-linked`, also send the guardian wallet as `humanAddress`; it must be the same `humanAddress` you send to `/register`. Rate limit: 10/min per IP.
+2. Sign the 32 raw bytes of `challengeHash` with the agent's Ed25519 key and call `POST /api/agent/register` with `mode`, `ed25519Pubkey` and the 128-hex `ed25519Signature`.
+
+```js
+import * as ed from "@noble/ed25519";
+
+const BASE = "https://agent-api.self.xyz";
+const secretKey = ed.utils.randomSecretKey(); // the agent's key: keep it
+const pubkey = Buffer.from(await ed.getPublicKeyAsync(secretKey)).toString(
+  "hex",
+);
+
+const post = (path, body) =>
+  fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).then((r) => r.json());
+
+const { challengeHash } = await post("/api/agent/register/ed25519-challenge", {
+  pubkey,
+  network: "testnet",
+});
+const signature = await ed.signAsync(
+  Buffer.from(challengeHash.slice(2), "hex"),
+  secretKey,
+);
+const session = await post("/api/agent/register", {
+  mode: "ed25519",
+  network: "testnet",
+  ed25519Pubkey: pubkey,
+  ed25519Signature: Buffer.from(signature).toString("hex"),
+});
+console.log(session.scanUrl); // the human scans this; then poll /register/status
+```
+
+`GET /api/agent/register/ed25519-check?pubkey=<hex>&network=testnet` checks whether a key is registered: `{ "registered": false }` or `{ "registered": true, "agentId": 42, "agentAddress": "0x..." }`. Both parameters are required. Rate limit: 120/min per IP.
+
+There is no key export for Ed25519 modes, and Ed25519 agents cannot be deregistered with a passport scan (see [deregistration](#post-apiagentderegister)).
+
+#### GET /api/qr/{qrToken}
+
+The image behind every `scanUrl`: a PNG of the session's QR. It accepts only QR tokens (a session token gets `401`). The response is embeddable cross-origin (`Access-Control-Allow-Origin: *`, `Cross-Origin-Resource-Policy: cross-origin`, `Content-Disposition: inline`, `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`), so `<img src="{scanUrl}">` works from any page. The image is about 950 px square (8 px per module plus the quiet zone); scale it down with CSS. Rate limit: 60/min per IP.
+
+`200` PNG · `401` not a QR token · `410` session expired · `429` rate limited · `500` `Failed to render QR code` (or no `SESSION_SECRET`)
+
+#### GET /cli/register?payload=…
+
+The URL printed by `self-agent register open` in the TypeScript CLI. `payload` is base64url JSON (8 KB max) that the CLI builds; the route returns its QR as a PNG (same headers as `/api/qr`). It only renders requests for this service's registry, app name and scope:
 
 ```json
 {
-  "privateKey": "0xdeadbeef...",
-  "agentAddress": "0x83fa...ff00",
-  "agentId": 42
+  "version": 1,
+  "operation": "register",
+  "mode": "linked",
+  "chainId": 11142220,
+  "endpointType": "staging_celo",
+  "registryAddress": "0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379",
+  "appName": "Self Agent ID",
+  "scope": "self-agent-id",
+  "humanIdentifier": "0x83fa4380903fecb801F4e123835664973001ff00",
+  "userDefinedData": "K1...",
+  "disclosures": { "minimumAge": 18 },
+  "expiresAt": 1793000000000
 }
 ```
 
-`409` — Session not in completed stage
+`mode` is `linked` or `wallet-free` (`self-custody` is accepted from older CLIs). `chainId` must match `endpointType` (`celo` = 42220, `staging_celo` = 11142220), and `userDefinedData` is 2-600 alphanumeric characters. See [CLI Registration](CLI_REGISTRATION.md).
+
+`200` PNG · `400` invalid payload · `410` `expiresAt` passed · `429` rate limited (60/min per IP) · `500` `Failed to render QR code`
 
 ### Deregistration
 
-Remove an agent from the on-chain registry. Requires the same passport proof flow as registration.
-
 #### POST /api/agent/deregister
 
-Initiate agent deregistration
+Start a deregistration. The human re-proves with the Self app and the registry burns the agent NFT. Identify the agent by `agentAddress` and/or `agentId` (number or decimal string). Rate limit: 10/min per IP.
 
-Verifies the agent exists on-chain, then creates a deregistration session with QR data. The human must re-prove identity to burn the agent NFT.
-
-**Request Body**
-
-```json
-{
-  "network": "testnet",
-  "agentAddress": "0x...",
-  "disclosures": {
-    "minimumAge": 18,
-    "ofac": true
-  }
-}
+```bash
+curl -s -X POST "$BASE/api/agent/deregister" \
+  -H "Content-Type: application/json" \
+  -d '{"network":"testnet","agentId":66}'
 ```
 
-**Responses**
+`200`: the session-start fields (`sessionToken`, `stage`, `deepLink`, `qrImageBase64`, `scanUrl`, `expiresAt`, `timeRemainingMs`, `humanInstructions`, `qrData`) plus `agentAddress`, `agentId`, `network` and `configIndex`.
 
-`200` — Deregistration session created
-
-```json
-{
-  "sessionToken": "enc_...",
-  "deepLink": "selfapp://verify?scope=...",
-  "qrData": "selfapp://verify?scope=..."
-}
-```
-
-`404` — Agent not found on-chain
+`400` invalid input, or an Ed25519 agent (its guardian calls `guardianRevoke(agentId)`, or its NFT owner `selfDeregister(agentId)`, on the registry contract instead) · `404` agent not found · `413` body too large · `429` rate limited · `500` server error (no `SESSION_SECRET`, or `Failed to render QR code`) · `502` RPC error
 
 #### GET /api/agent/deregister/status
 
-Poll deregistration status
+Poll with `Authorization: Bearer <sessionToken>`. `stage` is `qr-ready` until the agent has no human proof on-chain, then `completed`. Returns `sessionToken`, `stage`, `expiresAt`, `timeRemainingMs`, `agentAddress`, `agentId`, `humanInstructions`. Rate limit: 120/min per IP.
 
-Returns current deregistration stage. Once completed, the agent NFT has been burned. Send the session token as Authorization: Bearer <sessionToken>.
+`400` · `401` · `410` · `429` · `502`
 
-**Responses**
+### Proof refresh
 
-`200` — Current deregistration status
+Human proofs expire. A refresh renews the proof of an existing agent without changing its id.
 
-```json
-{
-  "stage": "completed",
-  "txHash": "0xdef..."
-}
+#### POST /api/agent/refresh
+
+```bash
+curl -s -X POST "$BASE/api/agent/refresh" \
+  -H "Content-Type: application/json" \
+  -d '{"agentId":66,"network":"testnet"}'
 ```
 
-#### POST /api/agent/deregister/callback
+`agentId` is a number or decimal string. `disclosures` is optional and defaults to the agent's on-chain config; if you send it, it must select the same config. Rate limit: 10/min per IP.
 
-Receive deregistration callback
+`200`: the session-start fields plus `agentId`, `network` and `configIndex`.
 
-Webhook endpoint for the Self app after the user confirms deregistration.
+`400` invalid input, disclosure mismatch, or an agent with no stored verification config (registered before config tracking or through an external proof provider; deregister it and register again) · `404` agent not found · `413` body too large · `422` this agent id can't be refreshed (below) · `429` rate limited · `500` server error (no `SESSION_SECRET`, or `Failed to render QR code`) · `502` RPC error
 
-**Parameters**
+> **Known limitation (422).** The deployed registry reads the agent id from the raw proof data, but the Self app UTF-8-encodes that data. Agents whose 32-byte big-endian id contains a byte of `0x80` or more (for example ids 128-255, 384-511 and 32768 and up) can't be refreshed until the registry is upgraded. Workaround: deregister the agent and register it again.
 
-| Name  | In    | Type   | Required | Description             |
-| ----- | ----- | ------ | -------- | ----------------------- |
-| token | query | string | required | Encrypted session token |
+#### GET /api/agent/refresh/status
 
-**Responses**
+Poll with `Authorization: Bearer <sessionToken>`. `stage` is `qr-ready`, then `completed` with the new `proofExpiresAt` (ISO 8601), or `failed` with `error` if the agent was deregistered first. Rate limit: 120/min per IP.
 
-`200` — Callback processed
+`400` · `401` · `410` · `429` · `502`
 
-`401` — Invalid or tampered token
+#### GET /api/agent/refresh?agentId=…&network=…
+
+A shareable refresh link: `302` redirect straight to the Self app request (the SDK uses it as its re-auth URL). Accepts `chainId=42220|11142220` instead of `network`, and an optional `registry` that must match this service's registry. The `302` carries `Cache-Control: no-store` and the usual CORS headers. Rate limit: 20/min per IP. Errors as for the POST.
+
+### Identify
+
+Find all agents of a human without knowing any agent id.
+
+- `POST /api/agent/identify` with `{ "network": "testnet" }` returns the session-start fields plus `network`. The human scans the QR; nothing changes on-chain. Rate limit: 10/min per IP. Errors: `400` · `413` · `429` · `500` (no `SESSION_SECRET`, or `Failed to render QR code`) · `502`.
+- `GET /api/agent/identify/status` (`Authorization: Bearer`) returns `stage` `qr-ready` or `completed` with `nullifier` (decimal string) and `agentCount`. The rotated token records the last block scanned, so each poll only scans new blocks (plus a 5-block overlap): always send the newest token. Rate limit: 120/min per IP.
+- Then list the agents with `GET /api/agent/agents-by-nullifier/{chainId}/{nullifier}`.
 
 ### Query
 
-Read-only endpoints for querying on-chain agent data. No session token required. Use chain ID 42220 for mainnet or 11142220 for Celo Sepolia testnet.
+Read-only, no auth. Per-IP limits: the single-agent reads (`info`, `verify`, `verify-status`, `reputation`, `cards`, `/.well-known/agent-card.json?agentId=`, `/api/visa/{chainId}/{agentId}`) share a budget of 120/min; the scans (`agents/{address}`, `agents-by-nullifier`, `/api/visa/agents`) share 20/min. Over the limit you get `429` with `Retry-After` and `retryAfterMs`. Every per-agent route returns `404 { "error": "Agent not found" }` for an agent that was never minted or was burned, and `502 { "error": "RPC error" }` if the chain can't be read. `isVerified` (`verified`) always means `hasHumanProof && isProofFresh`.
 
 #### GET /api/agent/info/{chainId}/{agentId}
 
-Get agent details
-
-Returns full agent information: address, verification status, proof provider, credentials, and registration timestamp.
-
-**Parameters**
-
-| Name    | In   | Type   | Required | Description                           |
-| ------- | ---- | ------ | -------- | ------------------------------------- |
-| chainId | path | number | required | 42220 (mainnet) or 11142220 (testnet) |
-| agentId | path | number | required | On-chain agent token ID               |
-
-**Responses**
-
-`200` — Agent details
+```bash
+curl -s "$BASE/api/agent/info/11142220/5"
+```
 
 ```json
 {
   "agentId": 5,
   "chainId": 11142220,
-  "agentAddress": "0x83fa...ff00",
+  "agentKey": "0x000000000000000000000000a7f2b8a0ba50b099ee2ad16a91176bed96e103f7",
+  "agentAddress": "0xA7F2B8A0Ba50b099Ee2ad16A91176bED96E103F7",
   "isVerified": true,
-  "proofProvider": "0x69Da...9b80c",
-  "verificationStrength": 2,
-  "strengthLabel": "Standard",
+  "hasHumanProof": true,
+  "isProofFresh": true,
+  "proofExpiresAt": "2027-02-27T05:50:54.000Z",
+  "proofProvider": "0x5E61c3051Bf4115F90AacEAE6212bc419f8aBB6c",
+  "registeredAtBlock": 18887466,
+  "verificationStrength": 100,
+  "strengthLabel": "passport",
   "credentials": {
-    "nationality": "GBR",
-    "olderThan": 18,
+    "nationality": null,
+    "olderThan": 0,
     "ofac": [false, false, false]
   },
-  "registeredAt": 1740000000,
   "network": "testnet"
 }
 ```
 
-`404` — Agent not found
-
-#### GET /api/agent/agents/{chainId}/{address}
-
-List agents by human address
-
-Returns all agent IDs registered by a specific human wallet address.
-
-**Parameters**
-
-| Name    | In   | Type   | Required | Description                           |
-| ------- | ---- | ------ | -------- | ------------------------------------- |
-| chainId | path | number | required | 42220 (mainnet) or 11142220 (testnet) |
-| address | path | string | required | Human wallet address (0x...)          |
-
-**Responses**
-
-`200` — List of agent IDs
-
-```json
-{
-  "agents": [5, 12, 37],
-  "chainId": 11142220,
-  "humanAddress": "0xabc..."
-}
-```
+`registeredAtBlock` is a block number, not a timestamp. Undisclosed credentials are `null`. `400` `Unsupported chain` or `Invalid agent ID` · `404` · `429` · `502`
 
 #### GET /api/agent/verify/{chainId}/{agentId}
 
-Verify agent proof-of-human
-
-Checks whether an agent has valid proof-of-human verification, the proof provider address, verification strength label, and Sybil metrics.
-
-**Parameters**
-
-| Name    | In   | Type   | Required | Description                           |
-| ------- | ---- | ------ | -------- | ------------------------------------- |
-| chainId | path | number | required | 42220 (mainnet) or 11142220 (testnet) |
-| agentId | path | number | required | On-chain agent token ID               |
-
-**Responses**
-
-`200` — Verification result
+Proof-of-human and sybil view:
 
 ```json
 {
   "agentId": 5,
+  "chainId": 11142220,
   "isVerified": true,
-  "proofProvider": "0x69Da...9b80c",
-  "strengthLabel": "Standard",
-  "humanAgentCount": 1,
-  "maxAgentsPerHuman": 1
+  "hasHumanProof": true,
+  "isProofFresh": true,
+  "proofExpiresAt": "2027-02-27T05:50:54.000Z",
+  "proofProvider": "0x5E61c3051Bf4115F90AacEAE6212bc419f8aBB6c",
+  "isSelfProvider": true,
+  "verificationStrength": 100,
+  "strengthLabel": "passport",
+  "humanNullifier": "10532525450741824009985382101719946210697770609024411207137570480189113860982",
+  "agentCountForHuman": 13
 }
 ```
 
-`404` — Agent not found
+#### GET /api/verify-status/{chainId}/{agentId}
 
-### Discovery
+Compact status: `{ verified, hasHumanProof, isProofFresh, proofExpiresAt, proofType, registeredAtBlock, providerAddress }`.
 
-Well-known endpoint for service discovery and capability advertisement.
+#### GET /api/reputation/{chainId}/{agentId}
 
-#### GET /.well-known/self-agent-id.json
+`{ "score": 100, "hasProof": true, "isVerified": true, "isProofFresh": true, "proofExpiresAt": "2027-02-27T05:50:54.000Z", "providerName": "self", "proofType": "passport" }`. `score` is the proof provider's verification strength (0-100).
 
-Service discovery document
+#### GET /api/cards/{chainId}/{agentId}
 
-Returns the service discovery document with API base URL, supported networks, registration modes, and capabilities.
+The agent's ERC-8004 card: fields the agent declared in its on-chain metadata, a `services` list ending with the registry's own A2A endpoint (`registry-a2a`), and a `selfProtocol` block rebuilt from live contract state (`agentId`, `registry`, `chainId`, `agentKey`, `agentAddress`, `isVerified`, `proofExpiresAt`, `registeredAtBlock`, `proofProvider`, `providerName`, `verificationStrength`, `trustModel`, `credentials`). Also served at `/.well-known/agent-card.json?agentId=5&chainId=11142220`. Cacheable for 60 s.
 
-**Responses**
+#### GET /api/agent/agents/{chainId}/{address}
 
-`200` — Discovery document
+Every agent NFT the address owns, plus the agent whose key is the address:
+
+```bash
+curl -s "$BASE/api/agent/agents/11142220/0xA7F2B8A0Ba50b099Ee2ad16A91176bED96E103F7"
+```
 
 ```json
 {
-  "api": "https://agent-api.self.xyz/api/agent",
-  "networks": ["mainnet", "testnet"],
-  "modes": [
-    "self-custody",
-    "linked",
-    "wallet-free",
-    "ed25519",
-    "ed25519-linked"
+  "humanAddress": "0xA7F2B8A0Ba50b099Ee2ad16A91176bED96E103F7",
+  "chainId": 11142220,
+  "agents": [
+    {
+      "agentId": 5,
+      "agentKey": "0x000000000000000000000000a7f2b8a0ba50b099ee2ad16a91176bed96e103f7",
+      "agentAddress": "0xA7F2B8A0Ba50b099Ee2ad16A91176bED96E103F7",
+      "isOwner": true,
+      "isAgentKey": true,
+      "isVerified": true,
+      "hasHumanProof": true,
+      "isProofFresh": true,
+      "proofExpiresAt": "2027-02-27T05:50:54.000Z"
+    }
   ],
-  "capabilities": ["register", "deregister", "query", "verify"]
+  "totalCount": 1,
+  "ownedCount": 1,
+  "complete": true
 }
 ```
 
+The registry is not enumerable, so owned ids come from a bounded scan; `complete: false` means fewer than `ownedCount` (the on-chain balance) were found.
+
+#### GET /api/agent/agents-by-nullifier/{chainId}/{nullifier}
+
+Active agents of one human: `{ nullifier, chainId, agents, totalCount, activeAgentCount, complete }`, where each agent has `agentId`, `agentKey`, `agentAddress`, `isVerified`, `hasHumanProof`, `isProofFresh` and `proofExpiresAt`. `nullifier` is a positive decimal integer.
+
+### Visa
+
+Celo Agent Visa tiers: `1` Tourist Visa, `2` Work Visa, `3` Citizenship. Visa agent ids are **decimal strings**: they can be registry ids or wallet-based ids (`uint160(wallet)`, too large for a JSON number).
+
+#### Reads
+
+- `GET /api/visa/{chainId}/{agentId}`: `tier`, `tierName`, `metrics` (`transactionCount`, `volumeUsd`, `lastUpdated`), `eligibility` and `thresholds` per tier, `reviewRequestedTier`, `manualReviewApproved`. `404` when there is neither a visa nor a registry agent under the id.
+- `GET /api/visa/{chainId}/batch?agents=1,5,66`: `{ "agents": [{ "agentId": "1", "tier": 0, "tierName": "None" }, ...] }`. At most 100 ids (counted before duplicates are removed); duplicates are answered once, in first-seen order; any invalid id is a `400`. Rate limit: 60/min per IP.
+- `GET /api/visa/agents?wallet=0x...&chainId=11142220`: `{ "agents": [{ "agentId": "5", "chainId": 11142220 }], "complete": true }`, the registry agents the wallet owns or whose key it is, plus its wallet-based id (`isWalletBased: true`) if that holds a visa. `complete: false` means the bounded scan could not find every agent the wallet owns. A zero, ICAP or un-prefixed address is a `400` `Invalid address`.
+
+#### Writes
+
+`POST /api/visa/claim`, `/api/visa/migrate` and `/api/visa/request-review` are relayed: the server pays the gas, so each request must be signed with EIP-191 `personal_sign` over this exact message (lines joined by `\n`, no trailing newline; the `newAgentId` line only for `migrate`):
+
+```
+Self Agent ID visa request
+action: claim
+chainId: 11142220
+agentId: 66
+targetTier: 1
+timestamp: 1793000000000
+```
+
+Send the signed fields plus `signature` and the same `timestamp` (unix ms) in the body. The timestamp must be within 5 minutes of server time, and each signed message is accepted once. The signer must be the agent's NFT owner, the agent's own EVM key, or, for a wallet-based id, that wallet.
+
+| Endpoint                   | Body (besides `signature`, `timestamp`)                                                                       | Success                                                                                 |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `/api/visa/claim`          | `chainId`, `agentId`, `targetTier` (1-3), `agentWallet?` (must be the signer)                                 | `{ success, agentId, previousTier, newTier, wallet, txHash, blockNumber }`              |
+| `/api/visa/migrate`        | `chainId`, `oldAgentId` (= uint160 of the signer), `newAgentId`, `connectedWallet`, `targetTier?` (default 1) | `{ success, oldAgentId, newAgentId, migratedWallet, migratedTxCount, newTier, txHash }` |
+| `/api/visa/request-review` | `chainId`, `agentId`, `targetTier` (2 or 3)                                                                   | `{ success, agentId, targetTier, txHash }`                                              |
+
+For `migrate`, the signed `agentId` line is the old wallet-based id and `newAgentId` the registry agent that receives the visa.
+
+```js
+import { Wallet } from "ethers";
+
+const BASE = "https://agent-api.self.xyz";
+const wallet = new Wallet(process.env.OWNER_PRIVATE_KEY); // owns agent 66
+
+const req = {
+  chainId: "11142220",
+  agentId: "66",
+  targetTier: 1,
+  timestamp: Date.now(),
+};
+const message = [
+  "Self Agent ID visa request",
+  "action: claim",
+  `chainId: ${req.chainId}`,
+  `agentId: ${req.agentId}`,
+  `targetTier: ${req.targetTier}`,
+  `timestamp: ${req.timestamp}`,
+].join("\n");
+const signature = await wallet.signMessage(message);
+
+const res = await fetch(`${BASE}/api/visa/claim`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ ...req, signature }),
+});
+console.log(res.status, await res.json());
+```
+
+Errors: `400` invalid input · `401` missing, malformed, expired or reused signature · `403` signer not authorized · `404` agent not found · `409` already at the tier, new agent already has a visa, or review already requested · `413` body too large · `422` business rule (for example `{ "code": "NOT_ELIGIBLE", "metrics": {...}, "required": {...} }`, `{ "code": "REVIEW_REQUIRED", "reviewRequested": false }` from claim or migrate, or no fresh human proof for tiers 2-3) · `429` limits (20 attempts per IP per hour, counted before the signature is checked; relayed transactions are capped at 5 per IP, 2 per signer and 50 globally per hour) · `502` RPC or transaction failure, with `txHash` when a relayer transaction was already broadcast · `503` relayer not configured on this deployment
+
+Retrying: a `429` from the per-IP attempt limit leaves the signature unused. Any other error after the signature verifies (including a `5xx`) has consumed it, so sign a fresh `timestamp` before retrying. A `502` with `txHash` (`{ "error": "RPC error", "txHash": "0x..." }`) means the relayer broadcast that transaction but could not confirm it: it may still mine, so check it on-chain before retrying.
+
+### Discovery, A2A and MCP
+
+| Method | Path                                | Returns                                                                                                     |
+| ------ | ----------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| GET    | `/`                                 | `Accept: application/json` → discovery document; `Accept: text/plain` → `llms.txt`; otherwise `308` to docs |
+| GET    | `/api/agent-discovery`              | Discovery document: modes, aliases, networks, endpoints, SDK package                                        |
+| GET    | `/.well-known/self-agent-id.json`   | Same discovery document                                                                                     |
+| GET    | `/llms.txt`                         | Plain-text usage guide for LLMs                                                                             |
+| GET    | `/agents.json`                      | Link index of the entry points (not a list of agents)                                                       |
+| GET    | `/api/agent/bootstrap`              | Minimal OpenAPI 3.1 document of the registration endpoints, for agents that load tools                      |
+| GET    | `/.well-known/agent-registration`   | `307` → `/api/agent/bootstrap`                                                                              |
+| GET    | `/.well-known/agent-card.json`      | The registry's A2A card; with `?agentId=&chainId=`, that agent's card                                       |
+| GET    | `/.well-known/a2a/{agentId}?chain=` | `307` → `/api/cards/{chainId}/{agentId}` (default chain 42220)                                              |
+| GET    | `/api/health`                       | `{ "status": "ok", "service": "self-agent-id", "timestamp": "..." }`                                        |
+
+Unknown `/api/*` paths return `404` with links to these entry points.
+
+#### POST /api/a2a
+
+A2A v0.3.0 over JSON-RPC 2.0. Methods: `message/send`, `tasks/get`, `tasks/cancel` (no streaming or push notifications). Parts use `kind` (`type` is accepted from older clients). The intent comes from a `data` part, a text part holding JSON, or plain English ("look up agent 5 on testnet").
+
+```bash
+curl -s -X POST "$BASE/api/a2a" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"message/send","params":{"message":{"role":"user","parts":[{"kind":"data","data":{"intent":"verify","agentId":5,"chainId":11142220}}]}}}'
+```
+
+The result is an A2A task whose `status.message.parts` hold a text summary and a `data` part (`agentId`, `isVerified`, `proofExpiresAt`, `daysUntilExpiry`, ...).
+
+| Intent          | Data fields                                                                                              |
+| --------------- | -------------------------------------------------------------------------------------------------------- |
+| `register`      | `mode`, `network`, `humanAddress?`, `ed25519Pubkey?`, `ed25519Signature?`, `disclosures?` (default none) |
+| `status`        | `sessionToken` from the previous reply's data part                                                       |
+| `lookup`        | `agentId`, `chainId` or `network`                                                                        |
+| `verify`        | `agentId`, `chainId` or `network`                                                                        |
+| `freshness`     | `agentId`, `chainId` or `network`                                                                        |
+| `refresh-proof` | `agentId`, `chainId` or `network`                                                                        |
+| `deregister`    | `agentId`, `chainId` or `network`                                                                        |
+| `help`          | -                                                                                                        |
+
+Session-starting intents (`register`, `deregister`, `refresh-proof`) return the session token in the task's `data` part together with a `pollHint`. Poll with `{ "intent": "status", "sessionToken": "..." }`, each time sending the newest `sessionToken` from the previous reply; this works on any server instance. An unknown `taskId` gets JSON-RPC `-32602` pointing you to `sessionToken`. Intents that name no network or chain (including `register`) use the deployment's default network (mainnet unless `NEXT_PUBLIC_DEFAULT_NETWORK` says otherwise). An optional `X-Agent-Id` header makes the call fail with `403` unless that agent is verified on the default network.
+
+Rate limits: `message/send` is limited to 60/min per IP. The `lookup`, `verify`, `freshness` and `deregister` intents and the `X-Agent-Id` check also spend the per-IP 120/min read budget shared with the [query routes](#query); session intents also count against the called route's own limit. A rate limit answers HTTP `429` with `Retry-After` and JSON-RPC error `-32000` (`data.retryAfterMs`). `message/stream` answers HTTP `400` with `UNSUPPORTED_OPERATION` (`-32004`); use `message/send`. Other errors are JSON-RPC errors with HTTP `400`, `403`, `404` (unknown method or task), `409` (task already finished), `413` (body over 64 KB), `415` (not `application/json`) or `500`.
+
+#### POST /api/mcp
+
+A Model Context Protocol server over Streamable HTTP (stateless; send `Accept: application/json, text/event-stream`). Configure it in an MCP client as `https://agent-api.self.xyz/api/mcp`. Public tools: `self_lookup_agent`, `self_list_agents_for_human`, `self_register_agent`, `self_check_registration`, `self_verify_agent`, `self_verify_request`. The privileged tools (`self_get_identity`, `self_deregister_agent`, `self_sign_request`, `self_authenticated_fetch`) act as the server's own agent, so they only work on deployments that set `SELF_AGENT_PRIVATE_KEY` and are called with `Authorization: Bearer <MCP privileged API key>`. Tools call the REST handlers in-process, so each call also counts against that endpoint's per-IP limits. Rate limit: 120/min per IP.
+
+`self_verify_request` verifies ECDSA (secp256k1) signed requests only; verify Ed25519-signed requests with the TypeScript SDK's `SelfAgentVerifier`. Every response (including the JSON-RPC `400` parse error, `413` and `429`) carries CORS headers that allow `Authorization`, `Mcp-Protocol-Version`, `Mcp-Session-Id` and `Last-Event-ID` and expose `Mcp-Session-Id`; `OPTIONS` answers the preflight with `204`.
+
 ## SDK Integration
 
-SDKs wrap the REST API and provide typed helpers for registration, verification, and signed requests.
+The TypeScript SDK ([`@selfxyz/agent-sdk`](https://www.npmjs.com/package/@selfxyz/agent-sdk)) wraps these endpoints: it polls with the rotated token and exports with the right one.
+
+```bash
+npm install @selfxyz/agent-sdk
+```
 
 ```typescript
 import { SelfAgent } from "@selfxyz/agent-sdk";
 
-const agent = new SelfAgent({
-  endpoint: "https://agent-api.self.xyz",
+// Start a registration; show session.scanUrl (or session.deepLink) to the human
+const session = await SelfAgent.requestRegistration({
+  mode: "wallet-free",
   network: "testnet",
+  disclosures: { minimumAge: 18 },
 });
+console.log(session.scanUrl);
 
-// Request registration — returns session with QR link
-const session = await agent.requestRegistration({
-  mode: "linked",
-  humanAddress: "0xYourWallet",
-  disclosures: { minimumAge: 18, ofac: true },
+// Poll until the agent is minted, then export its generated key
+const { agentId, agentAddress } = await session.waitForCompletion();
+const privateKey = await session.exportKey();
+
+// Use the agent: signed requests, and a deregistration later
+const agent = new SelfAgent({ privateKey, network: "testnet" });
+const dereg = await agent.requestDeregistration({
+  disclosures: { minimumAge: 18 },
 });
-
-console.log(session.deepLink); // show to user
-console.log(session.sessionToken); // save for polling
-
-// Poll until complete
-const result = await agent.waitForRegistration(session.sessionToken);
-console.log(result.agentId); // on-chain agent ID
+console.log(dereg.scanUrl);
+await dereg.waitForCompletion();
 ```
 
-```python
-from self_agent_sdk import SelfAgent
-
-agent = SelfAgent(
-    endpoint="https://agent-api.self.xyz",
-    network="testnet",
-)
-
-# Request registration
-session = agent.request_registration(
-    mode="linked",
-    human_address="0xYourWallet",
-    disclosures={"minimum_age": 18, "ofac": True},
-)
-
-print(session.deep_link)  # show to user
-print(session.session_token)  # save for polling
-
-# Poll until complete
-result = agent.wait_for_registration(session.session_token)
-print(result.agent_id)  # on-chain agent ID
-```
-
-```rust
-use self_agent_sdk::SelfAgent;
-
-let agent = SelfAgent::new(
-    "https://agent-api.self.xyz",
-    "testnet",
-);
-
-// Request registration
-let session = agent.request_registration(
-    "linked",
-    "0xYourWallet",
-    Disclosures { minimum_age: 18, ofac: true, ..Default::default() },
-).await?;
-
-println!("{}", session.deep_link); // show to user
-
-// Poll until complete
-let result = agent.wait_for_registration(&session.session_token).await?;
-println!("Agent ID: {}", result.agent_id);
-```
-
-## Authentication
-
-The API uses encrypted session tokens instead of API keys. Tokens are returned by `POST /register` and `POST /deregister` and must be passed as a `token` query parameter to all subsequent endpoints.
-
-- Tokens expire after **30 minutes**
-- Each token is scoped to a single registration or deregistration session
-- Updated tokens are returned in each response — always use the latest one
-- Query endpoints (`/info`, `/agents`, `/verify`) require no authentication
+Other REST helpers: `requestProofRefresh({ agentId, network })`, `SelfAgent.getAgentInfo(agentId, { network })` and `SelfAgent.getAgentsForHuman(address, { network })`. Every helper takes `apiBase` (default `SELF_AGENT_API_BASE` or `https://agent-api.self.xyz`) for self-hosted deployments.
 
 ## Error Codes
 
-All errors return `{ "error": "message" }` with the appropriate HTTP status.
+All errors return `{ "error": "message" }` with CORS headers.
 
-| Code | Meaning                                                         |
-| ---- | --------------------------------------------------------------- |
-| 400  | Bad request — invalid parameters, missing fields, or wrong mode |
-| 401  | Invalid or tampered session token                               |
-| 404  | Agent not found on-chain                                        |
-| 409  | Operation not available at current session stage                |
-| 410  | Session expired (30-minute TTL)                                 |
-| 500  | Server error — RPC failure or configuration issue               |
+| Code | Meaning                                                                                  |
+| ---- | ---------------------------------------------------------------------------------------- |
+| 400  | Bad request: invalid parameters, missing fields, wrong mode, or a token for another flow |
+| 401  | Invalid session token, QR token or visa signature                                        |
+| 403  | Signer not authorized (visa), or `X-Agent-Id` agent not verified (A2A)                   |
+| 404  | Agent not found (never minted or burned)                                                 |
+| 409  | Wrong state: export before completion, QR after the scan, tier already reached           |
+| 410  | Session expired (30-minute TTL)                                                          |
+| 413  | Request body too large (16 KB; 64 KB for A2A, 1 MB for MCP)                              |
+| 422  | Business rule not met (refresh id limitation, visa eligibility)                          |
+| 429  | Rate limited: wait for the `Retry-After` header (seconds) or `retryAfterMs` in the body  |
+| 500  | Server error (generic message; details are logged), e.g. `Failed to render QR code`      |
+| 502  | `RPC error`: the chain could not be read; retry                                          |
+| 503  | Visa relayer not configured on this deployment                                           |
 
 ## Footer
 
-Full source code and SDK packages are available on [GitHub](https://github.com/selfxyz/self-agent-id). See the [CLI Quickstart](/cli) for command-line usage.
+Full source code and the SDK are on [GitHub](https://github.com/selfxyz/self-agent-id). See [CLI Registration](CLI_REGISTRATION.md) for command-line usage.

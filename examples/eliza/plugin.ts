@@ -1,32 +1,29 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Eliza (ai16z) Plugin: Self Agent Identity
+ * Eliza (ai16z) plugin exposing Self Agent ID actions for an Ed25519 agent key.
  *
- * Integrates Self Agent ID with Eliza agents. Eliza agents on Solana
- * already use Ed25519 keypairs — this plugin registers the same key
- * with Self Agent ID for human-verified identity.
- *
- * NOTE: This is documentation-quality example code. Adapt to your
- * Eliza version and plugin system.
+ * Eliza agents on Solana already use Ed25519 keys, so the same key can be
+ * registered with Self Agent ID. Documentation-quality example code: adapt
+ * to your Eliza version and plugin system.
  */
 
-import { Ed25519Agent, SelfAgentVerifier, HEADERS } from "@selfxyz/agent-sdk";
+import { Ed25519Agent, SelfAgentVerifier } from "@selfxyz/agent-sdk";
 
-/**
- * Eliza plugin interface (adapt to your version)
- */
+/** Eliza plugin shape (adapt to your version). */
 interface ElizaPlugin {
   name: string;
   description: string;
   actions: Record<string, ElizaAction>;
 }
 
+/** One plugin action: a description plus an async handler. */
 interface ElizaAction {
   description: string;
   handler: (params: Record<string, unknown>) => Promise<unknown>;
 }
 
+/** The part of the Eliza runtime this plugin reads (settings). */
 interface ElizaRuntime {
   getSetting(key: string): string | undefined;
 }
@@ -36,11 +33,14 @@ interface ElizaRuntime {
  *
  * Configuration (via Eliza settings):
  *   - SELF_ED25519_SEED: 64-char hex Ed25519 seed
- *     OR uses the agent's existing Solana keypair
+ *     OR uses the agent's existing Solana key (as a 64-char hex seed)
  *   - SELF_NETWORK: "testnet" or "mainnet" (default: "testnet")
+ *
+ * @param runtime - Eliza runtime used to read settings.
+ * @returns The plugin with checkIdentity, signRequest, authenticatedFetch and verifyAgent actions.
+ * @throws If no seed is configured, or the seed is not 64 hex characters.
  */
 export function createSelfIdentityPlugin(runtime: ElizaRuntime): ElizaPlugin {
-  // Use existing Solana key or a dedicated Self key
   const seed =
     runtime.getSetting("SELF_ED25519_SEED") ||
     runtime.getSetting("SOLANA_PRIVATE_KEY") ||
@@ -74,7 +74,7 @@ export function createSelfIdentityPlugin(runtime: ElizaRuntime): ElizaPlugin {
             return {
               registered: false,
               message:
-                "Not registered. Visit https://docs.self.xyz/agent-id/guides/agent-builder",
+                "Not registered. Register this Ed25519 key (see examples/standalone-ts: agent.ts --register).",
               agentKey: agent.agentKey,
             };
           }
@@ -82,6 +82,7 @@ export function createSelfIdentityPlugin(runtime: ElizaRuntime): ElizaPlugin {
           return {
             registered: true,
             agentId: info.agentId.toString(),
+            // hasHumanProof && isProofFresh (what verifiers require)
             isVerified: info.isVerified,
             address: agent.address,
           };

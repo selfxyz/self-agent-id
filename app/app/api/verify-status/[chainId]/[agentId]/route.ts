@@ -2,60 +2,73 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { type NextRequest, NextResponse } from "next/server";
-import { ethers } from "ethers";
-import { getProviderLabel } from "@selfxyz/agent-sdk";
-import { CHAIN_CONFIG } from "@/lib/chain-config";
-import {
-  CORS_HEADERS,
-  corsResponse,
-  errorResponse,
-  validateAgentId,
-} from "@/lib/api-helpers";
+/**
+ * GET /api/verify-status/{chainId}/{agentId} — compact proof status.
+ *
+ * Auth: none. Rate limit: 120/min per IP (shared read budget).
+ * Returns verified (= hasHumanProof && isProofFresh), expiry, proof type and
+ * provider.
+ */
 
-import { typedProvider, typedRegistry } from "@/lib/contract-types";
+import type { NextRequest } from "next/server";
+import { corsResponse, jsonResponse } from "@/lib/agent-api-helpers";
+import {
+  connectRegistry,
+  parseAgentTarget,
+  readAgentState,
+  readErrorResponse,
+  readProviderStrength,
+  readRateLimited,
+} from "@/lib/agent-read";
+
+/**
+ * Read an agent's proof state in compact form.
+ *
+ * @param req - Incoming request (counted against the per-IP read budget).
+ * @param context.params - Path params: `chainId`, `agentId`.
+ * @returns 200 {verified, hasHumanProof, isProofFresh, proofExpiresAt,
+ *   proofType, registeredAtBlock, providerAddress}; 400 {error} bad chain or
+ *   agent ID; 404 {error} agent not found;
+ *   429 {error, retryAfterMs}; 502 {error} RPC failure.
+ */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ chainId: string; agentId: string }> },
 ) {
+  const limited = await readRateLimited(req);
+  if (limited) return limited;
   const { chainId, agentId } = await params;
-  const config = CHAIN_CONFIG[chainId];
-  if (!config) return errorResponse(`Unsupported chain: ${chainId}`, 400);
-
-  const id = validateAgentId(agentId);
-  if (id === null) return errorResponse("Invalid agent ID", 400);
+  const parsed = parseAgentTarget(chainId, agentId);
+  if (!parsed.ok) return parsed.response;
+  const { target } = parsed;
 
   try {
-    const rpc = new ethers.JsonRpcProvider(config.rpc);
-    const registry = typedRegistry(config.registry, rpc);
-
-    const [hasProof, providerAddr, registeredAtBlock] = await Promise.all([
-      registry.hasHumanProof(id),
-      registry.getProofProvider(id),
-      registry.agentRegisteredAt(id),
-    ]);
-
-    if (!hasProof) {
-      return NextResponse.json({ verified: false }, { headers: CORS_HEADERS });
-    }
-
-    const provider = typedProvider(providerAddr, rpc);
-    const strength: number = await provider.verificationStrength();
-
-    return NextResponse.json(
-      {
-        verified: true,
-        proofType: getProviderLabel(Number(strength)),
-        registeredAtBlock: registeredAtBlock.toString(),
-        providerAddress: providerAddr,
-      },
-      { headers: CORS_HEADERS },
+    const { rpc, registry } = connectRegistry(target.chainId, target.config);
+    const state = await readAgentState(registry, target);
+    const { strengthLabel } = await readProviderStrength(
+      rpc,
+      state.proofProvider,
     );
-  } catch {
-    return errorResponse("Agent not found", 404);
+
+    return jsonResponse({
+      verified: state.isVerified,
+      hasHumanProof: state.hasHumanProof,
+      isProofFresh: state.isProofFresh,
+      proofExpiresAt: state.proofExpiresAt,
+      proofType: strengthLabel,
+      registeredAtBlock: state.registeredAtBlock,
+      providerAddress: state.proofProvider,
+    });
+  } catch (err) {
+    return readErrorResponse(err, "verify-status");
   }
 }
 
+/**
+ * Answer the CORS preflight.
+ *
+ * @returns 204 with CORS headers.
+ */
 export function OPTIONS() {
   return corsResponse();
 }

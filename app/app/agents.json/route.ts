@@ -2,16 +2,39 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { NextResponse } from "next/server";
-import { CORS_HEADERS, corsResponse } from "@/lib/api-helpers";
+/**
+ * GET /agents.json — link index of the machine-readable entry points.
+ *
+ * Auth: none. Rate limit: none.
+ * Returns links (registration, discovery, a2a, llms.txt, agent card,
+ * well-known), not a list of agents. Cacheable for 1 h.
+ */
 
-const BASE = process.env.NEXT_PUBLIC_APP_URL || "https://agent-api.self.xyz";
+import { type NextRequest, NextResponse } from "next/server";
+import {
+  AGENT_CORS_HEADERS,
+  corsResponse,
+  getAppBaseUrl,
+} from "@/lib/agent-api-helpers";
 
+/**
+ * Answer the CORS preflight.
+ *
+ * @returns 204 with CORS headers.
+ */
 export function OPTIONS() {
   return corsResponse();
 }
 
-export function GET() {
+/**
+ * Serve the link index.
+ *
+ * @param req - Incoming request (used for the base URL).
+ * @returns 200 {name, description, registration, discovery, a2a, llms_txt,
+ *   agent_card, well_known}.
+ */
+export function GET(req: NextRequest) {
+  const BASE = getAppBaseUrl(req);
   return NextResponse.json(
     {
       name: "Self Agent ID",
@@ -26,7 +49,7 @@ export function GET() {
     },
     {
       headers: {
-        ...CORS_HEADERS,
+        ...AGENT_CORS_HEADERS,
         "Cache-Control": "public, max-age=3600",
       },
     },

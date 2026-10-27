@@ -2,61 +2,41 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-// ── In-memory rate limiter for relayer-funded API endpoints ─────────────────
-// Prevents spam draining the relayer wallet. Resets on server restart.
+/**
+ * Fixed-window rate limiter on top of the shared security store.
+ *
+ * Backed by Upstash when configured, otherwise per-instance memory.
+ */
 
-interface RateLimitEntry {
-  timestamps: number[];
-}
-
-const PER_IP_LIMIT = 5; // max requests per window per IP
-const GLOBAL_LIMIT = 50; // max requests per window across all IPs
-const WINDOW_MS = 60 * 60 * 1000; // 1 hour
-
-const ipMap = new Map<string, RateLimitEntry>();
-let globalTimestamps: number[] = [];
-
-function pruneTimestamps(timestamps: number[], now: number): number[] {
-  return timestamps.filter((t) => now - t < WINDOW_MS);
-}
+import { incrementWithWindow } from "@/lib/security-store";
 
 /**
- * Check if a request should be rate-limited.
- * Returns null if allowed, or an error message if blocked.
+ * Count one hit against `key` and report whether it is within the limit.
+ *
+ * The window starts at the first hit and resets when it expires.
+ *
+ * @param params.key - Counter key (callers namespace it, e.g. by route and IP).
+ * @param params.limit - Hits allowed per window (floored, minimum 1).
+ * @param params.windowMs - Window length in ms (floored, minimum 1).
+ * @returns `allowed` (this hit is within the limit), `remaining` hits, and
+ *   `retryAfterMs` until the window resets (at least 1).
  */
-export function checkRateLimit(ip: string): string | null {
-  const now = Date.now();
+export async function checkRateLimit(params: {
+  key: string;
+  limit: number;
+  windowMs: number;
+}): Promise<{ allowed: boolean; remaining: number; retryAfterMs: number }> {
+  const { key, limit, windowMs } = params;
+  const safeLimit = Math.max(1, Math.floor(limit));
+  const safeWindow = Math.max(1, Math.floor(windowMs));
 
-  // Global limit
-  globalTimestamps = pruneTimestamps(globalTimestamps, now);
-  if (globalTimestamps.length >= GLOBAL_LIMIT) {
-    return "Rate limit exceeded — too many requests globally. Try again later.";
-  }
+  const { count, ttlMs } = await incrementWithWindow(key, safeWindow);
+  const allowed = count <= safeLimit;
+  const remaining = Math.max(0, safeLimit - count);
 
-  // Per-IP limit
-  const entry = ipMap.get(ip);
-  if (entry) {
-    entry.timestamps = pruneTimestamps(entry.timestamps, now);
-    if (entry.timestamps.length >= PER_IP_LIMIT) {
-      return "Rate limit exceeded — max 5 visa claims per hour. Try again later.";
-    }
-  }
-
-  return null;
-}
-
-/**
- * Record a successful relayer transaction (call after tx is sent, not before).
- */
-export function recordRelayerTx(ip: string): void {
-  const now = Date.now();
-
-  globalTimestamps.push(now);
-
-  const entry = ipMap.get(ip);
-  if (entry) {
-    entry.timestamps.push(now);
-  } else {
-    ipMap.set(ip, { timestamps: [now] });
-  }
+  return {
+    allowed,
+    remaining,
+    retryAfterMs: Math.max(1, ttlMs),
+  };
 }

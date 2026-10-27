@@ -2,187 +2,118 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-// GET /api/visa/agents?wallet=0x...&chainId=11142220
-//
-// Returns agent IDs (both registry-based and wallet-based) for a given wallet.
-// Uses a two-tier approach:
-//   1. Fast path: direct contract call for simple-mode agents (no event scanning)
-//   2. Slow path: paginated Transfer event scan using Forno (Celo's public RPC
-//      which allows large block ranges, unlike Alchemy free tier's 10-block limit)
+/**
+ * GET /api/visa/agents?wallet=0x...&chainId=... — visa agent IDs a wallet can
+ * act for.
+ *
+ * Auth: none. Rate limit: 20/min per IP (shared scan budget).
+ * Returns registry agents the wallet owns (same Multicall3 walk as
+ * /api/agent/agents) or whose key it is, plus its wallet-based ID
+ * (uint160(wallet)) if that holds a visa. `complete` is false if the walk
+ * could not account for every agent balanceOf reports.
+ */
 
 import type { NextRequest } from "next/server";
 import { ethers } from "ethers";
 import { CHAIN_CONFIG } from "@/lib/chain-config";
-import { REGISTRY_ABI, VISA_ABI } from "@/lib/constants";
-import { CORS_HEADERS, corsResponse, errorResponse } from "@/lib/api-helpers";
+import {
+  ERRORS,
+  corsResponse,
+  errorResponse,
+  jsonResponse,
+  parseAddress,
+} from "@/lib/agent-api-helpers";
+import {
+  connectRegistry,
+  readRateLimited,
+  scanAgentIds,
+} from "@/lib/agent-read";
+import { typedVisa } from "@/lib/contract-types";
 
-// Allow up to 30s for event queries
+/** Vercel function timeout (s): the ID walk can take several RPC round trips. */
 export const maxDuration = 30;
 
+/** One agent ID the wallet can act for. */
 interface AgentResult {
   agentId: string;
   chainId: number;
   isWalletBased?: boolean;
 }
 
-/** Forno RPC URLs for event scanning (supports large block ranges unlike Alchemy free tier) */
-const FORNO_RPC: Record<string, string> = {
-  "42220": "https://forno.celo.org",
-  "11142220": "https://forno.celo-sepolia.celo-testnet.org",
-};
-
 /**
- * Paginated queryFilter with adaptive block windows.
- * Starts at 500K blocks and halves on block-range errors.
+ * List the agent IDs a wallet owns, is the key of, or holds a wallet-based
+ * visa under.
+ *
+ * @param req - Query: `wallet` (strict 0x address, non-zero), `chainId`
+ *   (must have a visa contract).
+ * @returns 200 {agents: [{agentId, chainId, isWalletBased?}], complete};
+ *   400 {error} missing params, bad chain or address; 429 {error,
+ *   retryAfterMs}; 502 {error} RPC failure.
  */
-async function paginatedQueryFilter(
-  contract: ethers.Contract,
-  filter: ethers.ContractEventName,
-  provider: ethers.JsonRpcProvider,
-  fromBlockFloor: number,
-): Promise<(ethers.EventLog | ethers.Log)[]> {
-  const latestBlock = await provider.getBlockNumber();
-  const deployBlock = fromBlockFloor > 0 ? fromBlockFloor : 0;
-  let blockWindow = 500_000;
-  const MIN_WINDOW = 1_000;
-  const MAX_ITERATIONS = 100;
-  const allEvents: (ethers.EventLog | ethers.Log)[] = [];
-
-  let toBlock = latestBlock;
-  let iterations = 0;
-  while (toBlock >= deployBlock && iterations < MAX_ITERATIONS) {
-    iterations++;
-    const fromBlock = Math.max(deployBlock, toBlock - blockWindow + 1);
-    try {
-      const events = await contract.queryFilter(filter, fromBlock, toBlock);
-      allEvents.push(...events);
-      toBlock = fromBlock - 1;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (
-        (msg.includes("block range") ||
-          msg.includes("Log response size exceeded") ||
-          msg.includes("query returned more than")) &&
-        blockWindow > MIN_WINDOW
-      ) {
-        blockWindow = Math.max(MIN_WINDOW, Math.floor(blockWindow / 2));
-        continue;
-      }
-      throw err;
-    }
-  }
-
-  return allEvents;
-}
-
 export async function GET(req: NextRequest) {
-  const wallet = req.nextUrl.searchParams.get("wallet");
-  const chainId = req.nextUrl.searchParams.get("chainId");
+  const limited = await readRateLimited(req, "scan");
+  if (limited) return limited;
 
-  if (!wallet || !chainId) {
+  const walletParam = req.nextUrl.searchParams.get("wallet");
+  const chainId = req.nextUrl.searchParams.get("chainId");
+  if (!walletParam || !chainId) {
     return errorResponse("wallet and chainId are required", 400);
   }
-
   const config = CHAIN_CONFIG[chainId];
-  if (!config) return errorResponse(`Unsupported chain: ${chainId}`, 400);
-  if (!config.visa)
-    return errorResponse("Visa not deployed on this chain", 404);
+  if (!config?.visa) return errorResponse(ERRORS.unsupportedChain, 400);
+  const wallet = parseAddress(walletParam);
+  if (!wallet) return errorResponse(ERRORS.invalidAddress, 400);
 
-  const agents: AgentResult[] = [];
-  // Use configured RPC for simple calls (balanceOf, ownerOf, getTier)
-  const provider = new ethers.JsonRpcProvider(config.rpc);
-  const registry = new ethers.Contract(config.registry, REGISTRY_ABI, provider);
-
-  // ── Fast path: check for simple-mode agent (zeroPadValue(address, 32)) ──
-  // This is a single contract call — no event scanning needed.
   try {
-    const simpleKey = ethers.zeroPadValue(wallet, 32);
-    const simpleAgentId = (await registry.getAgentId(simpleKey)) as bigint;
-    if (simpleAgentId !== 0n) {
-      const owner = (await registry.ownerOf(simpleAgentId)) as string;
-      if (owner.toLowerCase() === wallet.toLowerCase()) {
-        agents.push({
-          agentId: simpleAgentId.toString(),
-          chainId: Number(chainId),
-        });
-      }
+    const { rpc, registry } = connectRegistry(Number(chainId), config);
+    const visa = typedVisa(config.visa, rpc);
+    const walletAgentId = BigInt(wallet);
+
+    const [keyAgentId, balance, walletTier] = await Promise.all([
+      registry.getAgentId(ethers.zeroPadValue(wallet, 32)),
+      registry.balanceOf(wallet),
+      visa.getTier(walletAgentId),
+    ]);
+    const owned =
+      balance > 0n
+        ? await scanAgentIds(
+            rpc,
+            config.registry,
+            "ownerOf",
+            wallet,
+            Number(balance),
+          )
+        : [];
+    const ids = [...new Set([...owned, keyAgentId].filter((id) => id !== 0n))];
+    ids.sort((a, b) => (a < b ? -1 : 1));
+
+    const agents: AgentResult[] = ids.map((id) => ({
+      agentId: id.toString(),
+      chainId: Number(chainId),
+    }));
+    if (Number(walletTier) > 0 && !ids.includes(walletAgentId)) {
+      agents.push({
+        agentId: walletAgentId.toString(),
+        chainId: Number(chainId),
+        isWalletBased: true,
+      });
     }
-  } catch {
-    // No simple-mode agent
+
+    return jsonResponse({
+      agents,
+      complete: owned.length === Number(balance),
+    });
+  } catch (err) {
+    console.error("[visa/agents] lookup failed:", err);
+    return errorResponse(ERRORS.rpc, 502);
   }
-
-  // ── Slow path: scan Transfer events for advanced-mode agents ──
-  // Only needed if wallet owns more registry tokens than we found above.
-  let registryBalance = 0n;
-  try {
-    registryBalance = (await registry.balanceOf(wallet)) as bigint;
-  } catch {
-    registryBalance = -1n; // unknown — must scan
-  }
-
-  if (registryBalance > BigInt(agents.length)) {
-    // Use Forno for event scanning — Alchemy free tier limits eth_getLogs to 10-block ranges
-    const fornoUrl = FORNO_RPC[chainId];
-    const scanProvider = fornoUrl
-      ? new ethers.JsonRpcProvider(fornoUrl)
-      : provider;
-    const scanRegistry = fornoUrl
-      ? new ethers.Contract(config.registry, REGISTRY_ABI, scanProvider)
-      : registry;
-
-    try {
-      const filter = scanRegistry.filters.Transfer(null, wallet);
-      const events = await paginatedQueryFilter(
-        scanRegistry,
-        filter,
-        scanProvider,
-        config.registryDeployBlock,
-      );
-      const seen = new Set(agents.map((a) => a.agentId));
-      for (const event of events) {
-        const tokenId = (event as ethers.EventLog).args?.[2] as
-          | bigint
-          | undefined;
-        if (tokenId && BigInt(tokenId) > 0n) {
-          const id = BigInt(tokenId).toString();
-          if (seen.has(id)) continue;
-          try {
-            const owner = (await registry.ownerOf(tokenId)) as string;
-            if (owner.toLowerCase() !== wallet.toLowerCase()) continue;
-          } catch {
-            continue;
-          }
-          seen.add(id);
-          agents.push({ agentId: id, chainId: Number(chainId) });
-        }
-      }
-    } catch {
-      // Skip — wallet-based check below still runs
-    }
-  }
-
-  // Check for wallet-based Tourist visa
-  const walletAgentId = BigInt(ethers.getAddress(wallet)).toString();
-  try {
-    const visa = new ethers.Contract(config.visa, VISA_ABI, provider);
-    const tier = Number(await visa.getTier(BigInt(walletAgentId)));
-    if (tier > 0) {
-      const exists = agents.some((a) => a.agentId === walletAgentId);
-      if (!exists) {
-        agents.push({
-          agentId: walletAgentId,
-          chainId: Number(chainId),
-          isWalletBased: true,
-        });
-      }
-    }
-  } catch {
-    // No wallet visa
-  }
-
-  return Response.json({ agents }, { headers: CORS_HEADERS });
 }
 
+/**
+ * Answer the CORS preflight.
+ *
+ * @returns 204 with CORS headers.
+ */
 export function OPTIONS() {
   return corsResponse();
 }

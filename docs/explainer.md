@@ -38,7 +38,7 @@ Each human maps to a unique nullifier, preventing one person from registering un
 
 ## Ready to Integrate?
 
-Get code snippets for verifying agents in your service, authenticating your agent with services, and using the CLI for terminal workflows — in TypeScript, Python, and Rust.
+Get code snippets for verifying agents in your service, authenticating your agent with services, and using the CLI for terminal workflows — with the TypeScript SDK, or the REST API from any language.
 
 ## Security Model
 
@@ -46,16 +46,16 @@ The registry supports six registration modes. All produce the same on-chain resu
 
 ### Linked Agent
 
-**Agent Key + Wallet Guardian**
+**Agent Key + Owner Wallet**
 
-A fresh EVM agent keypair is generated. Your connected wallet becomes the guardian, giving you direct revocation control. The human proves humanity via Self, and the agent key is linked to your wallet on-chain.
+A fresh EVM agent keypair is generated and linked to your wallet, which owns the agent NFT. The human proves humanity via Self, and the agent key is linked to your wallet on-chain.
 
 **How it's secured:**
 
 - ECDSA signature in registration proves agent key ownership
 - ZK proof binds human identity to nullifier
 - Agent signs requests with its _own_ key — human wallet never exposed
-- Guardian wallet can revoke the agent at any time
+- Your wallet owns the agent NFT; deregister anytime by scanning your passport again
 
 **Best for:** Developers who already have a wallet and want direct revocation control over their agents.
 
@@ -63,7 +63,7 @@ A fresh EVM agent keypair is generated. Your connected wallet becomes the guardi
 
 **No Wallet Required**
 
-No crypto wallet required. A fresh agent keypair is generated in the browser, and the agent's own address owns the NFT. Revoke anytime by scanning your passport again in the Self app.
+No crypto wallet required. A fresh agent keypair is generated for you, and the agent's own address owns the NFT. Revoke anytime by scanning your passport again in the Self app.
 
 **How it's secured:**
 
@@ -75,23 +75,23 @@ No crypto wallet required. A fresh agent keypair is generated in the browser, an
 
 ### Smart Wallet
 
-**Passkey + Kernel Smart Account**
+**Passkey Smart Wallet as Owner**
 
-A passkey (Face ID / fingerprint) creates a Kernel smart account as guardian. No MetaMask, no seed phrase. The agent still has its own ECDSA key for signing requests; the smart wallet handles on-chain management gaslessly via Pimlico.
+Works exactly like a linked agent, with the human's passkey (Face ID / fingerprint) smart wallet as the linked wallet. The agent still has its own ECDSA key for signing requests.
 
 **How it's secured:**
 
-- Passkey (WebAuthn) backed by device biometrics, phishing-resistant
-- Smart wallet = guardian, can revoke agent gaslessly
+- The smart wallet is controlled by a passkey backed by device biometrics
+- Smart wallet owns the agent NFT
 - Agent signs requests with its own ECDSA key
 
-**Best for:** Users who want the simplest experience with no seed phrases, no browser extensions, and gasless management.
+**Best for:** Humans who already use a passkey smart wallet and want no seed phrases or browser extensions.
 
 ### Social Login (Privy)
 
 **Email / Google / Twitter → Embedded Wallet**
 
-Sign in with a social account via Privy. An embedded wallet is created automatically — no browser extension or seed phrase. A separate agent keypair is generated, and the Privy wallet becomes the guardian.
+Works like a linked agent, with the human's Privy embedded wallet (created by signing in with email or a social account) as the linked wallet — no browser extension or seed phrase. A separate agent keypair is generated, and the Privy wallet owns the agent NFT.
 
 **How it's secured:**
 
@@ -106,13 +106,13 @@ Sign in with a social account via Privy. An embedded wallet is created automatic
 
 **Existing Agent Key**
 
-For agents that already have Ed25519 keys (common in AI frameworks like Eliza, OpenClaw, and SSH-style agents). Paste your agent's existing public key — no new key generation needed. The agent signs a challenge to prove key ownership.
+For agents that already have Ed25519 keys (common in AI frameworks like Eliza, OpenClaw, and SSH-style agents). The agent registers its existing public key — no new key generation needed — and signs a challenge to prove key ownership. The private key never leaves the agent.
 
 **How it's secured:**
 
 - Ed25519 signature proves agent key ownership
 - ZK proof binds human identity to nullifier
-- Deregister anytime by scanning passport again
+- No revocation path without a guardian — use Ed25519 + Guardian if you need one
 
 **Best for:** AI agents using Ed25519 keys natively (Eliza, OpenClaw, SSH agents, etc.).
 
@@ -120,14 +120,13 @@ For agents that already have Ed25519 keys (common in AI frameworks like Eliza, O
 
 **Ed25519 Key + Wallet Guardian**
 
-Same as Ed25519, but your connected wallet becomes the guardian. This gives you direct wallet-based revocation control over the agent, in addition to passport-based revocation.
+Same as Ed25519, but your connected wallet becomes the guardian. This gives you direct wallet-based revocation control over the agent.
 
 **How it's secured:**
 
 - Ed25519 signature proves agent key ownership
 - ZK proof binds human identity to nullifier
-- Guardian wallet can revoke the agent at any time
-- Passport revocation also available as fallback
+- Guardian wallet can revoke the agent at any time (`guardianRevoke`)
 
 **Best for:** Ed25519 agents where a human wants direct wallet-based revocation control.
 
@@ -149,11 +148,11 @@ Signs each request with the agent's private key. The signature covers the timest
 
 **Service Side**
 
-Recovers the signer address from the ECDSA signature (cryptographic, can't be faked), converts it to a bytes32 key, and checks `isVerifiedAgent()` on-chain.
+Recovers the signer address from the ECDSA signature (cryptographic, can't be faked), converts it to a bytes32 key, and checks on-chain that the agent has a human proof that hasn't expired (`isVerifiedAgent()` + `isProofFresh()`).
 
 The signer's identity is **recovered from the signature itself**, never trusted from a header. This closes the off-chain verification gap completely.
 
-**Fully composable.** SDKs are available for `TypeScript`, `Python`, and `Rust`, with the signing protocol open for raw implementations in any language. Sign requests in Python, verify in Rust, or vice versa. The signing protocol is language-agnostic — all SDKs produce identical signatures.
+**Fully composable.** The TypeScript SDK implements both sides, and the signing protocol is open for raw implementations in any language: `keccak256(timestamp + METHOD + pathAndQuery + keccak256(body))`, signed with EIP-191.
 
 ### Sybil Resistance
 
@@ -214,19 +213,20 @@ const accessLevel =
 ```
 
 ```solidity
-// On-chain: Use SelfReputationProvider directly
-SelfReputationProvider rep = SelfReputationProvider(0x...);
-uint8 score = rep.getReputationScore(agentId);
-require(score >= 80, "Insufficient verification");
+// On-chain: read the strength from the agent's proof provider
+// (what SelfReputationSignal.getReputationScore returns; that wrapper is not deployed)
+address provider = registry.getProofProvider(agentId);
+require(provider != address(0), "No proof");
+require(IHumanProofProvider(provider).verificationStrength() >= 80, "Insufficient verification");
 ```
 
 ### ERC-8004: Three Registries
 
 Self Protocol covers all three registry types defined by ERC-8004:
 
-- **Identity** — SelfAgentRegistry: Agent NFT + human proof + ZK-attested credentials
-- **Reputation** — SelfReputationProvider: Verification strength score from proof providers
-- **Validation** — SelfValidationProvider: Real-time proof status + freshness check
+- **Identity** — `SelfAgentRegistry`: Agent NFT + human proof + ZK-attested credentials
+- **Reputation** — `SelfReputationRegistry`: ERC-8004 feedback; a `proof-of-human` entry is recorded at registration
+- **Validation** — `SelfValidationRegistry`: ERC-8004 validation requests/responses; Self attests daily proof freshness
 
 ## Interface Specification {#spec}
 
@@ -238,10 +238,17 @@ The base agent registry that every ERC-8004 implementation provides.
 
 ```solidity
 /// @title IERC8004 - Agent Registry (Base Standard)
-interface IERC8004 {
-    function registerAgent(bytes32 agentPubKey) external returns (uint256);
-    function getAgentId(bytes32 agentPubKey) external view returns (uint256);
-    function ownerOf(uint256 agentId) external view returns (address);
+interface IERC8004 is IERC165 {
+    function register() external returns (uint256 agentId);
+    function register(string calldata agentURI) external returns (uint256 agentId);
+    function register(string calldata agentURI, string[] calldata metadataKeys, bytes[] calldata metadataValues)
+        external returns (uint256 agentId);
+    function setAgentURI(uint256 agentId, string calldata newURI) external;
+    function getMetadata(uint256 agentId, string memory key) external view returns (bytes memory);
+    function setMetadata(uint256 agentId, string calldata key, bytes calldata value) external;
+    function setAgentWallet(uint256 agentId, address newWallet, uint256 deadline, bytes calldata signature) external;
+    function getAgentWallet(uint256 agentId) external view returns (address);
+    function unsetAgentWallet(uint256 agentId) external;
 }
 ```
 
@@ -255,7 +262,7 @@ These functions are added on top of ERC-8004 to provide human-verification guara
 interface IERC8004ProofOfHuman is IERC8004 {
     // ── Registration ──────────────────────────────
     function registerWithHumanProof(
-        string calldata agentMetadata,
+        string calldata agentURI,
         address proofProvider,
         bytes calldata proof,
         bytes calldata providerData
@@ -269,16 +276,23 @@ interface IERC8004ProofOfHuman is IERC8004 {
     ) external;
 
     // ── Verification (read by any service/contract) ─
-    function isVerifiedAgent(bytes32 agentPubKey) external view returns (bool);
-    function hasHumanProof(uint256 agentId) external view returns (bool);
+    function hasHumanProof(uint256 agentId) external view returns (bool); // ignores expiry
+    function proofExpiresAt(uint256 agentId) external view returns (uint256);
+    function isProofFresh(uint256 agentId) external view returns (bool);
     function getHumanNullifier(uint256 agentId) external view returns (uint256);
     function getProofProvider(uint256 agentId) external view returns (address);
 
     // ── Sybil detection ───────────────────────────
     function getAgentCountForHuman(uint256 nullifier) external view returns (uint256);
-    function sameHuman(uint256 a, uint256 b) external view returns (bool);
+    function getAgentsForNullifier(uint256 nullifier) external view returns (uint256[] memory);
+    function getAgentsForNullifier(uint256 nullifier, uint256 offset, uint256 limit)
+        external view returns (uint256[] memory);
+    function sameHuman(uint256 agentIdA, uint256 agentIdB) external view returns (bool);
+    function isApprovedProvider(address provider) external view returns (bool);
 }
 ```
+
+`SelfAgentRegistry` also exposes `isVerifiedAgent(bytes32 agentKey)` and `getAgentId(bytes32 agentKey)` for key-based lookups (not part of the interface).
 
 ### IHumanProofProvider
 
@@ -288,18 +302,18 @@ Pluggable interface for identity verification backends. Self Protocol is the ref
 /// @title IHumanProofProvider
 /// @notice Pluggable identity backend for proof-of-human.
 interface IHumanProofProvider {
-    /// @notice Verify a ZK proof and return (success, nullifier).
+    /// @notice Verify a proof and return (success, nullifier).
     function verifyHumanProof(
         bytes calldata proof,
-        bytes calldata providerData
+        bytes calldata data
     ) external returns (bool verified, uint256 nullifier);
 
-    /// @notice Human-readable provider name (e.g. "Self Protocol").
+    /// @notice Provider name (SelfHumanProofProvider returns "self").
     function providerName() external view returns (string memory);
 
     /// @notice Verification strength score (0-100).
-    function verificationStrength() external view returns (uint256);
+    function verificationStrength() external view returns (uint8);
 }
 ```
 
-View the reference implementation on [GitHub](https://github.com/selfxyz/self-agent-id) or the deployed contract on [Celoscan](https://celoscan.io/address/0xaC3DF9ABf80d0F5c020C06B04Cced27763355944) (`network.blockExplorer`/`network.registryAddress`, shown for the default `celo-mainnet` network).
+View the reference implementation on [GitHub](https://github.com/selfxyz/self-agent-id) or the deployed contract on [Celoscan](https://celoscan.io/address/0xaC3DF9ABf80d0F5c020C06B04Cced27763355944) (Celo mainnet).

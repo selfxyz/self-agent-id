@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
+/** Tests for `SelfAgentVerifier.create()` builder and `fromConfig()`. */
+
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { SelfAgentVerifier } from "../SelfAgentVerifier";
@@ -33,6 +35,19 @@ describe("SelfAgentVerifier chainable builder", () => {
       .cacheTtl(30_000)
       .build();
     assert.ok(v);
+  });
+
+  it("requireSelfProvider() defaults to true and accepts false", () => {
+    const flag = (v: SelfAgentVerifier) =>
+      (v as unknown as { requireSelfProvider: boolean }).requireSelfProvider;
+    const base = () => SelfAgentVerifier.create().network("testnet");
+    assert.equal(flag(base().build()), true);
+    assert.equal(flag(base().requireSelfProvider().build()), true);
+    assert.equal(flag(base().requireSelfProvider(false).build()), false);
+    assert.equal(
+      flag(base().requireSelfProvider(false).requireSelfProvider(true).build()),
+      true,
+    );
   });
 
   it("chains rate limiting", () => {

@@ -69,7 +69,7 @@ Adding A2A fields makes this single document simultaneously a valid A2A Agent Ca
   "registrations": [
     {
       "agentId": 42,
-      "agentRegistry": "eip155:42220:0x62E37d0f6c5f67784b8828B3dF68BCDbB2e55095"
+      "agentRegistry": "eip155:42220:0xaC3DF9ABf80d0F5c020C06B04Cced27763355944"
     }
   ],
   "supportedTrust": ["reputation"]

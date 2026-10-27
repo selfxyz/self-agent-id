@@ -2,12 +2,18 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
+/**
+ * Typed ethers views of the SelfAgentRegistry and IHumanProofProvider contracts.
+ *
+ * The ABIs live in `constants.ts`; these interfaces must stay in sync with them.
+ */
+
 import { ethers } from "ethers";
 import { REGISTRY_ABI, PROVIDER_ABI } from "./constants";
 
 // ─── Return types ────────────────────────────────────────────────────────────
 
-/** Decoded credentials struct returned by getAgentCredentials(). */
+/** Decoded credentials struct returned by `getAgentCredentials()` (fields are empty when not disclosed). */
 export interface AgentCredentials {
   issuingState: string;
   name: string[];
@@ -56,7 +62,13 @@ export interface TypedProviderContract extends ethers.BaseContract {
 
 // ─── Constructor helpers ─────────────────────────────────────────────────────
 
-/** Create a typed registry contract instance. */
+/**
+ * Create a typed SelfAgentRegistry contract instance.
+ *
+ * @param address - Registry contract address.
+ * @param runner - Provider (read-only) or signer (for `updateAgentMetadata`).
+ * @returns The contract cast to `TypedRegistryContract`.
+ */
 export function typedRegistry(
   address: string,
   runner: ethers.ContractRunner,
@@ -68,7 +80,13 @@ export function typedRegistry(
   ) as unknown as TypedRegistryContract;
 }
 
-/** Create a typed provider contract instance. */
+/**
+ * Create a typed IHumanProofProvider contract instance.
+ *
+ * @param address - Proof provider contract address (from `getProofProvider`).
+ * @param runner - Provider or signer to call through.
+ * @returns The contract cast to `TypedProviderContract`.
+ */
 export function typedProvider(
   address: string,
   runner: ethers.ContractRunner,

@@ -2,275 +2,54 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-// POST /api/agent/refresh — Initiate proof refresh for an existing agent
-//
-// Verifies the agent exists on-chain and has a non-zero configId (meaning it
-// was registered via Hub V2 and supports refresh). Builds userData with
-// ACTION_REFRESH (0x46) + configIndex + agentId, creates a Self app QR
-// session, and returns deep link + session token for polling.
+/**
+ * POST /api/agent/refresh — start a proof refresh session.
+ * GET /api/agent/refresh — shareable refresh link (302 to the Self app).
+ *
+ * Auth: none (the human authorises by re-proving in the Self app).
+ * Rate limit: POST 10/min per IP; GET 20/min per IP.
+ * Only agents with a stored verification config (non-zero configId) can be
+ * refreshed. userDefinedData is ACTION_REFRESH (0x46) + config index + agent
+ * ID; POST returns a session token and QR, GET redirects to the deep link.
+ */
 
-import type { NextRequest } from "next/server";
+import type { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
+import { getRegistrationConfigIndex } from "@selfxyz/agent-sdk";
+import { getUniversalLink } from "@selfxyz/sdk-common";
+import { renderQrBase64 } from "@/lib/render-qr";
 import {
-  getRegistrationConfigIndex,
-  type RegistrationDisclosures,
-} from "@selfxyz/agent-sdk";
-import { SelfAppBuilder, getUniversalLink } from "@selfxyz/qrcode";
-import { createSessionToken, encryptSession } from "@/lib/session-token";
+  createQrToken,
+  createSessionToken,
+  encryptSession,
+} from "@/lib/session-token";
 import {
-  getSessionSecret,
+  AGENT_CORS_HEADERS,
+  ERRORS,
+  requireSessionSecret,
   getNetworkConfig,
   isValidNetwork,
+  networkForChainId,
+  parseAgentIdField,
+  validateAgentId,
   jsonResponse,
   errorResponse,
   corsResponse,
+  getAppBaseUrl,
+  getClientIp,
+  rateLimitResponse,
+  readJsonObjectBody,
+  parseDisclosures,
+  humanInstructions,
+  type ApiNetwork,
+  type ParsedDisclosures,
 } from "@/lib/agent-api-helpers";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { typedRegistry } from "@/lib/contract-types";
+import { buildSelfApp } from "@/lib/self-app";
 
-/** Self Hub V2 action byte for proof refresh ('F' = 0x46) */
+/** Self Hub V2 action byte for proof refresh ('F' = 0x46). */
 const ACTION_REFRESH = 0x46;
-
-/** The zero bytes32 value — agents with this configId cannot be refreshed */
-const ZERO_BYTES32 = "0x" + "0".repeat(64);
-
-interface RefreshRequestBody {
-  agentId: number;
-  network: string;
-  disclosures?: {
-    minimumAge?: number;
-    ofac?: boolean;
-    nationality?: boolean;
-    name?: boolean;
-    date_of_birth?: boolean;
-    gender?: boolean;
-    issuing_state?: boolean;
-  };
-}
-
-/**
- * Build raw bytes userData for ACTION_REFRESH.
- *
- * Layout (34 bytes total):
- *   [0]      = 0x46 (ACTION_REFRESH, ASCII 'F')
- *   [1]      = configIndex as ASCII digit ('0'..'5')
- *   [2..33]  = agentId as uint256, big-endian, 32 bytes
- *
- * The contract reads bytes[0] as the action byte, bytes[1] as config index
- * (supporting both ASCII '0'-'5' and raw 0x00-0x05), and bytes[2..33] via
- * assembly mload as a raw uint256.
- *
- * We return a JavaScript string where each character's code point corresponds
- * to one byte. This is what SelfAppBuilder expects for userDefinedData.
- */
-function buildRefreshUserData(agentId: number, configIndex: number): string {
-  // Action byte: 'F' (0x46)
-  const actionChar = String.fromCharCode(ACTION_REFRESH);
-
-  // Config index as ASCII digit (same pattern as registration)
-  const configChar = String(configIndex);
-
-  // AgentId as 32 raw bytes (big-endian uint256)
-  // Encode as 0x-prefixed 64-char hex, then convert each byte pair to a char
-  const idHex = ethers.zeroPadValue(ethers.toBeHex(agentId), 32).slice(2); // 64 hex chars
-  let idChars = "";
-  for (let i = 0; i < 64; i += 2) {
-    idChars += String.fromCharCode(parseInt(idHex.slice(i, i + 2), 16));
-  }
-
-  return actionChar + configChar + idChars;
-}
-
-export async function POST(req: NextRequest) {
-  // Rate limit: 10 refresh requests per minute per IP
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  const rl = await checkRateLimit({
-    key: `refresh:${ip}`,
-    limit: 10,
-    windowMs: 60_000,
-  });
-  if (!rl.allowed) {
-    return errorResponse("Too many requests", 429);
-  }
-
-  let body: RefreshRequestBody;
-  try {
-    const parsed = (await req.json()) as unknown;
-    if (!parsed || typeof parsed !== "object") {
-      return errorResponse("Invalid JSON body", 400);
-    }
-    body = parsed as RefreshRequestBody;
-  } catch {
-    return errorResponse("Invalid JSON body", 400);
-  }
-
-  // ── Validate agentId ────────────────────────────────────────────────────
-  if (
-    body.agentId == null ||
-    !Number.isInteger(body.agentId) ||
-    body.agentId <= 0
-  ) {
-    return errorResponse(
-      "agentId is required and must be a positive integer",
-      400,
-    );
-  }
-  const agentId = body.agentId;
-
-  // ── Validate network ────────────────────────────────────────────────────
-  if (!body.network || !isValidNetwork(body.network)) {
-    return errorResponse(
-      `Invalid network: "${body.network}". Valid: mainnet, testnet`,
-      400,
-    );
-  }
-  const network = body.network;
-  const networkConfig = getNetworkConfig(network);
-
-  // ── Build disclosures ───────────────────────────────────────────────────
-  const disclosures: RegistrationDisclosures = {
-    minimumAge: (body.disclosures?.minimumAge ?? 0) as 0 | 18 | 21,
-    ofac: body.disclosures?.ofac ?? false,
-  };
-
-  if (![0, 18, 21].includes(disclosures.minimumAge!)) {
-    return errorResponse("minimumAge must be 0, 18, or 21", 400);
-  }
-
-  try {
-    const secret = getSessionSecret();
-    const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
-    const registry = typedRegistry(networkConfig.registryAddress, provider);
-
-    // ── Verify agent exists and has a valid configId ──────────────────────
-    const configId = await registry.agentConfigId(BigInt(agentId));
-
-    if (configId === ZERO_BYTES32) {
-      return errorResponse(
-        "Agent does not support proof refresh (configId is zero). " +
-          "This may mean the agent was registered via an external provider or has been deregistered.",
-        400,
-      );
-    }
-
-    // Verify the agent is currently verified
-    const hasProof = await registry.hasHumanProof(BigInt(agentId));
-    if (!hasProof) {
-      return errorResponse(
-        "Agent does not currently have a valid human proof. " +
-          "The agent may need to re-register instead of refreshing.",
-        400,
-      );
-    }
-
-    // Read current proof expiry so the status endpoint can detect when it changes
-    const currentExpiry = await registry.proofExpiresAt(BigInt(agentId));
-
-    // ── Determine the config index from the stored configId ──────────────
-    // The contract stores configIds[0..5]. We match against them to find
-    // the index, but also allow the caller to specify disclosures which
-    // we use as the primary source. We validate they match the on-chain config.
-    const configIndex = getRegistrationConfigIndex(disclosures);
-    const expectedConfigId = await registry.configIds(BigInt(configIndex));
-
-    if (configId !== expectedConfigId) {
-      return errorResponse(
-        "Disclosure mismatch: the provided disclosures do not match the agent's " +
-          "on-chain verification config. Use the same disclosures as the original registration.",
-        400,
-      );
-    }
-
-    // ── Look up the NFT owner (the human who needs to scan) ──────────────
-    const nftOwner: string = await registry.ownerOf(BigInt(agentId));
-    const userId = nftOwner.toLowerCase();
-
-    // ── Build userData ───────────────────────────────────────────────────
-    const userDefinedData = buildRefreshUserData(agentId, configIndex);
-
-    // ── Build Self app QR config ─────────────────────────────────────────
-    const selfAppDisclosures: Record<string, boolean | number> = {};
-    if (body.disclosures?.nationality) selfAppDisclosures.nationality = true;
-    if (body.disclosures?.name) selfAppDisclosures.name = true;
-    if (body.disclosures?.date_of_birth)
-      selfAppDisclosures.date_of_birth = true;
-    if (body.disclosures?.gender) selfAppDisclosures.gender = true;
-    if (body.disclosures?.issuing_state)
-      selfAppDisclosures.issuing_state = true;
-    if (body.disclosures?.ofac) selfAppDisclosures.ofac = true;
-    if (disclosures.minimumAge && disclosures.minimumAge > 0) {
-      selfAppDisclosures.minimumAge = disclosures.minimumAge;
-    }
-
-    const selfApp = new SelfAppBuilder({
-      version: 2,
-      appName: process.env.NEXT_PUBLIC_SELF_APP_NAME || "Self Agent ID",
-      scope: process.env.NEXT_PUBLIC_SELF_SCOPE_SEED || "self-agent-id",
-      endpoint: networkConfig.registryAddress,
-      logoBase64: "https://i.postimg.cc/mrmVf9hm/self.png",
-      userId,
-      endpointType: networkConfig.selfEndpointType,
-      userIdType: "hex",
-      userDefinedData,
-      disclosures: selfAppDisclosures,
-    }).build();
-
-    const deepLink = getUniversalLink(selfApp);
-
-    // ── Create encrypted session token ───────────────────────────────────
-    const { data: sessionData } = createSessionToken(
-      {
-        type: "refresh",
-        network,
-        humanAddress: nftOwner,
-      },
-      secret,
-    );
-
-    // Store refresh-specific fields and update stage.
-    // originalProofExpiry lets the status endpoint detect when the expiry changes.
-    const updatedData = {
-      ...sessionData,
-      stage: "qr-ready",
-      agentId,
-      originalProofExpiry: currentExpiry.toString(),
-      qrData: selfApp,
-    };
-    const finalToken = encryptSession(updatedData, secret);
-
-    const expiresAt = updatedData.expiresAt!;
-    const timeRemainingMs = Math.max(
-      0,
-      new Date(expiresAt).getTime() - Date.now(),
-    );
-
-    return jsonResponse({
-      sessionToken: finalToken,
-      stage: "qr-ready",
-      qrData: selfApp,
-      deepLink,
-      agentId,
-      network,
-      configIndex,
-      expiresAt,
-      timeRemainingMs,
-      humanInstructions: [
-        "Open the Self app on your phone.",
-        "Scan the QR code to refresh your agent's proof.",
-        "Follow the prompts to scan your passport.",
-        "Wait for the updated proof to be recorded on-chain.",
-      ],
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[refresh] init failed:", message);
-    if (message.includes("SESSION_SECRET")) {
-      return errorResponse("Server configuration error", 500);
-    }
-    return errorResponse(`Proof refresh init failed: ${message}`, 500);
-  }
-}
 
 /** Inverse of toConfigIndex (SDK): config index → the disclosures it encodes. */
 const INDEX_TO_DISCLOSURES: Record<
@@ -286,47 +65,291 @@ const INDEX_TO_DISCLOSURES: Record<
 };
 
 /**
- * GET /api/agent/refresh?agentId=<id>&chainId=<id>&registry=<address>
+ * Build userDefinedData for ACTION_REFRESH, or null if this agentId can't be
+ * encoded.
  *
- * Clickable re-authentication entry point (used by the SDK's reauth URL). The
- * API-only build has no hosted page, so this mints the proof-refresh deep link
- * server-side — deriving the config from the agent's on-chain configId, so no
- * disclosures need to be supplied — and 302-redirects to the Self universal
- * link. On mobile that opens the Self app directly; on desktop the Self
- * redirect page renders a scannable QR. Completion is detected on-chain.
+ * Layout (34 bytes): [0] 'F', [1] config index as ASCII digit, [2..33] agentId
+ * as a big-endian uint256 that the contract reads with a raw mload.
  *
- * The SDK appends ?registry=<address> (the contract it verified the agent
- * against). When present it is validated against this service's configured
- * registry for the chain; a mismatch is rejected rather than silently querying
- * a different contract.
+ * Self's SDK turns the userDefinedData string into bytes with UTF-8, so a char
+ * ≥ 0x80 becomes two bytes and the contract would read a different agentId
+ * (e.g. 128 → 194). Ids with any such byte can't be refreshed on the deployed
+ * registry.
+ *
+ * @param agentId - Agent to refresh.
+ * @param configIndex - The agent's verification config index (0-5).
+ * @returns The userDefinedData string, or null if the agent ID has a byte
+ *   ≥ 0x80.
  */
-export async function GET(req: NextRequest) {
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  const rl = await checkRateLimit({
-    key: `refresh-get:${ip}`,
-    limit: 20,
-    windowMs: 60_000,
-  });
-  if (!rl.allowed) return errorResponse("Too many requests", 429);
+function buildRefreshUserData(
+  agentId: bigint,
+  configIndex: number,
+): string | null {
+  const idBytes = ethers.getBytes(ethers.toBeHex(agentId, 32));
+  if (idBytes.some((b) => b >= 0x80)) return null;
+  return (
+    String.fromCharCode(ACTION_REFRESH) +
+    String(configIndex) +
+    String.fromCharCode(...idBytes)
+  );
+}
 
-  const sp = req.nextUrl.searchParams;
-  const agentId = Number(sp.get("agentId"));
-  if (!Number.isInteger(agentId) || agentId <= 0) {
+/** On-chain facts needed to build a refresh request for one agent. */
+interface RefreshTarget {
+  configIndex: number;
+  nftOwner: string;
+  currentExpiry: bigint;
+  userDefinedData: string;
+}
+
+/**
+ * Read everything needed to build a refresh QR for an agent.
+ *
+ * @param network - Network whose registry to read.
+ * @param agentId - Agent to refresh.
+ * @returns The refresh target, or an error response: 404 unknown agent,
+ *   400 not refreshable (no stored config, or config not resolvable),
+ *   422 agent ID cannot be encoded.
+ * @throws On RPC failures.
+ */
+async function loadRefreshTarget(
+  network: ApiNetwork,
+  agentId: bigint,
+): Promise<RefreshTarget | NextResponse> {
+  // Registry ids are sequential; anything this large was never minted.
+  if (agentId > BigInt(Number.MAX_SAFE_INTEGER)) {
+    return errorResponse(ERRORS.agentNotFound, 404);
+  }
+  const networkConfig = getNetworkConfig(network);
+  const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
+  const registry = typedRegistry(networkConfig.registryAddress, provider);
+
+  // The agent key is cleared when an agent is burned, so zero = no such agent.
+  if ((await registry.agentIdToAgentKey(agentId)) === ethers.ZeroHash) {
+    return errorResponse(ERRORS.agentNotFound, 404);
+  }
+
+  const [configId, nftOwner, currentExpiry, ...slotIds] = await Promise.all([
+    registry.agentConfigId(agentId),
+    registry.ownerOf(agentId),
+    registry.proofExpiresAt(agentId),
+    ...[0n, 1n, 2n, 3n, 4n, 5n].map((i) => registry.configIds(i)),
+  ]);
+  // configId 0: the registry stored no Self verification config for this
+  // agent (registered before config tracking, or via an external proof
+  // provider), and its refresh action reverts with RefreshNotSupported.
+  if (configId === ethers.ZeroHash) {
     return errorResponse(
-      "agentId query param is required (positive integer)",
+      "This agent has no stored verification config (it was registered " +
+        "before config tracking or through an external proof provider), so " +
+        "its proof can't be refreshed in place. Deregister it and register " +
+        "again to renew its proof.",
+      400,
+    );
+  }
+  const configIndex = slotIds.indexOf(configId);
+  if (configIndex < 0) {
+    return errorResponse(
+      "Could not resolve the agent's verification config",
       400,
     );
   }
 
-  // Accept either ?network= or ?chainId= (the SDK reauth URL sends chainId).
-  const chainId = sp.get("chainId");
-  const network =
-    sp.get("network") ||
-    (chainId === "42220" ? "mainnet" : chainId === "11142220" ? "testnet" : "");
-  if (!network || !isValidNetwork(network)) {
+  const userDefinedData = buildRefreshUserData(agentId, configIndex);
+  if (!userDefinedData) {
     return errorResponse(
-      "Provide a valid ?network=mainnet|testnet or ?chainId=42220|11142220",
+      `Proof refresh is not available for agent ${agentId} until the registry ` +
+        "is upgraded (this agent id cannot be encoded in a Self refresh " +
+        "proof). To renew this agent's proof, deregister it and register again.",
+      422,
+    );
+  }
+  return {
+    configIndex,
+    nftOwner,
+    currentExpiry,
+    userDefinedData,
+  };
+}
+
+/**
+ * Build the Self app request for a refresh, addressed to the NFT owner.
+ *
+ * @param network - Target network.
+ * @param target - Loaded refresh target (owner and userDefinedData).
+ * @param disclosures - Disclosures to request; must match the agent's config.
+ * @returns The Self app request object.
+ */
+function buildRefreshSelfApp(
+  network: ApiNetwork,
+  target: RefreshTarget,
+  disclosures: Partial<ParsedDisclosures>,
+) {
+  return buildSelfApp({
+    network,
+    userId: target.nftOwner,
+    userDefinedData: target.userDefinedData,
+    disclosures,
+  });
+}
+
+/**
+ * Open a refresh session for an agent at stage "qr-ready".
+ *
+ * Records the current proof expiry so the status route can detect the
+ * refresh landing on-chain.
+ *
+ * @param req - JSON body: {agentId, network, disclosures? (defaults to the
+ *   agent's on-chain config; if given, must select the same config)}.
+ * @returns 200 {sessionToken, stage: "qr-ready", deepLink, qrImageBase64,
+ *   scanUrl, expiresAt, timeRemainingMs, humanInstructions, qrData, agentId,
+ *   network, configIndex}; 400 {error} validation, not refreshable or
+ *   disclosure mismatch; 404 {error} agent not found; 413 {error} body too
+ *   large; 422 {error} agent ID cannot be encoded; 429 {error, retryAfterMs};
+ *   500 {error} SESSION_SECRET unset, or ERRORS.qrRender;
+ *   502 {error} RPC failure.
+ */
+export async function POST(req: NextRequest) {
+  const rl = await checkRateLimit({
+    key: `refresh:${getClientIp(req)}`,
+    limit: 10,
+    windowMs: 60_000,
+  });
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs);
+
+  const parsedBody = await readJsonObjectBody(req);
+  if (!parsedBody.ok) return parsedBody.response;
+  const body = parsedBody.body;
+
+  const agentId = parseAgentIdField(body.agentId);
+  if (agentId === null) {
+    return errorResponse(ERRORS.invalidAgentId, 400);
+  }
+
+  if (typeof body.network !== "string" || !isValidNetwork(body.network)) {
+    return errorResponse(ERRORS.invalidNetwork, 400);
+  }
+  const network = body.network;
+
+  // Omitted disclosures → use the agent's on-chain config.
+  const requested = parseDisclosures(body.disclosures);
+  if (!requested.ok) return errorResponse(requested.error, 400);
+
+  const secret = requireSessionSecret();
+  if (secret instanceof Response) return secret;
+
+  try {
+    const target = await loadRefreshTarget(network, agentId);
+    if (target instanceof Response) return target;
+
+    let disclosures: Partial<ParsedDisclosures> =
+      INDEX_TO_DISCLOSURES[target.configIndex];
+    if (body.disclosures !== undefined) {
+      if (
+        getRegistrationConfigIndex(requested.disclosures) !== target.configIndex
+      ) {
+        return errorResponse(
+          "Disclosure mismatch: the provided disclosures do not match the agent's " +
+            "on-chain verification config. Omit disclosures to use the agent's config.",
+          400,
+        );
+      }
+      disclosures = requested.disclosures;
+    }
+
+    const selfApp = buildRefreshSelfApp(network, target, disclosures);
+    const deepLink = getUniversalLink(selfApp);
+    let qrImageBase64: string;
+    try {
+      qrImageBase64 = await renderQrBase64(deepLink);
+    } catch (err) {
+      console.error("[refresh] QR render failed:", err);
+      return errorResponse(ERRORS.qrRender, 500);
+    }
+
+    const { data: sessionData } = createSessionToken(
+      { type: "refresh", network, humanAddress: target.nftOwner },
+      secret,
+    );
+    // originalProofExpiry lets the status endpoint detect when the expiry changes.
+    const sessionToken = encryptSession(
+      {
+        ...sessionData,
+        stage: "qr-ready",
+        agentId: Number(agentId),
+        originalProofExpiry: target.currentExpiry.toString(),
+      },
+      secret,
+    );
+
+    const expiresAt = sessionData.expiresAt!;
+    return jsonResponse({
+      sessionToken,
+      stage: "qr-ready",
+      deepLink,
+      qrImageBase64,
+      scanUrl: `${getAppBaseUrl(req)}/api/qr/${createQrToken(deepLink, expiresAt, secret)}`,
+      expiresAt,
+      timeRemainingMs: Math.max(0, new Date(expiresAt).getTime() - Date.now()),
+      humanInstructions: humanInstructions("qr-ready", "refresh"),
+      qrData: selfApp,
+      agentId: Number(agentId),
+      network,
+      configIndex: target.configIndex,
+    });
+  } catch (err) {
+    console.error("[refresh] init failed:", err);
+    return errorResponse(ERRORS.rpc, 502);
+  }
+}
+
+/**
+ * Redirect to the Self universal link that refreshes an agent's proof.
+ *
+ * Clickable re-auth entry point (the SDK's reauth URL): the config comes from
+ * the agent's on-chain configId, so no disclosures are needed. On mobile the
+ * link opens the Self app; on desktop Self's page renders a QR. Completion is
+ * detected on-chain; no session is created.
+ *
+ * @param req - Query: `agentId`, `network` and/or `chainId` (must agree),
+ *   `registry`? (must equal this service's registry for the chain).
+ * @returns 302 to the Self universal link (with CORS headers); 400 {error} bad agent ID, network
+ *   or registry, or not refreshable; 404 {error} agent not found; 422 {error}
+ *   agent ID cannot be encoded; 429 {error, retryAfterMs}; 502 {error} RPC
+ *   failure.
+ */
+export async function GET(req: NextRequest) {
+  const rl = await checkRateLimit({
+    key: `refresh-get:${getClientIp(req)}`,
+    limit: 20,
+    windowMs: 60_000,
+  });
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs);
+
+  const sp = req.nextUrl.searchParams;
+  const agentId = validateAgentId(sp.get("agentId") ?? "");
+  if (agentId === null) {
+    return errorResponse(ERRORS.invalidAgentId, 400);
+  }
+
+  // Accept ?network= and/or ?chainId= (the SDK reauth URL sends chainId).
+  const networkParam = sp.get("network");
+  const chainId = sp.get("chainId");
+  const chainNetwork =
+    chainId === null
+      ? null
+      : /^[1-9][0-9]*$/.test(chainId)
+        ? (networkForChainId(chainId) ?? "")
+        : "";
+  const network = networkParam ?? chainNetwork;
+  if (
+    !network ||
+    !isValidNetwork(network) ||
+    chainNetwork === "" ||
+    (chainNetwork !== null && chainNetwork !== network)
+  ) {
+    return errorResponse(
+      "Provide a valid ?network=mainnet|testnet or ?chainId=42220|11142220 (they must agree if both are given)",
       400,
     );
   }
@@ -353,70 +376,33 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
-    const registry = typedRegistry(networkConfig.registryAddress, provider);
+    const target = await loadRefreshTarget(network, agentId);
+    if (target instanceof Response) return target;
 
-    const configId = await registry.agentConfigId(BigInt(agentId));
-    if (configId === ZERO_BYTES32) {
-      return errorResponse(
-        "Agent does not support proof refresh (configId is zero).",
-        400,
-      );
-    }
-    if (!(await registry.hasHumanProof(BigInt(agentId)))) {
-      return errorResponse(
-        "Agent does not currently have a valid human proof; re-register instead.",
-        400,
-      );
-    }
-
-    // Resolve config index from the on-chain configId (no disclosures needed).
-    let configIndex = -1;
-    for (let i = 0; i < 6; i++) {
-      if ((await registry.configIds(BigInt(i))) === configId) {
-        configIndex = i;
-        break;
-      }
-    }
-    if (configIndex < 0) {
-      return errorResponse(
-        "Could not resolve the agent's verification config",
-        400,
-      );
-    }
-
-    const nftOwner: string = await registry.ownerOf(BigInt(agentId));
-    const userDefinedData = buildRefreshUserData(agentId, configIndex);
-
-    const disc = INDEX_TO_DISCLOSURES[configIndex];
-    const selfAppDisclosures: Record<string, boolean | number> = {};
-    if (disc.minimumAge > 0) selfAppDisclosures.minimumAge = disc.minimumAge;
-    if (disc.ofac) selfAppDisclosures.ofac = true;
-
-    const selfApp = new SelfAppBuilder({
-      version: 2,
-      appName: process.env.NEXT_PUBLIC_SELF_APP_NAME || "Self Agent ID",
-      scope: process.env.NEXT_PUBLIC_SELF_SCOPE_SEED || "self-agent-id",
-      endpoint: networkConfig.registryAddress,
-      logoBase64: "https://i.postimg.cc/mrmVf9hm/self.png",
-      userId: nftOwner.toLowerCase(),
-      endpointType: networkConfig.selfEndpointType,
-      userIdType: "hex",
-      userDefinedData,
-      disclosures: selfAppDisclosures,
-    }).build();
-
-    const deepLink = getUniversalLink(selfApp);
+    const selfApp = buildRefreshSelfApp(
+      network,
+      target,
+      INDEX_TO_DISCLOSURES[target.configIndex],
+    );
     return new Response(null, {
       status: 302,
-      headers: { Location: deepLink, "Cache-Control": "no-store" },
+      headers: {
+        ...AGENT_CORS_HEADERS,
+        Location: getUniversalLink(selfApp),
+        "Cache-Control": "no-store",
+      },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return errorResponse(`Reauth link generation failed: ${message}`, 500);
+    console.error("[refresh] reauth link generation failed:", err);
+    return errorResponse(ERRORS.rpc, 502);
   }
 }
 
+/**
+ * Answer the CORS preflight.
+ *
+ * @returns 204 with CORS headers.
+ */
 export function OPTIONS() {
   return corsResponse();
 }

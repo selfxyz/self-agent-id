@@ -5,6 +5,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ["@noble/curves", "@noble/hashes"],
+  // app/ is a self-contained deployment (own lockfile); trace files from here.
+  outputFileTracingRoot: import.meta.dirname,
+  // Lint runs once from the repo root (`npx eslint .` in CI), not per build.
+  eslint: { ignoreDuringBuilds: true },
   async headers() {
     return [
       {

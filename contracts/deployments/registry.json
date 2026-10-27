@@ -46,9 +46,7 @@
         "SelfValidationRegistry": {
           "proxy": "0x71a025e0e338EAbcB45154F8b8CA50b41e7A0577",
           "implementation": "0x476689D1FE87686aecBA702ca8aD784Ce430E15d"
-        },
-        "AgentDemoVerifier": "0xD8ec054FD869A762bC977AC328385142303c7def",
-        "AgentGate": "0x26e05bF632fb5bACB665ab014240EAC1413dAE35"
+        }
       }
     },
     "celoSepolia": {
@@ -72,9 +70,7 @@
         "SelfValidationRegistry": {
           "proxy": "0x84cA20B8A1559F136dA03913dbe6A7F68B6B240B",
           "implementation": "0xA8E96a59032977f4E5B1aA86F7ca2D11343220fb"
-        },
-        "AgentDemoVerifier": "0xc31BAe8f2d7FCd19f737876892f05d9bDB294241",
-        "AgentGate": "0x86Af07e30Aa42367cbcA7f2B1764Be346598bbc2"
+        }
       }
     }
   }

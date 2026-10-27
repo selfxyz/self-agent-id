@@ -24,8 +24,6 @@
     "app",
     "contracts",
     "functions",
-    "python-sdk",
-    "rust-sdk",
     "typescript-sdk",
     "examples",
     "scripts"
@@ -48,7 +46,7 @@
     "Pods",
     "DerivedData"
   ],
-  "exclude_path_prefixes": ["contracts/lib"],
+  "exclude_path_prefixes": ["contracts/lib", "app/next-env.d.ts"],
   "extension_comment_style": {
     ".ts": "slash",
     ".tsx": "slash",
@@ -57,7 +55,6 @@
     ".mjs": "slash",
     ".cjs": "slash",
     ".sol": "slash",
-    ".rs": "slash",
     ".py": "hash",
     ".sh": "hash"
   }

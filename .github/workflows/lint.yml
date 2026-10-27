@@ -3,6 +3,10 @@ name: Lint & Format
 on:
   pull_request:
 
+# Least privilege: the job only checks out code and runs local tools.
+permissions:
+  contents: read
+
 jobs:
   typescript:
     name: TypeScript Lint & Format
@@ -25,10 +29,6 @@ jobs:
       - name: Install SDK dependencies
         run: npm ci
         working-directory: typescript-sdk
-
-      - name: Install functions dependencies
-        run: npm ci
-        working-directory: functions
 
       - name: Check formatting
         run: npx prettier --check .

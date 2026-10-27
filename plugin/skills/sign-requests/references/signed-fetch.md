@@ -124,16 +124,19 @@ async function fetchWithRetry<T>(
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  // Verify registration before making requests
-  const registered = await agent.isRegistered();
-  if (!registered) {
+  // Verify registration before making requests. isVerified = has a human
+  // proof AND it has not expired (isRegistered() ignores expiry).
+  const info = await agent.getInfo();
+  if (!info.isVerified) {
     console.error(
-      "Agent is not registered. Register first using the register-agent skill.",
+      info.hasHumanProof
+        ? "Human proof expired. Refresh it (requestProofRefresh) first."
+        : "Agent is not registered. Register first using the register-agent skill.",
     );
     process.exit(1);
   }
 
-  console.log("Agent is registered. Making signed requests...\n");
+  console.log("Agent is verified. Making signed requests...\n");
 
   // Signed GET with retry
   const data = await fetchWithRetry(() => fetchProtectedData(1));
@@ -150,254 +153,15 @@ async function main(): Promise<void> {
 main().catch(console.error);
 ```
 
-## Python (requests / httpx)
-
-The same flow using the Python SDK with httpx (the SDK's built-in HTTP client).
-
-```python
-import os
-import sys
-import time
-from self_agent_sdk import SelfAgent
-
-# ─── Configuration ──────────────────────────────────────────────────────────
-
-AGENT_PRIVATE_KEY = os.environ.get("AGENT_PRIVATE_KEY")
-if not AGENT_PRIVATE_KEY:
-    print("Error: AGENT_PRIVATE_KEY environment variable is required")
-    sys.exit(1)
-
-API_BASE = "https://api.example.com"
-
-# ─── Agent Initialization ───────────────────────────────────────────────────
-
-agent = SelfAgent(
-    private_key=AGENT_PRIVATE_KEY,
-    network="mainnet",  # or "testnet" for Celo Sepolia
-)
-
-print(f"Agent address: {agent.address}")
-
-# ─── Signed GET Request ─────────────────────────────────────────────────────
-
-def fetch_protected_data(page: int = 1) -> dict:
-    """Fetch data from a protected endpoint with agent auth."""
-    url = f"{API_BASE}/api/data?page={page}"
-
-    response = agent.fetch(url, method="GET")
-    response.raise_for_status()
-    return response.json()
-
-
-# ─── Signed POST Request ────────────────────────────────────────────────────
-
-def submit_data(payload: dict) -> dict:
-    """Submit data to a protected endpoint with agent auth."""
-    import json
-    url = f"{API_BASE}/api/submit"
-    body = json.dumps(payload)
-
-    response = agent.fetch(url, method="POST", body=body)
-    response.raise_for_status()
-    return response.json()
-
-
-# ─── Manual Header Attachment ────────────────────────────────────────────────
-# Use sign_request() when integrating with the standard requests library
-# or any other HTTP client.
-
-def manual_sign_example() -> None:
-    """Demonstrate manual header attachment with the requests library."""
-    import json
-    import requests  # standard requests library
-
-    url = f"{API_BASE}/api/action"
-    body = json.dumps({"action": "execute", "target": "process-42"})
-
-    # Generate the 3 auth headers
-    auth_headers = agent.sign_request(method="POST", url=url, body=body)
-
-    print("Auth headers generated:")
-    print(f"  Address: {auth_headers['x-self-agent-address']}")
-    print(f"  Signature: {auth_headers['x-self-agent-signature']}")
-    print(f"  Timestamp: {auth_headers['x-self-agent-timestamp']}")
-
-    # Attach to a standard requests call
-    response = requests.post(
-        url,
-        headers={
-            "Content-Type": "application/json",
-            **auth_headers,
-        },
-        data=body,
-    )
-
-    print(f"Response: {response.status_code} {response.text}")
-
-
-# ─── Retry Wrapper ──────────────────────────────────────────────────────────
-
-def fetch_with_retry(fn, max_retries: int = 3, delay_s: float = 1.0):
-    """Retry a function with exponential backoff. Each retry generates
-    a fresh signature because the timestamp changes."""
-    last_error = None
-
-    for attempt in range(1, max_retries + 1):
-        try:
-            return fn()
-        except Exception as e:
-            last_error = e
-            print(f"Attempt {attempt}/{max_retries} failed: {e}")
-            if attempt < max_retries:
-                time.sleep(delay_s * attempt)
-
-    raise last_error
-
-
-# ─── Main ────────────────────────────────────────────────────────────────────
-
-def main() -> None:
-    # Verify registration before making requests
-    if not agent.is_registered():
-        print("Agent is not registered. Register first.")
-        sys.exit(1)
-
-    print("Agent is registered. Making signed requests...\n")
-
-    # Signed GET with retry
-    data = fetch_with_retry(lambda: fetch_protected_data(1))
-    print(f"Fetched data: {data}")
-
-    # Signed POST
-    result = submit_data({"query": "test", "limit": 10})
-    print(f"Submit result: {result}")
-
-    # Manual header attachment
-    manual_sign_example()
-
-
-if __name__ == "__main__":
-    main()
-```
-
-## Rust (reqwest)
-
-The same flow in Rust using the self-agent-sdk crate.
-
-```rust
-use self_agent_sdk::{SelfAgent, SelfAgentConfig};
-use reqwest::Method;
-use serde_json::json;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // ─── Configuration ──────────────────────────────────────────────────
-
-    let private_key = std::env::var("AGENT_PRIVATE_KEY")
-        .expect("AGENT_PRIVATE_KEY environment variable is required");
-
-    let api_base = "https://api.example.com";
-
-    // ─── Agent Initialization ───────────────────────────────────────────
-
-    let agent = SelfAgent::new(SelfAgentConfig {
-        private_key,
-        network: None,           // defaults to mainnet
-        registry_address: None,
-        rpc_url: None,
-    })?;
-
-    println!("Agent address: {:#x}", agent.address());
-
-    // ─── Verify Registration ────────────────────────────────────────────
-
-    if !agent.is_registered().await? {
-        eprintln!("Agent is not registered. Register first.");
-        std::process::exit(1);
-    }
-
-    println!("Agent is registered. Making signed requests...\n");
-
-    // ─── Signed GET Request ─────────────────────────────────────────────
-
-    let url = format!("{api_base}/api/data?page=1");
-    let response = agent.fetch(&url, None, None).await?;
-    println!("GET /api/data: {} {}", response.status(), response.text().await?);
-
-    // ─── Signed POST Request ────────────────────────────────────────────
-
-    let url = format!("{api_base}/api/submit");
-    let body = json!({"query": "test", "limit": 10}).to_string();
-    let response = agent.fetch(
-        &url,
-        Some(Method::POST),
-        Some(body.clone()),
-    ).await?;
-    println!("POST /api/submit: {} {}", response.status(), response.text().await?);
-
-    // ─── Manual Header Attachment ───────────────────────────────────────
-
-    let url = format!("{api_base}/api/action");
-    let body = json!({"action": "execute", "target": "process-42"}).to_string();
-
-    let auth_headers = agent.sign_request("POST", &url, Some(&body)).await?;
-
-    println!("Auth headers generated:");
-    for (k, v) in &auth_headers {
-        println!("  {k}: {v}");
-    }
-
-    // Attach to a reqwest request
-    let client = reqwest::Client::new();
-    let mut request = client.post(&url)
-        .header("content-type", "application/json")
-        .body(body);
-    for (k, v) in &auth_headers {
-        request = request.header(k.as_str(), v.as_str());
-    }
-    let response = request.send().await?;
-    println!("Response: {} {}", response.status(), response.text().await?);
-
-    Ok(())
-}
-```
-
 ## curl
 
 Manual header construction for testing and debugging. Useful for verifying that a service correctly accepts signed requests.
 
-### Using the CLI Tool
-
-The `self-agent` CLI can generate headers directly:
-
-```bash
-# Generate signed headers for a POST request
-self-agent sign \
-  --method POST \
-  --url https://api.example.com/data \
-  --body '{"key":"value"}'
-
-# Output:
-# x-self-agent-address: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
-# x-self-agent-signature: 0x...
-# x-self-agent-timestamp: 1708704000000
-
-# Pipe directly into curl
-eval $(self-agent sign \
-  --method POST \
-  --url https://api.example.com/data \
-  --body '{"key":"value"}' \
-  --format curl-headers)
-
-curl -X POST https://api.example.com/data \
-  -H "Content-Type: application/json" \
-  $SELF_AGENT_HEADERS \
-  -d '{"key":"value"}'
-```
+The `self-agent` CLI only covers registration and deregistration; it has no signing command. Generate headers with the SDK (`agent.signRequest(...)`) or construct them manually as below.
 
 ### Manual Construction (for understanding)
 
-The following demonstrates the signing algorithm step by step. This is not a practical workflow — use the SDK or CLI instead. The pseudocode illustrates what happens internally:
+The following demonstrates the signing algorithm step by step. This is not a practical workflow — use the SDK instead. The pseudocode illustrates what happens internally:
 
 ```bash
 # Step 1: Set variables
@@ -438,6 +202,8 @@ Note: The `cast` commands above use Foundry's cast CLI. The `cast keccak` comman
 
 ## MCP Tool Examples
 
+These tools are **privileged** on the hosted MCP server: they sign as the server's own configured agent and need `Authorization: Bearer <MCP_PRIVILEGED_API_KEY>`, so they apply to a deployment you run yourself with `SELF_AGENT_PRIVATE_KEY` set.
+
 ### self_sign_request
 
 Generate headers to attach to a request manually.
@@ -461,8 +227,7 @@ Generate headers to attach to a request manually.
     "x-self-agent-signature": "0x1a2b3c4d5e6f...65-byte-hex-signature",
     "x-self-agent-timestamp": "1708704000000"
   },
-  "agent_address": "0x83fa4380903fecb801F4e123835664973001ff00",
-  "instructions": "Attach all 3 headers to your HTTP request. The signature is valid for approximately 5 minutes from the timestamp."
+  "instructions": "Add these three headers to your HTTP request. The receiving service can verify them to confirm this agent is backed by a real human."
 }
 ```
 
@@ -498,7 +263,8 @@ Have the MCP server send the signed request directly.
 ```json
 {
   "status": 200,
-  "body": "{\"agentId\":5,\"registered\":true,\"verified\":true,\"credentials\":{\"olderThan\":18,\"nationality\":\"GBR\"}}",
+  "url": "https://api.example.com/agents/5/status",
+  "body": "{\"agentId\":5,\"verified\":true,\"credentials\":{\"olderThan\":18,\"nationality\":\"GBR\"}}",
   "truncated": false
 }
 ```
@@ -519,6 +285,7 @@ Have the MCP server send the signed request directly.
 ```json
 {
   "status": 201,
+  "url": "https://api.example.com/tasks/create",
   "body": "{\"taskId\":\"task-42\",\"status\":\"created\",\"assignedAgent\":\"0x83fa4380903fecb801F4e123835664973001ff00\"}",
   "truncated": false
 }
@@ -539,12 +306,12 @@ Claude: [calls self_authenticated_fetch tool]
 
 Common error responses from protected APIs:
 
-| Status | Meaning                                     | Resolution                                                                     |
-| ------ | ------------------------------------------- | ------------------------------------------------------------------------------ |
-| 401    | Signature invalid or missing headers        | Verify `SELF_AGENT_PRIVATE_KEY` is set correctly in the MCP server environment |
-| 403    | Agent not registered or not verified        | Register the agent first using the `self_register_agent` tool                  |
-| 408    | Timestamp expired (outside 5-minute window) | Retry — the tool generates a fresh timestamp on each call                      |
-| 429    | Rate limited                                | Wait and retry after the backoff period                                        |
+| Status | Meaning                                                                             | Resolution                                                                                                                               |
+| ------ | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 401    | Invalid signature, expired timestamp, unregistered or expired agent, policy failure | Check the `error` text. Retry for timestamp errors (each call signs a fresh timestamp); register or refresh the server's agent otherwise |
+| 429    | Rate limited                                                                        | Wait `retryAfterMs` and retry                                                                                                            |
+
+`SelfAgentVerifier`'s middleware answers every verification failure with 401 and rate limiting with 429; other services may choose different codes.
 
 ## Agent-to-Agent Communication
 
@@ -572,21 +339,21 @@ const response = await agentA.fetch("https://agent-b.example.com/collaborate", {
 import express from "express";
 
 const app = express();
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as { rawBody?: Buffer }).rawBody = buf; // auth() verifies the exact bytes
+    },
+  }),
+);
 
-const verifier = new SelfAgentVerifier({
-  network: "mainnet",
-});
+const verifier = SelfAgentVerifier.create().network("mainnet").build();
 
-app.post("/collaborate", async (req, res) => {
-  const result = await verifier.verify(req);
-
-  if (!result.valid) {
-    return res.status(401).json({ error: result.error });
-  }
-
-  console.log("Request from verified agent:", result.agentAddress);
-  console.log("Agent ID:", result.agentId);
+// verifier.auth() verifies the signature, timestamp, replay and on-chain state,
+// answers 401 on failure, and sets req.agent on success
+app.post("/collaborate", verifier.auth(), (req, res) => {
+  console.log("Request from verified agent:", req.agent!.address);
+  console.log("Agent ID:", req.agent!.agentId);
 
   // Process the collaboration request
   res.json({ status: "accepted", taskId: "collab-99" });

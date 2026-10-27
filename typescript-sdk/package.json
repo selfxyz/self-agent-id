@@ -1,6 +1,6 @@
 {
   "name": "@selfxyz/agent-sdk",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "TypeScript SDK for Self Agent ID — agent signing + service verification",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -14,7 +14,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "build:all": "tsc",
-    "test": "tsc && node --test dist/**/*.test.js",
+    "test": "tsc && node --test dist/test/*.test.js",
     "prepublishOnly": "rm -rf dist && tsc -p tsconfig.build.json",
     "cli": "node dist/cli.js"
   },

@@ -1,4 +1,7 @@
 {
+  "lib/crypto-lib": {
+    "rev": "d714e9824e2e2e44be3c8fd498e0de651ddc9425"
+  },
   "lib/forge-std": {
     "tag": {
       "name": "v1.15.0",

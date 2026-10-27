@@ -2,15 +2,14 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { describe, it } from "node:test";
+/** Tests for the request-signing protocol and `SelfAgent.fetch` headers. */
+
+import { afterEach, describe, it } from "node:test";
 import assert from "node:assert";
 import { ethers } from "ethers";
 import { SelfAgent } from "../SelfAgent";
 import { HEADERS } from "../constants";
 import { computeSigningMessage } from "../signing";
-
-// These tests verify the signing protocol without needing a deployed contract.
-// They test: key derivation, request signing, signature verification.
 
 const TEST_PRIVATE_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
@@ -106,5 +105,57 @@ describe("SelfAgent signing", () => {
     const path = computeSigningMessage(ts, method, "/api/data?x=1", body);
 
     assert.strictEqual(full, path);
+  });
+});
+
+describe("SelfAgent.fetch", () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  /** Call `agent.fetch` with a stubbed fetch and return the headers it sent. */
+  async function sentHeaders(init: RequestInit): Promise<Headers> {
+    let sent: Headers | undefined;
+    globalThis.fetch = (async (_url: string, req?: RequestInit) => {
+      sent = new Headers(req?.headers);
+      return new Response("{}");
+    }) as typeof fetch;
+    const agent = new SelfAgent({
+      privateKey: TEST_PRIVATE_KEY,
+      registryAddress: FAKE_REGISTRY,
+      rpcUrl: FAKE_RPC,
+    });
+    await agent.fetch("https://api.example.com/data", init);
+    assert.ok(sent);
+    return sent;
+  }
+
+  it("defaults string bodies to application/json and adds auth headers", async () => {
+    const headers = await sentHeaders({ method: "POST", body: '{"a":1}' });
+    assert.strictEqual(headers.get("content-type"), "application/json");
+    assert.ok(headers.get(HEADERS.SIGNATURE));
+    assert.ok(headers.get(HEADERS.TIMESTAMP));
+  });
+
+  it("keeps a caller-supplied Content-Type, including from a Headers instance", async () => {
+    const headers = await sentHeaders({
+      method: "POST",
+      body: "a=1",
+      headers: new Headers({
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-Trace": "t1",
+      }),
+    });
+    assert.strictEqual(
+      headers.get("content-type"),
+      "application/x-www-form-urlencoded",
+    );
+    assert.strictEqual(headers.get("x-trace"), "t1");
+  });
+
+  it("does not set Content-Type without a body", async () => {
+    const headers = await sentHeaders({});
+    assert.strictEqual(headers.get("content-type"), null);
   });
 });

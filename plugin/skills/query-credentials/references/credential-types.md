@@ -1,6 +1,6 @@
 # Credential Types — Detailed Reference
 
-This document covers the full credential system: on-chain storage format, credential field definitions, verification strength tiers, A2A agent card schema, and query patterns for reputation and validation providers.
+This document covers the full credential system: on-chain storage format, credential field definitions, verification strength, the agent card schema, and reputation / validation contract queries.
 
 ---
 
@@ -13,9 +13,9 @@ Credentials are stored per agent in the `SelfAgentRegistry` contract. The storag
 At registration time, data flows through the `userDefinedData` field (passed via Self Hub V2). The field follows this layout:
 
 ```
-Position [0]:  Action byte (ASCII character — 'R', 'K', or 'W')
+Position [0]:  Action byte (ASCII character — 'R', 'K', 'W' or 'E' for registration)
 Position [1]:  Config digit ('0' through '5', ASCII)
-Position [2+]: Mode-specific payload (agent address for advanced/wallet-free modes)
+Position [2+]: Mode-specific payload (agent address + signature for K/W, Ed25519 key data for E)
 ```
 
 The Self SDK passes `userDefinedData` as a UTF-8 string, NOT raw bytes. The registry converts it to bytes on-chain using `bytes(userDefinedData)`. The config digit at position [1] determines which credential checks are performed during ZK proof verification.
@@ -24,27 +24,31 @@ The Self SDK passes `userDefinedData` as a UTF-8 string, NOT raw bytes. The regi
 
 During the `customVerificationHook()` callback from Hub V2, the registry extracts credential data from the ZK proof disclosure output. The extracted fields are:
 
-- **nationality** — ISO 3166-1 alpha-3 country code from the passport MRZ
+- **nationality** — ISO 3166-1 alpha-3 country code from the passport MRZ (empty unless disclosed)
 - **olderThan** — Age threshold verified (0, 18, or 21), determined by the verification config
-- **ofacClean** — Whether the agent passed OFAC sanctions screening
+- **ofac** — Three OFAC screening results (`bool[3]`)
+- **issuingState, name, idNumber, dateOfBirth, gender, expiryDate** — only when the corresponding disclosure was requested
 
-These are stored as structured data accessible via the `getAgentCredentials(agentId)` view function:
+These are stored as a struct accessible via the `getAgentCredentials(agentId)` view function:
 
 ```solidity
+struct AgentCredentials {
+    string issuingState;
+    string[] name;
+    string idNumber;
+    string nationality;
+    string dateOfBirth;
+    string gender;
+    string expiryDate;
+    uint256 olderThan;
+    bool[3] ofac;
+}
+
 function getAgentCredentials(uint256 agentId)
-    external view
-    returns (string memory nationality, uint8 olderThan, bool ofacClean);
+    external view returns (AgentCredentials memory);
 ```
 
-### Bytes32 Metadata
-
-Additional metadata is packed into `bytes32` values stored in the registry's metadata mapping. The packing format reserves:
-
-- Byte 0: Action code (`'R'` = 0x52 for verified-wallet, `'K'` = 0x4B for agent-identity, `'W'` = 0x57 for wallet-free)
-- Byte 1: Config digit (`'0'` = 0x30 through `'5'` = 0x35)
-- Remaining bytes: Mode-specific data (e.g., agent address in advanced mode)
-
-This metadata is primarily used internally by the registry contract to record how the agent was registered and which verification config was applied.
+The REST API (`GET /api/agent/info/{chainId}/{agentId}`) returns `credentials: { nationality (or null), olderThan, ofac: [bool, bool, bool] }`; agent cards summarize OFAC as `ofacClean`.
 
 ---
 
@@ -95,9 +99,9 @@ The `olderThan` field records the minimum age threshold that was verified at reg
 
 | Value | Meaning                           | Triggered By                       |
 | ----- | --------------------------------- | ---------------------------------- |
-| 0     | No age verification performed     | Verification config `'0'` or `'1'` |
-| 18    | Verified 18 years of age or older | Verification config `'2'` or `'3'` |
-| 21    | Verified 21 years of age or older | Verification config `'4'` or `'5'` |
+| 0     | No age verification performed     | Verification config `'0'` or `'3'` |
+| 18    | Verified 18 years of age or older | Verification config `'1'` or `'4'` |
+| 21    | Verified 21 years of age or older | Verification config `'2'` or `'5'` |
 
 ### How It Works
 
@@ -113,46 +117,38 @@ The ZK proof circuit compares the passport's date of birth against the current d
 
 ## OFAC Screening
 
-The `ofacClean` field indicates whether the passport holder passed OFAC (Office of Foreign Assets Control) sanctions screening at the time of registration.
+The `ofac` field (`ofacClean` in agent cards) indicates whether the passport holder passed OFAC (Office of Foreign Assets Control) sanctions screening at the time of registration.
 
 ### How It Works
 
-When a verification config with OFAC enabled is selected (configs `'1'`, `'3'`, or `'5'`), the ZK proof circuit checks the passport holder's identity against the following OFAC lists:
+When a verification config with OFAC enabled is selected (configs `'3'`, `'4'`, or `'5'`), the ZK proof circuit checks the passport holder's identity against the following OFAC lists:
 
 - **SDN** (Specially Designated Nationals) — Individuals and entities sanctioned by the US Treasury
 - **Non-SDN** — Additional restricted parties
 - **Consolidated** — Combined screening list
 
-If the holder appears on any list, proof generation fails. If the holder passes all checks, `ofacClean` is set to `true`.
+If the holder appears on any list, proof generation fails. If the holder passes all checks, the `ofac` flags are set to `true` (`ofacClean: true`).
 
 ### Important Notes
 
 - OFAC screening is a **point-in-time** check. It does not automatically update if the holder is later added to a sanctions list.
-- Agents registered with configs `'0'`, `'2'`, or `'4'` (OFAC disabled) will have `ofacClean: false` by default — this indicates "not checked," not "failed screening."
-- To distinguish "not checked" from "failed," examine the verification config used at registration. An agent with config `'0'` and `ofacClean: false` was never screened. An agent with config `'1'` and `ofacClean: true` was screened and passed.
+- Agents registered with configs `'0'`, `'1'`, or `'2'` (OFAC disabled) will have `ofac` all `false` (`ofacClean: false`) — this indicates "not checked," not "failed screening."
+- To distinguish "not checked" from "failed," examine the verification config used at registration. An agent with config `'0'` and `ofacClean: false` was never screened. An agent with config `'4'` and `ofacClean: true` was screened and passed.
 - OFAC lists are US-specific. Non-US services should evaluate whether OFAC screening is relevant to their compliance requirements.
 
 ---
 
-## Verification Strength Tiers
+## Verification Strength
 
-The verification strength score is reported by the proof provider and reflects the rigor of the identity verification method. Self Agent ID stores this score via the `SelfReputationProvider` contract.
+The 0-100 score is reported by the proof provider (`IHumanProofProvider.verificationStrength()`), not stored by the registry. Only `SelfHumanProofProvider` is approved today and always reports **100** (passport / ID NFC chip + biometric). The SDK's `getProviderLabel` turns a score into the `proofType` / `strengthLabel` string:
 
-| Score | Method          | Provider Example            | Description                                                                                                                                                                                                                |
-| ----- | --------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0     | None            | —                           | No proof submitted. Agent is registered but unverified, or the proof provider reports zero strength.                                                                                                                       |
-| 20    | Email/phone     | —                           | Basic identity check via email or phone number verification. Minimal assurance of humanness.                                                                                                                               |
-| 40    | Video liveness  | Worldcoin orb               | Biometric verification without a government document. Proves the subject is a live human but does not verify legal identity.                                                                                               |
-| 60    | Government ID   | Aadhaar, drivers license    | Government-issued document scan with optional liveness check. No NFC chip verification. Susceptible to high-quality document forgery.                                                                                      |
-| 80    | Chip-enabled ID | ePassport without biometric | NFC chip read from a chip-enabled passport or ID card. Verifies the document is genuine (chip signature validated) but does not match the holder's face to the document photo.                                             |
-| 100   | NFC + biometric | Self Protocol               | Passport NFC chip read combined with a live face match against the passport photo stored in the chip. This is the strongest available verification — it proves the person holding the phone is the person in the passport. |
-
-### Score Interpretation
-
-- Scores are **not cumulative**. A score of 60 does not mean the agent also passed checks at levels 20 and 40.
-- The score is set by the **proof provider**, not the registry. Different providers report different scores.
-- Self Protocol always reports 100 because it uses passport NFC + biometric matching.
-- Third-party providers can register any score between 0 and 100 via the `IHumanProofProvider.verificationStrength()` function.
+| Score | Label      |
+| ----- | ---------- |
+| ≥100  | `passport` |
+| ≥80   | `kyc`      |
+| ≥60   | `govt_id`  |
+| ≥40   | `liveness` |
+| other | `unknown`  |
 
 ---
 
@@ -160,16 +156,22 @@ The verification strength score is reported by the proof provider and reflects t
 
 Agent cards follow the A2A (Agent-to-Agent) format, providing a standardized way for agents to advertise their identity, capabilities, and trust posture.
 
-### Full Type Definitions
+### Type Definitions (SDK, abridged)
+
+`A2AAgentCard` is an alias of `ERC8004AgentDocument`: an ERC-8004 registration document that is also a valid A2A (v0.3.0) card when the A2A fields are present.
 
 ```typescript
-interface A2AAgentCard {
-  a2aVersion: string; // Protocol version, currently "0.1"
-  name: string; // Human-readable agent name
-  description?: string; // Optional description of the agent
-  url?: string; // Optional URL for the agent's API or web interface
-  selfProtocol: SelfProtocolExtension;
-  skills?: AgentSkill[]; // Optional list of agent capabilities
+interface ERC8004AgentDocument {
+  type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1";
+  name: string;
+  description: string;
+  image: string;
+  services: { name: string; endpoint: string; version?: string }[];
+  // optional ERC-8004: active, registrations, supportedTrust
+  // optional A2A: version, url, provider, capabilities, securitySchemes, security,
+  //   defaultInputModes, defaultOutputModes, supportedInterfaces, iconUrl, ...
+  selfProtocol?: SelfProtocolExtension;
+  skills?: AgentSkill[];
 }
 
 interface SelfProtocolExtension {
@@ -180,26 +182,35 @@ interface SelfProtocolExtension {
   providerName: string; // Provider identifier (e.g., "self")
   verificationStrength: number; // Score 0-100
   trustModel: TrustModel;
-  credentials: CardCredentials;
+  credentials?: CardCredentials;
 }
 
 interface TrustModel {
-  proofType: string; // "zk-passport" for Self Protocol
-  proofStandard: string; // "groth16" — the ZK proving system used
-  proofProvider: string; // "self-protocol" — the provider identity
-  onChainVerifiable: boolean; // true — proof is verifiable on-chain by any party
+  proofType: string; // "passport", "kyc", "govt_id", "liveness"
+  sybilResistant: boolean;
+  ofacScreened: boolean;
+  minimumAgeVerified: number; // 0, 18, or 21
 }
 
 interface CardCredentials {
-  nationality: string; // ISO 3166-1 alpha-3
-  olderThan: number; // 0, 18, or 21
-  ofacClean: boolean; // OFAC screening result
+  nationality?: string; // ISO 3166-1 alpha-3, e.g. "USA"
+  issuingState?: string;
+  olderThan?: number; // 0, 18, or 21
+  ofacClean?: boolean; // OFAC screening result
+  hasName?: boolean;
+  hasDateOfBirth?: boolean;
+  hasGender?: boolean;
+  documentExpiry?: string;
 }
 
 interface AgentSkill {
   id: string; // Unique identifier for the skill
   name: string; // Human-readable skill name
-  description?: string; // Optional description
+  description?: string;
+  tags?: string[];
+  examples?: string[];
+  inputModes?: string[];
+  outputModes?: string[];
 }
 ```
 
@@ -208,12 +219,16 @@ interface AgentSkill {
 Using the SDK:
 
 ```typescript
-import { SelfAgent, buildAgentCard } from "@selfxyz/agent-sdk";
+import { SelfAgent } from "@selfxyz/agent-sdk";
 
+// setAgentCard throws unless the agent key owns its NFT (true only for
+// wallet-free agents). For linked / privy / smartwallet agents the human's
+// wallet is the owner: build the card with buildAgentCard() and call
+// updateAgentMetadata(agentId, json) from that wallet.
 const agent = new SelfAgent({ privateKey: "0x...", network: "mainnet" });
 
-// Build a card from current on-chain state
-const card = buildAgentCard({
+// Builds the card (selfProtocol block read from chain) and writes it on-chain
+const txHash = await agent.setAgentCard({
   name: "My Trading Agent",
   description: "Executes DeFi trades with proof-of-human",
   url: "https://myagent.example.com",
@@ -223,144 +238,77 @@ const card = buildAgentCard({
   ],
 });
 
-// Write the card on-chain
-await agent.setAgentCard(card);
-
 // Read the card back
 const stored = await agent.getAgentCard();
 ```
 
 ### Storage
 
-Agent cards are stored as JSON strings in the registry's metadata mapping. The `updateAgentMetadata()` function accepts a `bytes` parameter containing the JSON-encoded card. Only the agent owner (the address that owns the soulbound NFT) can update the card.
+Agent cards are stored as JSON strings in the registry's metadata mapping. `updateAgentMetadata(agentId, string)` takes the JSON-encoded card. Only the NFT owner (`ownerOf(agentId)`) can update the card; anyone else reverts with `NotNftOwner`.
 
 ---
 
-## Reputation Provider Queries
+## Reputation and Validation Contracts
 
-The `SelfReputationProvider` contract provides reputation scores derived from the proof provider's verification strength.
+| Contract                 | Deployed | Read functions                                                                                                                                               |
+| ------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SelfReputationRegistry` | Yes      | `getSummary(agentId, address[] clients, tag1, tag2) → (count, int256 summaryValue, decimals)`, `readFeedback(agentId, client, index)`, `getClients(agentId)` |
+| `SelfValidationRegistry` | Yes      | `getLatestFreshness(agentId) → (bool fresh, uint256 lastUpdated)`, `getSummary(agentId, address[] validators, tag) → (count, avgResponse)`                   |
+| `SelfReputationSignal`   | No       | `getReputationScore(agentId) → uint8`, `getReputation(agentId) → (score, providerName, hasProof, registeredAtBlock)`, `getReputationBatch(ids)`              |
+| `SelfFreshnessChecker`   | No       | `isValidAgent(agentId) → bool`, `validateAgent(agentId) → (valid, fresh, registeredAt, blockAge, proofProvider)`, `validateBatch(ids)`                       |
 
-### Single Agent Query
-
-```solidity
-uint8 score = reputationProvider.getReputationScore(agentId);
-```
-
-Returns a uint8 score (0-100). Returns 0 for unregistered or unverified agents.
-
-### Detailed Query
-
-```solidity
-(uint8 score, string memory providerName, bool hasProof, uint256 registeredAtBlock)
-    = reputationProvider.getReputation(agentId);
-```
-
-Returns the full reputation breakdown:
-
-- `score` — Verification strength (0-100)
-- `providerName` — Provider identifier (e.g., `"self"`)
-- `hasProof` — Whether the agent has a verified human proof
-- `registeredAtBlock` — Block number at which the agent was registered
-
-### Batch Query
-
-```solidity
-uint8[] memory scores = reputationProvider.getReputationBatch(agentIds);
-```
-
-Accepts an array of agent IDs and returns an array of scores. Efficient for querying multiple agents in a single call. Unregistered agents return 0.
-
----
-
-## Validation Provider Queries
-
-The `SelfValidationProvider` contract performs freshness checks — determining whether an agent's registration is still considered valid based on the number of blocks elapsed since registration.
-
-### Quick Validation
-
-```solidity
-bool valid = validationProvider.isValidAgent(agentId);
-```
-
-Returns `true` if the agent is registered, verified, and within the freshness window. Returns `false` otherwise.
-
-### Detailed Validation
-
-```solidity
-(bool valid, bool fresh, uint256 registeredAt, uint256 blockAge, address proofProvider)
-    = validationProvider.validateAgent(agentId);
-```
-
-Returns the full validation breakdown:
-
-- `valid` — Whether the agent is registered and has a proof
-- `fresh` — Whether the registration is within the freshness threshold
-- `registeredAt` — Block number of registration
-- `blockAge` — Number of blocks since registration
-- `proofProvider` — Address of the proof provider
-
-### Batch Validation
-
-```solidity
-bool[] memory results = validationProvider.validateBatch(agentIds);
-```
-
-Accepts an array of agent IDs and returns an array of booleans. Each entry is `true` if the agent is both valid and fresh.
-
-### Freshness Threshold
-
-The default freshness threshold is approximately 6,307,200 blocks (~1 year on Celo at 5 seconds per block). The contract owner can adjust this threshold via `setFreshnessThreshold(uint256 newThreshold)`.
-
-An agent that exceeds the freshness threshold is still registered but is no longer considered "fresh." Services can decide whether to accept stale registrations or require re-verification.
+- `SelfReputationSignal` / `SelfFreshnessChecker` are stateless wrappers in `contracts/src` with no canonical deployment; deploy your own or read the registry directly.
+- `SelfFreshnessChecker` "fresh" = registered within `freshnessThreshold` blocks (default 6,307,200 ≈ **73 days** at Celo's ~1 s blocks; owner-settable). This is separate from proof expiry — use `isProofFresh(agentId)` for that.
+- Addresses: [contracts.md](../../self-agent-id-overview/references/contracts.md).
 
 ---
 
 ## Querying From Solidity
 
-Integrate credential, reputation, and validation queries into smart contracts:
+Credential checks in your own contract (`MyAgentGatedService` is illustrative, not a repo contract):
 
 ```solidity
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.28;
 
-import {ISelfAgentRegistry} from "./interfaces/ISelfAgentRegistry.sol";
-import {ISelfReputationProvider} from "./interfaces/ISelfReputationProvider.sol";
-import {ISelfValidationProvider} from "./interfaces/ISelfValidationProvider.sol";
+interface ISelfAgentRegistry {
+    struct AgentCredentials {
+        string issuingState;
+        string[] name;
+        string idNumber;
+        string nationality;
+        string dateOfBirth;
+        string gender;
+        string expiryDate;
+        uint256 olderThan;
+        bool[3] ofac;
+    }
+    function hasHumanProof(uint256 agentId) external view returns (bool);
+    function isProofFresh(uint256 agentId) external view returns (bool);
+    function getProofProvider(uint256 agentId) external view returns (address);
+    function getAgentCredentials(uint256 agentId) external view returns (AgentCredentials memory);
+}
 
-contract AgentGate {
-    ISelfAgentRegistry public registry;
-    ISelfReputationProvider public reputationProvider;
-    ISelfValidationProvider public validationProvider;
+contract MyAgentGatedService {
+    ISelfAgentRegistry public immutable registry;
+    address public immutable selfProvider;
 
-    /// @notice Check if an agent meets minimum requirements
+    constructor(address _registry, address _selfProvider) {
+        registry = ISelfAgentRegistry(_registry);
+        selfProvider = _selfProvider;
+    }
+
+    /// @notice Fresh Self proof, 18+, OFAC clean
     function meetsRequirements(uint256 agentId) external view returns (bool) {
-        // Get credentials
-        (string memory nationality, uint8 olderThan, bool ofacClean)
-            = registry.getAgentCredentials(agentId);
+        if (!registry.hasHumanProof(agentId) || !registry.isProofFresh(agentId)) return false;
+        if (registry.getProofProvider(agentId) != selfProvider) return false;
 
-        // Require age 18+ and OFAC clean
-        if (olderThan < 18 || !ofacClean) return false;
-
-        // Check reputation score (minimum 60)
-        uint8 score = reputationProvider.getReputationScore(agentId);
-        if (score < 60) return false;
-
-        // Validate freshness
-        (bool valid, bool fresh, , , ) = validationProvider.validateAgent(agentId);
-        if (!valid || !fresh) return false;
-
-        return true;
+        ISelfAgentRegistry.AgentCredentials memory creds = registry.getAgentCredentials(agentId);
+        bool ofacClean = creds.ofac[0] && creds.ofac[1] && creds.ofac[2];
+        return creds.olderThan >= 18 && ofacClean;
     }
 }
 ```
-
-### Key Patterns
-
-- Always check `valid` before checking `fresh` — an invalid agent is never fresh.
-- Use `getAgentCredentials()` for reading stored credential claims.
-- Use `getReputationScore()` for quick numeric comparisons.
-- Use `validateAgent()` when freshness matters (e.g., time-sensitive operations).
-- Use batch functions when querying multiple agents to save gas on external calls.
 
 ---
 
@@ -371,18 +319,21 @@ import { SelfAgent } from "@selfxyz/agent-sdk";
 
 const agent = new SelfAgent({ privateKey: "0x...", network: "mainnet" });
 
-// Full info
+// On-chain identity
 const info = await agent.getInfo();
-console.log("Registered:", info.registered);
+console.log("Verified:", info.isVerified); // hasHumanProof && isProofFresh
 console.log("Agent ID:", info.agentId);
-console.log("Owner:", info.owner);
-console.log("Proof provider:", info.proofProvider);
+console.log("Proof expires:", info.proofExpiresAt); // unix seconds
 
-// Credentials
+// Credentials (undefined if the agent is not registered)
 const creds = await agent.getCredentials();
-console.log("Nationality:", creds.nationality);
-console.log("Older than:", creds.olderThan);
-console.log("OFAC clean:", creds.ofacClean);
+console.log("Nationality:", creds?.nationality);
+console.log("Older than:", creds?.olderThan);
+console.log("OFAC:", creds?.ofac);
+
+// Any agent by ID via the REST API (404 → RegistrationError with status 404)
+const other = await SelfAgent.getAgentInfo(5, { network: "mainnet" });
+console.log(other.isVerified, other.proofProvider, other.registeredAtBlock);
 
 // Verification strength
 const strength = await agent.getVerificationStrength();
@@ -405,12 +356,12 @@ All query operations are available via REST endpoints hosted at `https://agent-a
 | Endpoint                                | Method | Description                            | Auth Required |
 | --------------------------------------- | ------ | -------------------------------------- | ------------- |
 | `/api/agent/info/{chainId}/{agentId}`   | GET    | Full agent info by ID                  | No            |
-| `/api/agent/agents/{chainId}/{address}` | GET    | List agent IDs for a human address     | No            |
+| `/api/agent/agents/{chainId}/{address}` | GET    | List agents for a human address        | No            |
 | `/api/agent/verify/{chainId}/{agentId}` | GET    | Verification status and proof provider | No            |
 | `/api/cards/{chainId}/{agentId}`        | GET    | Agent card (A2A metadata)              | No            |
 | `/api/reputation/{chainId}/{agentId}`   | GET    | Reputation score and provider details  | No            |
 
-All endpoints are public and do not require authentication. Rate limiting may apply.
+All endpoints are public and do not require authentication. Rate limiting may apply. Per-agent routes return `404 { "error": "Agent not found" }` for never-minted or burned agents, `400` for an unsupported chain ID, and `502 { "error": "RPC error" }` when the chain is unreachable.
 
 ### Chain IDs
 
@@ -424,7 +375,7 @@ All endpoints are public and do not require authentication. Rate limiting may ap
 curl https://agent-api.self.xyz/api/agent/info/42220/5
 
 # List agents for a human on testnet
-curl https://agent-api.self.xyz/api/agent/agents/11142220/0x83fa4380903fecb801F4e123835664973001ff00
+curl https://agent-api.self.xyz/api/agent/agents/11142220/0x56738c05507379C38Bbfa8f75064fd344716245F
 
 # Get agent card
 curl https://agent-api.self.xyz/api/cards/42220/5

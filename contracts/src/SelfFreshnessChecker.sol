@@ -10,15 +10,15 @@ import { ISelfAgentRegistryReader } from "./interfaces/ISelfAgentRegistryReader.
 /// @notice ERC-8004 compatible real-time proof validation with freshness checks.
 /// @dev Stateless view-only wrapper over SelfAgentRegistry.
 ///      Freshness is measured in blocks since registration.
-///      Celo ~5s/block -> ~6.3M blocks/year.
+///      Celo L2 produces ~1 block/s, so the default 6,307,200 blocks is ~73 days.
 contract SelfFreshnessChecker is Ownable {
     /// @notice The SelfAgentRegistry used for proof and registration lookups
     ISelfAgentRegistryReader public immutable registry;
 
-    /// @notice Configurable freshness threshold (blocks). Default: ~1 year of Celo blocks.
+    /// @notice Configurable freshness threshold (blocks). Default: 6,307,200 (~73 days at ~1s blocks).
     uint256 public freshnessThreshold;
 
-    /// @dev ~6.3M blocks/year on Celo (5s block time)
+    /// @dev Sized for 5s blocks (~1 year); ~73 days at Celo L2's ~1s blocks.
     uint256 private constant DEFAULT_FRESHNESS = 6_307_200;
 
     /// @param _registry Address of the deployed SelfAgentRegistry
@@ -60,7 +60,7 @@ contract SelfFreshnessChecker is Ownable {
     }
 
     /// @notice Set the freshness threshold (owner-only).
-    /// @param blocks The new threshold in blocks (0 = no freshness requirement)
+    /// @param blocks The new threshold in blocks (0 = only agents registered in the current block pass)
     function setFreshnessThreshold(uint256 blocks) external onlyOwner {
         freshnessThreshold = blocks;
     }

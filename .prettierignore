@@ -4,8 +4,6 @@ dist/
 target/
 coverage/
 contracts/
-python-sdk/
-rust-sdk/
 *.lock
 package-lock.json
 *.png

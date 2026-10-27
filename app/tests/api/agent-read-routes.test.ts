@@ -1,459 +1,607 @@
-import { NextResponse } from "next/server";
+// SPDX-FileCopyrightText: 2025-2026 Social Connect Labs, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+// NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
+
+/**
+ * Tests for the agent read routes: info, verify, verify-status, reputation,
+ * cards, agents-by-address and agents-by-nullifier.
+ *
+ * Real ethers, helpers and chain config; only the contract bindings and the
+ * agent-ID scan are faked.
+ */
+
+import { ethers } from "ethers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { jsonBody, makeNextRequest } from "./test-utils";
 
-const mockCorsResponse = vi.fn();
-const mockErrorResponse = vi.fn();
-const mockValidateAgentId = vi.fn();
-const mockGetProviderLabel = vi.fn();
+const registry: Record<string, ReturnType<typeof vi.fn>> = {};
+const provider = {
+  verificationStrength: vi.fn(),
+  providerName: vi.fn(),
+};
+const mockScan = vi.fn();
 
-const mockJsonRpcProvider = vi.fn();
-const mockContract = vi.fn();
-const mockIsAddress = vi.fn();
-const mockGetAddress = vi.fn();
-const mockZeroPadValue = vi.fn();
+const PROVIDER = "0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d";
+const KEY_5 =
+  "0x00000000000000000000000059489da9e1eb1f162b0d8eeeadc0314f49ad759a";
+const ADDR_5 = "0x59489DA9E1EB1f162b0d8eeeaDC0314f49Ad759A";
+const ZERO_KEY = "0x" + "0".repeat(64);
+const NUL3 = "\u0000\u0000\u0000";
+const EXPIRY = 1803752935n; // 2027-02-27T18:28:55Z
 
-const mockChainConfig = {
-  "42220": {
-    rpc: "https://rpc.example",
-    registry: "0xregistry",
-  },
+/**
+ * Stub every registry read with one live, verified agent (mainnet agent 5 shape).
+ *
+ * @param overrides - Registry method name to resolved value, replacing defaults.
+ */
+function liveAgent(overrides: Record<string, unknown> = {}) {
+  const values: Record<string, unknown> = {
+    agentIdToAgentKey: KEY_5,
+    hasHumanProof: true,
+    isProofFresh: true,
+    proofExpiresAt: EXPIRY,
+    getProofProvider: PROVIDER,
+    agentRegisteredAt: 60316177n,
+    getAgentCredentials: {
+      issuingState: NUL3,
+      name: ["", "\u0000\u0000"],
+      idNumber: NUL3,
+      nationality: "IND",
+      dateOfBirth: "\u0000\u0000-\u0000\u0000-\u0000\u0000",
+      gender: "\u0000",
+      expiryDate: "UNAVAILABLE",
+      olderThan: 18n,
+      ofac: [true, false, false],
+    },
+    getAgentMetadata: "",
+    getHumanNullifier: 99n,
+    selfProofProvider: PROVIDER,
+    getAgentCountForHuman: 3n,
+    balanceOf: 0n,
+    getAgentId: 0n,
+    ...overrides,
+  };
+  for (const [name, value] of Object.entries(values)) {
+    registry[name] = vi.fn().mockResolvedValue(value);
+  }
+}
+
+/** Stub the registry with a burned (or never-minted) agent: zero key, no proof. */
+function burnedAgent() {
+  liveAgent({
+    agentIdToAgentKey: ZERO_KEY,
+    hasHumanProof: false,
+    isProofFresh: false,
+    proofExpiresAt: 0n,
+    getProofProvider: "0x0000000000000000000000000000000000000000",
+  });
+}
+
+/** Stub a live agent whose first registry read fails with an RPC error. */
+function rpcDown() {
+  liveAgent();
+  registry.agentIdToAgentKey = vi
+    .fn()
+    .mockRejectedValue(new Error("could not coalesce error (https://rpc)"));
+}
+
+/**
+ * Re-import a route module with fresh state, faked contract bindings and a
+ * mocked `scanAgentIds`.
+ *
+ * @param path - Module path of the route to import.
+ * @returns The imported route module.
+ */
+async function load<T>(path: string): Promise<T> {
+  vi.resetModules();
+  vi.doMock("@/lib/contract-types", () => ({
+    typedRegistry: () => registry,
+    typedProvider: () => provider,
+  }));
+  vi.doMock("@/lib/agent-read", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@/lib/agent-read")>()),
+    scanAgentIds: mockScan,
+  }));
+  return (await import(path)) as T;
+}
+
+type Handler = (
+  req: ReturnType<typeof makeNextRequest>,
+  ctx: { params: Promise<Record<string, string>> },
+) => Promise<Response>;
+
+const PER_AGENT_ROUTES = {
+  info: "@/app/api/agent/info/[chainId]/[agentId]/route",
+  verify: "@/app/api/agent/verify/[chainId]/[agentId]/route",
+  verifyStatus: "@/app/api/verify-status/[chainId]/[agentId]/route",
+  reputation: "@/app/api/reputation/[chainId]/[agentId]/route",
+  cards: "@/app/api/cards/[chainId]/[agentId]/route",
 };
 
-function installCommonMocks() {
-  vi.doMock("@/lib/chain-config", () => ({
-    CHAIN_CONFIG: mockChainConfig,
-  }));
-
-  vi.doMock("@/lib/api-helpers", () => ({
-    CORS_HEADERS: {
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "public, max-age=60",
-    },
-    corsResponse: mockCorsResponse,
-    errorResponse: mockErrorResponse,
-    validateAgentId: mockValidateAgentId,
-  }));
-
-  vi.doMock("@selfxyz/agent-sdk", () => ({
-    REGISTRY_ABI: [],
-    PROVIDER_ABI: [],
-    getProviderLabel: mockGetProviderLabel,
-  }));
-
-  vi.doMock("ethers", () => ({
-    ethers: {
-      JsonRpcProvider: mockJsonRpcProvider,
-      Contract: mockContract,
-      isAddress: mockIsAddress,
-      getAddress: mockGetAddress,
-      zeroPadValue: mockZeroPadValue,
-      ZeroHash:
-        "0x0000000000000000000000000000000000000000000000000000000000000000",
-      ZeroAddress: "0x0000000000000000000000000000000000000000",
-    },
-  }));
-
-  vi.doMock("@/lib/contract-types", () => ({
-    typedRegistry: (_addr: string, _runner: unknown) => mockContract(),
-    typedProvider: (_addr: string, _runner: unknown) => mockContract(),
-    typedDemoVerifier: (_addr: string, _runner: unknown) => mockContract(),
-    typedGate: (_addr: string, _runner: unknown) => mockContract(),
-  }));
+/**
+ * Call a dynamic read route's GET handler with the given path params.
+ *
+ * @param route - Module path of the route.
+ * @param params - Dynamic route params (e.g. chainId, agentId).
+ * @returns The route's response.
+ */
+async function get(route: string, params: Record<string, string>) {
+  const { GET } = await load<{ GET: Handler }>(route);
+  return GET(makeNextRequest("http://localhost:3100/x"), {
+    params: Promise.resolve(params),
+  });
 }
 
-function setDefaultMocks() {
-  mockCorsResponse.mockImplementation(
-    () => new NextResponse(null, { status: 204 }),
-  );
-  mockErrorResponse.mockImplementation((message: string, status: number) =>
-    NextResponse.json({ error: message }, { status }),
-  );
-  mockValidateAgentId.mockImplementation((value: string) => {
-    try {
-      const n = BigInt(value);
-      return n > 0n ? n : null;
-    } catch {
-      return null;
+beforeEach(() => {
+  vi.clearAllMocks();
+  (
+    globalThis as { __selfMemoryCounters?: Map<string, unknown> }
+  ).__selfMemoryCounters?.clear();
+  for (const key of Object.keys(registry)) delete registry[key];
+  provider.verificationStrength.mockResolvedValue(100);
+  provider.providerName.mockResolvedValue("self");
+  vi.spyOn(console, "error").mockImplementation(() => {});
+});
+
+describe.each(Object.entries(PER_AGENT_ROUTES))(
+  "%s route: shared status contract",
+  (_name, route) => {
+    it("rejects unsupported chains and non-canonical ids with 400", async () => {
+      liveAgent();
+      for (const [chainId, agentId] of [
+        ["999", "1"],
+        ["constructor", "1"],
+        ["__proto__", "1"],
+        ["42220", "0"],
+        ["42220", "0x1"],
+        ["42220", "01"],
+        ["42220", " 1 "],
+        ["42220", "-1"],
+        ["42220", "1.5"],
+      ]) {
+        const res = await get(route, { chainId, agentId });
+        expect(res.status, `${chainId}/${agentId}`).toBe(400);
+      }
+      expect(registry.agentIdToAgentKey).not.toHaveBeenCalled();
+    });
+
+    it("returns 404 without an RPC call for ids above MAX_SAFE_INTEGER", async () => {
+      liveAgent();
+      const res = await get(route, {
+        chainId: "42220",
+        agentId: "9007199254740992",
+      });
+      expect(res.status).toBe(404);
+      expect(await jsonBody(res)).toEqual({ error: "Agent not found" });
+      expect(registry.agentIdToAgentKey).not.toHaveBeenCalled();
+    });
+
+    it("returns 404 for never-minted or burned agents", async () => {
+      burnedAgent();
+      const res = await get(route, { chainId: "42220", agentId: "4" });
+      expect(res.status).toBe(404);
+      expect(await jsonBody(res)).toEqual({ error: "Agent not found" });
+      expect(res.headers.get("cache-control")).toBeNull();
+    });
+
+    it("maps RPC failures to a generic 502", async () => {
+      rpcDown();
+      const res = await get(route, { chainId: "42220", agentId: "5" });
+      expect(res.status).toBe(502);
+      expect(await jsonBody(res)).toEqual({ error: "RPC error" });
+    });
+  },
+);
+
+describe("per-agent routes: verified = hasHumanProof && isProofFresh", () => {
+  it("reports an expired proof as not verified everywhere", async () => {
+    for (const route of Object.values(PER_AGENT_ROUTES)) {
+      liveAgent({ isProofFresh: false });
+      const body = await jsonBody<Record<string, unknown>>(
+        await get(route, { chainId: "42220", agentId: "5" }),
+      );
+      const verified =
+        (body.selfProtocol as Record<string, unknown> | undefined)
+          ?.isVerified ??
+        body.isVerified ??
+        body.verified;
+      expect(verified, route).toBe(false);
     }
-  });
-  mockGetProviderLabel.mockImplementation(
-    (strength: number) => `label-${strength}`,
-  );
-
-  mockJsonRpcProvider.mockImplementation(() => ({ kind: "provider" }));
-  mockContract.mockReset();
-
-  mockIsAddress.mockReturnValue(true);
-  mockGetAddress.mockImplementation((value: string) => value.toLowerCase());
-  mockZeroPadValue.mockImplementation(
-    (value: string) => `pad:${value.toLowerCase()}`,
-  );
-}
-
-async function loadInfoRoute() {
-  vi.resetModules();
-  installCommonMocks();
-  return import("@/app/api/agent/info/[chainId]/[agentId]/route");
-}
-
-async function loadAgentsRoute() {
-  vi.resetModules();
-  installCommonMocks();
-  return import("@/app/api/agent/agents/[chainId]/[address]/route");
-}
-
-async function loadVerifyRoute() {
-  vi.resetModules();
-  installCommonMocks();
-  return import("@/app/api/agent/verify/[chainId]/[agentId]/route");
-}
-
-async function loadReputationRoute() {
-  vi.resetModules();
-  installCommonMocks();
-  return import("@/app/api/reputation/[chainId]/[agentId]/route");
-}
-
-async function loadCardsRoute() {
-  vi.resetModules();
-  installCommonMocks();
-  return import("@/app/api/cards/[chainId]/[agentId]/route");
-}
-
-async function loadVerifyStatusRoute() {
-  vi.resetModules();
-  installCommonMocks();
-  return import("@/app/api/verify-status/[chainId]/[agentId]/route");
-}
-
-describe("agent info route", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    setDefaultMocks();
-  });
-
-  it("returns 400 for unsupported chain or invalid IDs", async () => {
-    const { GET } = await loadInfoRoute();
-    const unsupported = await GET(makeNextRequest("https://example.com"), {
-      params: Promise.resolve({ chainId: "999", agentId: "1" }),
-    });
-    expect(unsupported.status).toBe(400);
-
-    const invalid = await GET(makeNextRequest("https://example.com"), {
-      params: Promise.resolve({ chainId: "42220", agentId: "0" }),
-    });
-    expect(invalid.status).toBe(400);
-  });
-
-  it("returns 404 when agent key is zero hash", async () => {
-    mockContract.mockImplementationOnce(() => ({
-      agentIdToAgentKey: vi
-        .fn()
-        .mockResolvedValue(
-          "0x0000000000000000000000000000000000000000000000000000000000000000",
-        ),
-      hasHumanProof: vi.fn(),
-      getProofProvider: vi.fn(),
-      agentRegisteredAt: vi.fn(),
-      getAgentCredentials: vi.fn(),
-    }));
-
-    const { GET } = await loadInfoRoute();
-    const res = await GET(makeNextRequest("https://example.com"), {
-      params: Promise.resolve({ chainId: "42220", agentId: "11" }),
-    });
-    expect(res.status).toBe(404);
-    expect(await jsonBody(res)).toEqual({ error: "Agent not found" });
-  });
-
-  it("returns on-chain info for a verified agent", async () => {
-    mockContract
-      .mockImplementationOnce(() => ({
-        agentIdToAgentKey: vi
-          .fn()
-          .mockResolvedValue(
-            "0x0000000000000000000000001111111111111111111111111111111111111111",
-          ),
-        hasHumanProof: vi.fn().mockResolvedValue(true),
-        getProofProvider: vi.fn().mockResolvedValue("0xprovider"),
-        agentRegisteredAt: vi.fn().mockResolvedValue(1234n),
-        getAgentCredentials: vi.fn().mockResolvedValue({
-          nationality: "US",
-          olderThan: 21n,
-          ofac: [true, false, true],
-        }),
-      }))
-      .mockImplementationOnce(() => ({
-        verificationStrength: vi.fn().mockResolvedValue(3),
-      }));
-
-    const { GET } = await loadInfoRoute();
-    const res = await GET(makeNextRequest("https://example.com"), {
-      params: Promise.resolve({ chainId: "42220", agentId: "11" }),
-    });
-    const body = await jsonBody<{
-      isVerified: boolean;
-      verificationStrength: number;
-      credentials: { nationality: string; olderThan: number };
-    }>(res);
-
-    expect(res.status).toBe(200);
-    expect(body.isVerified).toBe(true);
-    expect(body.verificationStrength).toBe(3);
-    expect(body.credentials.nationality).toBe("US");
-    expect(body.credentials.olderThan).toBe(21);
-  });
-
-  it("returns OPTIONS preflight response", async () => {
-    const { OPTIONS } = await loadInfoRoute();
-    const res = await OPTIONS();
-    expect(res.status).toBe(204);
   });
 });
 
-describe("agents-by-human route", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    setDefaultMocks();
-  });
-
-  it("validates address and returns empty list when no direct registration exists", async () => {
-    mockContract.mockImplementationOnce(() => ({
-      getAgentId: vi.fn().mockResolvedValue(0n),
-    }));
-    const { GET } = await loadAgentsRoute();
-    const res = await GET(makeNextRequest("https://example.com"), {
-      params: Promise.resolve({ chainId: "42220", address: "0xabc" }),
+describe("agent info route", () => {
+  it("returns verification, block number and cleaned credentials", async () => {
+    liveAgent({
+      getAgentCredentials: {
+        issuingState: NUL3,
+        name: [],
+        idNumber: "",
+        nationality: NUL3,
+        dateOfBirth: "",
+        gender: "",
+        expiryDate: "",
+        olderThan: 0n,
+        ofac: [false, false, false],
+      },
     });
-
+    const res = await get(PER_AGENT_ROUTES.info, {
+      chainId: "42220",
+      agentId: "5",
+    });
     expect(res.status).toBe(200);
     expect(await jsonBody(res)).toEqual({
-      humanAddress: "0xabc",
+      agentId: 5,
       chainId: 42220,
-      agents: [],
-      totalCount: 0,
+      agentKey: KEY_5,
+      agentAddress: ADDR_5,
+      isVerified: true,
+      hasHumanProof: true,
+      isProofFresh: true,
+      proofExpiresAt: "2027-02-27T18:28:55.000Z",
+      proofProvider: PROVIDER,
+      registeredAtBlock: 60316177,
+      verificationStrength: 100,
+      strengthLabel: "passport",
+      credentials: {
+        nationality: null,
+        olderThan: 0,
+        ofac: [false, false, false],
+      },
+      network: "mainnet",
     });
-  });
-
-  it("returns agent info and total count for verified addresses", async () => {
-    mockContract.mockImplementationOnce(() => ({
-      getAgentId: vi.fn().mockResolvedValue(12n),
-      hasHumanProof: vi.fn().mockResolvedValue(true),
-      getHumanNullifier: vi.fn().mockResolvedValue(99n),
-      getAgentCountForHuman: vi.fn().mockResolvedValue(2n),
-    }));
-
-    const { GET } = await loadAgentsRoute();
-    const res = await GET(makeNextRequest("https://example.com"), {
-      params: Promise.resolve({ chainId: "42220", address: "0xAbC" }),
-    });
-    const body = await jsonBody<{
-      totalCount: number;
-      agents: Array<{ agentId: number }>;
-    }>(res);
-
-    expect(res.status).toBe(200);
-    expect(body.totalCount).toBe(2);
-    expect(body.agents[0]?.agentId).toBe(12);
-  });
-
-  it("returns OPTIONS preflight response", async () => {
-    const { OPTIONS } = await loadAgentsRoute();
-    const res = await OPTIONS();
-    expect(res.status).toBe(204);
   });
 });
 
 describe("agent verify route", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    setDefaultMocks();
-  });
-
-  it("returns unverified payload when agent has no human proof", async () => {
-    mockContract.mockImplementationOnce(() => ({
-      hasHumanProof: vi.fn().mockResolvedValue(false),
-      getProofProvider: vi.fn().mockResolvedValue("0x0"),
-      getHumanNullifier: vi.fn().mockResolvedValue(0n),
-      selfProofProvider: vi.fn().mockResolvedValue("0xself"),
-    }));
-
-    const { GET } = await loadVerifyRoute();
-    const res = await GET(makeNextRequest("https://example.com"), {
-      params: Promise.resolve({ chainId: "42220", agentId: "1" }),
+  it("returns provider, freshness and human count", async () => {
+    liveAgent();
+    const res = await get(PER_AGENT_ROUTES.verify, {
+      chainId: "42220",
+      agentId: "5",
     });
-    expect(res.status).toBe(200);
-    expect(await jsonBody(res)).toMatchObject({ isVerified: false });
-  });
-
-  it("returns provider strength and self-provider status when verified", async () => {
-    mockContract
-      .mockImplementationOnce(() => ({
-        hasHumanProof: vi.fn().mockResolvedValue(true),
-        getProofProvider: vi.fn().mockResolvedValue("0xprovider"),
-        getHumanNullifier: vi.fn().mockResolvedValue(7n),
-        selfProofProvider: vi.fn().mockResolvedValue("0xprovider"),
-        getAgentCountForHuman: vi.fn().mockResolvedValue(3n),
-      }))
-      .mockImplementationOnce(() => ({
-        verificationStrength: vi.fn().mockResolvedValue(5),
-      }));
-
-    const { GET } = await loadVerifyRoute();
-    const res = await GET(makeNextRequest("https://example.com"), {
-      params: Promise.resolve({ chainId: "42220", agentId: "1" }),
-    });
-    expect(res.status).toBe(200);
-    expect(await jsonBody(res)).toMatchObject({
+    expect(await jsonBody(res)).toEqual({
+      agentId: 5,
+      chainId: 42220,
       isVerified: true,
+      hasHumanProof: true,
+      isProofFresh: true,
+      proofExpiresAt: "2027-02-27T18:28:55.000Z",
+      proofProvider: PROVIDER,
       isSelfProvider: true,
-      verificationStrength: 5,
+      verificationStrength: 100,
+      strengthLabel: "passport",
+      humanNullifier: "99",
       agentCountForHuman: 3,
     });
-  });
-
-  it("returns OPTIONS preflight response", async () => {
-    const { OPTIONS } = await loadVerifyRoute();
-    const res = await OPTIONS();
-    expect(res.status).toBe(204);
-  });
-});
-
-describe("reputation route", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    setDefaultMocks();
-  });
-
-  it("returns zero score when no proof exists", async () => {
-    mockContract.mockImplementationOnce(() => ({
-      hasHumanProof: vi.fn().mockResolvedValue(false),
-    }));
-    const { GET } = await loadReputationRoute();
-    const res = await GET(makeNextRequest("https://example.com"), {
-      params: Promise.resolve({ chainId: "42220", agentId: "1" }),
-    });
-    expect(res.status).toBe(200);
-    expect(await jsonBody(res)).toEqual({ score: 0, hasProof: false });
-  });
-
-  it("returns provider reputation details for verified agents", async () => {
-    mockContract
-      .mockImplementationOnce(() => ({
-        hasHumanProof: vi.fn().mockResolvedValue(true),
-        getProofProvider: vi.fn().mockResolvedValue("0xprovider"),
-      }))
-      .mockImplementationOnce(() => ({
-        verificationStrength: vi.fn().mockResolvedValue(4),
-        providerName: vi.fn().mockResolvedValue("Self"),
-      }));
-
-    const { GET } = await loadReputationRoute();
-    const res = await GET(makeNextRequest("https://example.com"), {
-      params: Promise.resolve({ chainId: "42220", agentId: "1" }),
-    });
-
-    expect(res.status).toBe(200);
-    expect(await jsonBody(res)).toEqual({
-      score: 4,
-      hasProof: true,
-      providerName: "Self",
-      proofType: "label-4",
-    });
-  });
-
-  it("returns OPTIONS preflight response", async () => {
-    const { OPTIONS } = await loadReputationRoute();
-    const res = await OPTIONS();
-    expect(res.status).toBe(204);
-  });
-});
-
-describe("cards route", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    setDefaultMocks();
-  });
-
-  it("returns 404 for empty metadata and parsed card JSON when present", async () => {
-    mockContract.mockImplementationOnce(() => ({
-      getAgentMetadata: vi.fn().mockResolvedValue(""),
-    }));
-
-    const { GET } = await loadCardsRoute();
-    const empty = await GET(makeNextRequest("https://example.com"), {
-      params: Promise.resolve({ chainId: "42220", agentId: "1" }),
-    });
-    expect(empty.status).toBe(404);
-
-    mockContract.mockImplementationOnce(() => ({
-      getAgentMetadata: vi.fn().mockResolvedValue('{"title":"Agent Alpha"}'),
-    }));
-    const found = await GET(makeNextRequest("https://example.com"), {
-      params: Promise.resolve({ chainId: "42220", agentId: "1" }),
-    });
-    expect(found.status).toBe(200);
-    expect(await jsonBody(found)).toEqual({ title: "Agent Alpha" });
-  });
-
-  it("returns OPTIONS preflight response", async () => {
-    const { OPTIONS } = await loadCardsRoute();
-    const res = await OPTIONS();
-    expect(res.status).toBe(204);
   });
 });
 
 describe("verify-status route", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    setDefaultMocks();
-  });
-
-  it("returns verified=false when no proof exists", async () => {
-    mockContract.mockImplementationOnce(() => ({
-      hasHumanProof: vi.fn().mockResolvedValue(false),
-      getProofProvider: vi.fn().mockResolvedValue("0x0"),
-      agentRegisteredAt: vi.fn().mockResolvedValue(0n),
-    }));
-
-    const { GET } = await loadVerifyStatusRoute();
-    const res = await GET(makeNextRequest("https://example.com"), {
-      params: Promise.resolve({ chainId: "42220", agentId: "1" }),
+  it("returns registeredAtBlock as a number", async () => {
+    liveAgent();
+    const res = await get(PER_AGENT_ROUTES.verifyStatus, {
+      chainId: "42220",
+      agentId: "5",
     });
-
-    expect(res.status).toBe(200);
-    expect(await jsonBody(res)).toEqual({ verified: false });
-  });
-
-  it("returns proof metadata for verified agents", async () => {
-    mockContract
-      .mockImplementationOnce(() => ({
-        hasHumanProof: vi.fn().mockResolvedValue(true),
-        getProofProvider: vi.fn().mockResolvedValue("0xprovider"),
-        agentRegisteredAt: vi.fn().mockResolvedValue(555n),
-      }))
-      .mockImplementationOnce(() => ({
-        verificationStrength: vi.fn().mockResolvedValue(2),
-      }));
-
-    const { GET } = await loadVerifyStatusRoute();
-    const res = await GET(makeNextRequest("https://example.com"), {
-      params: Promise.resolve({ chainId: "42220", agentId: "1" }),
-    });
-
-    expect(res.status).toBe(200);
     expect(await jsonBody(res)).toEqual({
       verified: true,
-      proofType: "label-2",
-      registeredAtBlock: "555",
-      providerAddress: "0xprovider",
+      hasHumanProof: true,
+      isProofFresh: true,
+      proofExpiresAt: "2027-02-27T18:28:55.000Z",
+      proofType: "passport",
+      registeredAtBlock: 60316177,
+      providerAddress: PROVIDER,
+    });
+  });
+});
+
+describe("reputation route", () => {
+  it("returns score and proof details", async () => {
+    liveAgent();
+    const res = await get(PER_AGENT_ROUTES.reputation, {
+      chainId: "42220",
+      agentId: "5",
+    });
+    expect(await jsonBody(res)).toEqual({
+      score: 100,
+      hasProof: true,
+      isVerified: true,
+      isProofFresh: true,
+      proofExpiresAt: "2027-02-27T18:28:55.000Z",
+      providerName: "self",
+      proofType: "passport",
+    });
+  });
+});
+
+describe("cards route", () => {
+  it("builds a card from contract state when the agent has no metadata", async () => {
+    liveAgent();
+    const res = await get(PER_AGENT_ROUTES.cards, {
+      chainId: "42220",
+      agentId: "5",
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("public, max-age=60");
+    const card = await jsonBody<Record<string, unknown>>(res);
+    expect(card.name).toBe("Agent #5");
+    expect(card).not.toHaveProperty("image");
+    expect(card).not.toHaveProperty("url");
+    expect(card.services).toEqual([
+      expect.objectContaining({
+        name: "registry-a2a",
+        endpoint: "http://localhost:3100/api/a2a",
+      }),
+    ]);
+    expect(card.selfProtocol).toMatchObject({
+      agentId: 5,
+      chainId: 42220,
+      isVerified: true,
+      registeredAtBlock: 60316177,
+      credentials: {
+        nationality: "IND",
+        issuingState: null,
+        olderThan: 18,
+        ofacClean: true,
+        hasName: false,
+        hasDateOfBirth: false,
+        hasGender: false,
+        documentExpiry: null,
+      },
     });
   });
 
-  it("returns OPTIONS preflight response", async () => {
-    const { OPTIONS } = await loadVerifyStatusRoute();
-    const res = await OPTIONS();
-    expect(res.status).toBe(204);
+  it("keeps agent-declared fields but replaces stale selfProtocol data", async () => {
+    liveAgent({
+      getAgentMetadata: JSON.stringify({
+        name: "Agent Alpha",
+        url: "https://alpha.example/a2a",
+        services: [{ name: "A2A", endpoint: "https://alpha.example/a2a" }],
+        selfProtocol: {
+          verificationStrength: 999,
+          credentials: { issuingState: NUL3 },
+        },
+      }),
+    });
+    const card = await jsonBody<Record<string, unknown>>(
+      await get(PER_AGENT_ROUTES.cards, { chainId: "42220", agentId: "5" }),
+    );
+    expect(card.name).toBe("Agent Alpha");
+    expect(card.url).toBe("https://alpha.example/a2a");
+    expect((card.services as unknown[]).length).toBe(2);
+    expect(card.selfProtocol).toMatchObject({
+      verificationStrength: 100,
+      credentials: { issuingState: null },
+    });
+  });
+});
+
+describe("agents-by-address route", () => {
+  const route = "@/app/api/agent/agents/[chainId]/[address]/route";
+  const OWNER = "0x2da338827F94a835107451192Abfa702a1c50259";
+
+  it("returns 400 for unsupported chains and invalid addresses", async () => {
+    liveAgent();
+    expect((await get(route, { chainId: "999", address: OWNER })).status).toBe(
+      400,
+    );
+    // Zero address (balanceOf(0) reverts on-chain), un-prefixed and ICAP
+    // forms are bad input, not an RPC error.
+    for (const address of [
+      "0xabc",
+      ethers.ZeroAddress,
+      OWNER.slice(2),
+      ethers.getIcapAddress(OWNER),
+    ]) {
+      const res = await get(route, { chainId: "42220", address });
+      expect(res.status, address).toBe(400);
+      expect(await jsonBody(res)).toEqual({ error: "Invalid address" });
+    }
+    expect(registry.balanceOf).not.toHaveBeenCalled();
+  });
+
+  it("lists every agent the wallet owns plus its own agent key", async () => {
+    liveAgent({ balanceOf: 2n, getAgentId: 9n });
+    mockScan.mockResolvedValue([7n, 5n]);
+    const res = await get(route, {
+      chainId: "42220",
+      address: OWNER.toLowerCase(),
+    });
+    const body = await jsonBody<{
+      humanAddress: string;
+      agents: { agentId: number; isOwner: boolean; isAgentKey: boolean }[];
+      totalCount: number;
+      ownedCount: number;
+      complete: boolean;
+    }>(res);
+    expect(mockScan).toHaveBeenCalledWith(
+      expect.anything(),
+      "0xaC3DF9ABf80d0F5c020C06B04Cced27763355944",
+      "ownerOf",
+      OWNER,
+      2,
+    );
+    expect(body.humanAddress).toBe(OWNER);
+    expect(
+      body.agents.map((a) => [a.agentId, a.isOwner, a.isAgentKey]),
+    ).toEqual([
+      [5, true, false],
+      [7, true, false],
+      [9, false, true],
+    ]);
+    expect(body.totalCount).toBe(3);
+    expect(body.ownedCount).toBe(2);
+    expect(body.complete).toBe(true);
+  });
+
+  it("flags an incomplete scan instead of presenting it as complete", async () => {
+    liveAgent({ balanceOf: 3n });
+    mockScan.mockResolvedValue([5n]);
+    const body = await jsonBody<{ complete: boolean; totalCount: number }>(
+      await get(route, { chainId: "42220", address: OWNER }),
+    );
+    expect(body).toMatchObject({ complete: false, totalCount: 1 });
+  });
+
+  it("skips the scan for wallets that own nothing", async () => {
+    liveAgent();
+    const body = await jsonBody(
+      await get(route, { chainId: "42220", address: OWNER }),
+    );
+    expect(body).toMatchObject({
+      agents: [],
+      totalCount: 0,
+      ownedCount: 0,
+      complete: true,
+    });
+    expect(mockScan).not.toHaveBeenCalled();
+  });
+});
+
+describe("agents-by-nullifier route", () => {
+  const route =
+    "@/app/api/agent/agents-by-nullifier/[chainId]/[nullifier]/route";
+
+  it("rejects malformed nullifiers with 400", async () => {
+    liveAgent();
+    for (const nullifier of [
+      "-1",
+      " ",
+      "0",
+      "0x10",
+      "01",
+      "1e3",
+      "abc",
+      "2".repeat(80),
+    ]) {
+      const res = await get(route, { chainId: "42220", nullifier });
+      expect(res.status, nullifier).toBe(400);
+    }
+  });
+
+  it("uses the paginated index when it matches the on-chain count", async () => {
+    liveAgent({ getAgentCountForHuman: 1n, getAgentsForNullifier: [5n] });
+    const body = await jsonBody(
+      await get(route, { chainId: "42220", nullifier: "99" }),
+    );
+    expect(registry.getAgentsForNullifier).toHaveBeenCalledWith(99n, 0n, 100n);
+    expect(mockScan).not.toHaveBeenCalled();
+    expect(body).toMatchObject({
+      nullifier: "99",
+      totalCount: 1,
+      activeAgentCount: 1,
+      complete: true,
+      agents: [
+        {
+          agentId: 5,
+          isVerified: true,
+          proofExpiresAt: "2027-02-27T18:28:55.000Z",
+        },
+      ],
+    });
+  });
+
+  it("falls back to an id scan when the index misses older agents", async () => {
+    liveAgent({ getAgentCountForHuman: 3n, getAgentsForNullifier: [26n] });
+    mockScan.mockResolvedValue([5n, 7n, 26n]);
+    const body = await jsonBody<{
+      agents: { agentId: number }[];
+      complete: boolean;
+    }>(await get(route, { chainId: "42220", nullifier: "99" }));
+    expect(mockScan).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      "getHumanNullifier",
+      99n,
+      3,
+    );
+    expect(body.agents.map((a) => a.agentId)).toEqual([5, 7, 26]);
+    expect(body.complete).toBe(true);
+  });
+
+  it("reports complete=false when even the scan cannot account for all agents", async () => {
+    liveAgent({ getAgentCountForHuman: 3n, getAgentsForNullifier: [26n] });
+    mockScan.mockResolvedValue([26n]);
+    const body = await jsonBody(
+      await get(route, { chainId: "42220", nullifier: "99" }),
+    );
+    expect(body).toMatchObject({
+      totalCount: 1,
+      activeAgentCount: 3,
+      complete: false,
+    });
+  });
+});
+
+describe("per-IP read limits", () => {
+  /**
+   * Call a route's GET handler `n` times from one fixed IP.
+   *
+   * @param route - Module path of the route.
+   * @param params - Dynamic route params.
+   * @param n - Number of calls.
+   * @returns The last response.
+   */
+  async function hammer(
+    route: string,
+    params: Record<string, string>,
+    n: number,
+  ) {
+    const { GET } = await load<{ GET: Handler }>(route);
+    let res: Response | undefined;
+    for (let i = 0; i < n; i++) {
+      res = await GET(
+        makeNextRequest("http://localhost:3100/x", {
+          headers: { "x-real-ip": "10.7.7.7" },
+        }),
+        { params: Promise.resolve(params) },
+      );
+    }
+    return res!;
+  }
+
+  it("allows 120 single-agent reads per minute, shared across routes", async () => {
+    liveAgent();
+    expect(
+      (
+        await hammer(
+          PER_AGENT_ROUTES.info,
+          { chainId: "42220", agentId: "5" },
+          120,
+        )
+      ).status,
+    ).toBe(200);
+    const limited = await hammer(
+      PER_AGENT_ROUTES.verify,
+      { chainId: "42220", agentId: "5" },
+      1,
+    );
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("retry-after")).toBeTruthy();
+  });
+
+  it("allows 20 agents-by-address scans per minute, then returns 429", async () => {
+    liveAgent();
+    const route = "@/app/api/agent/agents/[chainId]/[address]/route";
+    const params = {
+      chainId: "42220",
+      address: "0x2da338827F94a835107451192Abfa702a1c50259",
+    };
+    expect((await hammer(route, params, 20)).status).toBe(200);
+    expect((await hammer(route, params, 1)).status).toBe(429);
+  });
+});
+
+describe("OPTIONS preflight", () => {
+  it("returns 204 on every read route", async () => {
+    for (const route of [
+      ...Object.values(PER_AGENT_ROUTES),
+      "@/app/api/agent/agents/[chainId]/[address]/route",
+      "@/app/api/agent/agents-by-nullifier/[chainId]/[nullifier]/route",
+    ]) {
+      const { OPTIONS } = await load<{ OPTIONS: () => Response }>(route);
+      expect(OPTIONS().status).toBe(204);
+    }
   });
 });

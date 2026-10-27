@@ -2,73 +2,61 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import { type NextRequest, NextResponse } from "next/server";
+/**
+ * GET /api/visa/{chainId}/{agentId} — visa tier, metrics and eligibility.
+ *
+ * Auth: none. Rate limit: 120/min per IP (shared read budget).
+ * Read-only: eligibility is recomputed with the visa wallet's live
+ * transaction count, but nothing is written on-chain.
+ */
+
+import type { NextRequest } from "next/server";
 import { ethers } from "ethers";
 import { CHAIN_CONFIG } from "@/lib/chain-config";
 import {
-  CORS_HEADERS,
+  ERRORS,
   corsResponse,
   errorResponse,
+  jsonResponse,
   validateAgentId,
-} from "@/lib/api-helpers";
+} from "@/lib/agent-api-helpers";
+import { readRateLimited } from "@/lib/agent-read";
+import { typedRegistry, typedVisa } from "@/lib/contract-types";
+import {
+  TIER_NAMES,
+  meetsTierThresholds,
+  ownerOfOrNull,
+} from "@/lib/visa-auth";
 
-import { typedVisa } from "@/lib/contract-types";
-import { VISA_ABI } from "@/lib/constants";
-
-const RELAYER_PK = process.env.RELAYER_PRIVATE_KEY;
-
-const TIER_NAMES: Record<number, string> = {
-  0: "None",
-  1: "Tourist Visa",
-  2: "Work Visa",
-  3: "Citizenship",
-};
-
-type TierThreshold = {
-  minTransactions: bigint;
-  minVolumeUsd: bigint;
-  requiresBoth: boolean;
-};
-
-// Mirror the on-chain VisaManager.checkTierEligibility metric check so the read
-// endpoint agrees with the claim endpoint while still reflecting the live tx
-// count we read below. A zero threshold means that axis is not a criterion
-// (rather than being trivially satisfied). `requiresBoth` switches AND/OR
-// between the tx and volume axes. Manual review is a separate gate and is
-// surfaced via `manualReviewApproved`, exactly as the contract treats it.
-function metricsEligible(
-  txCount: number,
-  volumeUsd: number,
-  t: TierThreshold,
-): boolean {
-  const txRequired = t.minTransactions > 0n;
-  const volRequired = t.minVolumeUsd > 0n;
-  const metTx = txCount >= Number(t.minTransactions);
-  const metVol = volumeUsd >= Number(t.minVolumeUsd);
-  return t.requiresBoth
-    ? (!txRequired || metTx) && (!volRequired || metVol)
-    : (txRequired && metTx) || (volRequired && metVol);
-}
-
+/**
+ * Read an agent's visa state and recompute per-tier eligibility.
+ *
+ * @param req - Incoming request (counted against the per-IP read budget).
+ * @param context.params - Path params: `chainId` (must have a visa
+ *   contract), `agentId` (registry or wallet-based ID).
+ * @returns 200 {agentId, chainId, tier, tierName, metrics: {transactionCount,
+ *   volumeUsd, lastUpdated}, eligibility: {1,2,3}, reviewRequestedTier,
+ *   manualReviewApproved, thresholds: {1,2,3}}; 400 {error} bad chain or
+ *   agent ID; 404 {error} no visa and no registry agent; 429 {error,
+ *   retryAfterMs}; 502 {error} RPC failure.
+ */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ chainId: string; agentId: string }> },
 ) {
+  const limited = await readRateLimited(req);
+  if (limited) return limited;
   const { chainId, agentId } = await params;
   const config = CHAIN_CONFIG[chainId];
-  if (!config) return errorResponse(`Unsupported chain: ${chainId}`, 400);
-
-  if (!config.visa)
-    return errorResponse("Visa contract not deployed on this network", 404);
+  if (!config?.visa) return errorResponse(ERRORS.unsupportedChain, 400);
 
   const id = validateAgentId(agentId);
-  if (id === null) return errorResponse("Invalid agent ID", 400);
+  if (id === null) return errorResponse(ERRORS.invalidAgentId, 400);
 
   try {
     const rpc = new ethers.JsonRpcProvider(config.rpc);
     const visa = typedVisa(config.visa, rpc);
 
-    // Fetch all visa data in parallel
     const [
       tier,
       metrics,
@@ -77,6 +65,7 @@ export async function GET(
       threshCitizenship,
       reviewTier,
       manualApproved,
+      visaWallet,
     ] = await Promise.all([
       visa.getTier(id),
       visa.getMetrics(id),
@@ -85,107 +74,100 @@ export async function GET(
       visa.getTierThresholds(3),
       visa.reviewRequestedTier(id),
       visa.manualReviewApproved(id),
+      visa.getVisaWallet(id),
     ]);
 
     const tierNum = Number(tier);
+    // No visa and not in the registry (e.g. a wallet-based id that never
+    // claimed): nothing exists under this id.
+    if (
+      tierNum === 0 &&
+      (await ownerOfOrNull(typedRegistry(config.registry, rpc), id)) === null
+    ) {
+      return errorResponse(ERRORS.agentNotFound, 404);
+    }
 
-    // Refresh metrics: read live tx count from RPC and use it directly.
-    // Also fire-and-forget an on-chain updateMetrics so eligibility checks stay current.
+    // Use the visa wallet's live tx count when it is ahead of the stored
+    // metrics. Read-only: a public GET never writes on-chain.
     let liveTxCount = Number(metrics.transactionCount);
-    if (RELAYER_PK && tierNum > 0) {
+    if (visaWallet && visaWallet !== ethers.ZeroAddress) {
       try {
-        const walletAddr = await visa.getVisaWallet(id);
-        const wallet =
-          walletAddr && walletAddr !== ethers.ZeroAddress
-            ? walletAddr
-            : ethers.getAddress("0x" + id.toString(16).padStart(40, "0"));
-        const txCount = await rpc.getTransactionCount(wallet);
-        if (txCount > liveTxCount) {
-          liveTxCount = txCount;
-          // Fire-and-forget: push update on-chain so eligibility checks work on next call
-          const relayer = new ethers.Wallet(RELAYER_PK, rpc);
-          const writable = new ethers.Contract(config.visa, VISA_ABI, relayer);
-          writable
-            .updateMetrics(id, BigInt(txCount), BigInt(0))
-            .catch(() => {});
-        }
+        liveTxCount = Math.max(
+          liveTxCount,
+          await rpc.getTransactionCount(visaWallet),
+        );
       } catch {
         // Non-fatal — use on-chain metrics as fallback
       }
     }
 
-    // Recompute eligibility using the live tx count and on-chain volume.
-    // Volume is not refreshed live (only tx count is), so use the stored value.
-    const liveVolumeUsd = Number(metrics.volumeUsd);
-    const eligTourist = metricsEligible(
-      liveTxCount,
-      liveVolumeUsd,
+    // Recompute eligibility with the live tx count, using the exact contract
+    // rule (incl. manual review). Volume isn't refreshed live, so it's stored.
+    const live = {
+      transactionCount: BigInt(liveTxCount),
+      volumeUsd: metrics.volumeUsd,
+    };
+    const eligTourist = meetsTierThresholds(
+      live,
       threshTourist,
+      manualApproved,
     );
-    const liveEligWork = metricsEligible(
-      liveTxCount,
-      liveVolumeUsd,
-      threshWork,
-    );
-    const liveEligCitizenship = metricsEligible(
-      liveTxCount,
-      liveVolumeUsd,
+    const eligWork = meetsTierThresholds(live, threshWork, manualApproved);
+    const eligCitizenship = meetsTierThresholds(
+      live,
       threshCitizenship,
+      manualApproved,
     );
 
-    return NextResponse.json(
-      {
-        agentId: Number(id),
-        chainId: Number(chainId),
-        tier: tierNum,
-        tierName: TIER_NAMES[tierNum] ?? `Tier ${tierNum}`,
-        metrics: {
-          transactionCount: liveTxCount,
-          volumeUsd: Number(metrics.volumeUsd) / 1e6,
-          lastUpdated: Number(metrics.lastUpdated),
+    return jsonResponse({
+      agentId: id.toString(),
+      chainId: Number(chainId),
+      tier: tierNum,
+      tierName: TIER_NAMES[tierNum] ?? `Tier ${tierNum}`,
+      metrics: {
+        transactionCount: liveTxCount,
+        volumeUsd: Number(metrics.volumeUsd) / 1e6,
+        lastUpdated: Number(metrics.lastUpdated),
+      },
+      eligibility: {
+        1: eligTourist,
+        2: eligWork,
+        3: eligCitizenship,
+      },
+      reviewRequestedTier: Number(reviewTier),
+      manualReviewApproved: manualApproved,
+      thresholds: {
+        1: {
+          minTransactions: Number(threshTourist.minTransactions),
+          minVolumeUsd: Number(threshTourist.minVolumeUsd) / 1e6,
+          requiresBoth: threshTourist.requiresBoth,
+          requiresManualReview: threshTourist.requiresManualReview,
         },
-        eligibility: {
-          1: eligTourist,
-          2: liveEligWork,
-          3: liveEligCitizenship,
+        2: {
+          minTransactions: Number(threshWork.minTransactions),
+          minVolumeUsd: Number(threshWork.minVolumeUsd) / 1e6,
+          requiresBoth: threshWork.requiresBoth,
+          requiresManualReview: threshWork.requiresManualReview,
         },
-        reviewRequestedTier: Number(reviewTier),
-        manualReviewApproved: manualApproved,
-        thresholds: {
-          1: {
-            minTransactions: Number(threshTourist.minTransactions),
-            minVolumeUsd: Number(threshTourist.minVolumeUsd) / 1e6,
-            requiresBoth: threshTourist.requiresBoth,
-            requiresManualReview: threshTourist.requiresManualReview,
-          },
-          2: {
-            minTransactions: Number(threshWork.minTransactions),
-            minVolumeUsd: Number(threshWork.minVolumeUsd) / 1e6,
-            requiresBoth: threshWork.requiresBoth,
-            requiresManualReview: threshWork.requiresManualReview,
-          },
-          3: {
-            minTransactions: Number(threshCitizenship.minTransactions),
-            minVolumeUsd: Number(threshCitizenship.minVolumeUsd) / 1e6,
-            requiresBoth: threshCitizenship.requiresBoth,
-            requiresManualReview: threshCitizenship.requiresManualReview,
-          },
+        3: {
+          minTransactions: Number(threshCitizenship.minTransactions),
+          minVolumeUsd: Number(threshCitizenship.minVolumeUsd) / 1e6,
+          requiresBoth: threshCitizenship.requiresBoth,
+          requiresManualReview: threshCitizenship.requiresManualReview,
         },
       },
-      { headers: CORS_HEADERS },
-    );
+    });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (
-      message.includes("could not coalesce") ||
-      message.includes("BAD_DATA")
-    ) {
-      return errorResponse("Agent not found", 404);
-    }
-    return errorResponse("RPC error", 502);
+    console.error("[visa] read failed:", err);
+    return errorResponse(ERRORS.rpc, 502);
   }
 }
 
+/**
+ * Answer the CORS preflight.
+ *
+ * @returns 204 with CORS headers.
+ */
 export function OPTIONS() {
   return corsResponse();
 }

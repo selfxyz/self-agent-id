@@ -2,10 +2,15 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-// POST /api/agent/register — Initiate agent registration
-//
-// Creates a session, generates keypair (for linked / wallet-free modes),
-// builds userDefinedData, and returns Self app QR data + deep link.
+/**
+ * POST /api/agent/register — start an agent registration session.
+ *
+ * Auth: none. Rate limit: 10/min per IP.
+ * Generates the agent key (linked, wallet-free, privy, smartwallet) or
+ * verifies the caller's Ed25519 challenge signature (ed25519 modes), then
+ * returns a session token, the Self app QR (image, deep link, scan URL) and
+ * the agent address.
+ */
 
 import type { NextRequest } from "next/server";
 import { ethers } from "ethers";
@@ -16,165 +21,202 @@ import {
   getRegistrationConfigIndex,
   type RegistrationDisclosures,
 } from "@selfxyz/agent-sdk";
-import { SelfAppBuilder, getUniversalLink } from "@selfxyz/qrcode";
-import { createSessionToken, encryptSession } from "@/lib/session-token";
+import { getUniversalLink } from "@selfxyz/sdk-common";
 import {
-  getSessionSecret,
+  createQrToken,
+  createSessionToken,
+  encryptSession,
+} from "@/lib/session-token";
+import {
+  ERRORS,
+  requireSessionSecret,
   getNetworkConfig,
   isValidNetwork,
-  isValidAddress,
+  parseAddress,
   humanInstructions,
   jsonResponse,
   errorResponse,
   corsResponse,
+  getClientIp,
+  getAppBaseUrl,
+  rateLimitResponse,
+  readJsonObjectBody,
+  parseDisclosures,
 } from "@/lib/agent-api-helpers";
-import { checkRateLimit } from "@/lib/rateLimit";
-import { renderQrBase64 } from "@/lib/renderQr";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { renderQrBase64 } from "@/lib/render-qr";
 import {
   computeEd25519ChallengeHash,
   computeExtKpub,
   buildEd25519UserData,
   isValidEd25519PubkeyHex,
   deriveEd25519Address,
+  verifyEd25519Signature,
 } from "@/lib/ed25519";
-import { setEd25519Relay } from "@/lib/ed25519-relay";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — noble/curves v2 export map
-import { ed25519 } from "@noble/curves/ed25519.js";
 import { typedRegistry } from "@/lib/contract-types";
+import {
+  MODES_REQUIRING_HUMAN,
+  REGISTRATION_MODES,
+  normalizeMode,
+} from "@/lib/registration-modes";
+import { buildSelfApp } from "@/lib/self-app";
 
-type Mode =
-  | "linked"
-  | "wallet-free"
-  | "ed25519"
-  | "ed25519-linked"
-  | "privy"
-  | "smartwallet";
-
-const VALID_MODES = new Set<Mode>([
-  "linked",
-  "wallet-free",
-  "ed25519",
-  "ed25519-linked",
-  "privy",
-  "smartwallet",
-]);
-
-interface RegisterRequestBody {
-  mode: string;
-  network: string;
-  disclosures?: {
-    minimumAge?: number;
-    ofac?: boolean;
-    nationality?: boolean;
-    name?: boolean;
-    date_of_birth?: boolean;
-    gender?: boolean;
-    issuing_state?: boolean;
-  };
-  humanAddress?: string;
-  agentName?: string;
-  agentDescription?: string;
-  callbackUrl?: string;
-  ed25519Pubkey?: string; // 64 hex chars (no 0x)
-  ed25519Signature?: string; // 128 hex chars (no 0x)
-}
-
-function hexToBytes(hex: string): Uint8Array {
-  const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
-  const bytes = new Uint8Array(clean.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
-}
-
+/**
+ * Validate the request, prepare the agent key and userDefinedData, and open a
+ * registration session at stage "qr-ready".
+ *
+ * @param req - JSON body: {mode, network, humanAddress? (required for linked,
+ *   ed25519-linked, privy, smartwallet), ed25519Pubkey?, ed25519Signature?
+ *   (both required for ed25519 modes), disclosures?}.
+ * @returns 200 {sessionToken, stage: "qr-ready", qrData, deepLink,
+ *   qrImageBase64, scanUrl, agentAddress, network, mode, configIndex,
+ *   expiresAt, timeRemainingMs, humanInstructions}; 400 {error} validation or
+ *   bad Ed25519 signature; 413 {error} body too large; 429 {error,
+ *   retryAfterMs}; 500 {error} init failure, ERRORS.qrRender,
+ *   or SESSION_SECRET unset; 502 {error} nonce lookup failed.
+ */
 export async function POST(req: NextRequest) {
-  // Rate limit: 10 registration requests per minute per IP
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const rl = await checkRateLimit({
-    key: `register:${ip}`,
+    key: `register:${getClientIp(req)}`,
     limit: 10,
     windowMs: 60_000,
   });
   if (!rl.allowed) {
-    return errorResponse("Too many requests", 429);
+    return rateLimitResponse(rl.retryAfterMs);
   }
 
-  let body: RegisterRequestBody;
-  try {
-    const parsed = (await req.json()) as unknown;
-    if (!parsed || typeof parsed !== "object") {
-      return errorResponse("Invalid JSON body", 400);
-    }
-    body = parsed as RegisterRequestBody;
-  } catch {
-    return errorResponse("Invalid JSON body", 400);
-  }
+  const parsedBody = await readJsonObjectBody(req);
+  if (!parsedBody.ok) return parsedBody.response;
+  const body = parsedBody.body;
 
   // ── Validate mode ────────────────────────────────────────────────────────
-  const rawMode = body.mode;
-  if (!rawMode || !VALID_MODES.has(rawMode as Mode)) {
+  const mode = normalizeMode(body.mode);
+  if (!mode) {
     return errorResponse(
-      `Invalid mode: "${body.mode}". Valid modes: linked, wallet-free, ed25519, ed25519-linked, privy, smartwallet`,
+      `Invalid mode. Valid modes: ${REGISTRATION_MODES.join(", ")}`,
       400,
     );
   }
-  const mode = rawMode as Mode;
 
   // ── Validate network ─────────────────────────────────────────────────────
-  if (!body.network || !isValidNetwork(body.network)) {
-    return errorResponse(
-      `Invalid network: "${body.network}". Valid: mainnet, testnet`,
-      400,
-    );
+  if (typeof body.network !== "string" || !isValidNetwork(body.network)) {
+    return errorResponse(ERRORS.invalidNetwork, 400);
   }
   const network = body.network;
   const networkConfig = getNetworkConfig(network);
 
-  // ── Validate humanAddress (required for linked, ed25519-linked, privy, smartwallet) ──
-  const needsHumanAddress =
-    mode === "linked" ||
-    mode === "ed25519-linked" ||
-    mode === "privy" ||
-    mode === "smartwallet";
-  if (
-    needsHumanAddress &&
-    (!body.humanAddress || !isValidAddress(body.humanAddress))
+  // ── Validate humanAddress (required for linked, ed25519-linked, privy,
+  // smartwallet; wallet-free modes have none, but a malformed one is still
+  // rejected rather than silently dropped) ──────────────────────────────────
+  let humanAddress: string | null = null;
+  if (MODES_REQUIRING_HUMAN.has(mode)) {
+    humanAddress = parseAddress(body.humanAddress);
+    if (!humanAddress) {
+      return errorResponse(
+        "humanAddress is required for this mode and must be a non-zero 0x-prefixed Ethereum address",
+        400,
+      );
+    }
+  } else if (
+    body.humanAddress !== undefined &&
+    !parseAddress(body.humanAddress)
   ) {
     return errorResponse(
-      "humanAddress is required and must be a valid Ethereum address for this mode",
+      "humanAddress must be a non-zero 0x-prefixed Ethereum address",
       400,
     );
   }
 
-  // ── Build disclosures ────────────────────────────────────────────────────
+  // ── Validate disclosures ─────────────────────────────────────────────────
+  const parsedDisclosures = parseDisclosures(body.disclosures);
+  if (!parsedDisclosures.ok) {
+    return errorResponse(parsedDisclosures.error, 400);
+  }
+  const requested = parsedDisclosures.disclosures;
   const disclosures: RegistrationDisclosures = {
-    minimumAge: (body.disclosures?.minimumAge ?? 0) as 0 | 18 | 21,
-    ofac: body.disclosures?.ofac ?? false,
+    minimumAge: requested.minimumAge,
+    ofac: requested.ofac,
   };
 
-  // Validate minimumAge
-  if (![0, 18, 21].includes(disclosures.minimumAge!)) {
-    return errorResponse("minimumAge must be 0, 18, or 21", 400);
+  // ── Validate Ed25519 inputs ──────────────────────────────────────────────
+  let ed25519Pubkey: string | undefined;
+  let ed25519Signature: string | undefined;
+  if (mode === "ed25519" || mode === "ed25519-linked") {
+    if (!isValidEd25519PubkeyHex(body.ed25519Pubkey)) {
+      return errorResponse(
+        "ed25519Pubkey is required and must be a valid 64-char hex Ed25519 public key",
+        400,
+      );
+    }
+    if (
+      typeof body.ed25519Signature !== "string" ||
+      !/^[0-9a-fA-F]{128}$/.test(body.ed25519Signature)
+    ) {
+      return errorResponse(
+        "ed25519Signature is required and must be 128 hex chars (64-byte Ed25519 signature)",
+        400,
+      );
+    }
+    ed25519Pubkey = body.ed25519Pubkey.toLowerCase();
+    ed25519Signature = body.ed25519Signature.toLowerCase();
   }
 
-  try {
-    const secret = getSessionSecret();
+  const secret = requireSessionSecret();
+  if (secret instanceof Response) return secret;
 
-    // ── Generate agent keypair or derive address ─────────────────────────
+  try {
+    // ── Generate agent keypair or verify the agent's Ed25519 signature ────
     let agentPrivateKey: string | undefined;
     let agentAddress: string;
-    let humanAddress: string;
     let userDefinedData: string;
 
-    if (mode === "linked" || mode === "privy" || mode === "smartwallet") {
-      // Linked: generate fresh keypair, human wallet signs nothing server-side
-      humanAddress = ethers.getAddress(body.humanAddress!);
+    if (ed25519Pubkey && ed25519Signature) {
+      // ed25519: wallet-free, the derived address is the human identifier.
+      // ed25519-linked: the human's wallet is the guardian.
+      agentAddress = deriveEd25519Address(ed25519Pubkey);
+      humanAddress = humanAddress ?? agentAddress;
+
+      let nonce: bigint;
+      try {
+        const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
+        const registry = typedRegistry(networkConfig.registryAddress, provider);
+        nonce = await registry.ed25519Nonce("0x" + ed25519Pubkey);
+      } catch (err) {
+        console.error("register: ed25519Nonce lookup failed", err);
+        return errorResponse(ERRORS.rpc, 502);
+      }
+
+      const challengeHash = computeEd25519ChallengeHash({
+        humanAddress,
+        chainId: BigInt(networkConfig.chainId),
+        registryAddress: networkConfig.registryAddress,
+        nonce,
+      });
+      if (
+        !verifyEd25519Signature(ed25519Signature, challengeHash, ed25519Pubkey)
+      ) {
+        return errorResponse("Ed25519 signature verification failed", 400);
+      }
+
+      userDefinedData = buildEd25519UserData({
+        configIndex: getRegistrationConfigIndex(disclosures),
+        ed25519Pubkey,
+        signature: ed25519Signature,
+        extKpub: computeExtKpub(ed25519Pubkey),
+        guardian:
+          mode === "ed25519-linked"
+            ? humanAddress.slice(2).toLowerCase()
+            : undefined,
+      });
+    } else {
+      // linked / privy / smartwallet: server-generated agent key bound to the
+      // human's wallet. wallet-free: server-generated key that is also the
+      // human identifier. All three non-wallet-free modes behave identically
+      // here; the key is exported via /register/export after completion.
       const wallet = ethers.Wallet.createRandom();
       agentPrivateKey = wallet.privateKey;
       agentAddress = wallet.address;
+      humanAddress = humanAddress ?? agentAddress;
 
       // Nonce is 0 for freshly generated agent wallets (never registered before)
       const signedChallenge = await signRegistrationChallenge(agentPrivateKey, {
@@ -184,184 +226,37 @@ export async function POST(req: NextRequest) {
         nonce: 0,
       });
 
-      userDefinedData = buildAdvancedRegisterUserDataAscii({
-        agentAddress,
-        signature: signedChallenge,
-        disclosures,
-      });
-    } else if (mode === "ed25519") {
-      // Ed25519 wallet-free: derive humanAddress from pubkey, no human wallet needed
-      const pubkey = body.ed25519Pubkey;
-      const signature = body.ed25519Signature;
-
-      if (!pubkey || !isValidEd25519PubkeyHex(pubkey)) {
-        return errorResponse(
-          "ed25519Pubkey is required and must be a valid 64-char hex Ed25519 public key",
-          400,
-        );
-      }
-      if (!signature || !/^[0-9a-fA-F]{128}$/.test(signature)) {
-        return errorResponse(
-          "ed25519Signature is required and must be 128 hex chars (64-byte Ed25519 signature)",
-          400,
-        );
-      }
-
-      agentAddress = deriveEd25519Address(pubkey);
-      humanAddress = agentAddress; // wallet-free: human = derived agent address
-
-      // Fetch nonce from contract
-      const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
-      const registry = typedRegistry(networkConfig.registryAddress, provider);
-      const nonce = await registry.ed25519Nonce("0x" + pubkey);
-
-      // Compute challenge hash using derived address
-      const challengeHash = computeEd25519ChallengeHash({
-        humanAddress,
-        chainId: BigInt(networkConfig.chainId),
-        registryAddress: networkConfig.registryAddress,
-        nonce,
-      });
-
-      // Verify Ed25519 signature off-chain
-      const msgBytes = ethers.getBytes(challengeHash);
-      const sigBytes = hexToBytes(signature);
-      const pubBytes = hexToBytes(pubkey);
-      const isValid = ed25519.verify(sigBytes, msgBytes, pubBytes);
-      if (!isValid) {
-        return errorResponse("Ed25519 signature verification failed", 400);
-      }
-
-      const extKpub = computeExtKpub(pubkey);
-      const configIndex = getRegistrationConfigIndex(disclosures);
-      userDefinedData = buildEd25519UserData({
-        configIndex,
-        ed25519Pubkey: pubkey,
-        signature: signature,
-        extKpub,
-      });
-    } else if (mode === "ed25519-linked") {
-      // Ed25519-linked: agent provides their own keypair and pre-signed challenge
-      humanAddress = ethers.getAddress(body.humanAddress!);
-
-      const pubkey = body.ed25519Pubkey;
-      const signature = body.ed25519Signature;
-
-      if (!pubkey || !isValidEd25519PubkeyHex(pubkey)) {
-        return errorResponse(
-          "ed25519Pubkey is required and must be a valid 64-char hex Ed25519 public key",
-          400,
-        );
-      }
-      if (!signature || !/^[0-9a-fA-F]{128}$/.test(signature)) {
-        return errorResponse(
-          "ed25519Signature is required and must be 128 hex chars (64-byte Ed25519 signature)",
-          400,
-        );
-      }
-
-      // Fetch nonce from contract
-      const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
-      const registry = typedRegistry(networkConfig.registryAddress, provider);
-      const nonce = await registry.ed25519Nonce("0x" + pubkey);
-
-      // Compute challenge hash
-      const challengeHash = computeEd25519ChallengeHash({
-        humanAddress,
-        chainId: BigInt(networkConfig.chainId),
-        registryAddress: networkConfig.registryAddress,
-        nonce,
-      });
-
-      // Verify Ed25519 signature off-chain
-      const msgBytes = ethers.getBytes(challengeHash);
-      const sigBytes = hexToBytes(signature);
-      const pubBytes = hexToBytes(pubkey);
-      const isValid = ed25519.verify(sigBytes, msgBytes, pubBytes);
-      if (!isValid) {
-        return errorResponse("Ed25519 signature verification failed", 400);
-      }
-
-      // Compute extKpub
-      const extKpub = computeExtKpub(pubkey);
-
-      // Build userData
-      const configIndex = getRegistrationConfigIndex(disclosures);
-      userDefinedData = buildEd25519UserData({
-        configIndex,
-        ed25519Pubkey: pubkey,
-        signature: signature,
-        extKpub,
-        guardian: humanAddress.replace(/^0x/, "").toLowerCase(),
-      });
-
-      agentAddress = deriveEd25519Address(pubkey);
-      // No private key to store — the agent has their own
-    } else {
-      // Wallet-free: generate fresh keypair, agent address is also the userId
-      const wallet = ethers.Wallet.createRandom();
-      agentPrivateKey = wallet.privateKey;
-      agentAddress = wallet.address;
-      humanAddress = agentAddress; // userId = agent address for wallet-free
-
-      // Nonce is 0 for freshly generated agent wallets (never registered before)
-      const signedChallenge = await signRegistrationChallenge(agentPrivateKey, {
-        humanIdentifier: ethers.getAddress(agentAddress),
-        chainId: networkConfig.chainId,
-        registryAddress: networkConfig.registryAddress,
-        nonce: 0,
-      });
-
-      userDefinedData = buildWalletFreeRegisterUserDataAscii({
-        agentAddress,
-        signature: signedChallenge,
-        disclosures,
-      });
+      userDefinedData =
+        mode === "wallet-free"
+          ? buildWalletFreeRegisterUserDataAscii({
+              agentAddress,
+              signature: signedChallenge,
+              disclosures,
+            })
+          : buildAdvancedRegisterUserDataAscii({
+              agentAddress,
+              signature: signedChallenge,
+              disclosures,
+            });
     }
 
     // ── Build Self app QR config ─────────────────────────────────────────
-    const selfAppDisclosures: Record<string, boolean | number> = {};
-    if (body.disclosures?.nationality) selfAppDisclosures.nationality = true;
-    if (body.disclosures?.name) selfAppDisclosures.name = true;
-    if (body.disclosures?.date_of_birth)
-      selfAppDisclosures.date_of_birth = true;
-    if (body.disclosures?.gender) selfAppDisclosures.gender = true;
-    if (body.disclosures?.issuing_state)
-      selfAppDisclosures.issuing_state = true;
-    if (body.disclosures?.ofac) selfAppDisclosures.ofac = true;
-    if (disclosures.minimumAge && disclosures.minimumAge > 0) {
-      selfAppDisclosures.minimumAge = disclosures.minimumAge;
-    }
-
-    // userId for the Self app: lowercase address without 0x prefix (the builder strips 0x for hex type)
-    // For ed25519 mode, the userId is the humanAddress (the human doing the passport scan)
-    const userId =
-      mode === "wallet-free" || mode === "ed25519"
-        ? ethers.getAddress(agentAddress).toLowerCase()
-        : humanAddress.toLowerCase();
-
-    const selfApp = new SelfAppBuilder({
-      version: 2,
-      appName: process.env.NEXT_PUBLIC_SELF_APP_NAME || "Self Agent ID",
-      scope: process.env.NEXT_PUBLIC_SELF_SCOPE_SEED || "self-agent-id",
-      endpoint: networkConfig.registryAddress,
-      logoBase64: "https://i.postimg.cc/mrmVf9hm/self.png",
-      userId,
-      endpointType: networkConfig.selfEndpointType,
-      userIdType: "hex",
+    // wallet-free / ed25519: humanAddress is the agent's own address.
+    const selfApp = buildSelfApp({
+      network,
+      userId: humanAddress,
       userDefinedData,
-      disclosures: selfAppDisclosures,
-    }).build();
+      disclosures: requested,
+    });
 
     const deepLink = getUniversalLink(selfApp);
-    const qrImageBase64 = await renderQrBase64(deepLink);
-
-    // Construct scanUrl after finalToken is available (set below), so we
-    // build it just before the response. Derive base URL from request origin
-    // or NEXT_PUBLIC_APP_URL env var.
-    const appUrl =
-      process.env.NEXT_PUBLIC_APP_URL ??
-      `${req.headers.get("x-forwarded-proto") ?? "https"}://${req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "localhost:3000"}`;
+    let qrImageBase64: string;
+    try {
+      qrImageBase64 = await renderQrBase64(deepLink);
+    } catch (err) {
+      console.error("register: QR render failed:", err);
+      return errorResponse(ERRORS.qrRender, 500);
+    }
 
     // ── Create encrypted session token ───────────────────────────────────
     const { data: sessionData } = createSessionToken(
@@ -375,18 +270,13 @@ export async function POST(req: NextRequest) {
       },
       secret,
     );
-
-    // Store ed25519 pubkey in session for status polling
-    if (
-      (mode === "ed25519" || mode === "ed25519-linked") &&
-      body.ed25519Pubkey
-    ) {
-      sessionData.ed25519Pubkey = body.ed25519Pubkey;
-    }
-
-    // Update stage to qr-ready and store QR data in the token
-    const updatedData = { ...sessionData, stage: "qr-ready", qrData: selfApp };
-    const finalToken = encryptSession(updatedData, secret);
+    const updatedData = {
+      ...sessionData,
+      stage: "qr-ready",
+      qrData: selfApp,
+      ...(ed25519Pubkey ? { ed25519Pubkey } : {}),
+    };
+    const sessionToken = encryptSession(updatedData, secret);
 
     const expiresAt = updatedData.expiresAt!;
     const timeRemainingMs = Math.max(
@@ -394,24 +284,12 @@ export async function POST(req: NextRequest) {
       new Date(expiresAt).getTime() - Date.now(),
     );
 
-    const scanUrl = `${appUrl}/api/qr/${finalToken}`;
-
-    // Relay QR data for ed25519 modes so the frontend can pick it up via polling
-    if (
-      (mode === "ed25519" || mode === "ed25519-linked") &&
-      body.ed25519Pubkey
-    ) {
-      setEd25519Relay(body.ed25519Pubkey, {
-        qrData: selfApp,
-        deepLink,
-        sessionToken: finalToken,
-        agentAddress,
-        scanUrl,
-      });
-    }
+    // The scan URL carries a QR-only token: it renders the deep link and
+    // can never be used as a session token (status / export).
+    const scanUrl = `${getAppBaseUrl(req)}/api/qr/${createQrToken(deepLink, expiresAt, secret)}`;
 
     return jsonResponse({
-      sessionToken: finalToken,
+      sessionToken,
       stage: "qr-ready",
       qrData: selfApp,
       deepLink,
@@ -426,14 +304,16 @@ export async function POST(req: NextRequest) {
       humanInstructions: humanInstructions("qr-ready"),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes("SESSION_SECRET")) {
-      return errorResponse(message, 500);
-    }
-    return errorResponse(`Registration init failed: ${message}`, 500);
+    console.error("register: init failed", err);
+    return errorResponse("Registration init failed", 500);
   }
 }
 
+/**
+ * Answer the CORS preflight.
+ *
+ * @returns 204 with CORS headers.
+ */
 export function OPTIONS() {
   return corsResponse();
 }

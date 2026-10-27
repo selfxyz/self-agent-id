@@ -7,8 +7,9 @@
     "service": "tsx service.ts"
   },
   "dependencies": {
-    "@selfxyz/agent-sdk": "^0.1.0",
-    "express": "^4.21.0"
+    "@selfxyz/agent-sdk": "^0.3.0",
+    "express": "^4.21.0",
+    "express-rate-limit": "^8.2.2"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",

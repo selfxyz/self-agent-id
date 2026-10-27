@@ -2,153 +2,137 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-// POST /api/agent/identify — Initiate passport scan to discover agents
-//
-// Creates a Self app QR session with ACTION_IDENTIFY (0x49). The contract
-// emits NullifierIdentified(nullifier, agentCount) without any state changes.
-// The status endpoint polls for this event and returns the nullifier so the
-// frontend can call getAgentsForNullifier() to display all agents.
+/**
+ * POST /api/agent/identify — start an identify session (find a human's
+ * agents by passport scan).
+ *
+ * Auth: none. Rate limit: 10/min per IP.
+ * Returns a session token and a Self app QR for ACTION_IDENTIFY (0x49): the
+ * registry emits NullifierIdentified(nullifier, agentCount) and changes no
+ * state. Poll GET /api/agent/identify/status for the nullifier, then list the
+ * agents with GET /api/agent/agents-by-nullifier/{chainId}/{nullifier}.
+ */
 
 import type { NextRequest } from "next/server";
 import { ethers } from "ethers";
-import { SelfAppBuilder, getUniversalLink } from "@selfxyz/qrcode";
-import { renderQrBase64 } from "@/lib/renderQr";
-import { createSessionToken, encryptSession } from "@/lib/session-token";
+import { getUniversalLink } from "@selfxyz/sdk-common";
+import { renderQrBase64 } from "@/lib/render-qr";
 import {
-  getSessionSecret,
+  createQrToken,
+  createSessionToken,
+  encryptSession,
+} from "@/lib/session-token";
+import {
+  ERRORS,
+  requireSessionSecret,
   getNetworkConfig,
   isValidNetwork,
   jsonResponse,
   errorResponse,
   corsResponse,
+  getAppBaseUrl,
+  getClientIp,
+  rateLimitResponse,
+  readJsonObjectBody,
+  humanInstructions,
 } from "@/lib/agent-api-helpers";
-import { checkRateLimit } from "@/lib/rateLimit";
-
-/** Self Hub V2 action byte for identify ('I' = 0x49) */
-const ACTION_IDENTIFY = 0x49;
-
-interface IdentifyRequestBody {
-  network: string;
-}
+import { checkRateLimit } from "@/lib/rate-limit";
+import { buildSelfApp } from "@/lib/self-app";
 
 /**
- * Build raw bytes userData for ACTION_IDENTIFY.
- *
- * Layout (2 bytes):
- *   [0] = 0x49 (ACTION_IDENTIFY, ASCII 'I')
- *   [1] = 0x00 (config index — unused but required by contract parser)
+ * userDefinedData for ACTION_IDENTIFY: 'I' (0x49) followed by the config
+ * index as an ASCII digit ('0' = 0x30; the contract also accepts raw 0x00).
+ * The identify action ignores the config but the parser requires the byte.
  */
-function buildIdentifyUserData(): string {
-  return String.fromCharCode(ACTION_IDENTIFY) + String.fromCharCode(0x30); // '0'
-}
+const IDENTIFY_USER_DATA = "I0";
 
+/**
+ * Open an identify session with a random per-session userId and the current
+ * block as the event-scan start.
+ *
+ * @param req - JSON body: {network}.
+ * @returns 200 {sessionToken, stage: "qr-ready", deepLink, qrImageBase64,
+ *   scanUrl, expiresAt, timeRemainingMs, humanInstructions, qrData, network};
+ *   400 {error} bad network; 413 {error} body too large; 429 {error,
+ *   retryAfterMs}; 500 {error} SESSION_SECRET unset, or "Failed to render
+ *   QR code"; 502 {error} RPC failure.
+ */
 export async function POST(req: NextRequest) {
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const rl = await checkRateLimit({
-    key: `identify:${ip}`,
+    key: `identify:${getClientIp(req)}`,
     limit: 10,
     windowMs: 60_000,
   });
-  if (!rl.allowed) {
-    return errorResponse("Too many requests", 429);
-  }
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs);
 
-  let body: IdentifyRequestBody;
-  try {
-    const parsed = (await req.json()) as unknown;
-    if (!parsed || typeof parsed !== "object") {
-      return errorResponse("Invalid JSON body", 400);
-    }
-    body = parsed as IdentifyRequestBody;
-  } catch {
-    return errorResponse("Invalid JSON body", 400);
+  const parsedBody = await readJsonObjectBody(req);
+  if (!parsedBody.ok) return parsedBody.response;
+  const { network } = parsedBody.body;
+  if (typeof network !== "string" || !isValidNetwork(network)) {
+    return errorResponse(ERRORS.invalidNetwork, 400);
   }
-
-  if (!body.network || !isValidNetwork(body.network)) {
-    return errorResponse(
-      `Invalid network: "${body.network}". Valid: mainnet, testnet`,
-      400,
-    );
-  }
-  const network = body.network;
   const networkConfig = getNetworkConfig(network);
 
+  const secret = requireSessionSecret();
+  if (secret instanceof Response) return secret;
+
   try {
-    const secret = getSessionSecret();
+    // The contract ignores the userId for identify, but the Hub transaction
+    // carries it in userContextData. A random per-session id lets the status
+    // endpoint find this session's NullifierIdentified event. It is address-
+    // sized, like the userIds of every other flow.
+    const identifyUserId = ethers.hexlify(ethers.randomBytes(20));
+    const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
+    const startBlock = await provider.getBlockNumber();
 
-    const userDefinedData = buildIdentifyUserData();
-
-    // For identify, we use a dummy userId — the contract doesn't care about
-    // the caller's identity, only the passport nullifier from the ZK proof.
-    const dummyUserId = ethers.ZeroAddress.toLowerCase();
-
-    const selfApp = new SelfAppBuilder({
-      version: 2,
-      appName: process.env.NEXT_PUBLIC_SELF_APP_NAME || "Self Agent ID",
-      scope: process.env.NEXT_PUBLIC_SELF_SCOPE_SEED || "self-agent-id",
-      endpoint: networkConfig.registryAddress,
-      logoBase64: "https://i.postimg.cc/mrmVf9hm/self.png",
-      userId: dummyUserId,
-      endpointType: networkConfig.selfEndpointType,
-      userIdType: "hex",
-      userDefinedData,
-      disclosures: {},
-    }).build();
+    const selfApp = buildSelfApp({
+      network,
+      userId: identifyUserId,
+      userDefinedData: IDENTIFY_USER_DATA,
+    });
 
     const deepLink = getUniversalLink(selfApp);
-    const qrImageBase64 = await renderQrBase64(deepLink);
-
-    const appUrl =
-      process.env.NEXT_PUBLIC_APP_URL ??
-      `${req.headers.get("x-forwarded-proto") ?? "https"}://${req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "localhost:3000"}`;
+    let qrImageBase64: string;
+    try {
+      qrImageBase64 = await renderQrBase64(deepLink);
+    } catch (err) {
+      console.error("[identify] QR render failed:", err);
+      return errorResponse(ERRORS.qrRender, 500);
+    }
 
     const { data: sessionData } = createSessionToken(
       { type: "identify", network },
       secret,
     );
-
-    const updatedData = {
-      ...sessionData,
-      stage: "qr-ready",
-      qrData: selfApp,
-    };
-    const finalToken = encryptSession(updatedData, secret);
-    const scanUrl = `${appUrl}/api/qr/${finalToken}`;
-
-    const expiresAt = updatedData.expiresAt!;
-    const timeRemainingMs = Math.max(
-      0,
-      new Date(expiresAt).getTime() - Date.now(),
+    const sessionToken = encryptSession(
+      { ...sessionData, stage: "qr-ready", identifyUserId, startBlock },
+      secret,
     );
 
+    const expiresAt = sessionData.expiresAt!;
     return jsonResponse({
-      sessionToken: finalToken,
+      sessionToken,
       stage: "qr-ready",
-      qrData: selfApp,
       deepLink,
       qrImageBase64,
-      scanUrl,
-      network,
+      scanUrl: `${getAppBaseUrl(req)}/api/qr/${createQrToken(deepLink, expiresAt, secret)}`,
       expiresAt,
-      timeRemainingMs,
-      humanInstructions: [
-        "Open the Self app on your phone.",
-        "Scan the QR code to identify yourself.",
-        "Follow the prompts to scan your passport.",
-        "Your agents will be shown once identification is complete.",
-      ],
+      timeRemainingMs: Math.max(0, new Date(expiresAt).getTime() - Date.now()),
+      humanInstructions: humanInstructions("qr-ready", "identification"),
+      qrData: selfApp,
+      network,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[identify] init failed:", message);
-    if (message.includes("SESSION_SECRET")) {
-      return errorResponse("Server configuration error", 500);
-    }
-    return errorResponse(`Identify session init failed: ${message}`, 500);
+    console.error("[identify] init failed:", err);
+    return errorResponse(ERRORS.rpc, 502);
   }
 }
 
+/**
+ * Answer the CORS preflight.
+ *
+ * @returns 204 with CORS headers.
+ */
 export function OPTIONS() {
   return corsResponse();
 }

@@ -28,8 +28,8 @@ The registration flow works as follows: a human scans their passport with the Se
 The system consists of:
 
 - **Smart contracts** — An ERC-721 registry with soulbound NFTs, proof providers, reputation scoring, and freshness validation. Deployed on Celo Mainnet and Celo Sepolia testnet.
-- **SDKs** — Client libraries in TypeScript, Python, and Rust for agent registration, HTTP request signing, and server-side verification.
-- **MCP Server** — A Model Context Protocol server (`@selfxyz/mcp-server`) exposing 10 tools for AI coding assistants like Claude Code and Cursor.
+- **SDK** — The TypeScript SDK (`@selfxyz/agent-sdk`) for agent registration, HTTP request signing, and server-side verification. Other languages use the REST API.
+- **MCP Server** — A hosted Model Context Protocol server at `https://agent-api.self.xyz/api/mcp` exposing 10 tools for AI coding assistants like Claude Code and Cursor.
 - **REST API** — Hosted endpoints at [agent-api.self.xyz](https://agent-api.self.xyz) for registration flows, agent discovery, verification, and agent cards.
 
 ## ERC-8004 Standard
@@ -40,13 +40,16 @@ ERC-8004 is a proposed standard for on-chain AI agent registries. Self Agent ID 
 
 The `SelfAgentRegistry` contract is the primary ERC-721 identity registry. It issues soulbound (non-transferable) NFTs to registered agents. Each NFT represents a verified agent identity with an associated human proof, proof provider, nullifier (for sybil resistance), and optionally ZK-attested credentials (nationality, age, OFAC status).
 
-### Reputation Registry
+### Reputation & Validation Registries
 
-The `SelfReputationProvider` contract implements the ERC-8004 reputation registry pattern. It provides a `getReputationScore(agentId)` function returning a score from 0 to 100, derived from the verification strength of the proof provider that verified the agent. Self Protocol scores 100 (passport NFC + biometric). A hypothetical video-liveness provider might score 40.
+| Contract                 | Deployed | What it does                                                                                                                                   |
+| ------------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SelfReputationRegistry` | Yes      | ERC-8004 feedback registry (`giveFeedback`, `getSummary`). The identity registry auto-writes a `proof-of-human` entry at registration.         |
+| `SelfValidationRegistry` | Yes      | ERC-8004 validation registry (`validationRequest/Response`). Self is a built-in validator: `submitFreshnessValidation` records `isProofFresh`. |
+| `SelfReputationSignal`   | No       | View wrapper: `getReputationScore(agentId)` = the provider's `verificationStrength()` (0-100; Self = 100).                                     |
+| `SelfFreshnessChecker`   | No       | View wrapper: `isValidAgent(agentId)` = has proof and registered within 6,307,200 blocks (≈73 days at ~1 s/block).                             |
 
-### Validation Registry
-
-The `SelfValidationProvider` contract implements the ERC-8004 validation registry pattern. It performs freshness checks — determining whether an agent's proof is still considered "fresh" based on how many blocks have elapsed since registration. The default threshold is approximately 1 year on Celo (~6,307,200 blocks at 5 seconds per block).
+The two wrappers have no canonical deployment; the same answers come from the registry (`getProofProvider` → `verificationStrength()`, `isProofFresh`).
 
 ## Provider System
 
@@ -69,17 +72,9 @@ Self Protocol's implementation (`SelfHumanProofProvider`) has these characterist
 
 The async pattern works as follows: the dApp calls `verifySelfProof()` on the registry, Hub V2 verifies the ZK proof, then Hub V2 calls back into the registry's `customVerificationHook()` which mints the NFT.
 
-### Other Potential Providers
+### Other Providers
 
-The provider system is designed to be extensible. Other identity protocols could implement `IHumanProofProvider` with different verification strengths:
-
-| Provider                | Strength | Method                        |
-| ----------------------- | -------- | ----------------------------- |
-| Self Protocol           | 100      | Passport NFC chip + biometric |
-| Government ID (no chip) | 60       | Document scan + liveness      |
-| Video liveness          | 40       | Live video verification       |
-| Worldcoin               | TBD      | Iris biometric (orb)          |
-| Humanity Protocol       | TBD      | Palm biometric                |
+Only `SelfHumanProofProvider` is approved today. Other protocols can implement `IHumanProofProvider` and be whitelisted via `addProofProvider` (`SECURITY_ROLE`). The SDK's `getProviderLabel(strength)` maps ≥100 `passport`, ≥80 `kyc`, ≥60 `govt_id`, ≥40 `liveness`, else `unknown`.
 
 ## Trust Model
 
@@ -98,7 +93,7 @@ No personally identifiable information is stored on-chain. The only stored value
 - The nullifier (a cryptographic hash, not reversible to identity)
 - Disclosed credential claims (optional, chosen by the user at registration time)
 - The proof provider address
-- The registration block number (for freshness checks)
+- The registration block number and proof expiry timestamp
 
 The user controls exactly which credential claims to disclose during registration by selecting a verification config. Config 0 discloses basic data only; configs 1-2 add age thresholds (18+/21+); configs 3-5 add OFAC screening. Even with full disclosure, only the verified claims are stored — never the raw passport data or biometric information.
 
@@ -108,7 +103,7 @@ Agent identity NFTs are non-transferable. The ERC-721 `_update` function reverts
 
 ### Guardian System
 
-For wallet-free and smart-wallet registration modes, agents can have a designated guardian address. The guardian serves as a safety mechanism — if an agent's private key is compromised, the guardian can force-revoke the agent's identity by calling `guardianRevoke()`. This is particularly important for autonomous agents that may operate unsupervised for extended periods.
+Ed25519-linked agents (and wallet-free agents registered with a guardian) have a designated guardian address. The guardian serves as a safety mechanism — if an agent's private key is compromised, the guardian can force-revoke the agent's identity by calling `guardianRevoke()`. This is particularly important for autonomous agents that may operate unsupervised for extended periods.
 
 ## Proof Expiry
 
@@ -116,22 +111,31 @@ Human proofs have a limited validity period. Each registration sets `proofExpire
 
 Key functions:
 
+- **`isVerifiedAgent(agentKey)`** — `true` if the key has a human proof. Does NOT check expiry.
 - **`isProofFresh(agentId)`** — returns `true` only while `block.timestamp < proofExpiresAt`. Use this for time-sensitive access control.
 - **`hasHumanProof(agentId)`** — returns `true` as long as a proof was ever submitted. Does NOT check expiry.
 - **`proofExpiresAt(agentId)`** — raw expiry timestamp (unix seconds).
 
-To refresh an expiring or expired proof, use `requestProofRefresh()` — the human scans their passport again and `proofExpiresAt` is updated in-place without changing the agentId. The contract emits `HumanProofRefreshed`. Alternatively, deregister (burn NFT) and re-register (new agentId with fresh expiry) if changing verification config. SDKs include a 30-day warning threshold for proactive monitoring.
+The REST API, MCP tools, A2A and agent cards all report `isVerified` / `verified` as `hasHumanProof && isProofFresh`.
+
+To refresh an expiring or expired proof, use `requestProofRefresh()` — the human scans their passport again and `proofExpiresAt` is updated in-place without changing the agentId. The contract emits `HumanProofRefreshed`. Alternatively, deregister (burn NFT) and re-register (new agentId with fresh expiry) if changing verification config — this is also required for agent ids the refresh API rejects with 422 (ids whose 32-byte form contains a byte `>= 0x80`, e.g. 128–255). The SDK includes a 30-day warning threshold (`isExpiringSoon`) for proactive monitoring.
 
 ## Quick Reference
 
 ### Registration Modes
 
-| Mode                  | Code        | Agent Key                              | NFT Owner     | Use Case                             |
-| --------------------- | ----------- | -------------------------------------- | ------------- | ------------------------------------ |
-| Verified Wallet (`R`) | Simple      | `bytes32(uint256(uint160(wallet)))`    | Human wallet  | Simplest path, agent = wallet        |
-| Agent Identity (`K`)  | Advanced    | `bytes32(uint256(uint160(agentAddr)))` | Human wallet  | Recommended — separate agent keypair |
-| Wallet-Free (`W`)     | Wallet-free | Agent-derived                          | Agent address | Agent-owned NFT, optional guardian   |
-| Smart Wallet          | Passkey     | Agent-derived                          | Smart account | Gasless via paymaster, passkey auth  |
+Modes accepted by `POST /api/agent/register` (and the SDK's `requestRegistration`):
+
+| Mode             | On-chain action | Agent Key                  | NFT Owner / guardian                      | Use Case                                   |
+| ---------------- | --------------- | -------------------------- | ----------------------------------------- | ------------------------------------------ |
+| `linked`         | `K` (advanced)  | Server-generated ECDSA key | Human wallet                              | Recommended — separate agent keypair       |
+| `privy`          | `K` (advanced)  | Server-generated ECDSA key | Human's Privy embedded wallet             | Email / social login users                 |
+| `smartwallet`    | `K` (advanced)  | Server-generated ECDSA key | Human's passkey smart wallet              | Smart wallet users (behaves like `linked`) |
+| `wallet-free`    | `W`             | Server-generated ECDSA key | Agent address                             | No wallet at all                           |
+| `ed25519`        | `E`             | Agent's own Ed25519 pubkey | Pubkey-derived address                    | Non-EVM agents (OpenClaw, Eliza)           |
+| `ed25519-linked` | `E`             | Agent's own Ed25519 pubkey | Derived address; human wallet is guardian | Ed25519 agent with wallet-based revocation |
+
+The registry also supports a simple `R` action where the human's own wallet is the agent key; the API does not offer it as a mode. The CLI supports only `linked` and `wallet-free`.
 
 ### Verification Configs
 
@@ -146,20 +150,9 @@ To refresh an expiring or expired proof, use `requestProofRefresh()` — the hum
 | 4     | 18+  | On   | Age-gated (18+) + OFAC |
 | 5     | 21+  | On   | Age-gated (21+) + OFAC |
 
-### Registration Modes (Ed25519)
-
-In addition to the 4 ECDSA modes above, 2 Ed25519 modes are available:
-
-| Mode           | Code             | Agent Key      | Use Case                               |
-| -------------- | ---------------- | -------------- | -------------------------------------- |
-| Ed25519        | `ed25519`        | Ed25519 pubkey | Non-EVM ecosystems, Python/Rust-native |
-| Ed25519 Linked | `ed25519-linked` | Ed25519 pubkey | Ed25519 agent linked to a human wallet |
-
-Ed25519 agents produce identical HTTP auth headers and are verified transparently by `SelfAgentVerifier`.
-
 ### Authentication Headers
 
-Services verify agent HTTP requests using three headers:
+Services verify agent HTTP requests using three headers (Ed25519 agents send `x-self-agent-key` and `x-self-agent-keytype: ed25519` instead of the address):
 
 | Header                   | Content                                                                     |
 | ------------------------ | --------------------------------------------------------------------------- |
@@ -167,31 +160,27 @@ Services verify agent HTTP requests using three headers:
 | `x-self-agent-signature` | ECDSA signature over `timestamp + METHOD + pathWithQuery + keccak256(body)` |
 | `x-self-agent-timestamp` | Unix timestamp in milliseconds (string), must be within 5-minute window     |
 
-### SDKs
+### SDK
 
 | Language   | Package              | Agent Class                  | Verifier Class      |
 | ---------- | -------------------- | ---------------------------- | ------------------- |
 | TypeScript | `@selfxyz/agent-sdk` | `SelfAgent` / `Ed25519Agent` | `SelfAgentVerifier` |
-| Python     | `selfxyz-agent-sdk`  | `SelfAgent` / `Ed25519Agent` | `SelfAgentVerifier` |
-| Rust       | `self-agent-sdk`     | `SelfAgent` / `Ed25519Agent` | `SelfAgentVerifier` |
 
-All SDKs expose identical APIs for registration, signing, verification, credentials, and agent cards. Two agent classes are available:
+The SDK covers registration, signing, verification, credentials, and agent cards. Two agent classes are available:
 
-- **`SelfAgent`** — ECDSA (secp256k1) signing. Uses Ethereum keypairs. Lower on-chain gas (~3K). Best for EVM-native projects.
-- **`Ed25519Agent`** — Ed25519 signing. Uses 32-byte random keys. Best for Python, Rust, Solana, and non-EVM ecosystems. Produces identical HTTP auth headers — `SelfAgentVerifier` handles both transparently.
+- **`SelfAgent`** — ECDSA (secp256k1) signing. Uses Ethereum keypairs. Best for EVM-native projects.
+- **`Ed25519Agent`** — Ed25519 signing. Uses 32-byte random keys. Best for agents that already have an Ed25519 key (Solana, OpenClaw, Eliza). `SelfAgentVerifier` handles both key types transparently.
 
 The `SelfAgentVerifier` class is used by the receiving service to verify incoming requests against on-chain state. It accepts both ECDSA and Ed25519 signatures automatically.
 
 ### MCP Server
 
-Package: `@selfxyz/mcp-server` — 10 tools across 4 categories:
+Hosted at `https://agent-api.self.xyz/api/mcp` (Streamable HTTP) — 10 tools:
 
-- **Identity** (4): register agent, check status, get info, deregister
-- **Auth** (2): sign request, create auth headers
-- **Discovery** (2): list agents for address, search verified agents
-- **Verification** (2): verify agent on-chain, validate freshness
+- **Public** (6): `self_register_agent`, `self_check_registration`, `self_lookup_agent`, `self_list_agents_for_human`, `self_verify_agent`, `self_verify_request`
+- **Privileged** (4, need `Authorization: Bearer <MCP_PRIVILEGED_API_KEY>` and act as the server's own configured agent): `self_get_identity`, `self_deregister_agent`, `self_sign_request`, `self_authenticated_fetch`
 
-Plus 2 resources (`self://networks`, `self://identity`) and 1 prompt (`self_integrate_verification`).
+Plus 2 resources (`self://networks` public, `self://identity` privileged) and 1 prompt (`self_integrate_verification`).
 
 ### Networks
 
@@ -204,7 +193,7 @@ Plus 2 resources (`self://networks`, `self://identity`) and 1 prompt (`self_inte
 
 ### Agent Key
 
-Every agent identity is keyed by a `bytes32` value derived from an Ethereum address: `bytes32(uint256(uint160(agentAddress)))`. In simple mode, the agent address is the human's wallet. In advanced, wallet-free, and smart-wallet modes, the agent has its own keypair. The agent key serves as the primary lookup key in all registry mappings.
+Every agent identity is keyed by a `bytes32` value derived from an Ethereum address: `bytes32(uint256(uint160(agentAddress)))`. For ECDSA agents (`linked`, `privy`, `smartwallet`, `wallet-free`) the agent has its own keypair; in the simple `R` action the agent address is the human's wallet. Ed25519 agents are keyed by the raw 32-byte public key instead. The agent key serves as the primary lookup key in all registry mappings.
 
 ### Verification Config Selection
 

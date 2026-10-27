@@ -3,20 +3,21 @@
 // SPDX-License-Identifier: BUSL-1.1
 // NOTE: Converts to Apache-2.0 on 2029-06-11 per LICENSE.
 
-import {
-  createServer,
-  type IncomingMessage,
-  type ServerResponse,
-} from "node:http";
+/**
+ * `self-agent` CLI: register or deregister an agent via a local session file
+ * and a `/cli/register` QR handoff, then poll the registry for completion.
+ *
+ * Supports linked and wallet-free modes only; defaults to testnet. Session
+ * files (0600) hold the generated agent private key until exported.
+ */
+
 import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { ethers } from "ethers";
 import {
   NETWORKS,
-  getRegistrationConfigIndex,
   signRegistrationChallenge,
-  buildSimpleRegisterUserDataAscii,
   buildSimpleDeregisterUserDataAscii,
   buildAdvancedRegisterUserDataAscii,
   buildAdvancedDeregisterUserDataAscii,
@@ -27,8 +28,24 @@ import {
 } from "./index";
 
 import { typedRegistry } from "./contract-types";
-/** Registration mode alias used throughout the CLI. */
-type CliMode = RegistrationMode;
+import { trimTrailingSlashes } from "./registration-flow";
+
+/**
+ * Modes the CLI can register. The `/cli/register` browser handoff only
+ * supports linked and wallet-free; every other mode goes through the SDK's
+ * REST flow (`requestRegistration`) instead.
+ */
+type CliMode = Extract<RegistrationMode, "linked" | "wallet-free">;
+
+/** Every mode the REST API accepts; `satisfies` fails the build if one is missing. */
+const API_MODES = {
+  linked: true,
+  "wallet-free": true,
+  ed25519: true,
+  "ed25519-linked": true,
+  privy: true,
+  smartwallet: true,
+} satisfies Record<RegistrationMode, true>;
 
 /** Top-level CLI operation: register a new agent or deregister an existing one. */
 type CliOperation = "register" | "deregister";
@@ -38,12 +55,11 @@ type EndpointType = "celo" | "staging_celo";
 
 /**
  * Lifecycle stage of a CLI session, tracking progress from initialization
- * through browser handoff, callback receipt, and on-chain confirmation.
+ * through QR handoff and on-chain confirmation.
  */
 type SessionStage =
   | "initialized"
   | "handoff_opened"
-  | "callback_received"
   | "onchain_verified"
   | "onchain_deregistered"
   | "failed"
@@ -59,7 +75,7 @@ interface CliNetwork {
   registryAddress: string;
   /** Self Protocol endpoint type (mainnet or staging). */
   endpointType: EndpointType;
-  /** Base URL of the browser handoff app. */
+  /** Base URL of the Self Agent ID API that renders the handoff QR. */
   appUrl: string;
   /** Human-readable application name shown during verification. */
   appName: string;
@@ -67,24 +83,10 @@ interface CliNetwork {
   scope: string;
 }
 
-/** Pre-signed registration data for smartwallet mode, passed to the browser handoff. */
-interface SmartWalletTemplate {
-  /** Checksummed address of the generated agent wallet. */
-  agentAddress: string;
-  /** ECDSA signature r component (hex). */
-  r: string;
-  /** ECDSA signature s component (hex). */
-  s: string;
-  /** ECDSA signature recovery id (27 or 28). */
-  v: number;
-  /** Index into the registry's verification config array. */
-  configIndex: number;
-}
-
 /**
  * Persistent session state written to disk as JSON. Tracks the full lifecycle
- * of a register or deregister flow: initialization, browser handoff, callback
- * receipt, and on-chain verification.
+ * of a register or deregister flow: initialization, QR handoff, and on-chain
+ * verification.
  */
 interface CliSession {
   /** Schema version for forward compatibility. */
@@ -121,25 +123,6 @@ interface CliSession {
     challengeHash?: string;
     /** ECDSA signature parts proving agent key ownership. */
     signature?: RegistrationSignatureParts;
-    /** Pre-signed template for smart-wallet mode registrations. */
-    smartWalletTemplate?: SmartWalletTemplate;
-  };
-  /** Local HTTP callback server configuration for receiving browser responses. */
-  callback: {
-    /** Localhost binding address. */
-    listenHost: "127.0.0.1";
-    /** Ephemeral port for the callback listener. */
-    listenPort: number;
-    /** URL path the callback server listens on. */
-    path: "/callback";
-    /** Random token the browser must echo back to authenticate the callback. */
-    stateToken: string;
-    /** Whether a callback has already been received for this session. */
-    used: boolean;
-    /** Status reported by the most recent callback. */
-    lastStatus?: "success" | "error";
-    /** Error message from the most recent callback, if any. */
-    lastError?: string;
   };
   /** Mutable session state tracking lifecycle progress. */
   state: {
@@ -151,8 +134,6 @@ interface CliSession {
     lastError?: string;
     /** On-chain agent token ID after successful registration. */
     agentId?: string;
-    /** Address of the Self Hub guardian that processed the verification. */
-    guardianAddress?: string;
   };
   /** Sensitive key material; only present for modes that generate agent keys. */
   secrets?: {
@@ -162,21 +143,14 @@ interface CliSession {
 }
 
 /**
- * JSON payload base64url-encoded into the browser handoff URL. Contains
- * everything the web app needs to initiate a Self verification flow and
- * call back to the CLI on completion.
+ * JSON payload base64url-encoded into the `/cli/register` handoff URL. The
+ * server renders it as a Self app QR code; completion is detected on-chain.
  */
 interface CliHandoffPayload {
   /** Schema version. */
   version: 1;
   /** Register or deregister. */
   operation: CliOperation;
-  /** Session identifier echoed back in the callback. */
-  sessionId: string;
-  /** Anti-forgery token the browser must include in its callback. */
-  stateToken: string;
-  /** Full URL of the CLI's local callback server. */
-  callbackUrl: string;
   /** Registration mode. */
   mode: CliMode;
   /** Target EVM chain ID. */
@@ -191,14 +165,10 @@ interface CliHandoffPayload {
   scope: string;
   /** Human identifier (wallet address or generated agent address). */
   humanIdentifier: string;
-  /** Agent address the on-chain registry should record. */
-  expectedAgentAddress: string;
   /** Disclosure flags for the verification request. */
   disclosures?: CliSession["disclosures"];
   /** ASCII-encoded userData for the Self Hub request. */
-  userDefinedData?: string;
-  /** Pre-signed smart-wallet template, if applicable. */
-  smartWalletTemplate?: SmartWalletTemplate;
+  userDefinedData: string;
   /** Unix epoch milliseconds when this session expires. */
   expiresAt: number;
 }
@@ -209,7 +179,7 @@ type FlagValue = string | boolean;
 /** Map of parsed CLI flags. Repeated flags produce arrays. */
 type FlagMap = Record<string, FlagValue | FlagValue[]>;
 
-/** Base URL for the browser handoff app. Override via SELF_AGENT_APP_URL env var. */
+/** Base URL of the API serving `/cli/register`. Override via SELF_AGENT_APP_URL env var. */
 const DEFAULT_APP_URL =
   process.env.SELF_AGENT_APP_URL || "https://agent-api.self.xyz";
 
@@ -221,6 +191,7 @@ const DEFAULT_SCOPE = process.env.SELF_AGENT_SCOPE || "self-agent-id";
 
 /**
  * Builds the CLI help text listing all available commands and example invocations.
+ *
  * @returns Multi-line usage string.
  */
 function usage(): string {
@@ -228,38 +199,51 @@ function usage(): string {
     "Self Agent CLI",
     "",
     "Commands:",
-    "  register init    Create a local registration session",
-    "  register open    Print browser handoff URL (or launch with --launch)",
-    "  register wait    Wait for browser callback + on-chain verification",
+    "  register init    Create a local registration session (--mode linked | wallet-free)",
+    "  register open    Print the QR code URL for the human to scan with the Self app",
+    "  register wait    Wait for on-chain verification",
     "  register status  Show current session status",
     "  register export  Export generated agent private key (explicit unsafe flag required)",
-    "  deregister init  Create a local deregistration session",
-    "  deregister open  Print browser handoff URL (or launch with --launch)",
-    "  deregister wait  Wait for browser callback + on-chain deregistration",
+    "  deregister init  Create a local deregistration session (--mode linked | wallet-free)",
+    "  deregister open  Print the QR code URL for the human to scan with the Self app",
+    "  deregister wait  Wait for on-chain deregistration",
     "  deregister status Show current session status",
     "",
+    "Notes:",
+    "  --network defaults to testnet (Celo Sepolia) in this CLI, while the SDK",
+    "  classes (SelfAgent, SelfAgentVerifier, ...) default to mainnet.",
+    "  Pass --network mainnet for production agents.",
+    "  wait exits 0 on success, 2 on --timeout-seconds (the session stays",
+    "  valid; run wait again), 1 on any other error, including an expired session.",
+    "",
     "Examples:",
-    "  self-agent register init --mode self-custody --human-address 0x... --network testnet --out .self/session.json",
+    "  self-agent register init --mode linked --human-address 0x... --network testnet --out .self/session.json",
     "  self-agent register open --session .self/session.json",
     "  self-agent register wait --session .self/session.json --timeout-seconds 1800",
     "  self-agent register export --session .self/session.json --unsafe --out-key .self/agent.key",
-    "  self-agent deregister init --mode self-custody --human-address 0x... --network testnet --out .self/session.json",
+    "  self-agent deregister init --mode linked --human-address 0x... --agent-address 0x... --network testnet --out .self/session.json",
     "  self-agent deregister open --session .self/session.json",
     "  self-agent deregister wait --session .self/session.json --timeout-seconds 1800",
   ].join("\n");
 }
 
+/** Exit code of `wait` when `--timeout-seconds` elapses before completion. */
+const EXIT_TIMEOUT = 2;
+
 /**
- * Prints an error message to stderr and exits the process with code 1.
+ * Prints an error message to stderr and exits the process.
+ *
  * @param message - Error message to display.
+ * @param code - Exit code (default 1; {@link EXIT_TIMEOUT} for a wait timeout).
  */
-function die(message: string): never {
+function die(message: string, code = 1): never {
   process.stderr.write(`${message}\n`);
-  process.exit(1);
+  process.exit(code);
 }
 
 /**
  * Returns the current time as an ISO 8601 string.
+ *
  * @returns ISO 8601 timestamp.
  */
 function nowIso(): string {
@@ -268,6 +252,7 @@ function nowIso(): string {
 
 /**
  * Encodes a UTF-8 string as base64url (RFC 4648 Section 5) without padding.
+ *
  * @param text - Plain text to encode.
  * @returns Base64url-encoded string.
  */
@@ -281,6 +266,7 @@ function base64UrlEncode(text: string): string {
 
 /**
  * Generates a cryptographically random hex string.
+ *
  * @param bytes - Number of random bytes (default 16, producing 32 hex chars).
  * @returns Hex-encoded random string.
  */
@@ -290,6 +276,7 @@ function randomIdHex(bytes = 16): string {
 
 /**
  * Creates all parent directories for the given file path if they do not exist.
+ *
  * @param path - Absolute or relative file path.
  */
 function ensureDirForFile(path: string): void {
@@ -298,6 +285,7 @@ function ensureDirForFile(path: string): void {
 
 /**
  * Writes a value as pretty-printed JSON to a file with restrictive permissions (0600).
+ *
  * @param path - Destination file path.
  * @param value - Value to serialize.
  */
@@ -308,6 +296,7 @@ function writeJsonFile(path: string, value: unknown): void {
 
 /**
  * Writes a plain text string to a file with restrictive permissions (0600).
+ *
  * @param path - Destination file path.
  * @param value - Text content to write.
  */
@@ -318,8 +307,10 @@ function writeTextFile(path: string, value: string): void {
 
 /**
  * Reads and parses a session JSON file from disk.
+ *
  * @param path - Path to the session file.
  * @returns Parsed CLI session object.
+ * @throws If the file cannot be read or is not valid JSON.
  */
 function readSession(path: string): CliSession {
   const raw = readFileSync(path, "utf8");
@@ -328,6 +319,7 @@ function readSession(path: string): CliSession {
 
 /**
  * Updates the session's `updatedAt` timestamp and writes it to disk.
+ *
  * @param path - Path to the session file.
  * @param session - Session object to persist.
  */
@@ -338,23 +330,28 @@ function saveSession(path: string, session: CliSession): void {
 
 /**
  * Parses and validates a --mode flag value into a CliMode.
- * @param value - Raw flag value (e.g. "self-custody"). Exits if missing or invalid.
+ *
+ * @param value - Raw flag value (e.g. "linked"). Exits if missing or invalid.
  * @returns Validated registration mode.
  */
 function parseMode(value: string | undefined): CliMode {
   if (!value) die("Missing required --mode");
   const normalized = value.trim().toLowerCase();
-  if (normalized === "self-custody") return "self-custody";
-  if (normalized === "linked") return "linked";
-  if (normalized === "wallet-free") return "wallet-free";
-  if (normalized === "ed25519") return "ed25519";
-  if (normalized === "ed25519-linked") return "ed25519-linked";
-  if (normalized === "smartwallet") return "smartwallet";
-  die(`Unsupported mode: ${value}`);
+  if (normalized === "linked" || normalized === "wallet-free") {
+    return normalized;
+  }
+  if (Object.prototype.hasOwnProperty.call(API_MODES, normalized)) {
+    die(
+      `--mode ${normalized} is not supported by the CLI. Use linked or wallet-free, ` +
+        `or register with the SDK: requestRegistration({ mode: "${normalized}", ... }).`,
+    );
+  }
+  die(`Unsupported mode: ${value}. Valid CLI modes: linked, wallet-free`);
 }
 
 /**
  * Parses a CLI flag value as a finite integer, exiting on invalid input.
+ *
  * @param name - Flag name (for error messages).
  * @param value - Raw string value to parse.
  * @returns Parsed integer.
@@ -371,8 +368,10 @@ function parseIntFlag(name: string, value: string | undefined): number {
 /**
  * Resolves network configuration from CLI flags. Supports named networks
  * (mainnet/testnet) or custom chains via --chain, --registry, and --rpc.
- * @param flags - Parsed CLI flags.
+ *
+ * @param flags - Parsed CLI flags (default network: testnet).
  * @returns Resolved network configuration.
+ * @throws If `--registry` is not a valid address.
  */
 function parseNetwork(flags: FlagMap): CliNetwork {
   const networkRaw = String(flags.network || "testnet").toLowerCase();
@@ -381,9 +380,8 @@ function parseNetwork(flags: FlagMap): CliNetwork {
     : undefined;
   const registryFlag = flags.registry ? String(flags.registry) : undefined;
   const rpcFlag = flags.rpc ? String(flags.rpc) : undefined;
-  const appUrl = String(flags["app-url"] || DEFAULT_APP_URL).replace(
-    /\/+$/,
-    "",
+  const appUrl = trimTrailingSlashes(
+    String(flags["app-url"] || DEFAULT_APP_URL),
   );
   const appName = String(flags["app-name"] || DEFAULT_APP_NAME);
   const scope = String(flags.scope || DEFAULT_SCOPE);
@@ -422,6 +420,7 @@ function parseNetwork(flags: FlagMap): CliNetwork {
 /**
  * Parses disclosure flags (--minimum-age, --ofac, --nationality, etc.) into
  * a disclosure configuration object.
+ *
  * @param flags - Parsed CLI flags.
  * @returns Disclosure settings for the verification request.
  */
@@ -449,6 +448,7 @@ function parseDisclosures(flags: FlagMap): CliSession["disclosures"] {
  * Parses raw argv tokens into positional arguments and a flag map.
  * Flags are identified by `--` prefix; values follow the flag unless the next
  * token is also a flag. Repeated flags produce arrays.
+ *
  * @param argv - Argument tokens (typically `process.argv.slice(2)`).
  * @returns Object containing positional args and parsed flags.
  */
@@ -485,6 +485,7 @@ function parseFlags(argv: string[]): { positionals: string[]; flags: FlagMap } {
 
 /**
  * Resolves the session file path from the --session flag.
+ *
  * @param flags - Parsed CLI flags.
  * @param required - If true, exits when --session is not provided.
  * @returns Absolute path to the session file.
@@ -498,6 +499,7 @@ function getSessionPath(flags: FlagMap, required = true): string {
 /**
  * Resolves the output file path from the --out flag, defaulting to a
  * randomly named file under `.self/`.
+ *
  * @param flags - Parsed CLI flags.
  * @returns Absolute path for session output.
  */
@@ -509,22 +511,9 @@ function getOutPath(flags: FlagMap): string {
 }
 
 /**
- * Resolves the callback listener port from --callback-port or picks a random
- * port in the range 37100-37999.
- * @param flags - Parsed CLI flags.
- * @returns Port number for the local callback HTTP server.
- */
-function getCallbackPort(flags: FlagMap): number {
-  if (flags["callback-port"])
-    return parseIntFlag("callback-port", String(flags["callback-port"]));
-  const min = 37100;
-  const max = 37999;
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-/**
  * Converts an agent address into the 32-byte zero-padded hex key used
  * for on-chain registry lookups.
+ *
  * @param agentAddress - Checksummed Ethereum address.
  * @returns 32-byte hex string (0x-prefixed).
  */
@@ -533,20 +522,9 @@ function expectedAgentKeyHex(agentAddress: string): string {
 }
 
 /**
- * Constructs the full HTTP callback URL from a session's callback configuration.
- * @param session - CLI session containing callback host, port, and path.
- * @returns Full callback URL (e.g. "http://127.0.0.1:37150/callback").
- */
-function callbackUrl(session: CliSession): string {
-  const host = session.callback.listenHost;
-  const port = session.callback.listenPort;
-  const path = session.callback.path;
-  return `http://${host}:${port}${path}`;
-}
-
-/**
  * Returns the session's operation type, defaulting to "register" for
  * backward compatibility with sessions created before the operation field existed.
+ *
  * @param session - CLI session.
  * @returns The operation type.
  */
@@ -557,16 +535,19 @@ function getSessionOperation(session: CliSession): CliOperation {
 /**
  * Builds the handoff payload object from a session, ready to be
  * base64url-encoded and embedded in the browser handoff URL.
+ *
  * @param session - CLI session to extract payload data from.
  * @returns Handoff payload for the browser app.
  */
 function buildHandoffPayload(session: CliSession): CliHandoffPayload {
+  if (!session.registration.userDefinedData) {
+    die(
+      `Session ${session.sessionId} has no userDefinedData (mode ${session.mode} is not supported by the CLI). Run \`init\` again.`,
+    );
+  }
   return {
     version: 1,
     operation: getSessionOperation(session),
-    sessionId: session.sessionId,
-    stateToken: session.callback.stateToken,
-    callbackUrl: callbackUrl(session),
     mode: session.mode,
     chainId: session.network.chainId,
     registryAddress: session.network.registryAddress,
@@ -574,19 +555,18 @@ function buildHandoffPayload(session: CliSession): CliHandoffPayload {
     appName: session.network.appName,
     scope: session.network.scope,
     humanIdentifier: session.registration.humanIdentifier,
-    expectedAgentAddress: session.registration.agentAddress,
     disclosures: session.disclosures,
     userDefinedData: session.registration.userDefinedData,
-    smartWalletTemplate: session.registration.smartWalletTemplate,
     expiresAt: new Date(session.expiresAt).getTime(),
   };
 }
 
 /**
- * Constructs the full browser handoff URL with the base64url-encoded payload
- * as a query parameter.
+ * Constructs the `/cli/register` URL with the base64url-encoded payload as a
+ * query parameter. The URL serves a PNG QR code for the human to scan.
+ *
  * @param session - CLI session to generate the URL for.
- * @returns Complete handoff URL for the user to open in a browser.
+ * @returns Complete handoff URL.
  */
 function handoffUrl(session: CliSession): string {
   const payload = buildHandoffPayload(session);
@@ -596,6 +576,7 @@ function handoffUrl(session: CliSession): string {
 
 /**
  * Pretty-prints a value as JSON to stdout.
+ *
  * @param value - Value to serialize and print.
  */
 function printJson(value: unknown): void {
@@ -604,6 +585,7 @@ function printJson(value: unknown): void {
 
 /**
  * Prints a plain text string to stdout with a trailing newline.
+ *
  * @param value - Text to print.
  */
 function printText(value: string): void {
@@ -612,6 +594,7 @@ function printText(value: string): void {
 
 /**
  * Handles the `register init` subcommand. Delegates to {@link commandInit}.
+ *
  * @param flags - Parsed CLI flags.
  */
 async function commandRegisterInit(flags: FlagMap): Promise<void> {
@@ -620,6 +603,7 @@ async function commandRegisterInit(flags: FlagMap): Promise<void> {
 
 /**
  * Handles the `deregister init` subcommand. Delegates to {@link commandInit}.
+ *
  * @param flags - Parsed CLI flags.
  */
 async function commandDeregisterInit(flags: FlagMap): Promise<void> {
@@ -628,10 +612,12 @@ async function commandDeregisterInit(flags: FlagMap): Promise<void> {
 
 /**
  * Core init command shared by register and deregister flows. Creates a new
- * session file with generated keys (for linked/wallet-free/smartwallet
- * modes), signed challenges, and callback server configuration.
+ * session file with generated keys and signed challenges (register) or the
+ * deregistration userData.
+ *
  * @param flags - Parsed CLI flags.
  * @param operation - Whether to initialize a registration or deregistration session.
+ * @throws If `--human-address` or `--agent-address` is not a valid address.
  */
 async function commandInit(
   flags: FlagMap,
@@ -640,7 +626,6 @@ async function commandInit(
   const mode = parseMode(flags.mode ? String(flags.mode) : undefined);
   const network = parseNetwork(flags);
   const disclosures = parseDisclosures(flags);
-  const configIndex = getRegistrationConfigIndex(disclosures);
   const ttlMinutes = flags["ttl-minutes"]
     ? parseIntFlag("ttl-minutes", String(flags["ttl-minutes"]))
     : 30;
@@ -649,7 +634,6 @@ async function commandInit(
   if (ttlMinutes <= 0) die("--ttl-minutes must be > 0");
 
   const sessionId = randomIdHex(16);
-  const stateToken = randomIdHex(24);
   const createdAt = nowIso();
   const expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
 
@@ -665,20 +649,15 @@ async function commandInit(
   let userDefinedData: string | undefined;
   let signature: RegistrationSignatureParts | undefined;
   let challengeHash: string | undefined;
-  let smartWalletTemplate: SmartWalletTemplate | undefined;
   let agentPrivateKey: string | undefined;
 
-  if (mode === "self-custody" || mode === "linked") {
-    if (!humanAddressRaw)
-      die("--human-address is required for self-custody and linked modes");
+  if (mode === "linked") {
+    if (!humanAddressRaw) die("--human-address is required for linked mode");
     humanIdentifier = ethers.getAddress(humanAddressRaw);
   }
 
   if (operation === "register") {
-    if (mode === "self-custody") {
-      agentAddress = humanIdentifier;
-      userDefinedData = buildSimpleRegisterUserDataAscii(disclosures);
-    } else if (mode === "linked") {
+    if (mode === "linked") {
       const wallet = ethers.Wallet.createRandom();
       agentPrivateKey = wallet.privateKey;
       agentAddress = wallet.address;
@@ -698,7 +677,7 @@ async function commandInit(
         signature,
         disclosures,
       });
-    } else if (mode === "wallet-free") {
+    } else {
       const wallet = ethers.Wallet.createRandom();
       agentPrivateKey = wallet.privateKey;
       agentAddress = wallet.address;
@@ -719,35 +698,9 @@ async function commandInit(
         signature,
         disclosures,
       });
-    } else if (mode === "smartwallet") {
-      const wallet = ethers.Wallet.createRandom();
-      agentPrivateKey = wallet.privateKey;
-      agentAddress = wallet.address;
-      humanIdentifier = agentAddress;
-
-      // Nonce is 0 for freshly generated agent wallets (never registered before)
-      const signed = await signRegistrationChallenge(agentPrivateKey, {
-        humanIdentifier,
-        chainId: network.chainId,
-        registryAddress: network.registryAddress,
-        nonce: 0,
-      });
-
-      challengeHash = signed.messageHash;
-      signature = { r: signed.r, s: signed.s, v: signed.v };
-      smartWalletTemplate = {
-        agentAddress,
-        r: signed.r,
-        s: signed.s,
-        v: signed.v,
-        configIndex,
-      };
     }
   } else {
-    if (mode === "self-custody") {
-      agentAddress = humanIdentifier;
-      userDefinedData = buildSimpleDeregisterUserDataAscii(disclosures);
-    } else if (mode === "linked") {
+    if (mode === "linked") {
       if (!agentAddressRaw)
         die("--agent-address is required for linked deregistration");
       agentAddress = ethers.getAddress(agentAddressRaw);
@@ -755,11 +708,9 @@ async function commandInit(
         agentAddress,
         disclosures,
       });
-    } else if (mode === "wallet-free" || mode === "smartwallet") {
+    } else {
       if (!agentAddressRaw)
-        die(
-          "--agent-address is required for wallet-free and smartwallet deregistration",
-        );
+        die("--agent-address is required for wallet-free deregistration");
       agentAddress = ethers.getAddress(agentAddressRaw);
       humanIdentifier = agentAddress;
       userDefinedData = buildSimpleDeregisterUserDataAscii(disclosures);
@@ -781,14 +732,6 @@ async function commandInit(
       userDefinedData,
       challengeHash,
       signature,
-      smartWalletTemplate,
-    },
-    callback: {
-      listenHost: "127.0.0.1",
-      listenPort: getCallbackPort(flags),
-      path: "/callback",
-      stateToken,
-      used: false,
     },
     state: {
       stage: "initialized",
@@ -806,8 +749,7 @@ async function commandInit(
     operation,
     mode,
     agentAddress,
-    requiresHumanAddress: mode === "self-custody" || mode === "linked",
-    callbackUrl: callbackUrl(session),
+    requiresHumanAddress: mode === "linked",
     next: [
       `self-agent ${operation} open --session ${outPath}`,
       `self-agent ${operation} wait --session ${outPath}`,
@@ -817,8 +759,9 @@ async function commandInit(
 
 /**
  * Handles the `open` subcommand. Loads the session, checks expiry, generates
- * the browser handoff URL, and prints it to stdout. Updates the session stage
- * to "handoff_opened".
+ * the QR code URL, and prints it to stdout. Updates the session stage to
+ * "handoff_opened".
+ *
  * @param flags - Parsed CLI flags (requires --session).
  */
 function commandOpen(flags: FlagMap): void {
@@ -841,7 +784,8 @@ function commandOpen(flags: FlagMap): void {
     sessionPath,
     operation: getSessionOperation(session),
     url,
-    callbackUrl: callbackUrl(session),
+    instructions:
+      "Open the URL to show a QR code, then scan it with the Self app. Run `wait` to detect completion on-chain.",
   });
 
   if (flags.launch) {
@@ -854,8 +798,10 @@ function commandOpen(flags: FlagMap): void {
 /**
  * Queries the on-chain registry to check whether the agent is verified and
  * retrieve its token ID.
+ *
  * @param session - CLI session containing network and agent address info.
  * @returns Object with `verified` status and `agentId` token ID string.
+ * @throws If an RPC call fails.
  */
 async function pollOnChain(
   session: CliSession,
@@ -872,51 +818,8 @@ async function pollOnChain(
 }
 
 /**
- * Reads and parses the JSON body from an incoming HTTP request.
- * @param req - Node.js IncomingMessage stream.
- * @returns Parsed JSON body, or an empty object if the body is empty.
- */
-async function readJsonBody(req: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer<ArrayBufferLike>[] = [];
-  return new Promise((resolveBody, rejectBody) => {
-    req.on("data", (chunk: unknown) => {
-      if (typeof chunk === "string") {
-        chunks.push(Buffer.from(chunk, "utf8"));
-        return;
-      }
-      if (chunk instanceof Uint8Array) {
-        chunks.push(Buffer.from(chunk));
-      }
-    });
-    req.on("end", () => {
-      try {
-        const text = Buffer.concat(chunks).toString("utf8");
-        resolveBody(text ? JSON.parse(text) : {});
-      } catch (err) {
-        rejectBody(err instanceof Error ? err : new Error(String(err)));
-      }
-    });
-    req.on("error", rejectBody);
-  });
-}
-
-/**
- * Sends a JSON response with CORS headers on the callback HTTP server.
- * @param res - Node.js ServerResponse to write to.
- * @param status - HTTP status code.
- * @param payload - Response body to serialize as JSON.
- */
-function sendJson(res: ServerResponse, status: number, payload: unknown): void {
-  res.statusCode = status;
-  res.setHeader("Content-Type", "application/json");
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  res.end(JSON.stringify(payload));
-}
-
-/**
  * Handles the `register wait` subcommand. Delegates to {@link commandWait}.
+ *
  * @param flags - Parsed CLI flags.
  */
 async function commandRegisterWait(flags: FlagMap): Promise<void> {
@@ -925,6 +828,7 @@ async function commandRegisterWait(flags: FlagMap): Promise<void> {
 
 /**
  * Handles the `deregister wait` subcommand. Delegates to {@link commandWait}.
+ *
  * @param flags - Parsed CLI flags.
  */
 async function commandDeregisterWait(flags: FlagMap): Promise<void> {
@@ -932,12 +836,16 @@ async function commandDeregisterWait(flags: FlagMap): Promise<void> {
 }
 
 /**
- * Core wait command shared by register and deregister flows. Starts a local
- * HTTP callback server, optionally prints the handoff URL, then polls the
- * on-chain registry until the operation completes or times out. Exits with
- * an error if the browser reports failure or the timeout is reached.
+ * Core wait command shared by register and deregister flows. Optionally prints
+ * the QR code URL, then polls the on-chain registry until the operation
+ * completes or times out.
+ *
+ * A timeout exits with code 2 and leaves the session's stage unchanged (only
+ * `lastError` is recorded); the session is marked "expired" only once its
+ * `expiresAt` has passed (exit code 1).
+ *
  * @param flags - Parsed CLI flags (requires --session; optional --timeout-seconds,
- *   --poll-ms, --open, --no-listener).
+ *   --poll-ms, --open).
  */
 async function commandWait(flags: FlagMap): Promise<void> {
   const sessionPath = getSessionPath(flags);
@@ -949,7 +857,6 @@ async function commandWait(flags: FlagMap): Promise<void> {
   const pollMs = flags["poll-ms"]
     ? parseIntFlag("poll-ms", String(flags["poll-ms"]))
     : 4000;
-  const shouldOpen = Boolean(flags.open);
 
   if (timeoutSeconds <= 0) die("--timeout-seconds must be > 0");
   if (pollMs <= 0) die("--poll-ms must be > 0");
@@ -961,130 +868,26 @@ async function commandWait(flags: FlagMap): Promise<void> {
     die(`Session expired. Run \`${operation} init\` again.`);
   }
 
-  if (shouldOpen) {
-    const url = handoffUrl(session);
-    printText(url);
+  if (flags.open) {
+    printText(handoffUrl(session));
     session.state.stage = "handoff_opened";
     saveSession(sessionPath, session);
   }
 
-  let callbackError: string | null = null;
-  let callbackSuccess = false;
-  let listenerEnabled = !flags["no-listener"];
-
-  const server = createServer((req, res) => {
-    void (async () => {
-      try {
-        const url = req.url || "/";
-        if (req.method === "OPTIONS") {
-          sendJson(res, 204, { ok: true });
-          return;
-        }
-        if (
-          req.method !== "POST" ||
-          url.split("?")[0] !== session.callback.path
-        ) {
-          sendJson(res, 404, { error: "Not found" });
-          return;
-        }
-
-        const body = (await readJsonBody(req)) as {
-          sessionId?: string;
-          stateToken?: string;
-          status?: "success" | "error";
-          error?: string;
-          guardianAddress?: string;
-        };
-
-        if (body.sessionId !== session.sessionId) {
-          sendJson(res, 400, { error: "Session mismatch" });
-          return;
-        }
-        if (body.stateToken !== session.callback.stateToken) {
-          sendJson(res, 401, { error: "Invalid state token" });
-          return;
-        }
-        if (session.callback.used) {
-          sendJson(res, 409, { error: "Callback already used" });
-          return;
-        }
-
-        session.callback.used = true;
-        session.callback.lastStatus =
-          body.status === "error" ? "error" : "success";
-
-        if (body.status === "error") {
-          callbackError = body.error || "Browser reported flow error";
-          session.callback.lastError = callbackError;
-          session.state.stage = "failed";
-          session.state.lastError = callbackError;
-        } else {
-          callbackSuccess = true;
-          session.state.stage = "callback_received";
-          if (body.guardianAddress) {
-            session.state.guardianAddress = ethers.getAddress(
-              body.guardianAddress,
-            );
-          }
-        }
-
-        saveSession(sessionPath, session);
-        sendJson(res, 200, { ok: true });
-      } catch (err) {
-        sendJson(res, 400, {
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    })();
-  });
-
-  if (listenerEnabled) {
-    await new Promise<void>((resolveListen, rejectListen) => {
-      server.once("error", rejectListen);
-      server.listen(
-        session.callback.listenPort,
-        session.callback.listenHost,
-        () => {
-          resolveListen();
-        },
-      );
-    }).catch((err: unknown) => {
-      const code = (err as { code?: string } | undefined)?.code || "";
-      const message = String(err);
-      const permissionLike =
-        code === "EPERM" ||
-        code === "EACCES" ||
-        code === "EADDRNOTAVAIL" ||
-        message.includes("operation not permitted");
-      if (permissionLike) {
-        listenerEnabled = false;
-        printText(
-          `Callback listener unavailable (${message}). Continuing with on-chain polling only.`,
-        );
-        return;
-      }
-      die(
-        `Failed to start callback listener on ${callbackUrl(session)}: ${message}`,
-      );
-    });
-  }
-
   const deadline = Date.now() + timeoutSeconds * 1000;
-  let verified = false;
-  let agentId = "0";
   let lastPollError = "";
 
   while (Date.now() < deadline) {
-    if (callbackError) break;
-
     try {
-      const chain = await pollOnChain(session);
-      verified = chain.verified;
-      agentId = chain.agentId;
-      const onchainVerified = verified && BigInt(agentId) > 0n;
-      const onchainDeregistered = !verified && BigInt(agentId) === 0n;
+      // Bound each poll by the deadline: an unreachable RPC can stall forever.
+      const { verified, agentId } = await withDeadline(
+        pollOnChain(session),
+        deadline,
+      );
       const reachedTarget =
-        operation === "register" ? onchainVerified : onchainDeregistered;
+        operation === "register"
+          ? verified && BigInt(agentId) > 0n
+          : !verified && BigInt(agentId) === 0n;
       if (reachedTarget) {
         session.state.stage =
           operation === "register"
@@ -1093,57 +896,75 @@ async function commandWait(flags: FlagMap): Promise<void> {
         session.state.agentId = operation === "register" ? agentId : undefined;
         session.state.lastError = undefined;
         saveSession(sessionPath, session);
-        break;
+        printJson({
+          ok: true,
+          sessionPath,
+          operation,
+          stage: session.state.stage,
+          agentAddress: session.registration.agentAddress,
+          agentId: operation === "register" ? agentId : null,
+        });
+        return;
       }
     } catch (err) {
       lastPollError = err instanceof Error ? err.message : String(err);
     }
 
-    await new Promise((r) => setTimeout(r, pollMs));
-  }
-
-  if (listenerEnabled) {
-    await new Promise<void>((resolveClose) => {
-      server.close(() => resolveClose());
-    });
-  }
-
-  if (callbackError) {
-    die(
-      `${operation === "register" ? "Registration" : "Deregistration"} failed via browser callback: ${String(callbackError)}`,
+    await new Promise((r) =>
+      setTimeout(r, Math.min(pollMs, Math.max(0, deadline - Date.now()))),
     );
   }
 
-  const completed =
-    operation === "register"
-      ? verified && BigInt(agentId) > 0n
-      : !verified && BigInt(agentId) === 0n;
-  if (!completed) {
-    session.state.stage = Date.now() >= deadline ? "expired" : "failed";
-    session.state.lastError =
-      lastPollError || `Timed out waiting for on-chain ${operation}`;
+  if (Date.now() > new Date(session.expiresAt).getTime()) {
+    session.state.stage = "expired";
+    session.state.lastError = "Session expired";
     saveSession(sessionPath, session);
-    die(
-      `Timed out waiting for on-chain ${operation}. Last poll error: ${lastPollError || "none"}`,
-    );
+    die(`Session expired. Run \`${operation} init\` again.`);
   }
 
-  printJson({
-    ok: true,
-    sessionPath,
-    operation,
-    stage: session.state.stage,
-    agentAddress: session.registration.agentAddress,
-    agentId: operation === "register" ? agentId : null,
-    callbackReceived: callbackSuccess || session.callback.used,
-    callbackListener: listenerEnabled,
-    guardianAddress: session.state.guardianAddress,
+  // A timeout is not an expiry: the session stays usable until expiresAt.
+  session.state.lastError =
+    `Timed out waiting for on-chain ${operation}` +
+    (lastPollError ? ` (last poll error: ${lastPollError})` : "");
+  saveSession(sessionPath, session);
+  die(
+    `Timed out after ${timeoutSeconds}s waiting for on-chain ${operation}. ` +
+      `Last poll error: ${lastPollError || "none"}. The session is still ` +
+      `valid until ${session.expiresAt}; run \`${operation} wait\` again.`,
+    EXIT_TIMEOUT,
+  );
+}
+
+/**
+ * Settle with `promise`, or reject once `deadline` passes.
+ *
+ * @param promise - Work to wait for.
+ * @param deadline - Epoch milliseconds after which to give up.
+ * @returns What `promise` resolves to.
+ * @throws What `promise` rejects with, or a timeout error at the deadline.
+ */
+async function withDeadline<T>(
+  promise: Promise<T>,
+  deadline: number,
+): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error("RPC call did not complete before the timeout")),
+      Math.max(0, deadline - Date.now()),
+    );
   });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
  * Handles the `status` subcommand. Reads the session file and prints its
  * current state as JSON to stdout.
+ *
  * @param flags - Parsed CLI flags (requires --session).
  */
 function commandStatus(flags: FlagMap): void {
@@ -1159,8 +980,6 @@ function commandStatus(flags: FlagMap): void {
     expiresAt: session.expiresAt,
     agentAddress: session.registration.agentAddress,
     agentId: session.state.agentId || null,
-    callbackUrl: callbackUrl(session),
-    callbackUsed: session.callback.used,
     lastError: session.state.lastError || null,
   });
 }
@@ -1169,6 +988,9 @@ function commandStatus(flags: FlagMap): void {
  * Handles the `register export` subcommand. Extracts the generated agent
  * private key from the session and writes it to a file or prints it to stdout.
  * Requires the --unsafe flag as an explicit acknowledgment of key exposure.
+ * The key is local, so export works before registration, but it warns on
+ * stderr and reports `registered: false` until `wait` saw the agent on-chain.
+ *
  * @param flags - Parsed CLI flags (requires --session, --unsafe; optional
  *   --out-key, --print-private-key).
  */
@@ -1179,7 +1001,7 @@ function commandRegisterExport(flags: FlagMap): void {
 
   if (!key)
     die(
-      "No agent private key in this session (self-custody mode has no generated key).",
+      "No agent private key in this session (deregistration sessions have no generated key).",
     );
   if (!flags.unsafe) die("Export blocked. Re-run with --unsafe.");
 
@@ -1198,17 +1020,26 @@ function commandRegisterExport(flags: FlagMap): void {
     printText(key);
   }
 
+  const registered = session.state.stage === "onchain_verified";
+  if (!registered) {
+    process.stderr.write(
+      "Warning: this agent is not registered on-chain yet; run `register wait` first. The key won't verify until then.\n",
+    );
+  }
+
   printJson({
     ok: true,
     sessionPath,
     exportedTo: outKeyPath || null,
     printed: printKey,
+    registered,
   });
 }
 
 /**
  * CLI entry point. Parses argv, dispatches to the appropriate command handler
  * based on the operation (register/deregister) and subcommand (init/open/wait/status/export).
+ * Errors that escape a command are printed and exit with code 1.
  */
 async function main(): Promise<void> {
   const { positionals, flags } = parseFlags(process.argv.slice(2));

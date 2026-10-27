@@ -1,100 +1,33 @@
-# Self Agent ID — Framework Examples
+# Self Agent ID — Examples
 
-Integration examples for using Self Agent ID with popular AI agent frameworks.
-
-## Quick Start
+Runnable TypeScript examples for `@selfxyz/agent-sdk` 0.3.0. MIT licensed.
 
 ```bash
-# TypeScript (reference implementation)
-cd standalone-ts && npm install && ED25519_SEED=<seed> npx tsx agent.ts
-
-# Python (reference implementation)
-cd standalone-py && pip install -r requirements.txt && ED25519_SEED=<seed> python agent.py
+cd minimal-ts && npm install && npm run service   # then, in another terminal: AGENT_PRIVATE_KEY=0x... npm run agent
 ```
 
-## Framework Compatibility
+Until 0.3.0 is on npm, install the SDK from this repo: `cd ../typescript-sdk && npm run build`, then `npm install ../../typescript-sdk` in the example.
 
-| Framework                               | Language   | Key Type | Integration              | Status           |
-| --------------------------------------- | ---------- | -------- | ------------------------ | ---------------- |
-| **Standalone**                          | TypeScript | Ed25519  | Reference implementation | Runtime tested   |
-| **Standalone**                          | Python     | Ed25519  | Reference implementation | Runtime tested   |
-| **[Minimal](minimal-ts/)**              | TypeScript | ECDSA    | Existing reference       | Runtime tested   |
-| **[Minimal](minimal-python/)**          | Python     | ECDSA    | Existing reference       | Runtime tested   |
-| **[OpenClaw](openclaw/)**               | Python     | Ed25519  | Skill handler            | Doc-quality code |
-| **[Eliza](eliza/)**                     | TypeScript | Ed25519  | Plugin                   | Doc-quality code |
-| **[LangChain](langchain/)**             | Python     | Ed25519  | Custom tools             | Doc-quality code |
-| **[CrewAI](crewai/)**                   | Python     | Ed25519  | Custom tools             | Doc-quality code |
-| **[AutoGen](autogen/)**                 | Python     | Ed25519  | Function tools           | Doc-quality code |
-| **[LangChain Agent](langchain-agent/)** | Python     | ECDSA    | Full agent               | Production       |
+| Example                         | Key     | Shows                                                     | Status           |
+| ------------------------------- | ------- | --------------------------------------------------------- | ---------------- |
+| [minimal-ts](minimal-ts/)       | ECDSA   | `SelfAgent` signing + Express `verifier.auth()` service   | Runtime tested   |
+| [standalone-ts](standalone-ts/) | Ed25519 | Keygen, `ed25519` registration over REST, signed requests | Runtime tested   |
+| [eliza](eliza/)                 | Ed25519 | Eliza plugin that reuses the agent's Solana key           | Doc-quality code |
 
-## Architecture
+## Ed25519 or ECDSA?
 
-```
-┌─────────────────┐     ┌──────────────────┐     ┌────────────────────┐
-│  Agent Framework │     │  Self Agent SDK   │     │  Self Agent        │
-│  (CrewAI, etc.)  │────▶│  Ed25519Agent     │────▶│  Registry (ERC-8004)│
-│                  │     │  SelfAgent        │     │  on Celo           │
-└─────────────────┘     └──────────────────┘     └────────────────────┘
-        │                        │                        │
-        │ tool call              │ sign request            │ isVerifiedAgent()
-        ▼                        ▼                        ▼
-   ┌─────────┐           ┌──────────────┐        ┌──────────────┐
-   │  LLM    │           │  HTTP Request │        │  Human Proof │
-   │         │           │  + Ed25519    │        │  (ZK, NFC)   │
-   └─────────┘           │  Signature    │        └──────────────┘
-                         └──────────────┘
-```
+| Aspect              | ECDSA (`SelfAgent`)                             | Ed25519 (`Ed25519Agent`)    |
+| ------------------- | ----------------------------------------------- | --------------------------- |
+| Fits                | Ethereum / EVM agents                           | Solana, SSH, Eliza, non-EVM |
+| Key format          | `0x` + 64 hex                                   | 64 hex (32-byte seed)       |
+| Registration modes  | `linked`, `wallet-free`, `privy`, `smartwallet` | `ed25519`, `ed25519-linked` |
+| Who holds the key   | API generates it; you export it once            | You; nothing to export      |
+| On-chain verify gas | ~3K                                             | ~456K                       |
 
-## Ed25519 vs ECDSA
+Both send the same signed headers (Ed25519 adds `x-self-agent-keytype` and `x-self-agent-key`); `SelfAgentVerifier` checks both.
 
-| Feature             | Ed25519                    | ECDSA (secp256k1)              |
-| ------------------- | -------------------------- | ------------------------------ |
-| Key generation      | `crypto.randomBytes(32)`   | `ethers.Wallet.createRandom()` |
-| Ecosystem           | Python, Rust, Solana, SSH  | Ethereum, EVM chains           |
-| On-chain verify gas | ~456K                      | ~3K                            |
-| SDK class           | `Ed25519Agent`             | `SelfAgent`                    |
-| Key format          | 64 hex chars (no 0x)       | 0x-prefixed 66 hex chars       |
-| Registration        | Ed25519 challenge-response | EIP-712 or wallet-free         |
+## Gotchas
 
-Both key types produce identical HTTP headers and are verified transparently by `SelfAgentVerifier`.
-
-## Registration Flow
-
-1. Generate keypair (Ed25519 seed or Ethereum private key)
-2. Call registration API (challenge → sign → submit)
-3. Scan QR code with Self app (proves you're human via NFC passport)
-4. Agent is registered on-chain with soulbound NFT
-5. Agent can now make authenticated requests
-
-## Common Patterns
-
-### Agent-side (making requests)
-
-```python
-agent = Ed25519Agent(private_key=seed, network="testnet")
-res = agent.fetch("https://api.example.com/data", method="POST", body='{"key": "value"}')
-```
-
-### Service-side (verifying requests)
-
-```python
-verifier = SelfAgentVerifier.create().network("testnet").require_age(18).build()
-result = verifier.verify(signature=sig, timestamp=ts, method="POST", url=url, body=body)
-```
-
-## Directory Structure
-
-```
-examples/
-├── README.md                    # This file
-├── standalone-ts/               # TypeScript Ed25519 reference
-├── standalone-py/               # Python Ed25519 reference
-├── minimal-ts/                  # TypeScript ECDSA reference (existing)
-├── minimal-python/              # Python ECDSA reference (existing)
-├── openclaw/                    # OpenClaw skill
-├── eliza/                       # Eliza (ai16z) plugin
-├── langchain/                   # LangChain custom tools
-├── langchain-agent/             # LangChain full agent (existing)
-├── crewai/                      # CrewAI agent
-└── autogen/                     # Microsoft AutoGen agent
-```
+- `isRegistered()` only means a proof was recorded. Use `getInfo().isVerified` (`hasHumanProof && isProofFresh`), which is what verifiers require. Renew with `requestProofRefresh()`.
+- `verifier.auth()` verifies the exact body bytes: keep them as `req.rawBody` via `express.json({ verify })` (see `minimal-ts/service.ts`). Without them, requests with a body get a 500.
+- Use the same network (`testnet` / `mainnet`) on the agent and the verifier.
