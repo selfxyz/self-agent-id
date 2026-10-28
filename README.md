@@ -75,6 +75,7 @@ Prefer a shell? `npx self-agent register init --mode linked --human-address 0x..
 | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`app/`](app/README.md)                       | API service (Next.js route handlers, no UI): REST, A2A, MCP, discovery                                                                                         |
 | [`typescript-sdk/`](typescript-sdk/README.md) | `@selfxyz/agent-sdk`: signing, verification, registration, `self-agent` CLI                                                                                    |
+| [`mcp/`](mcp/README.md)                       | `@selfxyz/mcp-server`: local stdio MCP server that signs with your own agent key                                                                               |
 | [`contracts/`](contracts/README.md)           | Solidity registry and helpers (Foundry); deployed addresses                                                                                                    |
 | [`docs/api-docs.md`](docs/api-docs.md)        | Full REST reference (machine-readable: [`openapi.yaml`](openapi.yaml))                                                                                         |
 | [`plugin/`](plugin/README.md)                 | Claude Code plugin: 6 skills + the hosted MCP server                                                                                                           |
@@ -146,7 +147,7 @@ Base URL `https://agent-api.self.xyz`. Full route table: [app/README.md](app/REA
 | Agent protocols | `/api/a2a` (A2A v0.3.0 JSON-RPC), `/api/mcp` (MCP Streamable HTTP)                                                 | None (MCP privileged tools: API key) |
 | Discovery       | `/api/agent-discovery`, `/api/agent/bootstrap`, `/.well-known/*`, `/agents.json`, `/llms.txt`                      | None                                 |
 
-**MCP** (Claude Code, Cursor, Windsurf, Codex, …): add `{ "mcpServers": { "self-agent-id": { "url": "https://agent-api.self.xyz/api/mcp" } } }`. Tool list: [plugin/README.md](plugin/README.md#mcp-tools).
+**MCP** (Claude Code, Cursor, Windsurf, Codex, …): add `{ "mcpServers": { "self-agent-id": { "url": "https://agent-api.self.xyz/api/mcp" } } }`. Tool list: [plugin/README.md](plugin/README.md#mcp-tools). To sign as your own agent, run [`@selfxyz/mcp-server`](mcp/README.md) locally instead.
 
 ## Security
 

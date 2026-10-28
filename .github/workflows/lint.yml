@@ -30,6 +30,10 @@ jobs:
         run: npm ci
         working-directory: typescript-sdk
 
+      - name: Install MCP server dependencies
+        run: npm ci
+        working-directory: mcp
+
       - name: Check formatting
         run: npx prettier --check .
 
@@ -43,3 +47,7 @@ jobs:
       - name: Test TypeScript SDK
         run: npm test
         working-directory: typescript-sdk
+
+      - name: Type-check and test MCP server
+        run: npm run lint && npm test
+        working-directory: mcp

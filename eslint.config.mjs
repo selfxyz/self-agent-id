@@ -76,7 +76,7 @@ export default tseslint.config(
 
   // Test file overrides — relax strict rules
   {
-    files: ["**/*.test.ts", "**/*.spec.ts"],
+    files: ["**/*.test.ts", "**/*.spec.ts", "**/src/test/**/*.ts"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unsafe-assignment": "off",

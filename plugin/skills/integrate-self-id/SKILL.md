@@ -198,11 +198,15 @@ Add to `.cursor/mcp.json`:
 | Privileged | `self_sign_request`          | Auth headers signed as the server's agent                     |
 | Privileged | `self_authenticated_fetch`   | Signed HTTP request as the server's agent                     |
 
-Privileged tools need `Authorization: Bearer <key>` matching the server's `MCP_PRIVILEGED_API_KEY(S)`, and the server's own `SELF_AGENT_PRIVATE_KEY`. The shared hosted deployment has no agent key, so these tools are only useful on a deployment you run yourself (configure it via `app/.env.example`: `SELF_AGENT_PRIVATE_KEY`, `SELF_AGENT_NETWORK` = `mainnet` (default) or `testnet`, `MCP_PRIVILEGED_API_KEY`). To sign with your own key in your own process, use the SDK.
+Privileged tools need `Authorization: Bearer <key>` matching the server's `MCP_PRIVILEGED_API_KEY(S)`, and the server's own `SELF_AGENT_PRIVATE_KEY`. The shared hosted deployment has no agent key, so these tools are only useful on a deployment you run yourself (configure it via `app/.env.example`: `SELF_AGENT_PRIVATE_KEY`, `SELF_AGENT_NETWORK` = `mainnet` (default) or `testnet`, `MCP_PRIVILEGED_API_KEY`). To sign with your own key, use the local stdio server below or the SDK.
 
-### Legacy stdio package
+### Local stdio server (your own key)
 
-`npx @selfxyz/mcp-server` (0.2.0, configured with `SELF_AGENT_PRIVATE_KEY`, `SELF_NETWORK` (default `testnet`) and `SELF_AGENT_API_BASE`) signs locally with your own key, but it is out of step with the current API: with `@selfxyz/agent-sdk` 0.2.1 (the current npm release) it polls session status with `?token=` query parameters, which the API now rejects (Bearer only), and the `qr_url` it returns points at a `/qr/<sessionToken>` route that does not exist. Use the hosted server for registration until a new stdio release is published.
+`@selfxyz/mcp-server` ([`mcp/`](../../../mcp/README.md)) runs the same 10 tools over stdio on your machine. With `SELF_AGENT_PRIVATE_KEY` set, the agent tools sign as your agent; the key never leaves the process. Configure with `SELF_AGENT_NETWORK` (`mainnet` default, or `testnet`), `SELF_RPC_URL` and `SELF_AGENT_API_BASE` (default `https://agent-api.self.xyz`).
+
+```bash
+claude mcp add self-agent-id -e SELF_AGENT_NETWORK=testnet -e SELF_AGENT_PRIVATE_KEY=0x... -- npx -y @selfxyz/mcp-server
+```
 
 ---
 
