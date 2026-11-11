@@ -167,7 +167,7 @@ The following demonstrates the signing algorithm step by step. This is not a pra
 # Step 1: Set variables
 PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 AGENT_ADDRESS="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
-TIMESTAMP=$(date +%s%3N)  # milliseconds since epoch
+TIMESTAMP=$(( $(date +%s) * 1000 ))  # milliseconds since epoch (portable; GNU date also has +%s%3N)
 METHOD="POST"
 URL="https://api.example.com/data"
 BODY='{"key":"value"}'
@@ -202,7 +202,7 @@ Note: The `cast` commands above use Foundry's cast CLI. The `cast keccak` comman
 
 ## MCP Tool Examples
 
-These tools are **privileged** on the hosted MCP server: they sign as the server's own configured agent and need `Authorization: Bearer <MCP_PRIVILEGED_API_KEY>`, so they apply to a deployment you run yourself with `SELF_AGENT_PRIVATE_KEY` set.
+These tools sign as the MCP server's configured agent (`SELF_AGENT_PRIVATE_KEY`). On the hosted server they are **privileged** (`Authorization: Bearer <MCP_PRIVILEGED_API_KEY>`); to sign as your own agent, run `npx -y @selfxyz/mcp-server` locally with `SELF_AGENT_PRIVATE_KEY` set.
 
 ### self_sign_request
 

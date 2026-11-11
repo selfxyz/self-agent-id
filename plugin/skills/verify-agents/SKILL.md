@@ -267,12 +267,13 @@ app.get("/api/profile", (req, res) => {
 
 ```typescript
 const result = await verifier.verify({
-  signature: req.headers["x-self-agent-signature"],
-  timestamp: req.headers["x-self-agent-timestamp"],
+  signature: req.headers["x-self-agent-signature"] as string,
+  timestamp: req.headers["x-self-agent-timestamp"] as string,
   method: req.method,
   url: req.originalUrl, // path + query, as signed
   body: rawBody, // the exact bytes received — not JSON.stringify(req.body)
-  // Ed25519 agents: keytype: req.headers["x-self-agent-keytype"], agentKey: req.headers["x-self-agent-key"]
+  keytype: req.headers["x-self-agent-keytype"] as string | undefined, // "ed25519" for Ed25519 agents
+  agentKey: req.headers["x-self-agent-key"] as string | undefined, // Ed25519 public key
 });
 
 if (result.valid) {
@@ -313,15 +314,15 @@ Each check short-circuits on failure, returning `{ valid: false, error: "..." }`
 
 ## Troubleshooting
 
-| Symptom                                                | Cause                                         | Resolution                                                                                                                                        |
-| ------------------------------------------------------ | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Verification returns "Wrong provider"                  | Agent was verified by a non-Self provider     | Confirm the agent registered through Self Protocol. Check `getProofProvider(agentId)` against the known Self provider address.                    |
-| Verification returns "No human proof"                  | Agent is registered but has no active proof   | The agent may have been deregistered or the proof revoked. Re-register the agent.                                                                 |
-| Verification returns "Agent's human proof has expired" | `proofExpiresAt` has passed                   | Ask the human to refresh the proof in place (`requestProofRefresh` / `POST /api/agent/refresh`); deregister + re-register if refresh returns 422. |
-| `SelfFreshnessChecker.isValidAgent` returns false      | Registered more blocks ago than the threshold | Default window is 6,307,200 blocks (≈73 days). Refresh does not reset `agentRegisteredAt`; re-register or raise the threshold on your deployment. |
-| Middleware rejects all requests with 401               | Missing headers or a re-serialized body       | Verify the middleware sees `x-self-agent-signature` and `x-self-agent-timestamp` (case-insensitive) and the raw body bytes the agent signed.      |
-| Sybil check fails unexpectedly                         | `sybilLimit` set too low                      | If the human legitimately has multiple agents, increase the `sybilLimit()` value in the verifier config.                                          |
-| RPC errors during on-chain verification                | Wrong network or RPC endpoint                 | Ensure the verifier's `network` matches the network the agent registered on. Check RPC URL connectivity.                                          |
+| Symptom                                                                         | Cause                                         | Resolution                                                                                                                                        |
+| ------------------------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Verification returns "Agent was not verified by Self — proof provider mismatch" | Agent was verified by a non-Self provider     | Confirm the agent registered through Self Protocol. Check `getProofProvider(agentId)` against the known Self provider address.                    |
+| Verification returns "Agent not verified on-chain"                              | The signing key has no active human proof     | The key is not registered, or the agent was deregistered / its proof revoked. Check the network, or register the agent.                           |
+| Verification returns "Agent's human proof has expired"                          | `proofExpiresAt` has passed                   | Ask the human to refresh the proof in place (`requestProofRefresh` / `POST /api/agent/refresh`); deregister + re-register if refresh returns 422. |
+| `SelfFreshnessChecker.isValidAgent` returns false                               | Registered more blocks ago than the threshold | Default window is 6,307,200 blocks (≈73 days). Refresh does not reset `agentRegisteredAt`; re-register or raise the threshold on your deployment. |
+| Middleware rejects all requests with 401                                        | Missing headers or a re-serialized body       | Verify the middleware sees `x-self-agent-signature` and `x-self-agent-timestamp` (case-insensitive) and the raw body bytes the agent signed.      |
+| Sybil check fails unexpectedly                                                  | `sybilLimit` set too low                      | If the human legitimately has multiple agents, increase the `sybilLimit()` value in the verifier config.                                          |
+| RPC errors during on-chain verification                                         | Wrong network or RPC endpoint                 | Ensure the verifier's `network` matches the network the agent registered on. Check RPC URL connectivity.                                          |
 
 ## Reference Documentation
 

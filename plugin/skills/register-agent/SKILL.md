@@ -20,7 +20,7 @@ metadata:
 
 Before starting the registration flow, ensure the following are in place:
 
-- **Self app** installed on a smartphone (iOS or Android). Download from [selfcrypto.com](https://selfcrypto.com). The app generates ZK proofs locally and communicates with the on-chain Hub V2 contract.
+- **Self app** installed on a smartphone (iOS or Android). Download from [self.xyz](https://self.xyz). The app generates ZK proofs locally and communicates with the on-chain Hub V2 contract.
 - **Passport with NFC chip** — required for biometric identity verification. The Self app reads the passport's NFC chip to extract identity data, then generates a zero-knowledge proof entirely on-device.
 - **No gas or wallet setup for the agent** — the Self app submits the proof to Hub V2 and the registry mints the identity; the agent itself never sends a transaction to register. Testnet (Celo Sepolia, chain 11142220) is the place to try things first.
 - **A human wallet address (optional)** — `linked`, `ed25519-linked`, `privy` and `smartwallet` modes take the human's wallet address (`humanAddress`), which owns or guards the agent. `wallet-free` and `ed25519` need no wallet.
@@ -59,7 +59,7 @@ The entire flow typically takes 30-90 seconds from QR scan to NFT mint. The regi
 
 For most production use cases, choose **linked** (ECDSA) or **ed25519-linked** (Ed25519). Both give the agent its own signing key while a human wallet keeps control over the identity.
 
-The CLI (`self-agent register init`) supports only `--mode linked` and `--mode wallet-free`; use the SDK or REST API for the other modes.
+The CLI (`npx -p @selfxyz/agent-sdk self-agent register init ...`; a bare `npx self-agent` does not resolve) supports only `--mode linked` and `--mode wallet-free`; use the SDK or REST API for the other modes.
 
 For a detailed technical comparison, including userDefinedData encoding formats and a decision tree, see [`references/registration-modes.md`](references/registration-modes.md).
 
@@ -120,7 +120,7 @@ Call the public `self_check_registration` tool with:
 Poll every 5-10 seconds. The tool returns:
 
 ```
-stage:          "qr-ready" | "completed" | "expired"
+stage:          "qr-ready" | "completed" | "expired" | "failed"
 session_token:  rotated token for the next call
 agent_id, agent_address, credentials, export_expires_at   (when completed)
 ```
@@ -143,7 +143,7 @@ Add to `.env` and ensure `.env` is listed in `.gitignore`. See the Private Key S
 
 Call the public `self_lookup_agent` tool with the `agent_id` (or `agent_address`) from Step 3 and the same `network`. It returns verification status, proof provider, proof expiry and disclosed credentials.
 
-(`self_get_identity` is a privileged tool that reports on the MCP **server's** own configured agent; it does not look up the agent you just registered.)
+(`self_get_identity` reports on the MCP **server's** own configured agent — privileged on the hosted server; on a local `@selfxyz/mcp-server` it is the agent whose key you set as `SELF_AGENT_PRIVATE_KEY`. It does not look up an arbitrary agent.)
 
 ## Step-by-Step Registration Using SDK
 
@@ -333,15 +333,15 @@ The SDK includes a 30-day warning threshold (`isExpiringSoon` on `getInfo()`). C
 
 ## Troubleshooting
 
-| Symptom                        | Cause                                        | Resolution                                                                                                           |
-| ------------------------------ | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| QR code not scanning           | Self app outdated                            | Update the Self app to the latest version                                                                            |
-| NFC scan fails                 | Phone NFC disabled or passport not supported | Enable NFC in phone settings; ensure passport has an NFC chip (look for the chip icon on the bio page)               |
-| Stage stays "qr-ready"         | Human has not completed the Self app flow    | Wait for the human to scan passport; check Self app for errors. A proof rejected on-chain also leaves the stage here |
-| Stage is "expired" / 410       | 30-minute session timeout elapsed            | Start a new registration session                                                                                     |
-| 401 on status/export           | Stale or missing session token               | Send `Authorization: Bearer <token>` with the newest rotated `sessionToken`                                          |
-| `TooManyAgentsForHuman` error  | Sybil limit reached                          | The same human has already registered the maximum number of agents (default: 1). Deregister an existing agent first. |
-| `AgentAlreadyRegistered` error | Agent key already has a registration         | The agent address is already registered. Use a different keypair or deregister the existing agent.                   |
+| Symptom                        | Cause                                        | Resolution                                                                                                                                         |
+| ------------------------------ | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| QR code not scanning           | Self app outdated                            | Update the Self app to the latest version                                                                                                          |
+| NFC scan fails                 | Phone NFC disabled or passport not supported | Enable NFC in phone settings; ensure passport has an NFC chip (look for the chip icon on the bio page)                                             |
+| Stage stays "qr-ready"         | Human has not completed the Self app flow    | Wait for the human to scan passport; check Self app for errors. A proof rejected on-chain also leaves the stage here                               |
+| Stage is "expired" / 410       | 30-minute session timeout elapsed            | Start a new registration session                                                                                                                   |
+| 401 on status/export           | Stale or missing session token               | Send `Authorization: Bearer <token>` with the newest rotated `sessionToken`                                                                        |
+| `TooManyAgentsForHuman` error  | Sybil limit reached                          | The same human has already registered the maximum number of agents (10 on mainnet; unlimited on Celo Sepolia). Deregister an existing agent first. |
+| `AgentAlreadyRegistered` error | Agent key already has a registration         | The agent address is already registered. Use a different keypair or deregister the existing agent.                                                 |
 
 ## Reference Documentation
 

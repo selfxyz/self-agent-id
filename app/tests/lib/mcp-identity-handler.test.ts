@@ -260,7 +260,7 @@ describe("mcp identity handlers", () => {
       expect(selfAgentCtorMock).toHaveBeenLastCalledWith(
         expect.objectContaining({
           network: "mainnet",
-          rpcUrl: "https://mainnet-rpc.example",
+          rpcUrl: "https://forno.celo.org", // app server RPC; Forno while RPC_CELO is unset
         }),
       );
       // Verified requires a fresh proof; big nullifiers keep full precision.

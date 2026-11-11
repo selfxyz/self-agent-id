@@ -135,17 +135,17 @@ const creds = await agent.getCredentials(); // registry struct, or undefined if 
 
 **AgentCredentials** (the registry's `getAgentCredentials` struct):
 
-| Field          | Type         | Description                                              |
-| -------------- | ------------ | -------------------------------------------------------- |
-| `issuingState` | `string`     | Passport issuing state (alpha-3, if disclosed)           |
-| `name`         | `string[]`   | Full name components (if disclosed)                      |
-| `idNumber`     | `string`     | Document number (if disclosed)                           |
-| `nationality`  | `string`     | ISO 3166-1 alpha-3 (e.g., "USA", "GBR"), if disclosed    |
-| `dateOfBirth`  | `string`     | Date of birth (if disclosed)                             |
-| `gender`       | `string`     | Gender (if disclosed)                                    |
-| `expiryDate`   | `string`     | Passport expiry (if disclosed)                           |
-| `olderThan`    | `number`     | Verified age threshold (0, 18, or 21)                    |
-| `ofac`         | `boolean[3]` | Individual OFAC list results [SDN, nonSDN, consolidated] |
+| Field          | Type         | Description                                           |
+| -------------- | ------------ | ----------------------------------------------------- |
+| `issuingState` | `string`     | Passport issuing state (alpha-3, if disclosed)        |
+| `name`         | `string[]`   | Full name components (if disclosed)                   |
+| `idNumber`     | `string`     | Document number (if disclosed)                        |
+| `nationality`  | `string`     | ISO 3166-1 alpha-3 (e.g., "USA", "GBR"), if disclosed |
+| `dateOfBirth`  | `string`     | Date of birth (if disclosed)                          |
+| `gender`       | `string`     | Gender (if disclosed)                                 |
+| `expiryDate`   | `string`     | Passport expiry (if disclosed)                        |
+| `olderThan`    | `bigint`     | Verified age threshold (0, 18, or 21)                 |
+| `ofac`         | `boolean[3]` | OFAC checks passed [passport no., name+DOB, name+YOB] |
 
 ---
 
@@ -389,7 +389,8 @@ import {
 } from "@selfxyz/agent-sdk";
 // EXPIRY_WARNING_THRESHOLD_SECS = 2_592_000 (30 days)
 
-if (isProofExpiringSoon(proofExpiresAt)) {
+// info.isExpiringSoon gives the same answer; the helper takes a Date
+if (isProofExpiringSoon(new Date(Number(info.proofExpiresAt) * 1000))) {
   console.warn("Proof expires within 30 days — prompt human to re-verify");
 }
 ```

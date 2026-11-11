@@ -1,12 +1,13 @@
 <p align="center">
-  <img src=".github/banner.svg" alt="Self Agent ID: proof-of-human identity for AI agents" width="100%">
+  <img src=".github/banner.svg" alt="Self Agent ID: proof of human for AI agents" width="100%">
 </p>
 
 <p align="center">
   <a href="#quick-start-5-min"><b>Quick start</b></a> ·
   <a href="https://docs.self.xyz/docs/agent-id/overview/"><b>Docs</b></a> ·
   <a href="docs/EIP_DRAFT_PROOF_OF_HUMAN.md"><b>EIP</b></a> ·
-  <a href="openapi.yaml"><b>API</b></a> ·
+  <a href="https://www.postman.com/self-labs/self-agent-id/overview"><b>Postman</b></a> ·
+  <a href="openapi.yaml"><b>API spec</b></a> ·
   <a href="https://www.npmjs.com/package/@selfxyz/agent-sdk"><b>npm</b></a>
 </p>
 
@@ -21,7 +22,7 @@ A human scans their passport once with the Self app. Their AI agent gets a soulb
 
 ## Quick start (~5 min)
 
-Needs Node 20+ and the Self app with a passport or ID card.
+Needs Node 18+ and the Self app with a passport or ID card.
 
 **1. Register** (~3 min, mostly the scan):
 
@@ -35,7 +36,7 @@ const session = await requestRegistration({
 });
 console.log(session.deepLink); // open on your phone
 const { agentId } = await session.waitForCompletion();
-const privateKey = await session.exportKey(); // once
+const privateKey = await session.exportKey(); // within 30 min of completion
 ```
 
 **2. Sign** (agent side):
@@ -71,16 +72,19 @@ app.use("/api", verifier.auth()); // sets req.agent
 
 Done when your service answers `200` with `req.agent.agentId` set.
 
-**No code?** CLI: `npx -p @selfxyz/agent-sdk self-agent register init --mode wallet-free --minimum-age 18 --out s.json`, then `register open`, `wait`, `export` ([CLI docs](https://docs.self.xyz/docs/agent-id/cli/)). Or import [openapi.yaml](openapi.yaml) into Postman / Insomnia / Hoppscotch and try agent `5` on chain `11142220`.
+**No code?**
+
+- **CLI:** `npx -p @selfxyz/agent-sdk self-agent register init --mode wallet-free --minimum-age 18 --out s.json`, then `register open`, `wait`, `export --unsafe --print-private-key` ([CLI docs](https://docs.self.xyz/docs/agent-id/cli/))
+- **Postman:** fork the [Self Agent ID workspace](https://www.postman.com/self-labs/self-agent-id/overview); defaults hit verified agent `5` on Celo Sepolia
 
 ## Common errors
 
-| Error                                | Fix                                                                |
-| ------------------------------------ | ------------------------------------------------------------------ |
-| `Human has N agents (max 1)`         | Verifier default is 1 agent per human: `.sybilLimit(0)` = no limit |
-| `Agent not verified on-chain`        | Wrong network, or body changed after signing: verify `req.rawBody` |
-| `does not meet minimum age (got: 0)` | Register with the disclosures the verifier requires                |
-| `429` + `Retry-After`                | Per-IP limit (10 session starts/min, shared on the same Wi-Fi)     |
+| Error                                | Fix                                                                                                      |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `Human has N agents (max 1)`         | Verifier default is 1 agent per human: `.sybilLimit(0)` = no limit                                       |
+| `Agent not verified on-chain`        | Wrong network, or body changed after signing: verify `req.rawBody`                                       |
+| `does not meet minimum age (got: 0)` | Agent has no age disclosure (e.g. demo agent `5`): register with `minimumAge: 18`, or drop `.requireAge` |
+| `429` + `Retry-After`                | Per-IP limit, shared by everyone on the same Wi-Fi: wait `retryAfterMs`                                  |
 
 More: [troubleshooting](https://docs.self.xyz/docs/agent-id/troubleshooting/).
 

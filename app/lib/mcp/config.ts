@@ -6,13 +6,14 @@
  * Per-request MCP server config, read from environment variables.
  *
  * SELF_AGENT_NETWORK picks mainnet (default) or testnet; SELF_RPC_URL
- * overrides that network's RPC; SELF_AGENT_API_BASE sends REST calls to
- * another deployment instead of in-process.
+ * overrides that network's RPC (otherwise the app's server RPC from
+ * RPC_CELO / RPC_CELO_SEPOLIA, falling back to Forno); SELF_AGENT_API_BASE
+ * sends REST calls to another deployment instead of in-process.
  */
 
 import { NETWORKS } from "@selfxyz/agent-sdk";
 import type { NetworkName } from "@selfxyz/agent-sdk";
-import { trimTrailingSlashes } from "@/lib/agent-api-helpers";
+import { getNetworkConfig, trimTrailingSlashes } from "@/lib/agent-api-helpers";
 
 /** Config every MCP tool handler receives. */
 export interface McpConfig {
@@ -55,7 +56,7 @@ export function loadMcpConfig(
   return {
     privateKey: process.env.SELF_AGENT_PRIVATE_KEY || undefined,
     network,
-    rpcUrl: process.env.SELF_RPC_URL || networkConfig.rpcUrl,
+    rpcUrl: process.env.SELF_RPC_URL || getNetworkConfig(network).rpcUrl,
     registryAddress: networkConfig.registryAddress,
     appUrl: appBaseUrl,
     ...(remote ? { apiUrl: remote } : {}),
@@ -67,12 +68,14 @@ export function loadMcpConfig(
  * Pick the RPC URL for a network.
  *
  * SELF_RPC_URL only applies to the configured network; any other network
- * uses the SDK default.
+ * uses the app's server RPC for it.
  *
  * @param config - The request's MCP config.
  * @param network - Network to get an RPC URL for.
  * @returns The RPC URL.
  */
 export function rpcUrlFor(config: McpConfig, network: NetworkName): string {
-  return network === config.network ? config.rpcUrl : NETWORKS[network].rpcUrl;
+  return network === config.network
+    ? config.rpcUrl
+    : getNetworkConfig(network).rpcUrl;
 }

@@ -73,7 +73,7 @@ app.get("/api/profile", (req: Request, res: Response) => {
     address: agent.address,
     nationality: agent.credentials?.nationality,
     olderThan: Number(agent.credentials?.olderThan ?? 0),
-    ofacClear: agent.credentials?.ofac.every(Boolean),
+    ofacClear: agent.credentials?.ofac[0], // the flag requireOFAC() checks
     agentCount: agent.agentCount.toString(),
   });
 });
@@ -201,6 +201,8 @@ const agentAuth = async (c: any, next: any) => {
     method: c.req.method,
     url: c.req.url, // full URL; path + query is what gets signed
     body: body || undefined,
+    keytype: c.req.header("x-self-agent-keytype"), // Ed25519 agents
+    agentKey: c.req.header("x-self-agent-key"),
   });
 
   if (!result.valid) {
@@ -300,6 +302,8 @@ export async function GET(req: NextRequest) {
     timestamp,
     method: "GET",
     url: req.url,
+    keytype: req.headers.get("x-self-agent-keytype") ?? undefined, // Ed25519 agents
+    agentKey: req.headers.get("x-self-agent-key") ?? undefined,
   });
 
   if (!result.valid) {
@@ -336,6 +340,8 @@ export async function POST(req: NextRequest) {
     method: "POST",
     url: req.url,
     body,
+    keytype: req.headers.get("x-self-agent-keytype") ?? undefined, // Ed25519 agents
+    agentKey: req.headers.get("x-self-agent-key") ?? undefined,
   });
 
   if (!result.valid) {
@@ -397,6 +403,8 @@ export async function verifyAgent(
     method,
     url: path,
     body,
+    keytype: req.headers.get("x-self-agent-keytype") ?? undefined, // Ed25519 agents
+    agentKey: req.headers.get("x-self-agent-key") ?? undefined,
   });
 
   if (!result.valid) {
@@ -510,7 +518,7 @@ contract MyAgentGatedService {
         ISelfAgentRegistry.AgentCredentials memory creds = registry.getAgentCredentials(agentId);
         if (creds.olderThan < minAge) revert AgeRequirementNotMet(creds.olderThan, minAge);
         if (requireOFACCheck) {
-            if (!creds.ofac[0] || !creds.ofac[1] || !creds.ofac[2]) revert OFACCheckFailed();
+            if (!creds.ofac[0]) revert OFACCheckFailed(); // same flag as the SDK
         }
 
         // 4. Sybil check
@@ -577,7 +585,7 @@ forge create src/MyAgentGatedService.sol:MyAgentGatedService \
 forge verify-contract \
   --chain-id 42220 \
   --verifier blockscout \
-  --verifier-url "https://explorer.celo.org/api" \
+  --verifier-url "https://celo.blockscout.com/api/" \
   <DEPLOYED_ADDRESS> \
   src/MyAgentGatedService.sol:MyAgentGatedService
 ```
@@ -600,7 +608,7 @@ All frameworks should return consistent error responses for verification failure
 ```json
 {
   "error": "Agent verification failed",
-  "reason": "Proof provider is not Self Protocol"
+  "reason": "Agent was not verified by Self — proof provider mismatch"
 }
 ```
 
@@ -621,7 +629,8 @@ try {
   const result = await verifier.verify(/* ... */);
   // handle result
 } catch (err) {
-  if (err.message.includes("TIMEOUT") || err.message.includes("ECONNREFUSED")) {
+  const message = err instanceof Error ? err.message : String(err);
+  if (message.includes("TIMEOUT") || message.includes("ECONNREFUSED")) {
     return res.status(503).json({
       error: "Verification service temporarily unavailable",
       detail: "On-chain verification could not be completed. Try again.",

@@ -52,7 +52,7 @@ Self Agent ID is a multi-layer system spanning smart contracts, a REST API, a Ty
 
 ## Smart Contract Architecture
 
-All contracts are written in Solidity 0.8.28, compiled with `--evm-version cancun` (Hub V2 uses PUSH0), and deployed via Foundry.
+All contracts are written in Solidity 0.8.28 and deployed via Foundry (deployed bytecode uses the `foundry.toml` default `paris`; tests and the Hub V2 fork need `--evm-version cancun`).
 
 ### SelfAgentRegistry
 
@@ -70,7 +70,7 @@ The core contract (UUPS proxy). Inherits from:
 - Support the registration actions `R` (simple), `K` (advanced, used by the `linked` / `privy` / `smartwallet` API modes), `W` (wallet-free), `E` (Ed25519), `F` (in-place proof refresh) and `I` (identify)
 - Store ZK-attested credentials (nationality, age, OFAC status) on-chain
 - Manage 6 verification configs (age 0/18/21 x OFAC on/off)
-- Enforce sybil limits (max agents per human, default 1)
+- Enforce sybil limits (max agents per human: initial 1; deployed 10 on mainnet, 0 = unlimited on Sepolia)
 - Provide agent key <-> agent ID mappings
 - Guardian revocation for compromised agents
 - Self-deregistration by NFT owner
@@ -454,6 +454,6 @@ The service has no HTML UI.
 ### Important Network Notes
 
 - Celo Sepolia chain ID is **11142220** (NOT 44787, which was the deprecated Alfajores testnet)
-- Use `--evm-version cancun` when compiling with Foundry (Hub V2 uses PUSH0 opcode)
+- Foundry: tests and the Hub V2 fork need `--evm-version cancun` (PUSH0); the deployed bytecode was built with the `foundry.toml` default (`paris`)
 - Celoscan contract verification: use the Sourcify verifier (the Etherscan-style API endpoint is unreliable)
 - Blockscout does not require an API key for contract verification
