@@ -169,6 +169,24 @@ describe("discovery routes", () => {
     expect(discovery.GET(req).headers.get("vary")).toBe("Accept");
   });
 
+  it("never publishes server-side RPC URLs (new or legacy env names)", async () => {
+    vi.stubEnv("RPC_CELO", "https://celo-mainnet.example/v2/SECRET_MAIN");
+    vi.stubEnv(
+      "NEXT_PUBLIC_RPC_CELO_SEPOLIA",
+      "https://celo-sepolia.example/v2/SECRET_TEST",
+    );
+    const { NETWORKS } = await import("@/lib/network");
+    expect(NETWORKS["celo-mainnet"].rpcUrl).toContain("SECRET_MAIN");
+    expect(NETWORKS["celo-sepolia"].rpcUrl).toContain("SECRET_TEST");
+
+    const d = await import("@/lib/agent-discovery");
+    const published =
+      JSON.stringify(d.getAgentDiscoveryJSON()) + d.getAgentDiscoveryText();
+    expect(published).not.toContain("SECRET");
+    expect(published).toContain("https://forno.celo.org");
+    expect(published).toContain("https://forno.celo-sepolia.celo-testnet.org");
+  });
+
   it("/.well-known/self-agent-id.json serves the discovery JSON", async () => {
     vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://agent-api.self.xyz");
     const { GET } = await import("@/app/.well-known/self-agent-id.json/route");
