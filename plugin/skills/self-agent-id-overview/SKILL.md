@@ -84,7 +84,7 @@ Passport data never leaves the user's phone. The Self mobile app reads the passp
 
 ### Nullifier-Based Sybil Resistance
 
-Each human produces a deterministic nullifier scoped to the registry. The same human scanning the same passport against the same registry scope always produces the same nullifier. This enables sybil detection: the registry can enforce a maximum number of agents per human (default: 1) and expose `sameHuman(agentIdA, agentIdB)` for cross-agent checks.
+Each human produces a deterministic nullifier scoped to the registry. The same human scanning the same passport against the same registry scope always produces the same nullifier. This enables sybil detection: the registry can enforce a maximum number of agents per human (10 on mainnet; unlimited on Celo Sepolia) and expose `sameHuman(agentIdA, agentIdB)` for cross-agent checks.
 
 ### Zero PII On-Chain
 

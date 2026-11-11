@@ -21,4 +21,4 @@ MCP server only? Copy [`.mcp.json`](.mcp.json) to your project root.
 
 ## MCP tools
 
-Same 10 tools as [`@selfxyz/mcp-server`](../mcp/README.md#tools). On the hosted server the 4 key tools are disabled: they sign as the server's agent. To sign as yours, run `@selfxyz/mcp-server` locally.
+Same 10 tools as [`@selfxyz/mcp-server`](https://github.com/selfxyz/self-agent-id/blob/main/mcp/README.md#tools). On the hosted server the 4 key tools are disabled: they sign as the server's agent. To sign as yours, run `@selfxyz/mcp-server` locally.

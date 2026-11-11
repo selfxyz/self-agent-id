@@ -19,7 +19,7 @@ metadata:
 
 ## Overview
 
-All operations in this skill are read-only. No state changes occur on-chain. The public MCP tools (`self_lookup_agent`, `self_list_agents_for_human`) and the REST read routes need no key or authorization. The privileged `self_get_identity` tool reports on the MCP server's own configured agent (`SELF_AGENT_PRIVATE_KEY`) and needs `Authorization: Bearer <MCP_PRIVILEGED_API_KEY>`.
+All operations in this skill are read-only. No state changes occur on-chain. The public MCP tools (`self_lookup_agent`, `self_list_agents_for_human`) and the REST read routes need no key or authorization. `self_get_identity` reports on the MCP server's own configured agent (`SELF_AGENT_PRIVATE_KEY`): on the hosted server it is privileged (`Authorization: Bearer <MCP_PRIVILEGED_API_KEY>`); run `@selfxyz/mcp-server` locally with your `SELF_AGENT_PRIVATE_KEY` to use it for your own agent.
 
 "Verified" everywhere means `hasHumanProof && isProofFresh` (a human proof exists and has not expired).
 
@@ -64,7 +64,7 @@ Use the public `self_list_agents_for_human` MCP tool (wraps `GET /api/agent/agen
 ```
 human_address, network
 agents      — [{ agentId, agentKey, agentAddress, isOwner, isAgentKey, isVerified, hasHumanProof, isProofFresh, proofExpiresAt }]
-total_count — agents backed by the same human (sybil checks)
+total_count — number of agents listed for this wallet (owned + the agent whose key it is); NOT a per-human count — for sybil checks use self_verify_agent (sybil_count, max_agents_per_human)
 complete    — false if the list is partial
 ```
 
@@ -72,7 +72,7 @@ The human address is the NFT owner for `linked`, `privy` and `smartwallet` agent
 
 ## Check the MCP Server's Own Identity
 
-The privileged `self_get_identity` tool reports on the agent configured on the MCP server (`SELF_AGENT_PRIVATE_KEY`), so it is only useful on a deployment you run yourself.
+The `self_get_identity` tool reports on the agent configured on the MCP server (`SELF_AGENT_PRIVATE_KEY`), so it is only useful on a server you run yourself — typically the local stdio `@selfxyz/mcp-server` with your key (no bearer key needed there).
 
 **Input:**
 
@@ -138,7 +138,7 @@ The following credential fields are stored on-chain at registration time, extrac
 | Field       | Type    | Values                                         | Source                                                                               |
 | ----------- | ------- | ---------------------------------------------- | ------------------------------------------------------------------------------------ |
 | nationality | string  | ISO 3166-1 alpha-3 (e.g., "USA", "GBR", "DEU") | ZK passport proof — extracted from the passport's machine-readable zone (MRZ)        |
-| olderThan   | uint8   | 0, 18, or 21                                   | Determined by the verification config selected at registration time                  |
+| olderThan   | uint256 | 0, 18, or 21                                   | Determined by the verification config selected at registration time                  |
 | ofac        | bool[3] | per-list results                               | OFAC sanctions screening performed at registration time (`ofacClean` in agent cards) |
 
 All credential values are cryptographically verified through the ZK proof. They are NOT self-reported. The nationality comes from the passport issuing country, the age threshold is verified against the passport date of birth, and the OFAC status is checked against US sanctions lists.
@@ -312,7 +312,7 @@ To find all agents operated by a specific human:
 
 1. Call `self_list_agents_for_human` with the human's wallet address.
 2. For each returned agent ID, call `self_lookup_agent` to get full details.
-3. Compare nullifiers — all agents from the same human share the same nullifier value.
+3. `self_lookup_agent` does not return the nullifier: compare `humanNullifier` from `GET /api/agent/verify/{chainId}/{agentId}` (all agents of the same human share it), or use `sameHuman(agentIdA, agentIdB)` on-chain.
 
 ### Check Own Status After Registration
 
@@ -325,14 +325,14 @@ After registering, confirm the identity is correctly recorded:
 
 ## Troubleshooting
 
-| Symptom                                                   | Cause                                                               | Resolution                                                                                                                                           |
-| --------------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `self_get_identity` returns an authorization error        | It is a privileged tool                                             | It needs `Authorization: Bearer <MCP_PRIVILEGED_API_KEY>` and a server-side `SELF_AGENT_PRIVATE_KEY`. Use `self_lookup_agent` for any agent instead. |
-| `self_lookup_agent` reports "not found" for a known agent | Wrong network selected                                              | The agent may be registered on testnet but you're querying mainnet (or vice versa). Specify the correct `network` parameter.                         |
-| Credentials show `olderThan: 0` for a registered agent    | Agent used verification config `'0'` or `'3'` (no age gate)         | The agent registered without an age threshold. This is expected for configs that don't include age verification.                                     |
-| `ofac` all `false` for a legitimate agent                 | Agent used a config without OFAC screening (`'0'`, `'1'`, or `'2'`) | A `false` value means "not screened", not "failed screening". Check the verification config used at registration.                                    |
-| REST API returns 400 "Unsupported chain"                  | Wrong chain ID in URL path                                          | Use `42220` for mainnet or `11142220` for testnet. The old Alfajores chain ID (`44787`) is not supported.                                            |
-| REST API returns 404 "Agent not found"                    | Agent never minted, or burned by deregistration                     | Check the agent ID and network. Deregistered agents are gone; a re-registration has a new ID.                                                        |
+| Symptom                                                   | Cause                                                               | Resolution                                                                                                                                                                                       |
+| --------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `self_get_identity` returns an authorization error        | It is a privileged tool on the hosted server                        | It needs `Authorization: Bearer <MCP_PRIVILEGED_API_KEY>` and a server-side `SELF_AGENT_PRIVATE_KEY`; run `@selfxyz/mcp-server` locally with your key, or use `self_lookup_agent` for any agent. |
+| `self_lookup_agent` reports "not found" for a known agent | Wrong network selected                                              | The agent may be registered on testnet but you're querying mainnet (or vice versa). Specify the correct `network` parameter.                                                                     |
+| Credentials show `olderThan: 0` for a registered agent    | Agent used verification config `'0'` or `'3'` (no age gate)         | The agent registered without an age threshold. This is expected for configs that don't include age verification.                                                                                 |
+| `ofac` all `false` for a legitimate agent                 | Agent used a config without OFAC screening (`'0'`, `'1'`, or `'2'`) | A `false` value means "not screened", not "failed screening". Check the verification config used at registration.                                                                                |
+| REST API returns 400 "Unsupported chain"                  | Wrong chain ID in URL path                                          | Use `42220` for mainnet or `11142220` for testnet. The old Alfajores chain ID (`44787`) is not supported.                                                                                        |
+| REST API returns 404 "Agent not found"                    | Agent never minted, or burned by deregistration                     | Check the agent ID and network. Deregistered agents are gone; a re-registration has a new ID.                                                                                                    |
 
 ## Reference Documentation
 

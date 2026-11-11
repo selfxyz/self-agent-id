@@ -202,7 +202,7 @@ Privileged tools need `Authorization: Bearer <key>` matching the server's `MCP_P
 
 ### Local stdio server (your own key)
 
-`@selfxyz/mcp-server` ([`mcp/`](../../../mcp/README.md)) runs the same 10 tools over stdio on your machine. With `SELF_AGENT_PRIVATE_KEY` set, the agent tools sign as your agent; the key never leaves the process. Configure with `SELF_AGENT_NETWORK` (`mainnet` default, or `testnet`), `SELF_RPC_URL` and `SELF_AGENT_API_BASE` (default `https://agent-api.self.xyz`).
+`@selfxyz/mcp-server` ([`mcp/`](https://github.com/selfxyz/self-agent-id/blob/main/mcp/README.md)) runs the same 10 tools over stdio on your machine. With `SELF_AGENT_PRIVATE_KEY` set, the agent tools sign as your agent; the key never leaves the process. Configure with `SELF_AGENT_NETWORK` (`mainnet` default, or `testnet`), `SELF_RPC_URL` and `SELF_AGENT_API_BASE` (default `https://agent-api.self.xyz`).
 
 ```bash
 claude mcp add self-agent-id -e SELF_AGENT_NETWORK=testnet -e SELF_AGENT_PRIVATE_KEY=0x... -- npx -y @selfxyz/mcp-server

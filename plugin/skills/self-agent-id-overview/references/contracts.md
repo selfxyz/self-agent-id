@@ -89,7 +89,7 @@ struct AgentCredentials {
     string gender;           // "M", "F", or other (if disclosed)
     string expiryDate;       // YYMMDD format (if disclosed)
     uint256 olderThan;       // Age threshold verified (0, 18, or 21)
-    bool[3] ofac;            // OFAC screening results [SDN, nonSDN, consolidated]
+    bool[3] ofac;            // OFAC checks passed [passport no., name+DOB, name+YOB]
 }
 ```
 
@@ -153,7 +153,7 @@ Deregister an agent. Only callable by the current NFT owner (`ownerOf(agentId)`)
 function guardianRevoke(uint256 agentId) external;
 ```
 
-Force-revoke a compromised agent. Only callable by the agent's designated guardian (set during wallet-free registration). Performs the same cleanup as `selfDeregister`.
+Force-revoke a compromised agent. Only callable by the agent's designated guardian (set at registration: `ed25519-linked`, or a `W` registration built with a guardian). Performs the same cleanup as `selfDeregister`.
 
 ### Admin Functions (Role-Gated)
 
@@ -425,8 +425,8 @@ SelfAgentRegistry fullRegistry = SelfAgentRegistry(REGISTRY_ADDRESS);
 SelfAgentRegistry.AgentCredentials memory creds = fullRegistry.getAgentCredentials(agentId);
 require(creds.olderThan >= 18, "Must be 18+");
 
-// OFAC compliance check
-require(creds.ofac[0] && creds.ofac[1] && creds.ofac[2], "OFAC check failed");
+// OFAC compliance check (ofac[0], as the SDK and MCP check)
+require(creds.ofac[0], "OFAC check failed");
 ```
 
 ### Combined Check (Recommended Pattern)
@@ -527,7 +527,7 @@ Position [2+]: Mode-specific payload
 ## Compilation and Deployment Notes
 
 - **Solidity version:** 0.8.28
-- **EVM version:** Must use `--evm-version cancun` (Hub V2 uses PUSH0 opcode)
+- **EVM version:** Deployed bytecode uses the `foundry.toml` default (`paris`); tests and the Hub V2 fork need `--evm-version cancun` (PUSH0)
 - **Framework:** Foundry (forge build, forge test, forge script)
 - **Dependencies:** OpenZeppelin Contracts, @selfxyz/contracts
 - **Contract verification:** Use Sourcify verifier for Celoscan (the Etherscan-style API is unreliable). Blockscout requires no API key.

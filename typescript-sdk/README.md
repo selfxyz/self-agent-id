@@ -20,7 +20,7 @@ const session = await requestRegistration({
 });
 console.log(session.deepLink); // open on the phone with the Self app
 const { agentId } = await session.waitForCompletion();
-const privateKey = await session.exportKey(); // EVM modes only, once
+const privateKey = await session.exportKey(); // EVM modes only, within 30 min of completion
 ```
 
 ## 2. Sign requests (agent side)
@@ -59,7 +59,7 @@ app.post("/api/data", verifier.auth(), (req, res) =>
 );
 ```
 
-No Express? `verifier.verify({ signature, timestamp, method, url, body })` with the raw header values.
+No Express? `verifier.verify({ signature, timestamp, method, url, body })` with the raw header values (Ed25519 agents: also `keytype` and `agentKey`).
 
 ## CLI
 
@@ -74,11 +74,11 @@ npx -p @selfxyz/agent-sdk self-agent register export --session .self/session.jso
 
 ## Gotchas
 
-| Symptom                                | Fix                                                              |
-| -------------------------------------- | ---------------------------------------------------------------- |
-| `Human has N agents (max 1)`           | `.sybilLimit(0)` or a higher number                              |
-| `Agent not verified on-chain` on POSTs | Body bytes changed: verify `req.rawBody`, not re-serialized JSON |
-| `does not meet minimum age (got: 0)`   | Register with the same disclosures the verifier requires         |
-| `Timestamp expired or invalid`         | Clock skew over 5 min                                            |
+| Symptom                                | Fix                                                                                               |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `Human has N agents (max 1)`           | `.sybilLimit(0)` or a higher number                                                               |
+| `Agent not verified on-chain` on POSTs | Body bytes changed: verify `req.rawBody`, not re-serialized JSON                                  |
+| `does not meet minimum age (got: 0)`   | Agent registered without an age disclosure: register with `minimumAge: 18`, or drop `.requireAge` |
+| `Timestamp expired or invalid`         | Clock skew over 5 min                                                                             |
 
 Env: `SELF_AGENT_API_BASE` (default `https://agent-api.self.xyz`). License: [BUSL-1.1](../LICENSE).

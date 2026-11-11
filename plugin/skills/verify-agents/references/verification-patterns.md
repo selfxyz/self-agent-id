@@ -62,7 +62,7 @@ app.get("/api/profile", (req, res) => {
     agentId: agent.agentId.toString(), // bigint
     nationality: agent.credentials?.nationality,
     olderThan: Number(agent.credentials?.olderThan ?? 0),
-    ofacClear: agent.credentials?.ofac.every(Boolean),
+    ofacClear: agent.credentials?.ofac[0], // the flag requireOFAC() checks
     agentCount: agent.agentCount.toString(),
   });
 });
@@ -335,10 +335,10 @@ function requireAge(uint256 agentId, uint256 minAge) internal view {
     require(creds.olderThan >= minAge, "Age requirement not met");
 }
 
-// OFAC compliance check — all three lists must be clear
+// OFAC compliance check — ofac[0], the flag the SDK's requireOFAC() checks
 function requireOFAC(uint256 agentId) internal view {
     ISelfAgentRegistry.AgentCredentials memory creds = fullRegistry.getAgentCredentials(agentId);
-    require(creds.ofac[0] && creds.ofac[1] && creds.ofac[2], "OFAC screening not passed");
+    require(creds.ofac[0], "OFAC screening not passed");
 }
 
 // Nationality-based access (use with care — may have legal implications)
@@ -384,7 +384,7 @@ contract MyAgentGatedService {
         ISelfAgentRegistry.AgentCredentials memory creds = registry.getAgentCredentials(agentId);
         if (creds.olderThan < minAge) revert AgeRequirementNotMet(creds.olderThan, minAge);
         if (requireOFACCheck) {
-            if (!creds.ofac[0] || !creds.ofac[1] || !creds.ofac[2]) revert OFACCheckFailed();
+            if (!creds.ofac[0]) revert OFACCheckFailed(); // same flag as the SDK
         }
 
         _;
@@ -638,7 +638,7 @@ A summary of all checks to consider when building a verification integration. No
 | 5   | Provider strength meets minimum | Optional                 | `IHumanProofProvider(provider).verificationStrength() >= N` |
 | 6   | Registration block age          | Optional                 | `block.number - agentRegisteredAt(agentId) <= N`            |
 | 7   | Age credential meets minimum    | Optional                 | `credentials.olderThan >= N`                                |
-| 8   | OFAC screening passed           | Optional                 | `credentials.ofac[0] && ofac[1] && ofac[2]`                 |
+| 8   | OFAC screening passed           | Optional                 | `credentials.ofac[0]` (what the SDK and MCP check)          |
 | 9   | Sybil limit not exceeded        | Optional                 | `getAgentCountForHuman(nullifier) <= N`                     |
 | 10  | Rate limit not exceeded         | Optional                 | Per-agent or per-nullifier rate tracking                    |
 

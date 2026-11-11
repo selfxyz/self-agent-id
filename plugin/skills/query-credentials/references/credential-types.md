@@ -110,7 +110,7 @@ The ZK proof circuit compares the passport's date of birth against the current d
 ### Important Notes
 
 - An agent with `olderThan: 21` is implicitly also 18+. The value records only the threshold that was checked.
-- The actual date of birth is never disclosed or stored on-chain. Only the boolean "meets threshold" is proven.
+- The age check itself proves only the boolean "meets threshold"; the date of birth is stored on-chain only if the `dateOfBirth` disclosure was requested at registration.
 - Age verification is a point-in-time check. An agent registered at 17 with config `'0'` (no age check) will still show `olderThan: 0` even after turning 18. Re-registration with a higher config would be required to update the credential.
 
 ---
@@ -121,13 +121,13 @@ The `ofac` field (`ofacClean` in agent cards) indicates whether the passport hol
 
 ### How It Works
 
-When a verification config with OFAC enabled is selected (configs `'3'`, `'4'`, or `'5'`), the ZK proof circuit checks the passport holder's identity against the following OFAC lists:
+When a verification config with OFAC enabled is selected (configs `'3'`, `'4'`, or `'5'`), the holder is checked against the OFAC sanctions list three ways (Self's `bool[3] ofac` order):
 
-- **SDN** (Specially Designated Nationals) — Individuals and entities sanctioned by the US Treasury
-- **Non-SDN** — Additional restricted parties
-- **Consolidated** — Combined screening list
+- **`ofac[0]`** — passport (document) number
+- **`ofac[1]`** — name and date of birth
+- **`ofac[2]`** — name and year of birth
 
-If the holder appears on any list, proof generation fails. If the holder passes all checks, the `ofac` flags are set to `true` (`ofacClean: true`).
+If the holder matches, Hub V2 rejects the proof and nothing is registered. A `true` flag means that check passed. The SDK (`requireOFAC()`), the MCP tools (`ofac_clear`) and agent cards (`ofacClean`) all read `ofac[0]`; Self sets `ofac[0]` to `false` for non-passport documents (e.g. EU ID cards), so those holders fail `ofac[0]`-based checks.
 
 ### Important Notes
 
@@ -304,7 +304,7 @@ contract MyAgentGatedService {
         if (registry.getProofProvider(agentId) != selfProvider) return false;
 
         ISelfAgentRegistry.AgentCredentials memory creds = registry.getAgentCredentials(agentId);
-        bool ofacClean = creds.ofac[0] && creds.ofac[1] && creds.ofac[2];
+        bool ofacClean = creds.ofac[0]; // same flag the SDK and MCP check
         return creds.olderThan >= 18 && ofacClean;
     }
 }

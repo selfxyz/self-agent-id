@@ -260,7 +260,7 @@ describe("self_verify_request", () => {
     expect(verifierCtorMock).toHaveBeenCalledWith(
       expect.objectContaining({
         network: "mainnet",
-        rpcUrl: "https://mainnet-rpc.example",
+        rpcUrl: "https://forno.celo.org", // app server RPC; Forno while RPC_CELO is unset
         minimumAge: 18,
         requireOFACPassed: true,
         requireSelfProvider: false,
