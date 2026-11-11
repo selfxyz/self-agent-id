@@ -21,18 +21,10 @@
 __pycache__/
 *.pyc
 *.pyo
-*.egg-info/
+
+# Build outputs
 dist/
 build/
-.venv/
-.pytest_cache/
-*.egg
-.coverage
-htmlcov/
-
-# Yarn PnP
-.pnp.cjs
-.pnp.loader.mjs
 
 # Override global gitignore for repo config files
 !eslint.config.mjs

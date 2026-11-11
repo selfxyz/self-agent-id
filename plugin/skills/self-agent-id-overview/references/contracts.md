@@ -111,7 +111,7 @@ Returns the delegated credential metadata JSON string. This is user-defined meta
 function getAgentCountForHuman(uint256 nullifier) external view returns (uint256);
 ```
 
-Returns the number of currently active agents associated with a given human nullifier. The registry enforces `maxAgentsPerHuman` (default: 1) at registration time.
+Returns the number of currently active agents associated with a given human nullifier. The registry enforces `maxAgentsPerHuman` at registration time (initial value 1; deployed: 10 on mainnet, 0 = unlimited on Sepolia).
 
 #### getHumanNullifier
 
@@ -163,7 +163,7 @@ Force-revoke a compromised agent. Only callable by the agent's designated guardi
 | `addProofProvider(address)`      | `SECURITY_ROLE`   | Whitelist a new proof provider                 |
 | `removeProofProvider(address)`   | `SECURITY_ROLE`   | Remove a provider from the whitelist           |
 | `setRequireHumanProof(bool)`     | `SECURITY_ROLE`   | Block plain `register()` (default `true`)      |
-| `setMaxAgentsPerHuman(uint256)`  | `OPERATIONS_ROLE` | Set the sybil limit (0 = unlimited; default 1) |
+| `setMaxAgentsPerHuman(uint256)`  | `OPERATIONS_ROLE` | Set the sybil limit (0 = unlimited; initial 1) |
 | `setMaxProofAge(uint256)`        | `OPERATIONS_ROLE` | Proof validity in seconds (default `365 days`) |
 | `setReputationRegistry(address)` | `OPERATIONS_ROLE` | Link the reputation registry (`0` disables)    |
 | `setValidationRegistry(address)` | `OPERATIONS_ROLE` | Link the validation registry (`0` unlinks)     |

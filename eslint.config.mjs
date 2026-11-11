@@ -9,7 +9,6 @@ export default tseslint.config(
       "contracts/",
       "plugin/",
       "scripts/",
-      "examples/",
       "**/node_modules/",
       "**/dist/",
       "**/build/",

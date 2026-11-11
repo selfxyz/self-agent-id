@@ -8,6 +8,8 @@ forge build --evm-version cancun          # cancun: Hub V2 uses PUSH0
 ./scripts/test.sh                         # forge test --offline; SELF_AGENT_CONTRACTS_ONLINE=1 for online
 ```
 
+Tests and the Hub V2 fork need `cancun`. Deployed bytecode was built with the `foundry.toml` default (`paris`): use `forge build` without the flag to reproduce or verify it.
+
 ## Contracts (`src/`)
 
 | Contract                 | Role                                                                                                           |
@@ -50,6 +52,6 @@ The Self app passes `userDefinedData` as a UTF-8 string, so every position is an
 
 - **Soulbound**: transfers revert; only mint (register) and burn (deregister).
 - **Verified** = `hasHumanProof && isProofFresh`; `proofExpiresAt = min(document expiry, now + maxProofAge)`, `maxProofAge` defaults to 365 days.
-- **Sybil resistance**: one nullifier per human; `maxAgentsPerHuman` defaults to 1; `sameHuman()` and `getAgentCountForHuman()` for custom policies.
+- **Sybil resistance**: one nullifier per human; `maxAgentsPerHuman` initializes to 1 (deployed: 10 on mainnet, 0 = unlimited on Sepolia); `sameHuman()` and `getAgentCountForHuman()` for custom policies.
 - **Guardians**: `W` and `E` registrations can set one; `guardianRevoke(agentId)` force-revokes. NFT owners use `selfDeregister`.
 - **Metadata**: `updateAgentMetadata` is NFT-owner only (the agent key for wallet-free agents, the human wallet for linked ones).
