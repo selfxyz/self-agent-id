@@ -6,7 +6,7 @@ Give an AI agent a human-backed on-chain identity, sign its requests, verify the
 npm install @selfxyz/agent-sdk
 ```
 
-Full reference: [SDK docs](https://docs.self.xyz/docs/agent-id/sdk-integration/) · [CLI docs](https://docs.self.xyz/docs/agent-id/cli/) · [CHANGELOG](CHANGELOG.md)
+Full reference: [SDK docs](https://docs.self.xyz/docs/agent-id/sdk-integration/) · [CLI docs](https://docs.self.xyz/docs/agent-id/cli/)
 
 ## 1. Register (a human scans a QR once)
 

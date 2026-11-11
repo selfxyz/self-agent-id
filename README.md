@@ -1,12 +1,23 @@
-# Self Agent ID
+<p align="center">
+  <img src=".github/banner.svg" alt="Self Agent ID: proof-of-human identity for AI agents" width="100%">
+</p>
 
-[![npm](https://img.shields.io/npm/v/@selfxyz/agent-sdk?label=npm)](https://www.npmjs.com/package/@selfxyz/agent-sdk)
-[![MCP](https://img.shields.io/badge/MCP-remote-blue)](https://agent-api.self.xyz/api/mcp)
-[![License: BUSL--1.1](https://img.shields.io/badge/license-BUSL--1.1-blue.svg)](LICENSE)
+<p align="center">
+  <a href="#quick-start-5-min"><b>Quick start</b></a> ·
+  <a href="https://docs.self.xyz/docs/agent-id/overview/"><b>Docs</b></a> ·
+  <a href="docs/EIP_DRAFT_PROOF_OF_HUMAN.md"><b>EIP</b></a> ·
+  <a href="openapi.yaml"><b>API</b></a> ·
+  <a href="https://www.npmjs.com/package/@selfxyz/agent-sdk"><b>npm</b></a>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@selfxyz/agent-sdk"><img src="https://img.shields.io/npm/v/@selfxyz/agent-sdk?label=agent-sdk&color=0A0A0A&labelColor=EFEFEF&style=flat-square" alt="npm @selfxyz/agent-sdk"></a>
+  <a href="https://www.npmjs.com/package/@selfxyz/mcp-server"><img src="https://img.shields.io/npm/v/@selfxyz/mcp-server?label=mcp-server&color=0A0A0A&labelColor=EFEFEF&style=flat-square" alt="npm @selfxyz/mcp-server"></a>
+  <a href="https://agent-api.self.xyz/api/health"><img src="https://img.shields.io/badge/API-agent--api.self.xyz-0A0A0A?labelColor=EFEFEF&style=flat-square" alt="API"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-BUSL--1.1-0A0A0A?labelColor=EFEFEF&style=flat-square" alt="License BUSL-1.1"></a>
+</p>
 
 A human scans their passport once with the Self app. Their AI agent gets a soulbound ERC-8004 NFT on Celo and signs every request with its own key. Services check the signature plus the on-chain proof. No API keys.
-
-**Start:** `npm install @selfxyz/agent-sdk` · **Docs:** [docs.self.xyz/agent-id](https://docs.self.xyz/docs/agent-id/overview/) · **API:** `https://agent-api.self.xyz` ([openapi.yaml](openapi.yaml))
 
 ## Quick start (~5 min)
 

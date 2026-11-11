@@ -1,6 +1,6 @@
 {
   "name": "@selfxyz/mcp-server",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "MCP server for Self Agent ID: proof-of-human identity for AI agents",
   "type": "module",
   "main": "dist/server.js",
@@ -10,8 +10,7 @@
   },
   "files": [
     "dist",
-    "README.md",
-    "CHANGELOG.md"
+    "README.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
