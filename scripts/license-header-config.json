@@ -16,22 +16,11 @@
       "template": "mit"
     },
     {
-      "prefix": "examples/",
-      "template": "mit"
-    },
-    {
       "prefix": "mcp/",
       "template": "mit"
     }
   ],
-  "include_dirs": [
-    "app",
-    "contracts",
-    "typescript-sdk",
-    "mcp",
-    "examples",
-    "scripts"
-  ],
+  "include_dirs": ["app", "contracts", "typescript-sdk", "mcp", "scripts"],
   "exclude_dir_names": [
     ".git",
     "node_modules",

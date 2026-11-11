@@ -78,11 +78,6 @@ export const DEFAULT_REGISTRY_ADDRESS = NETWORKS.mainnet.registryAddress;
 /** @deprecated Use NETWORKS[network].rpcUrl instead */
 export const DEFAULT_RPC_URL = NETWORKS.mainnet.rpcUrl;
 
-/** Self Hub V2 action byte for proof refresh ('F'). */
-export const ACTION_REFRESH = 0x46;
-/** Self Hub V2 action byte for read-only nullifier identification ('I'). */
-export const ACTION_IDENTIFY = 0x49;
-
 /** Default signature validity window (5 minutes) */
 export const DEFAULT_MAX_AGE_MS = 5 * 60 * 1000;
 

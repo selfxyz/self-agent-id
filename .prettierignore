@@ -1,7 +1,6 @@
 node_modules/
 dist/
 .next/
-target/
 coverage/
 contracts/
 *.lock
@@ -14,5 +13,3 @@ package-lock.json
 *.svg
 *.woff
 *.woff2
-*.json.bak
-**/lottie*.json

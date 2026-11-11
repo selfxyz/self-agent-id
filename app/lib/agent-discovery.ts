@@ -14,7 +14,7 @@ import { getAppBaseUrl } from "@/lib/agent-api-helpers";
 import { NETWORKS, type NetworkId } from "@/lib/network";
 import { MODE_ALIASES, MODE_INFO, type Mode } from "@/lib/registration-modes";
 
-const DOCS_URL = "https://docs.self.xyz/agent-id";
+const DOCS_URL = "https://docs.self.xyz/docs/agent-id/overview/";
 
 /** One-line guide to picking a registration mode. */
 const MODE_DECISION_TREE =

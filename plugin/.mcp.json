@@ -1,6 +1,8 @@
 {
-  "self-agent-id": {
-    "type": "http",
-    "url": "https://agent-api.self.xyz/api/mcp"
+  "mcpServers": {
+    "self-agent-id": {
+      "type": "http",
+      "url": "https://agent-api.self.xyz/api/mcp"
+    }
   }
 }

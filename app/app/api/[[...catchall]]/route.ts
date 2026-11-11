@@ -34,7 +34,7 @@ function notFound(req: NextRequest) {
         bootstrap: `${base}/api/agent/bootstrap`,
         agent_discovery: `${base}/api/agent-discovery`,
         a2a: `${base}/api/a2a`,
-        docs: "https://docs.self.xyz/agent-id",
+        docs: "https://docs.self.xyz/docs/agent-id/overview/",
         llms_txt: `${base}/llms.txt`,
       },
     },

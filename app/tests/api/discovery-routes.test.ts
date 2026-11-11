@@ -145,7 +145,9 @@ describe("discovery content", () => {
     expect(card).not.toHaveProperty("image");
     expect(card.protocolVersion).toBe("0.3.0");
     expect(card.capabilities.pushNotifications).toBe(false);
-    expect(card.documentationUrl).toBe("https://docs.self.xyz/agent-id");
+    expect(card.documentationUrl).toBe(
+      "https://docs.self.xyz/docs/agent-id/overview/",
+    );
   });
 });
 
@@ -222,7 +224,9 @@ describe("discovery routes", () => {
     const res = GET(makeNextRequest("https://x/api/nope"));
     expect(res.status).toBe(404);
     const body = await jsonBody<{ discovery: { docs: string } }>(res);
-    expect(body.discovery.docs).toBe("https://docs.self.xyz/agent-id");
+    expect(body.discovery.docs).toBe(
+      "https://docs.self.xyz/docs/agent-id/overview/",
+    );
   });
 
   it("caches the registry agent card but not agent-card.json errors", async () => {

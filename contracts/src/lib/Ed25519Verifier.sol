@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+
 pragma solidity 0.8.28;
 
 import { SCL_EIP6565 } from "@solidity/lib/libSCL_EIP6565.sol";

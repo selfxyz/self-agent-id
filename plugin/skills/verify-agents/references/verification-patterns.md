@@ -423,6 +423,8 @@ function verifyByAddress(address agentAddress) internal view returns (uint256 ag
     require(registry.isVerifiedAgent(agentKey), "Not verified");
 
     agentId = registry.getAgentId(agentKey);
+    // isVerifiedAgent ignores expiry: check freshness too
+    require(registry.isProofFresh(agentId), "Proof expired");
     require(registry.getProofProvider(agentId) == selfProvider, "Wrong provider");
 
     return agentId;

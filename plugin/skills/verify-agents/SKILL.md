@@ -209,7 +209,7 @@ Returns the number of currently active agents associated with a given nullifier.
 
 Sybil enforcement operates at two layers:
 
-1. **Contract layer:** The registry enforces `maxAgentsPerHuman` at registration time (default: 1). If the limit is reached, registration reverts with `TooManyAgentsForHuman`. `OPERATIONS_ROLE` can adjust this via `setMaxAgentsPerHuman(n)`. Setting to `0` means unlimited.
+1. **Contract layer:** The registry enforces `maxAgentsPerHuman` at registration time (initial value 1; deployed: 10 on mainnet, 0 = unlimited on Sepolia). If the limit is reached, registration reverts with `TooManyAgentsForHuman`. `OPERATIONS_ROLE` can adjust this via `setMaxAgentsPerHuman(n)`. Setting to `0` means unlimited.
 
 2. **Application layer:** The SDK's `SelfAgentVerifier` provides a `sybilLimit(n)` configuration that rejects requests from agents whose human has more than `n` active agents. This is independent of the contract-level limit and can be more restrictive. Default is `1`.
 
