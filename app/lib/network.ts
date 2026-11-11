@@ -32,22 +32,13 @@ export interface NetworkConfig {
   isTestnet: boolean;
 }
 
-/**
- * Server-only RPC override. RPC_CELO / RPC_CELO_SEPOLIA are the names to use.
- * ponytail: the NEXT_PUBLIC_ names are still read so existing deployments keep
- * working; drop that fallback once Vercel uses the new names.
- */
-function serverRpc(name: "RPC_CELO" | "RPC_CELO_SEPOLIA"): string | undefined {
-  return process.env[name] || process.env[`NEXT_PUBLIC_${name}`];
-}
-
 // ── Celo Mainnet ──────────────────────────────────────────────────────────
 
 const CELO_MAINNET: NetworkConfig = {
   id: "celo-mainnet",
   label: "Celo",
   chainId: 42220,
-  rpcUrl: serverRpc("RPC_CELO") || "https://forno.celo.org",
+  rpcUrl: process.env.RPC_CELO || "https://forno.celo.org",
   publicRpcUrl: "https://forno.celo.org",
   blockExplorer: "https://celoscan.io",
   registryAddress: "0xaC3DF9ABf80d0F5c020C06B04Cced27763355944",
@@ -64,7 +55,7 @@ const CELO_SEPOLIA: NetworkConfig = {
   label: "Sepolia",
   chainId: 11142220,
   rpcUrl:
-    serverRpc("RPC_CELO_SEPOLIA") ||
+    process.env.RPC_CELO_SEPOLIA ||
     "https://forno.celo-sepolia.celo-testnet.org",
   publicRpcUrl: "https://forno.celo-sepolia.celo-testnet.org",
   blockExplorer: "https://celo-sepolia.blockscout.com",

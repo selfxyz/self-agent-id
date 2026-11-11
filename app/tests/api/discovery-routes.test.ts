@@ -169,10 +169,10 @@ describe("discovery routes", () => {
     expect(discovery.GET(req).headers.get("vary")).toBe("Accept");
   });
 
-  it("never publishes server-side RPC URLs (new or legacy env names)", async () => {
+  it("never publishes server-side RPC URLs", async () => {
     vi.stubEnv("RPC_CELO", "https://celo-mainnet.example/v2/SECRET_MAIN");
     vi.stubEnv(
-      "NEXT_PUBLIC_RPC_CELO_SEPOLIA",
+      "RPC_CELO_SEPOLIA",
       "https://celo-sepolia.example/v2/SECRET_TEST",
     );
     const { NETWORKS } = await import("@/lib/network");

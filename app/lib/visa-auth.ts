@@ -229,7 +229,13 @@ async function limit(
   max: number,
   message: string,
 ): Promise<NextResponse | null> {
-  const r = await checkRateLimit({ key, limit: max, windowMs: HOUR_MS });
+  // Fixed: these caps bound relayer gas spend, so the event multiplier doesn't apply.
+  const r = await checkRateLimit({
+    key,
+    limit: max,
+    windowMs: HOUR_MS,
+    fixed: true,
+  });
   return r.allowed ? null : rateLimitResponse(r.retryAfterMs, message);
 }
 
