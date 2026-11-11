@@ -32,7 +32,7 @@ Source of truth: [`.env.example`](.env.example).
 | `NEXT_PUBLIC_APP_URL`                                      | Public base URL in links (default `https://agent-api.self.xyz`)       |
 | `NEXT_PUBLIC_DEFAULT_NETWORK`                              | `celo-mainnet` (default) or `celo-sepolia`                            |
 | `NEXT_PUBLIC_SELF_APP_NAME`, `NEXT_PUBLIC_SELF_SCOPE_SEED` | Must match the registry (`Self Agent ID` / `self-agent-id`)           |
-| `NEXT_PUBLIC_RPC_CELO`, `NEXT_PUBLIC_RPC_CELO_SEPOLIA`     | RPC URLs. **Public: served in discovery.** Never put a keyed URL here |
+| `RPC_CELO`, `RPC_CELO_SEPOLIA`                             | Server-only RPC URLs (keyed is fine; never published). Default: Forno |
 | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`       | Shared rate-limit and replay store. Set in production                 |
 | `RELAYER_PRIVATE_KEY`                                      | Visa relayer. Unset → visa writes 503                                 |
 | `MCP_PRIVILEGED_API_KEYS` / `MCP_PRIVILEGED_API_KEY`       | Bearer key(s) for privileged MCP tools                                |

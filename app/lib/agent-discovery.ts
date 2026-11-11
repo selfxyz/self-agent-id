@@ -334,7 +334,7 @@ export function getAgentDiscoveryJSON(
       label: cfg.label,
       chainId: cfg.chainId,
       registryAddress: cfg.registryAddress,
-      rpcUrl: cfg.rpcUrl,
+      rpcUrl: cfg.publicRpcUrl,
       isTestnet: cfg.isTestnet,
     };
   }
@@ -442,14 +442,14 @@ Use "network": "mainnet" or "testnet" in request bodies; use the chain ID in que
 
 ### Celo Mainnet
   - Chain ID: ${mainnet.chainId}
-  - RPC: ${mainnet.rpcUrl}
+  - RPC: ${mainnet.publicRpcUrl}
   - Registry: ${mainnet.registryAddress}
   - Provider: ${mainnet.providerAddress}
   - Block Explorer: ${mainnet.blockExplorer}
 
 ### Celo Sepolia (Testnet)
   - Chain ID: ${sepolia.chainId}
-  - RPC: ${sepolia.rpcUrl}
+  - RPC: ${sepolia.publicRpcUrl}
   - Registry: ${sepolia.registryAddress}
   - Provider: ${sepolia.providerAddress}
   - Block Explorer: ${sepolia.blockExplorer}

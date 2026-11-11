@@ -18,8 +18,10 @@ export interface NetworkConfig {
   /** Short display name ("Celo" / "Sepolia"). */
   label: string;
   chainId: number;
-  /** Default RPC; overridable via NEXT_PUBLIC_RPC_CELO(_SEPOLIA). */
+  /** Server-side RPC for chain reads (may hold a keyed URL). Never publish it. */
   rpcUrl: string;
+  /** Keyless public RPC: the only RPC URL ever shown to clients (discovery, llms.txt). */
+  publicRpcUrl: string;
   blockExplorer: string;
   registryAddress: string;
   /** Self proof provider contract. */
@@ -30,13 +32,23 @@ export interface NetworkConfig {
   isTestnet: boolean;
 }
 
+/**
+ * Server-only RPC override. RPC_CELO / RPC_CELO_SEPOLIA are the names to use.
+ * ponytail: the NEXT_PUBLIC_ names are still read so existing deployments keep
+ * working; drop that fallback once Vercel uses the new names.
+ */
+function serverRpc(name: "RPC_CELO" | "RPC_CELO_SEPOLIA"): string | undefined {
+  return process.env[name] || process.env[`NEXT_PUBLIC_${name}`];
+}
+
 // ── Celo Mainnet ──────────────────────────────────────────────────────────
 
 const CELO_MAINNET: NetworkConfig = {
   id: "celo-mainnet",
   label: "Celo",
   chainId: 42220,
-  rpcUrl: process.env.NEXT_PUBLIC_RPC_CELO || "https://forno.celo.org",
+  rpcUrl: serverRpc("RPC_CELO") || "https://forno.celo.org",
+  publicRpcUrl: "https://forno.celo.org",
   blockExplorer: "https://celoscan.io",
   registryAddress: "0xaC3DF9ABf80d0F5c020C06B04Cced27763355944",
   providerAddress: "0x4b036aFD959B457A208F676cf44Ea3ef73Ea3E3d",
@@ -52,8 +64,9 @@ const CELO_SEPOLIA: NetworkConfig = {
   label: "Sepolia",
   chainId: 11142220,
   rpcUrl:
-    process.env.NEXT_PUBLIC_RPC_CELO_SEPOLIA ||
+    serverRpc("RPC_CELO_SEPOLIA") ||
     "https://forno.celo-sepolia.celo-testnet.org",
+  publicRpcUrl: "https://forno.celo-sepolia.celo-testnet.org",
   blockExplorer: "https://celo-sepolia.blockscout.com",
   registryAddress: "0x043DaCac8b0771DD5b444bCC88f2f8BBDBEdd379",
   providerAddress: "0x5E61c3051Bf4115F90AacEAE6212bc419f8aBB6c",
