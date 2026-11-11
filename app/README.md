@@ -20,7 +20,7 @@ Routes and schemas: [openapi.yaml](../openapi.yaml) · [REST API docs](https://d
 
 ## Limits (per IP)
 
-10/min session starts · 120/min polls, reads, MCP · 60/min QR, A2A, visa batch · 20/min wallet/nullifier scans · 20/h visa writes. Shared across instances only when Upstash Redis is set.
+10/min session starts · 120/min polls, reads, MCP · 60/min QR, A2A, visa batch · 20/min wallet/nullifier scans · 20/h visa writes. Shared across instances only when Upstash Redis is set. Set `RATE_LIMIT_MULTIPLIER` (e.g. `5`) to scale them for an event; visa write caps stay fixed.
 
 ## Environment
 

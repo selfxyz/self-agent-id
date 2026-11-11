@@ -79,4 +79,33 @@ describe("checkRateLimit", () => {
     await checkRateLimit({ key: "test", limit: 0, windowMs: 0 });
     expect(mockIncrementWithWindow).toHaveBeenCalledWith("test", 1);
   });
+
+  it("scales limits by RATE_LIMIT_MULTIPLIER unless fixed", async () => {
+    vi.stubEnv("RATE_LIMIT_MULTIPLIER", "5");
+    mockIncrementWithWindow.mockResolvedValue({ count: 50, ttlMs: 1000 });
+    const scaled = await checkRateLimit({
+      key: "a",
+      limit: 10,
+      windowMs: 60_000,
+    });
+    expect(scaled).toMatchObject({ allowed: true, remaining: 0 });
+    const fixed = await checkRateLimit({
+      key: "b",
+      limit: 10,
+      windowMs: 60_000,
+      fixed: true,
+    });
+    expect(fixed.allowed).toBe(false);
+    vi.unstubAllEnvs();
+  });
+
+  it("ignores invalid or sub-1 multipliers", async () => {
+    mockIncrementWithWindow.mockResolvedValue({ count: 11, ttlMs: 1000 });
+    for (const v of ["abc", "0.5", "-3", ""]) {
+      vi.stubEnv("RATE_LIMIT_MULTIPLIER", v);
+      const r = await checkRateLimit({ key: "c", limit: 10, windowMs: 60_000 });
+      expect(r.allowed).toBe(false);
+    }
+    vi.unstubAllEnvs();
+  });
 });
