@@ -71,4 +71,4 @@ Verify tools default to 1 agent per human: pass `max_agents_per_human: 0` for no
 | `MCP_AUTH_FETCH_ALLOW_PRIVATE_NETWORKS` | `false`                      | Allow private/local targets (dev only)             |
 | `MCP_VERIFY_REQUEST_REPLAY_PROTECTION`  | `true`                       | Per-process replay cache for `self_verify_request` |
 
-Dev: `npm ci && npm test && npm run build`. A test fails if the tool list drifts from the hosted server (`app/app/api/mcp`). License: MIT.
+Dev: `npm ci && npm test && npm run build`. A test fails if the tool list drifts from the hosted server (`app/app/api/mcp`). License: BUSL-1.1 (see [LICENSE](LICENSE)).
