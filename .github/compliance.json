@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "workspaces": [
+    {
+      "path": ".",
+      "kind": "npm-package"
+    },
+    {
+      "path": "app",
+      "kind": "web-app"
+    },
+    {
+      "path": "contracts",
+      "kind": "contracts"
+    }
+  ]
+}
